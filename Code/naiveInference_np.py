@@ -67,10 +67,10 @@ def scoring_function(info1, info2):
 
 # carpro_factList = cartesian_product_transpose_pp([factList, factList])
 
-for info1 in factList:
-    for info2 in factList:
-        if scoring_function(info1, info2) >= 20:
-            edges.append((info1, info2))
-edges = np.array(edges)
+# for info1 in factList:
+#     for info2 in factList:
+#         if scoring_function(info1, info2) >= 20:
+#             edges.append((info1, info2))
+# edges = np.array(edges)
 
 print("time :", time.time() - start)

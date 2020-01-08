@@ -21,21 +21,12 @@ fact = open("/home/jslee/taint/doop/cache/ccaa00b018a74b8a79db47d93aeaaff44fc921
 factList = fact.readlines()
 factList = list(map(lambda x: x.split("\t"), factList))
 factList = list(map(lambda x: x[0], factList))
-factList = np.asarray(factList)
+factList = list(map(process, factList))
+factList = pd.DataFrame(factList, columns=["pkg", "rtntype", "name", "intype"], dtype="str")
+# print("")
+# print(factList.loc[0,"pkg"])
 
 regex = r'\((.*)\)'
-
-# def process(info):
-#     info = info.strip("<>")
-#     pkg = info.split(":")[0]
-#     rtntype = info.split(" ")[1]
-#     name = info.split(" ")[2]
-#     intype = match(regex, name)
-#     if intype is None:
-#         intype = 'void'
-#     else:
-#         intype = str(intype.group(1))
-#     return np.array([pkg, rtntype, name, intype])
 
 def process(info):
     info = info.strip("<>")
@@ -49,7 +40,8 @@ def process(info):
         intype = str(intype.group(1))
     return (pkg, rtntype, name, intype)
 
-factList = np.array(list(map(process, factList)))
+factList.applymap(process)
+print(factList)
 # TODO: remove rows containing <init> and <clinit>
 
 # Measuring similarity between methods
@@ -71,9 +63,6 @@ def scoring_function(info1, info2):
     return score
 
 # 1. 
-
-tmplst = []
-tmplst = [(x,y) for x in factList for y in factList if scoring_function(x,y) >= 20]
 
 # i, j = np.nested_iters(factList, [[0], [1]], flags=["multi_index"])
 # for x in i:

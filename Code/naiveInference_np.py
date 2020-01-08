@@ -16,18 +16,7 @@ from re import match
 
 start = time.time()
 
-# Open and parse
-fact = open("/home/jslee/taint/doop/cache/ccaa00b018a74b8a79db47d93aeaaff44fc921e1f6c9b35e0a2b642340a8a1c4/Method.facts", "r+")
-factList = fact.readlines()
-factList = list(map(lambda x: x.split("\t"), factList))
-factList = list(map(lambda x: x[0], factList))
-factList = list(map(process, factList))
-factList = pd.DataFrame(factList, columns=["pkg", "rtntype", "name", "intype"], dtype="str")
-# print("")
-# print(factList.loc[0,"pkg"])
-
-regex = r'\((.*)\)'
-
+# Parsing Function
 def process(info):
     info = info.strip("<>")
     pkg = info.split(":")[0]
@@ -40,14 +29,21 @@ def process(info):
         intype = str(intype.group(1))
     return (pkg, rtntype, name, intype)
 
-factList.applymap(process)
-print(factList)
+# Open and parse
+fact = open("/home/jslee/taint/doop/cache/ccaa00b018a74b8a79db47d93aeaaff44fc921e1f6c9b35e0a2b642340a8a1c4/Method.facts", "r+")
+factList = fact.readlines()
+factList = list(map(lambda x: x.split("\t"), factList))
+factList = list(map(lambda x: x[0], factList))
+factList = list(map(process, factList))
+factList = pd.DataFrame(factList, columns=["pkg", "rtntype", "name", "intype"], dtype="str")
+# print("")
+# print(factList.loc[0,"pkg"])
+factList.to_csv("raw_data.csv", mode='w', header=False, index=False)
+
+regex = r'\((.*)\)'
+
+
 # TODO: remove rows containing <init> and <clinit>
-
-# Measuring similarity between methods
-## 1. The pair of methods belong to the same package
-
-# (pkg, rtntype, name, intype)
 
 def scoring_function(info1, info2):
     score = 0
@@ -62,14 +58,5 @@ def scoring_function(info1, info2):
         score += 10
     return score
 
-# 1. 
-
-# i, j = np.nested_iters(factList, [[0], [1]], flags=["multi_index"])
-# for x in i:
-#     for y in j:
-#         # if scoring_function(x,y) >= 20:
-#         tmplst.append((x,y))
-# for i in range(60):
-#     print(tmplst[i])
 
 print("time :", time.time() - start)

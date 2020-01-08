@@ -16,6 +16,8 @@ from re import match
 
 start = time.time()
 
+regex = r'\((.*)\)'
+
 # Parsing Function
 def process(info):
     info = info.strip("<>")
@@ -39,9 +41,6 @@ factList = pd.DataFrame(factList, columns=["pkg", "rtntype", "name", "intype"], 
 # print("")
 # print(factList.loc[0,"pkg"])
 factList.to_csv("raw_data.csv", mode='w', header=False, index=False)
-
-regex = r'\((.*)\)'
-
 
 # TODO: remove rows containing <init> and <clinit>
 

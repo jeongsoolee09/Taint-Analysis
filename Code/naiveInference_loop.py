@@ -13,17 +13,28 @@ edges = pd.read_csv("edges.csv", index_col=0)
 
 max_index_plus_one = methods.shape[0]
 
+# Prior belief를 나타내는 자료구조 만들기
+priors = pd.DataFrame(index=methods.index, columns=["src", "sin", "san", "non"])
+priors = priors.fillna(0.25) # Flat priors!
+
 def loop(times):
     for time in range(times):
         i = random.randint(0, max_index_plus_one-1)
         query = methods.loc[i][2]
         if time == 0:  # for debugging purposes.
-            x = input("What label does <" + query + "> bear? [src/sin/san/non]: ")
-        
-        
+            oracle_response = input("What label does <" + query + "> bear? [src/sin/san/non]: ")
+        if oracle_response == 'src':
+            bayesian_update(priors.loc[i], 'src')
+        elif oracle_response == 'sin':
+            bayesian_update(priors.loc[i], 'sin')
+        elif oracle_response == 'san':
+            bayesian_update(priors.loc[i], 'san')
+        elif oracle_response == 'non':
+            bayesian_update(priors.loc[i], 'non')
+            
 
-def bayesian_update(prior):
-    pass # not yet implemented
+def bayesian_update(prior, oracle_response):
+    prior =  * prior 
         
 
 loop(20)

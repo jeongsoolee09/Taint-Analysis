@@ -6,7 +6,10 @@
 #     4. If a pair of methods have a similar input type: +10 to the pair
 # If the score is equal to 20, connect the pair with an edge.
 
-import numpy as np
+# Abandoning Numpy; transferring to Pandas
+
+# import numpy as np
+import pandas as pd
 import time
 import itertools
 from re import match
@@ -22,6 +25,18 @@ factList = np.asarray(factList)
 
 regex = r'\((.*)\)'
 
+# def process(info):
+#     info = info.strip("<>")
+#     pkg = info.split(":")[0]
+#     rtntype = info.split(" ")[1]
+#     name = info.split(" ")[2]
+#     intype = match(regex, name)
+#     if intype is None:
+#         intype = 'void'
+#     else:
+#         intype = str(intype.group(1))
+#     return np.array([pkg, rtntype, name, intype])
+
 def process(info):
     info = info.strip("<>")
     pkg = info.split(":")[0]
@@ -32,12 +47,10 @@ def process(info):
         intype = 'void'
     else:
         intype = str(intype.group(1))
-    if '<init>' not in name and '<clinit>' not in name:
-        return (pkg, rtntype, name, intype)
+    return (pkg, rtntype, name, intype)
 
 factList = np.array(list(map(process, factList)))
-factList = factList[factList != np.array(None)] # wiping out None values
-print(factList)
+# TODO: remove rows containing <init> and <clinit>
 
 # Measuring similarity between methods
 ## 1. The pair of methods belong to the same package
@@ -49,28 +62,25 @@ def scoring_function(info1, info2):
     if info1[0] == info2[0]: # The two methods belong to the same package
         score += 10
     if (info1[2] in info2[2]) or (info2[2] in info1[2]) or (info1[2][0:2] == info2[2][0:2]) or (info1[2][0:3] == info2[2][0:3]): # The two methods start with a same prefix
-        score += 10
+        score += 1
+        0
     if info1[1] == info2[1]: # The two methods have a similar return type 
         score += 10
     if info1[3] == info2[3]: # The two methods have a same input type
         score += 10
     return score
 
-# def cartesian_product_transpose_pp(arrays):
-#     la = len(arrays)
-#     dtype = np.result_type(*arrays)
-#     arr = np.empty((la, *map(len, arrays)), dtype=dtype)
-#     idx = slice(None), *itertools.repeat(None, la)
-#     for i, a in enumerate(arrays):
-#         arr[i, ...] = a[idx[:la-i]]
-#     return arr.reshape(la, -1).T
+# 1. 
 
-# carpro_factList = cartesian_product_transpose_pp([factList, factList])
+tmplst = []
+tmplst = [(x,y) for x in factList for y in factList if scoring_function(x,y) >= 20]
 
-# for info1 in factList:
-#     for info2 in factList:
-#         if scoring_function(info1, info2) >= 20:
-#             edges.append((info1, info2))
-# edges = np.array(edges)
+# i, j = np.nested_iters(factList, [[0], [1]], flags=["multi_index"])
+# for x in i:
+#     for y in j:
+#         # if scoring_function(x,y) >= 20:
+#         tmplst.append((x,y))
+# for i in range(60):
+#     print(tmplst[i])
 
 print("time :", time.time() - start)

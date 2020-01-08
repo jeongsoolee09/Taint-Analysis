@@ -13,6 +13,7 @@ import pandas as pd
 import time
 import itertools
 from re import match
+import random
 
 start = time.time()
 
@@ -37,10 +38,15 @@ factList = fact.readlines()
 factList = list(map(lambda x: x.split("\t"), factList))
 factList = list(map(lambda x: x[0], factList))
 factList = list(map(process, factList))
-factList = pd.DataFrame(factList, columns=["pkg", "rtntype", "name", "intype"], dtype="str")
+
+writeList = []
+for i in random.sample(range(0,len(factList)), 1000):
+    writeList.append(factList[i])
+
+writeList = pd.DataFrame(writeList, columns=["pkg", "rtntype", "name", "intype"], dtype="str")
 # print("")
 # print(factList.loc[0,"pkg"])
-factList.to_csv("raw_data.csv", mode='w', header=False, index=False)
+writeList.to_csv("raw_data.csv", mode='w')
 
 # TODO: remove rows containing <init> and <clinit>
 

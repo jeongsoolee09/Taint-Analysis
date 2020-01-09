@@ -17,6 +17,7 @@ max_index_plus_one = methods.shape[0]
 priors = pd.DataFrame(index=methods.index, columns=["src", "sin", "san", "non"])
 priors = priors.fillna(0.25) # Flat priors!
 
+
 def loop(times):
     for time in range(times):
         i = random.randint(0, max_index_plus_one-1)
@@ -24,17 +25,42 @@ def loop(times):
         if time == 0:  # for debugging purposes.
             oracle_response = input("What label does <" + query + "> bear? [src/sin/san/non]: ")
         if oracle_response == 'src':
-            bayesian_update(priors.loc[i], 'src')
+            bayesian_update(i, priors.loc[i], 'src')
         elif oracle_response == 'sin':
-            bayesian_update(priors.loc[i], 'sin')
+            bayesian_update(i, priors.loc[i], 'sin')
         elif oracle_response == 'san':
-            bayesian_update(priors.loc[i], 'san')
+            bayesian_update(i, priors.loc[i], 'san')
         elif oracle_response == 'non':
-            bayesian_update(priors.loc[i], 'non')
+            bayesian_update(i, priors.loc[i], 'non')
             
 
-def bayesian_update(prior, oracle_response):
-    prior =  * prior 
+def bayesian_update(method_index, prior, oracle_response):
+    if oracle_response == 'src':
+        prior[0] = 1 * prior[0] / 0.25     # src
+        prior[1] = 0 * prior[1] / 0.25     # sin
+        prior[2] = 0 * prior[2] / 0.25     # san
+        prior[3] = 0 * prior[3] / 0.25     # non
+    elif oracle_response == 'sin':
+        prior[0] = 0 * prior[0] / 0.25     # src
+        prior[1] = 1 * prior[1] / 0.25     # sin
+        prior[2] = 0 * prior[2] / 0.25     # san
+        prior[3] = 0 * prior[3] / 0.25     # non
+    elif oracle_response == 'san':
+        prior[0] = 0 * prior[0] / 0.25     # src
+        prior[1] = 0 * prior[1] / 0.25     # sin
+        prior[2] = 1 * prior[2] / 0.25     # san
+        prior[3] = 0 * prior[3] / 0.25     # non
+    elif oracle_response == 'non':
+        prior[0] = 0 * prior[0] / 0.25     # src
+        prior[1] = 0 * prior[1] / 0.25     # sin
+        prior[2] = 0 * prior[2] / 0.25     # san
+        prior[3] = 1 * prior[3] / 0.25     # non
+    belief_propagation(method_index)
         
 
+def belief_propagation(node):
+    """do it recursively"""
+
+    # belief_propagation()
+    
 loop(20)

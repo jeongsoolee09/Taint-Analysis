@@ -36,7 +36,14 @@ print("completed bottleneck")
 
 # print(len(list(methodInfo1['pkg'].unique()))) # outputs unique values of 'pkg' column
 
-edges = pd.DataFrame({"edge1":edge1, "edge2":edge2})
+# edges = pd.DataFrame({"edge1":edge1, "edge2":edge2})
+edge1 = pd.DataFrame(edge1, columns = methodInfo1.columns)
+edge2 = pd.DataFrame(edge2, columns = methodInfo2.columns)
+# print(edge1)
+# print(edge2)
+edges = pd.merge(edge1, edge2, left_index=True, right_index=True)
+edges.columns = pd.MultiIndex.from_product([['edge1', 'edge2'], methodInfo1.columns])
+print(edges)
 edges.to_csv("edges.csv", mode='w')
 
 print("elapsed time :", time.time() - start)

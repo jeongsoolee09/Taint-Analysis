@@ -24,7 +24,7 @@ def process(info):
     info = info.strip("<>")
     pkg = info.split(":")[0]
     rtntype = info.split(" ")[1]
-    name = info.split(" ")[2]
+    name = info.split(" ")[2].split("(")[0]
     intype = match(regex, name)
     if intype is None:
         intype = 'void'
@@ -38,16 +38,24 @@ factList = fact.readlines()
 factList = list(map(lambda x: x.split("\t"), factList))
 factList = list(map(lambda x: x[0], factList))
 factList = list(map(process, factList))
+factList = list(filter(lambda tup: tup[2] != "<init>" and tup[2] != "<clinit>", factList))
 
 writeList = []
 for i in random.sample(range(0,len(factList)), 1000):
     writeList.append(factList[i])
 
 writeList = pd.DataFrame(writeList, columns=["pkg", "rtntype", "name", "intype"], dtype="str")
+# condition1 = "<init>" not in writeList["name"]
+# condition2 = "<clinit>" not in writeList["name"]
+# condition1 = "<init>" != writeList["name"]
+# condition2 = "<clinit>" != writeList["name"]
+# writeList = writeList[condition1 & condition2]
+
 # print("")
 # print(factList.loc[0,"pkg"])
 writeList.to_csv("raw_data.csv", mode='w')
 
 # TODO: remove rows containing <init> and <clinit>
+
 
 print("time :", time.time() - start)

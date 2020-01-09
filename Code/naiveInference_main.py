@@ -45,17 +45,7 @@ for i in random.sample(range(0,len(factList)), 1000):
     writeList.append(factList[i])
 
 writeList = pd.DataFrame(writeList, columns=["pkg", "rtntype", "name", "intype"], dtype="str")
-# condition1 = "<init>" not in writeList["name"]
-# condition2 = "<clinit>" not in writeList["name"]
-# condition1 = "<init>" != writeList["name"]
-# condition2 = "<clinit>" != writeList["name"]
-# writeList = writeList[condition1 & condition2]
-
-# print("")
-# print(factList.loc[0,"pkg"])
 writeList.to_csv("raw_data.csv", mode='w')
-
-# TODO: remove rows containing <init> and <clinit>
 
 
 print("time :", time.time() - start)

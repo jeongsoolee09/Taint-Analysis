@@ -23,17 +23,20 @@ def scoring_function(info1, info2):
         score += 10
     return score
 
-edges = []
+edge1 = []
+edge2 = []
 
 print("starting bottleneck")
 for row1 in methodInfo1.itertuples(index=False):
     for row2 in methodInfo2.itertuples(index=False):
         if scoring_function(row1, row2) >= 20:
-            edges.append((row1,row2))
+            edge1.append(row1)
+            edge2.append(row2)
+print("completed bottleneck")
 
-print(len(list(methodInfo1['pkg'].unique()))) # outputs unique values of 'pkg' column
+# print(len(list(methodInfo1['pkg'].unique()))) # outputs unique values of 'pkg' column
 
-edges = pd.DataFrame(edges, columns=["edge1", "edge2"])
+edges = pd.DataFrame({"edge1":edge1, "edge2":edge2})
 edges.to_csv("edges.csv", mode='w')
 
 print("elapsed time :", time.time() - start)

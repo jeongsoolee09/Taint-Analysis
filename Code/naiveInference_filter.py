@@ -13,13 +13,13 @@ methodInfo2 = pd.read_csv("raw_data.csv", index_col=0)
 
 def scoring_function(info1, info2):
     score = 0
-    if info1[0] == info2[0]: # The two methods belong to the same package
+    if info1[1] == info2[1]: # The two methods belong to the same package
         score += 10
-    if (info1[2] in info2[2]) or (info2[2] in info1[2]) or (info1[2][0:2] == info2[2][0:2]) or (info1[2][0:3] == info2[2][0:3]): # The two methods start with a same prefix
+    if (info1[3] in info2[3]) or (info2[3] in info1[3]) or (info1[3][0:2] == info2[3][0:2]) or (info1[3][0:2] == info2[3][0:2]): # The two methods start with a same prefix
         score += 10
-    if info1[1] == info2[1]: # The two methods have a similar return type 
+    if info1[2] == info2[2]: # The two methods have a similar return type 
         score += 10
-    if info1[3] == info2[3]: # The two methods have a same input type
+    if info1[4] == info2[4]: # The two methods have a same input type
         score += 10
     return score
 
@@ -43,7 +43,6 @@ edge2 = pd.DataFrame(edge2, columns = methodInfo2.columns)
 # print(edge2)
 edges = pd.merge(edge1, edge2, left_index=True, right_index=True)
 edges.columns = pd.MultiIndex.from_product([['edge1', 'edge2'], methodInfo1.columns])
-print(edges)
 edges.to_csv("edges.csv", mode='w')
 
 print("elapsed time :", time.time() - start)

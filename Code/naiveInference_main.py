@@ -12,24 +12,24 @@
 import pandas as pd
 import time
 import itertools
-from re import match
+import re
 import random
 
 start = time.time()
 
 regex = r'\((.*)\)'
+regex = re.compile(regex)
 
 # Parsing Function
 def process(info):
     info = info.strip("<>")
     pkg = info.split(":")[0]
     rtntype = info.split(" ")[1]
-    name = info.split(" ")[2].split("(")[0]
-    intype = match(regex, name)
-    if intype is None:
+    name = info.split(" ")[2]
+    intype = regex.findall(name)[0]
+    if intype == '':
         intype = 'void'
-    else:
-        intype = str(intype.group(1))
+    name = name.split("(")[0]
     return (pkg, rtntype, name, intype)
 
 # Open and parse
@@ -45,7 +45,8 @@ for i in random.sample(range(0,len(factList)), 1000):
     writeList.append(factList[i])
 
 writeList = pd.DataFrame(writeList, columns=["pkg", "rtntype", "name", "intype"], dtype="str")
+writeList = writeList.reset_index() # embed the index into a separate column
 writeList.to_csv("raw_data.csv", mode='w')
 
 
-print("time :", time.time() - start)
+print("elapsed time :", time.time() - start)

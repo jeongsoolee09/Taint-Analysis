@@ -49,7 +49,7 @@ def bayesian_update(method_index, prior, oracle_response):
         prior[1] = 0 * prior[1] / 0.25     # sin
         prior[2] = 0 * prior[2] / 0.25     # san
         prior[3] = 1 * prior[3] / 0.25     # non
-    belief_propagation(method_index)
+    belief_propagation(method_index, 3)
 
 
 def search_in_edge(node_index):
@@ -61,17 +61,22 @@ def search_in_edge(node_index):
 
     neighbors = pd.concat([neighbors_l, neighbors_r])
     neighbors = neighbors.drop_duplicates()
-    # # neighbors = neighbors.reset_index()
-    # # neighbors = neighbors.drop("index", 1)
+    # neighbors = neighbors.reset_index()
+    # neighbors = neighbors.drop("index", 1)
     return neighbors
 
 
-def belief_propagation(node_index):
+def belief_propagation(node_index, times):
+    # print(times, end="")
+    if times == 0:
+        return
     """do it recursively: search for all associated tuples and call this function on those, too"""
     neighbors = search_in_edge(node_index)
-    # print(neighbors)
     for neighbor in neighbors.itertuples(index=False):
-        belief_propagation(int(neighbor[0]))
+        if neighbor[0] == "index":   # empty dataframe, i.e. no further neighbors
+            return
+        belief_propagation(int(neighbor[0]), times-1)
 
+# belief_propagation(130)
+loop(5)
 
-belief_propagation(130)

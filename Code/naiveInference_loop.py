@@ -8,9 +8,10 @@ edges = pd.read_csv("edges.csv", index_col=0)
 edges.columns = pd.MultiIndex.from_product([['edge1', 'edge2'], methods.columns])
 max_index_plus_one = methods.shape[0]
 
-# Prior belief를 나타내는 자료구조 만들기
+# Prior beliefs
 priors = pd.DataFrame(index=methods.index, columns=["src", "sin", "san", "non"])
 priors = priors.fillna(0.25) # Flat priors!
+priors = pd.merge(priors, methods["name"], left_index=True, right_index=True)
 
 
 def loop(times):
@@ -77,6 +78,22 @@ def belief_propagation(node_index, times):
             return
         belief_propagation(int(neighbor[0]), times-1)
 
-# belief_propagation(130)
-loop(5)
+loop(1)
 
+def report_result():
+    global priors
+    condition_src = priors['src'] == 1
+    condition_sin = priors['sin'] == 1
+    condition_san = priors['san'] == 1
+    condition_non = priors['non'] == 1
+    nonzeros = priors[condition_src | condition_sin | condition_san | condition_non]
+    print("Touched {} methods".format(nonzeros.shape[0]))
+    print("Labels of the following methods are updated:")
+    print(nonzeros["name"])
+    
+    assess_accuracy()
+
+def assess_accuracy():
+    pass # not yet implemented
+
+# report_result()

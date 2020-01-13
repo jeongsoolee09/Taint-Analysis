@@ -1,18 +1,10 @@
 import pandas as pd
 import numpy as np
-import time
-import random
-from re import match
-
-
-# 채점을 자동으로 하기 위한 방법:
-# 1. prior dataframe을 불러온다.
-# 2. for_scoring dataframe을 만든다. Column = ['name', 'estimated label'].
-# 3. 그리고 가장 prior 값이 높은 column을 찾아서, for_scoring의 estimated_label 칼럼 값으로 넣는다.
-# 일단 여기까지 해 보자.
+import re
 
 results = pd.read_csv("result.csv", index_col=0)
-method_name = results["name"]
+ids = pd.read_csv("id.csv", index_col=0)
+method_name = ids["id"]
 zero_data = np.zeros(shape=(1000,1))
 empty_vector = pd.DataFrame(zero_data, columns=["estimated label"], dtype="str")
 
@@ -33,7 +25,24 @@ def findlabel():
 
 findlabel()
 
-for_scoring = for_scoring.loc[for_scoring["estimated label"] != "unscorable"]
+src_condition = for_scoring["estimated label"] == 'src'
+sin_condition = for_scoring["estimated label"] == 'sin'
+for_scoring = for_scoring[src_condition | sin_condition]
 
-# 아이고 맙소사 ID가 필요하잖아?
+# Parsing android-sources-and-sinks.txt
 
+sas = open("/home/jslee/taint/doop/souffle-logic/addons/information-flow/android-sources-and-sinks.txt", "r+")
+sas = sas.readlines()
+i = len(sas) * 2
+tempvec = np.arange(i)
+sources_and_sinks = pd.DataFrame(tempvec.reshape(-1, 2), dtype="str")
+sources_and_sinks.columns = ["id", "label"]
+
+i = 0
+for info in sas:
+    sources_and_sinks.at[i, 'id'] = info.split(',')[1].lstrip().strip(').\n').replace('"', '') # 눈물겹다...
+    if info.split('(')[0] == "TaintSourceMethod":
+        sources_and_sinks.at[i, 'label'] = "src"
+    elif info.split('(')[0] == "LeakingSinkMethod":
+        sources_and_sinks.at[i, 'label'] = "sin"
+    i += 1

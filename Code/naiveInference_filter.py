@@ -13,7 +13,7 @@ def scoring_function(info1, info2):
         score += 10
     if (info1[3] in info2[3]) or (info2[3] in info1[3]) or (info1[3][0:2] == info2[3][0:2]) or (info1[3][0:2] == info2[3][0:2]): # The two methods start with a same prefix
         score += 10
-    if info1[2] == info2[2]: # The two methods have a similar return type 
+    if info1[2] == info2[2]: # The two methods have a same return type 
         score += 10
     if info1[4] == info2[4]: # The two methods have a same input type
         score += 10

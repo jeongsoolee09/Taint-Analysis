@@ -54,6 +54,7 @@ def bayesian_update(method_index, prior, oracle_response):
 
 
 def search_in_edge(node_index):
+    """finds an immediate neighbor on the graph structure."""
     # CASE 1: Match in LHS
     neighbors_l = edges.loc[methods["name"][node_index] == edges[('edge1', 'name')]]["edge2"]
 
@@ -68,10 +69,9 @@ def search_in_edge(node_index):
 
 
 def belief_propagation(node_index, times):
-    # print(times, end="")
+    """do it recursively: search for all associated tuples and call this function on those, too"""
     if times == 0:
         return
-    """do it recursively: search for all associated tuples and call this function on those, too"""
     neighbors = search_in_edge(node_index)
     for neighbor in neighbors.itertuples(index=False):
         if neighbor[0] == "index":   # empty dataframe, i.e. no further neighbors
@@ -89,11 +89,6 @@ def report_result():
     nonzeros = priors[condition_src | condition_sin | condition_san | condition_non]
     print("Touched {} methods".format(nonzeros.shape[0]))
     print("Labels of the following methods are updated:")
-    print(nonzeros["name"])
-    
-    assess_accuracy()
+    print(nonzeros["name"])    
 
-def assess_accuracy():
-    pass # not yet implemented
-
-# report_result()
+report_result()

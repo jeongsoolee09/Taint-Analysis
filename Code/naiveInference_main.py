@@ -11,7 +11,6 @@
 # import numpy as np
 import pandas as pd
 import time
-import itertools
 import re
 import random
 
@@ -22,6 +21,7 @@ regex = re.compile(regex)
 
 # Parsing Function
 def process(info):
+    info_ = info
     info = info.strip("<>")
     pkg = info.split(":")[0]
     rtntype = info.split(" ")[1]
@@ -30,12 +30,12 @@ def process(info):
     if intype == '':
         intype = 'void'
     name = name.split("(")[0]
-    return (pkg, rtntype, name, intype)
+    return (pkg, rtntype, name, intype, info_)
 
 # Open and parse
 fact = open("/home/jslee/taint/doop/cache/ccaa00b018a74b8a79db47d93aeaaff44fc921e1f6c9b35e0a2b642340a8a1c4/Method.facts", "r+")
-factList = fact.readlines()
-factList = list(map(lambda x: x.split("\t"), factList))
+factList_original = fact.readlines()
+factList = list(map(lambda x: x.split("\t"), factList_original))
 factList = list(map(lambda x: x[0], factList))
 factList = list(map(process, factList))
 factList = list(filter(lambda tup: tup[2] != "<init>" and tup[2] != "<clinit>", factList))
@@ -45,9 +45,12 @@ writeList = []
 for i in random.sample(range(0,len(factList)), 1000):
     writeList.append(factList[i])
 
-writeList = pd.DataFrame(writeList, columns=["pkg", "rtntype", "name", "intype"], dtype="str")
+writeList = pd.DataFrame(writeList, columns=["pkg", "rtntype", "name", "intype", "id"], dtype="str")
 writeList = writeList.reset_index() # embed the index into a separate column
 writeList.to_csv("raw_data.csv", mode='w')
 
+idList = list(map(lambda x: x.split(">")[0]+'>', factList_original))
+idList = pd.DataFrame(idList, columns=["id"])
+idList.to_csv("id.csv", mode='w')
 
 print("elapsed time :", time.time() - start)

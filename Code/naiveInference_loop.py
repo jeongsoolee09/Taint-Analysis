@@ -1,9 +1,10 @@
 import pandas as pd
 import time
 import random
-from re import match
 
 methods = pd.read_csv("raw_data.csv", index_col=0)
+ids = methods["id"]
+methods = methods.drop('id', axis=1) # unleash me when you're done!
 edges = pd.read_csv("edges.csv", index_col=0)
 edges.columns = pd.MultiIndex.from_product([['edge1', 'edge2'], methods.columns])
 max_index_plus_one = methods.shape[0]
@@ -11,7 +12,7 @@ max_index_plus_one = methods.shape[0]
 # Prior beliefs
 priors = pd.DataFrame(index=methods.index, columns=["src", "sin", "san", "non"])
 priors = priors.fillna(0.25) # Flat priors!
-priors = pd.merge(priors, methods["name"], left_index=True, right_index=True)
+priors = pd.merge(priors, ids, left_index=True, right_index=True)
 
 
 def loop(times):
@@ -20,41 +21,65 @@ def loop(times):
         query = methods.loc[i][3]
         oracle_response = input("What label does <" + query + "> bear? [src/sin/san/non]: ")
         if oracle_response == 'src':
-            bayesian_update(i, priors.loc[i], 'src')
+            bayesian_update(i, 'src')
         elif oracle_response == 'sin':
-            bayesian_update(i, priors.loc[i], 'sin')
+            bayesian_update(i, 'sin')
         elif oracle_response == 'san':
-            bayesian_update(i, priors.loc[i], 'san')
+            bayesian_update(i, 'san')
         elif oracle_response == 'non':
-            bayesian_update(i, priors.loc[i], 'non')
+            bayesian_update(i, 'non')
             
 
-def bayesian_update(method_index, prior, oracle_response):
+def bayesian_update(method_index, oracle_response):
+    global priors
     if oracle_response == 'src':
-        prior[0] = 1 * prior[0] / 0.25     # src
-        prior[1] = 0 * prior[1] / 0.25     # sin
-        prior[2] = 0 * prior[2] / 0.25     # san
-        prior[3] = 0 * prior[3] / 0.25     # non
+        priors.at[method_index, 'src'] = 1 * priors.loc[method_index, 'src'] / 0.25     # src
+        priors.at[method_index, 'sin'] = 0 * priors.loc[method_index, 'sin'] / 0.25     # sin
+        priors.at[method_index, 'san'] = 0 * priors.loc[method_index, 'san'] / 0.25     # san
+        priors.at[method_index, 'non'] = 0 * priors.loc[method_index, 'non'] / 0.25     # non
     elif oracle_response == 'sin':
-        prior[0] = 0 * prior[0] / 0.25     # src
-        prior[1] = 1 * prior[1] / 0.25     # sin
-        prior[2] = 0 * prior[2] / 0.25     # san
-        prior[3] = 0 * prior[3] / 0.25     # non
+        priors.at[method_index, 'src'] = 0 * priors.loc[method_index, 'src'] / 0.25     # src
+        priors.at[method_index, 'sin'] = 1 * priors.loc[method_index, 'sin'] / 0.25     # sin
+        priors.at[method_index, 'san'] = 0 * priors.loc[method_index, 'san'] / 0.25     # san
+        priors.at[method_index, 'non'] = 0 * priors.loc[method_index, 'non'] / 0.25     # non
     elif oracle_response == 'san':
-        prior[0] = 0 * prior[0] / 0.25     # src
-        prior[1] = 0 * prior[1] / 0.25     # sin
-        prior[2] = 1 * prior[2] / 0.25     # san
-        prior[3] = 0 * prior[3] / 0.25     # non
+        priors.at[method_index, 'src'] = 0 * priors.loc[method_index, 'src'] / 0.25     # src
+        priors.at[method_index, 'sin'] = 0 * priors.loc[method_index, 'sin'] / 0.25     # sin
+        priors.at[method_index, 'san'] = 1 * priors.loc[method_index, 'san'] / 0.25     # san
+        priors.at[method_index, 'non'] = 0 * priors.loc[method_index, 'non'] / 0.25     # non
     elif oracle_response == 'non':
-        prior[0] = 0 * prior[0] / 0.25     # src
-        prior[1] = 0 * prior[1] / 0.25     # sin
-        prior[2] = 0 * prior[2] / 0.25     # san
-        prior[3] = 1 * prior[3] / 0.25     # non
-    belief_propagation(method_index, 3)
+        priors.at[method_index, 'src'] = 0 * priors.loc[method_index, 'src'] / 0.25     # src
+        priors.at[method_index, 'sin'] = 0 * priors.loc[method_index, 'sin'] / 0.25     # sin
+        priors.at[method_index, 'san'] = 0 * priors.loc[method_index, 'san'] / 0.25     # san
+        priors.at[method_index, 'non'] = 1 * priors.loc[method_index, 'non'] / 0.25     # non
+    belief_propagation(method_index, oracle_response, 2)    # propagation depth = 2
+
+def bayesian_update_without_propagation(method_index, oracle_response):
+    global priors
+    if oracle_response == 'src' and priors.loc[method_index, 'src']<=1:
+        priors.at[method_index, 'src'] = 1 * priors.loc[method_index, 'src'] / 0.25     # src
+        priors.at[method_index, 'sin'] = 0 * priors.loc[method_index, 'sin'] / 0.25     # sin
+        priors.at[method_index, 'san'] = 0 * priors.loc[method_index, 'san'] / 0.25     # san
+        priors.at[method_index, 'non'] = 0 * priors.loc[method_index, 'non'] / 0.25     # non
+    elif oracle_response == 'sin' and priors.loc[method_index, 'sin']<=1:
+        priors.at[method_index, 'src'] = 0 * priors.loc[method_index, 'src'] / 0.25     # src
+        priors.at[method_index, 'sin'] = 1 * priors.loc[method_index, 'sin'] / 0.25     # sin
+        priors.at[method_index, 'san'] = 0 * priors.loc[method_index, 'san'] / 0.25     # san
+        priors.at[method_index, 'non'] = 0 * priors.loc[method_index, 'non'] / 0.25     # non
+    elif oracle_response == 'san' and priors.loc[method_index, 'san']<=1:
+        priors.at[method_index, 'src'] = 0 * priors.loc[method_index, 'src'] / 0.25     # src
+        priors.at[method_index, 'sin'] = 0 * priors.loc[method_index, 'sin'] / 0.25     # sin
+        priors.at[method_index, 'san'] = 1 * priors.loc[method_index, 'san'] / 0.25     # san
+        priors.at[method_index, 'non'] = 0 * priors.loc[method_index, 'non'] / 0.25     # non
+    elif oracle_response == 'non' and priors.loc[method_index, 'non']<=1:
+        priors.at[method_index, 'src'] = 0 * priors.loc[method_index, 'src'] / 0.25     # src
+        priors.at[method_index, 'sin'] = 0 * priors.loc[method_index, 'sin'] / 0.25     # sin
+        priors.at[method_index, 'san'] = 0 * priors.loc[method_index, 'san'] / 0.25     # san
+        priors.at[method_index, 'non'] = 1 * priors.loc[method_index, 'non'] / 0.25     # non
 
 
 def search_in_edge(node_index):
-    """finds an immediate neighbor on the graph structure."""
+    """finds an immediate neighbor on the graph structure"""
     # CASE 1: Match in LHS
     neighbors_l = edges.loc[methods["name"][node_index] == edges[('edge1', 'name')]]["edge2"]
 
@@ -63,12 +88,10 @@ def search_in_edge(node_index):
 
     neighbors = pd.concat([neighbors_l, neighbors_r])
     neighbors = neighbors.drop_duplicates()
-    # neighbors = neighbors.reset_index()
-    # neighbors = neighbors.drop("index", 1)
     return neighbors
 
 
-def belief_propagation(node_index, times):
+def belief_propagation(node_index, oracle_response, times):
     """do it recursively: search for all associated tuples and call this function on those, too"""
     if times == 0:
         return
@@ -76,9 +99,10 @@ def belief_propagation(node_index, times):
     for neighbor in neighbors.itertuples(index=False):
         if neighbor[0] == "index":   # empty dataframe, i.e. no further neighbors
             return
-        belief_propagation(int(neighbor[0]), times-1)
+        bayesian_update_without_propagation(int(neighbor[0]), oracle_response)
+        belief_propagation(int(neighbor[0]), oracle_response, times-1)
 
-loop(1)
+loop(10)
 
 def report_result():
     global priors
@@ -89,6 +113,8 @@ def report_result():
     nonzeros = priors[condition_src | condition_sin | condition_san | condition_non]
     print("Touched {} methods".format(nonzeros.shape[0]))
     print("Labels of the following methods are updated:")
-    print(nonzeros["name"])    
+    print(nonzeros["id"])    
+    priors.to_csv("result.csv", mode='w')
+    print("report saved as result.csv")
 
 report_result()

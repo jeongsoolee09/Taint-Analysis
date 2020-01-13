@@ -6,6 +6,8 @@ start = time.time()
 
 methodInfo1 = pd.read_csv("raw_data.csv", index_col=0)
 methodInfo2 = pd.read_csv("raw_data.csv", index_col=0)
+methodInfo1 = methodInfo1.drop('id', axis=1)
+methodInfo2 = methodInfo2.drop('id', axis=1)
 
 def scoring_function(info1, info2):
     score = 0

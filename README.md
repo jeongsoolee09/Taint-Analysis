@@ -1,4 +1,4 @@
-# Taint Analysis for Android Apps
+# Automatic Inference of Method Specification for Android Taint Analysis
 
 Repository 책임자: 이정수
 

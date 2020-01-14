@@ -1,6 +1,5 @@
 import pandas as pd
 import numpy as np
-import re
 
 results = pd.read_csv("result.csv", index_col=0)
 zero_data = np.zeros(shape=(1000, 1))

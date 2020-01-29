@@ -24,7 +24,7 @@ def scoring_function(info1, info2):
 edge1 = []
 edge2 = []
 
-def desymmetrize(): # really really expensive
+def desymmetrize(): # really really expensive. Replace it with an answer I got from SO!
     global edge1, edge2
     tmplst = list(zip(edge1,edge2))
     for (i,j) in tmplst:

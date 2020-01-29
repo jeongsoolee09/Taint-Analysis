@@ -57,7 +57,10 @@ def no_reflexive(dataframe):
     cond4 = dataframe[('edge1','name')] != dataframe[('edge2','name')]
     cond5 = dataframe[('edge1','intype')] != dataframe[('edge2','intype')]
 
-    return dataframe[cond1 | cond2 | cond3 | cond4 | cond5]
+    return dataframe[cond1 | cond2 | cond3 | cond4 | cond5] # DeMorgan FLEX
 
 edges = no_reflexive(no_symmetric(edges))
 
+edges.to_csv("edges.csv", mode='w')
+
+print("elapsed time: ", time.time()-start)

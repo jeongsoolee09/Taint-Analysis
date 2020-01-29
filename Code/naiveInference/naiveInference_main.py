@@ -6,9 +6,6 @@
 #     4. If a pair of methods have a similar input type: +10 to the pair
 # If the score is equal to 20, connect the pair with an edge.
 
-# Abandoning Numpy; transferring to Pandas
-
-# import numpy as np
 import pandas as pd
 import time
 import re

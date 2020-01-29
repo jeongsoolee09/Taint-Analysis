@@ -1,6 +1,5 @@
 import pandas as pd
 import time
-from re import match
 
 start = time.time()
 

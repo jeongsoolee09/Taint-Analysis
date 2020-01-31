@@ -20,16 +20,18 @@ def scoring_function(info1, info2):
         score += 10
     return score
 
+
+print("starting bottleneck") # ================
 edge1 = []
 edge2 = []
 
-print("starting bottleneck")
 for row1 in methodInfo1.itertuples(index=False):
     for row2 in methodInfo2.itertuples(index=False):
         if scoring_function(row1, row2) >= 20:
             edge1.append(row1)
             edge2.append(row2)
-print("completed bottleneck")
+print("completed bottleneck") # ================
+
 
 edge1 = pd.DataFrame(edge1, columns = methodInfo1.columns)
 edge2 = pd.DataFrame(edge2, columns = methodInfo2.columns)
@@ -59,8 +61,8 @@ def no_reflexive(dataframe):
 
     return dataframe[cond1 | cond2 | cond3 | cond4 | cond5] # DeMorgan FLEX
 
-# edges = no_reflexive(no_symmetric(edges)) # for Bayesian Networks: more constraints
-edges = no_reflexive(edges) # for Markov Random Fields: less constraints
+edges = no_reflexive(no_symmetric(edges)) # for Bayesian Networks: directed graphs
+# edges = no_reflexive(edges) # for Markov Random Fields: undirected graphs
 
 edges.to_csv("edges.csv", mode='w')
 

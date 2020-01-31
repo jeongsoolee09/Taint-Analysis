@@ -12,9 +12,9 @@ def scoring_function(info1, info2):
     score = 0
     if info1[1] == info2[1]: # The two methods belong to the same package
         score += 10
-    if (info1[3] in info2[3]) or (info2[3] in info1[3]) or (info1[3][0:2] == info2[3][0:2]) or (info1[3][0:2] == info2[3][0:2]): # The two methods start with a same prefix
-        score += 10
     if info1[2] == info2[2]: # The two methods have a same return type 
+        score += 10
+    if (info1[3] in info2[3]) or (info2[3] in info1[3]) or (info1[3][0:2] == info2[3][0:2]) or (info1[3][0:2] == info2[3][0:2]): # The two methods start with a same prefix
         score += 10
     if info1[4] == info2[4]: # The two methods have a same input type
         score += 10
@@ -27,7 +27,7 @@ edge2 = []
 
 for row1 in methodInfo1.itertuples(index=False):
     for row2 in methodInfo2.itertuples(index=False):
-        if scoring_function(row1, row2) >= 20:
+        if scoring_function(row1, row2) > 20:
             edge1.append(row1)
             edge2.append(row2)
 print("completed bottleneck") # ================
@@ -61,9 +61,19 @@ def no_reflexive(dataframe):
 
     return dataframe[cond1 | cond2 | cond3 | cond4 | cond5]
 
-edges = no_reflexive(no_symmetric(edges)) # for Bayesian Networks: directed graphs
-# edges = no_reflexive(edges) # for Markov Random Fields: undirected graphs
+def test_reflexive(dataframe):
+    reflex1 = dataframe[('edge1','index')] == dataframe[('edge2','index')]
+    reflex2 = dataframe[('edge1','pkg')] == dataframe[('edge2','pkg')]
+    reflex3 = dataframe[('edge1','rtntype')] == dataframe[('edge2','rtntype')]
+    reflex4 = dataframe[('edge1','name')] == dataframe[('edge2','name')]
+    reflex5 = dataframe[('edge1','intype')] == dataframe[('edge2','intype')]
 
-edges.to_csv("edges.csv", mode='w')
+    return dataframe[reflex1 & reflex2 & reflex3 & reflex4 & reflex5]
+
+
+edges_new = no_reflexive(no_symmetric(edges)) # for Bayesian Networks: directed graphs
+# edges_new = no_reflexive(edges) # for Markov Random Fields: undirected graphs
+
+edges_new.to_csv("edges.csv", mode='w')
 
 print("elapsed time: ", time.time()-start)

@@ -59,7 +59,21 @@ def no_reflexive(dataframe):
     cond4 = dataframe[('edge1','name')] != dataframe[('edge2','name')]
     cond5 = dataframe[('edge1','intype')] != dataframe[('edge2','intype')]
 
-    return dataframe[cond1 | cond2 | cond3 | cond4 | cond5] # DeMorgan FLEX
+    return dataframe[cond1 | cond2 | cond3 | cond4 | cond5]
+
+def no_reflexive_test_small(dataframe):
+    cond1 = dataframe[('A','a')] != dataframe[('B','a')]
+    cond2 = dataframe[('A','b')] != dataframe[('B','b')]
+
+    return dataframe[cond1 | cond2]
+
+def no_reflexive_test_big(dataframe):
+    cond1 = dataframe[('A','a')] != dataframe[('B','a')]
+    cond2 = dataframe[('A','b')] != dataframe[('B','b')]
+    cond3 = dataframe[('A','c')] != dataframe[('B','c')]
+    cond4 = dataframe[('A','d')] != dataframe[('B','d')]
+
+    return dataframe[cond1 | cond2]
 
 edges = no_reflexive(no_symmetric(edges)) # for Bayesian Networks: directed graphs
 # edges = no_reflexive(edges) # for Markov Random Fields: undirected graphs

@@ -2,11 +2,13 @@ from pomegranate import *
 import time
 import random
 import numpy as np
+import matplotlib.pyplot as plt
 import pandas as pd
 import csv
 import networkx as nx
-from itertools import product
+from itertools import repeat, product
 
+print("starting..")
 start = time.time()
 
 edges = pd.read_csv("edges.csv", index_col=0, header=[0,1])
@@ -64,36 +66,45 @@ def createRootsForBN(G, BN):
         exec(code2, globals(), locals())
         counter += 1
 
-def iterateList(lst, n):
-    """Utility function for creating a list of identical lists n times"""
-    out = []
-    for i in range(n):
-        out.append(lst)
-    return out
+def toListOfList(lst):
+    return list(map(lambda x: list(x), lst))
 
 def createInternalLeavesForBN(G, BN):
     root = set(findRoot(G))
     internalLeaves = set(G.nodes)-root
     labels = ["src", "sin", "san", "non"]
-    for node in list(internalLeaves):
-        # find the number of predecessors for each
+    for node in internalLeaves:
+        lst = []
         condProbTableWidth = len(list(G.predecessors(node)))
-        condProbTable = iterateList(labels, condProbTableWidth)
-        
-
+        condProbTableGen = repeat(labels, condProbTableWidth)
+        condProbTable = list(condProbTableGen)
+        condProbTable = product(*condProbTable)
+        condProbTable = toListOfList(condProbTable)
+        # condProbTable = np.fromiter(condProbTable, float)
+        # condProbTable_ = (list(tup) for tup in condProbTable)
+        # for i in condProbTable_:
+        #     lst.append(i)
+    condProbTable = ConditionalProbabilityTable(condProbTable, G.predecessors(node))
 
 def addEdgeToBN(BN):
     pass
 
 def initBN():
+    global graphForReference
     BN = BayesianNetwork("Automatic Inference of Method Specifications")
     createRootsForBN(graphForReference, BN)
-    # createInternalLeavesForBN(BN) # --> 여기서 ConditionalProbabilityTable이 필요
+    createInternalLeavesForBN(graphForReference, BN) # --> 여기서 ConditionalProbabilityTable이 필요
     # addEdgeToBN(BN)
     return BN
 # ====================================================
 
 graphForReference = initGraph()
 BaysianNetwork = initBN()
+
+nx.draw_circular(graphForReference, font_size=8)
+# plt.figure(3,figsize=(12,12))
+plt.tight_layout()
+plt.savefig("Graph.png", format="PNG")
+plt.show()
 
 print("elapsed time :", time.time() - start)

@@ -19,15 +19,13 @@ edges_data = open("edges.csv", "r+")
 edgesReader = csv.reader(edges_data)
 
 
-def process_nodes():
+def process_nodes(G):
     """creates a graph for identifying root nodes"""
-    G = nx.Graph()
     for data in dataReader:
         if data[6] == "name":
             continue
         code = "G.add_node('"+data[6]+"')"
         exec(code, globals(), locals())
-    return G
 
 
 # def itertuplesGenerator():
@@ -39,13 +37,10 @@ def generateEdgeTuples():
         yield () + (edge[0],) + (edge[1],)
 
 
-G = process_nodes()
-
 
 # 엣지 연결하기: ID와 ID를 연결
-def addEdge():
+def addEdge(G):
     """adds edges to graph G"""
-    global G
     next(edgesReader) # 헤더 맛없어 퉤
     next(edgesReader) # 헤더 맛없어 퉤
     for row in edgesReader:
@@ -57,7 +52,22 @@ def addEdge():
         exec(code, globals(), locals())
 
 
+def findRoot(G):
+    roots = []
+    for node in G.nodes:
+        if G.in_degree(node) == 0:
+            roots.append(node)
+    return roots
+            
+
+def initGraph():
+    G = nx.DiGraph()
+    process_nodes(G)
+    addEdge(G)
+    return G
     
-addEdge()
+
+
+
 
 print("elapsed time :", time.time() - start)

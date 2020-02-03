@@ -18,19 +18,19 @@ dataReader = csv.reader(raw_data)
 edges_data = open("edges.csv", "r+")
 edgesReader = csv.reader(edges_data)
 
+flatPrior = DiscreteDistribution({'src':0.25, 'sin':0.25, 'san':0.25, 'non':0.25})
 
-def process_nodes(G):
+def addNodeToGraph(G):
     """creates a graph for identifying root nodes"""
+    next(dataReader) # 헤더 맛없어 퉤
     for data in dataReader:
-        if data[6] == "name": # 헤더 맛없어 퉤
-            continue
         code = "G.add_node('"+data[6]+"')"
         exec(code, globals(), locals())
 
 
 # 엣지 연결하기: ID와 ID를 연결
-def addEdge(G):
-    """adds edges to DAG G"""
+def addEdgeToGraph(G):
+    """adds edges to reference graph G"""
     next(edgesReader) # 헤더 맛없어 퉤
     next(edgesReader) # 헤더 맛없어 퉤
     for row in edgesReader:
@@ -40,6 +40,18 @@ def addEdge(G):
         secondNodeID = "<"+row[7]+": "+row[8]+" "+row[9] + intype2 + ">"
         code = "G.add_edge(firstNodeID, secondNodeID)"
         exec(code, globals(), locals())
+
+
+def createRootsForBN(G, BN):
+    """identifies roots nodes from G and adds them to BN"""
+    counter = 0
+    for root in findRoot(G):
+        code1 = "s"+str(counter)+" = Node(flatPrior, name=\""+root+"\")"
+        print(code1)
+        exec(code1, globals(), locals())
+        code2 = "BN.add_state("+"s"+str(counter)+")"
+        exec(code2, globals(), locals())
+        counter += 1
 
 
 def findRoot(G):
@@ -52,18 +64,15 @@ def findRoot(G):
 
 def initGraph():
     G = nx.DiGraph()
-    process_nodes(G)
-    addEdge(G)
+    addNodeToGraph(G)
+    addEdgeToGraph(G)
     return G
     
 
-def initRootProb(G):
-    roots = findRoot(G)
 
+graphForReference = initGraph()
+BN = BayesianNetwork("Automatic Inference of Method Specifications")
 
-
-BN = BayesianNetwork()
-BN.graph = initGraph()
-
+createRootsForBN(graphForReference, BN)
 
 print("elapsed time :", time.time() - start)

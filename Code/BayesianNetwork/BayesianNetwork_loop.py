@@ -22,25 +22,15 @@ edgesReader = csv.reader(edges_data)
 def process_nodes(G):
     """creates a graph for identifying root nodes"""
     for data in dataReader:
-        if data[6] == "name":
+        if data[6] == "name": # 헤더 맛없어 퉤
             continue
         code = "G.add_node('"+data[6]+"')"
         exec(code, globals(), locals())
 
 
-# def itertuplesGenerator():
-#     yield from edge_targets.itertuples(index=False)
-
-
-def generateEdgeTuples():
-    for edge in edge_targets.itertuples(index=False):
-        yield () + (edge[0],) + (edge[1],)
-
-
-
 # 엣지 연결하기: ID와 ID를 연결
 def addEdge(G):
-    """adds edges to graph G"""
+    """adds edges to DAG G"""
     next(edgesReader) # 헤더 맛없어 퉤
     next(edgesReader) # 헤더 맛없어 퉤
     for row in edgesReader:
@@ -67,6 +57,13 @@ def initGraph():
     return G
     
 
+def initRootProb(G):
+    roots = findRoot(G)
+
+
+
+BN = BayesianNetwork()
+BN.graph = initGraph()
 
 
 print("elapsed time :", time.time() - start)

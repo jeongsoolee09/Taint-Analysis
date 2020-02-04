@@ -93,6 +93,7 @@ def search_in_edge(node_index):
 
 def belief_propagation(node_index, oracle_response, times):
     """do it recursively: search for all associated tuples and call this function on those, too"""
+    print(node_index)
     if times == 0:
         return
     neighbors = search_in_edge(node_index)
@@ -100,7 +101,7 @@ def belief_propagation(node_index, oracle_response, times):
         if neighbor[0] == "index":   # empty dataframe, i.e. no further neighbors
             return
         bayesian_update_without_propagation(int(neighbor[0]), oracle_response)
-        belief_propagation(int(neighbor[0]), oracle_response, times-1)
+        belief_propagation(int(neighbor[0]), oracle_response, times)
 
 loop(10)
 

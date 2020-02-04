@@ -27,7 +27,7 @@ edge2 = []
 
 for row1 in methodInfo1.itertuples(index=False):
     for row2 in methodInfo2.itertuples(index=False):
-        if scoring_function(row1, row2) > 20:
+        if scoring_function(row1, row2) > 10:
             edge1.append(row1)
             edge2.append(row2)
 print("completed bottleneck") # ================

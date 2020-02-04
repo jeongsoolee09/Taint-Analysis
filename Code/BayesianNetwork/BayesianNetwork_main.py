@@ -23,12 +23,12 @@ def process(info):
     info_ = info
     info = info.strip("<>")
     pkg = info.split(":")[0]
-    if '$' in pkg:
-        pkg = pkg.replace('$', '_')
+    # if '$' in pkg:
+    #     pkg = pkg.replace('$', '_')
     rtntype = info.split(" ")[1]
     name = info.split(" ")[2]
-    if '$' in name:
-        name = name.replace('$', '_')
+    # if '$' in name:
+    #     name = name.replace('$', '_')
     intype = regex.findall(name)[0]
     if intype == '':
         intype = 'void'
@@ -45,7 +45,7 @@ factList = list(filter(lambda tup: tup[2] != "<init>" and tup[2] != "<clinit>", 
 
 # Randomly select 1,000 methods from the set of all methods.
 writeList = []
-for i in random.sample(range(0,len(factList)), 100):
+for i in random.sample(range(0,len(factList)), 1000):
     writeList.append(factList[i])
 
 writeList = pd.DataFrame(writeList, columns=["pkg", "rtntype", "name", "intype", "id"], dtype="str")

@@ -1,3 +1,6 @@
+# 현재 문제:
+# 1. 메모리가 터짐
+
 from pomegranate import *
 import time
 import random
@@ -6,7 +9,7 @@ import matplotlib.pyplot as plt
 import pandas as pd
 import csv
 import networkx as nx
-from itertools import repeat, product
+import itertools as it
 
 print("starting..")
 start = time.time()
@@ -72,19 +75,14 @@ def toListOfList(lst):
 def createInternalLeavesForBN(G, BN):
     root = set(findRoot(G))
     internalLeaves = set(G.nodes)-root
-    labels = ["src", "sin", "san", "non"]
+    labels = [1, 2, 3, 4]
     for node in internalLeaves:
-        lst = []
         condProbTableWidth = len(list(G.predecessors(node)))
-        condProbTableGen = repeat(labels, condProbTableWidth)
+        condProbTableGen = it.repeat(labels, condProbTableWidth)
         condProbTable = list(condProbTableGen)
-        condProbTable = product(*condProbTable)
-        # condProbTable = toListOfList(condProbTable)
-        condProbTable = list(condProbTable)
-        # condProbTable = np.fromiter(condProbTable, float)
-        # condProbTable_ = (list(tup) for tup in condProbTable)
-        # for i in condProbTable_:
-        #     lst.append(i)
+        condProbTable = it.product(*condProbTable)
+        condProbTable = it.chain.from_iterable(condProbTable)
+        temp = np.fromiter(condProbTable, int).reshape(-1,condProbTableWidth)
     # condProbTable = ConditionalProbabilityTable(condProbTable, G.predecessors(node))
 
 def addEdgeToBN(BN):
@@ -102,12 +100,13 @@ def initBN():
 graphForReference = initGraph()
 # BaysianNetwork = initBN()
 
-print("# of edges: ", len(graphForReference.edges()))
+print("# of nodes: ", len(list(graphForReference.nodes())))
+print("# of edges: ", len(list(graphForReference.edges())))
 
-nx.draw_circular(graphForReference, font_size=8)
+# nx.draw_circular(graphForReference, font_size=8)
 # plt.figure(3,figsize=(12,12))
-plt.tight_layout()
-plt.savefig("Graph.png", format="PNG")
-plt.show()
+# plt.tight_layout()
+# plt.savefig("Graph.png", format="PNG")
+# plt.show()
 
 print("elapsed time :", time.time() - start)

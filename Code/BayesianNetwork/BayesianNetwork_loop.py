@@ -1,5 +1,6 @@
 # 현재 문제:
 # 1. 메모리가 터짐
+# 테스트
 
 from pomegranate import *
 import time

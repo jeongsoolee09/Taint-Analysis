@@ -24,7 +24,7 @@ flatPrior = DiscreteDistribution({'src':0.25, 'sin':0.25, 'san':0.25, 'non':0.25
 # Methods for Graphs ================================
 def addNodeToGraph(G):
     """creates a graph for identifying root nodes"""
-    next(dataReader) # 헤더 맛없어 퉤
+    next(dataReader)
     for data in dataReader:
         code = "G.add_node('"+data[6]+"')"
         exec(code, globals(), locals())
@@ -38,8 +38,8 @@ def findRoot(G):
 
 def addEdgeToGraph(G):
     """adds edges to reference graph G"""
-    next(edgesReader) # 헤더 맛없어 퉤
-    next(edgesReader) # 헤더 맛없어 퉤
+    next(edgesReader)
+    next(edgesReader)
     for row in edgesReader:
         intype1 = "()" if row[5]=="void" else "("+row[5]+")"
         intype2 = "()" if row[10]=="void" else "("+row[10]+")"
@@ -79,12 +79,13 @@ def createInternalLeavesForBN(G, BN):
         condProbTableGen = repeat(labels, condProbTableWidth)
         condProbTable = list(condProbTableGen)
         condProbTable = product(*condProbTable)
-        condProbTable = toListOfList(condProbTable)
+        # condProbTable = toListOfList(condProbTable)
+        condProbTable = list(condProbTable)
         # condProbTable = np.fromiter(condProbTable, float)
         # condProbTable_ = (list(tup) for tup in condProbTable)
         # for i in condProbTable_:
         #     lst.append(i)
-    condProbTable = ConditionalProbabilityTable(condProbTable, G.predecessors(node))
+    # condProbTable = ConditionalProbabilityTable(condProbTable, G.predecessors(node))
 
 def addEdgeToBN(BN):
     pass
@@ -93,13 +94,15 @@ def initBN():
     global graphForReference
     BN = BayesianNetwork("Automatic Inference of Method Specifications")
     createRootsForBN(graphForReference, BN)
-    createInternalLeavesForBN(graphForReference, BN) # --> 여기서 ConditionalProbabilityTable이 필요
+    createInternalLeavesForBN(graphForReference, BN)
     # addEdgeToBN(BN)
     return BN
 # ====================================================
 
 graphForReference = initGraph()
-BaysianNetwork = initBN()
+# BaysianNetwork = initBN()
+
+print("# of edges: ", len(graphForReference.edges()))
 
 nx.draw_circular(graphForReference, font_size=8)
 # plt.figure(3,figsize=(12,12))

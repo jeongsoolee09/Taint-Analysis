@@ -23,15 +23,6 @@ def scoring_function(info1, info2):
 edge1 = []
 edge2 = []
 
-def desymmetrize(): # really really expensive. Replace it with an answer I got from SO!
-    global edge1, edge2
-    tmplst = list(zip(edge1,edge2))
-    for (i,j) in tmplst:
-        if (j,i) in tmplst:
-            tmplst.remove((j,i))
-    edge1 = list(list(zip(*tmplst))[0])
-    edge2 = list(list(zip(*tmplst))[1])
-
 
 print("starting bottleneck")
 for row1 in methodInfo1.itertuples(index=False):
@@ -41,13 +32,44 @@ for row1 in methodInfo1.itertuples(index=False):
             edge2.append(row2)
 print("completed bottleneck")
 
-desymmetrize()
-
 edge1 = pd.DataFrame(edge1, columns = methodInfo1.columns)
 edge2 = pd.DataFrame(edge2, columns = methodInfo2.columns)
 edges = pd.merge(edge1, edge2, left_index=True, right_index=True)
 edges.columns = pd.MultiIndex.from_product([['edge1', 'edge2'], methodInfo1.columns])
 
-edges.to_csv("edges.csv", mode='w')
+def no_symmetric(dataframe):
+    dataframe['temp'] = dataframe.index * 2
+    dataframe2 = dataframe.iloc[:, [5,6,7,8,9,0,1,2,3,4,10]]
+    dataframe2.columns = dataframe.columns
+    dataframe2['temp'] = dataframe2.index * 2 + 1
+    out = pd.concat([dataframe, dataframe2])
+    out = out.sort_values (by='temp')
+    out = out.set_index('temp')
+    out = out.drop_duplicates()
+    out = out[out.index%2 == 0]
+    out = out.reset_index()[['edge1', 'edge2']]
+
+    return out
+
+def no_reflexive(dataframe):
+    cond1 = dataframe[('edge1','index')] != dataframe[('edge2','index')]
+    cond2 = dataframe[('edge1','pkg')] != dataframe[('edge2','pkg')]
+    cond3 = dataframe[('edge1','rtntype')] != dataframe[('edge2','rtntype')]
+    cond4 = dataframe[('edge1','name')] != dataframe[('edge2','name')]
+    cond5 = dataframe[('edge1','intype')] != dataframe[('edge2','intype')]
+
+    return dataframe[cond1 | cond2 | cond3 | cond4 | cond5]
+
+def test_reflexive(dataframe):
+    reflex1 = dataframe[('edge1','index')] == dataframe[('edge2','index')]
+    reflex2 = dataframe[('edge1','pkg')] == dataframe[('edge2','pkg')]
+    reflex3 = dataframe[('edge1','rtntype')] == dataframe[('edge2','rtntype')]
+    reflex4 = dataframe[('edge1','name')] == dataframe[('edge2','name')]
+    reflex5 = dataframe[('edge1','intype')] == dataframe[('edge2','intype')]
+
+    return dataframe[reflex1 & reflex2 & reflex3 & reflex4 & reflex5]
+
+edges_new = no_reflexive(no_symmetric(edges)) # for Bayesian Networks: directed graphs
+edges_new.to_csv("edges.csv", mode='w')
 
 print("elapsed time :", time.time() - start)

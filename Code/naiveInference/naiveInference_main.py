@@ -30,7 +30,7 @@ def process(info):
     return (pkg, rtntype, name, intype, info_)
 
 # Open and parse
-fact = open("/home/jslee/taint/doop/cache/ccaa00b018a74b8a79db47d93aeaaff44fc921e1f6c9b35e0a2b642340a8a1c4/Method.facts", "r+")
+fact = open("/home/jslee/doop/cache/87aad6ef21f79e463d76697e56378be6b592e57d38963ce6dc8c4435ff8c480e/Method.facts", "r+")
 factList_original = fact.readlines()
 factList = list(map(lambda x: x.split("\t"), factList_original))
 factList = list(map(lambda x: x[0], factList))
@@ -39,7 +39,7 @@ factList = list(filter(lambda tup: tup[2] != "<init>" and tup[2] != "<clinit>", 
 
 # Randomly select 1,000 methods from the set of all methods.
 writeList = []
-for i in random.sample(range(0,len(factList)), 1000):
+for i in random.sample(range(0, len(factList)), 500):
     writeList.append(factList[i])
 
 writeList = pd.DataFrame(writeList, columns=["pkg", "rtntype", "name", "intype", "id"], dtype="str")

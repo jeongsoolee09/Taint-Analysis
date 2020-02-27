@@ -113,10 +113,10 @@ def report_result():
     one_san = priors['san'] == 1
     one_non = priors['non'] == 1
     ones = priors[one_src | one_sin | one_san | one_non]
-    print("Touched {} methods".format(ones.shape[0]))
+    print("\nTouched {} methods".format(ones.shape[0]))
     print("Labels of the following methods are updated:")
-    print(ones["id"])    
+    print(ones["id"])
     priors.to_csv("result.csv", mode='w')
-    print("report saved as result.csv")
+    print("\nreport saved as result.csv")
 
 report_result()

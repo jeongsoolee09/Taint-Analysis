@@ -1,0 +1,62 @@
+* Hand-Picked Reading Lists
+
+직접 읽어보고 간추린 논문들입니다.
+
+<Template>
+- Authors: 
+- Conference: 
+- Subject: 
+- Citations: 
+- PGM: 
+  - V: 
+  - E: 
+- Inference Algorithm on PGM: 
+- Scalability: Maximum 
+- Object Language: 
+- 한줄평: 
+</Template>
+
+TODO: 적절한 기준을 세워 분류하기.
+
+** Inferring Taint Specifications
+
+*** Scalable Taint Specification Inference with Big Code
+
+- Authors: Victor Chibotaru, Benjamin Bichsel, Veselin Raychev, Martin Vechev
+- Conference: PLDI '19
+- Subject:
+  - Scalable Taint Specification Inference
+- Citations:
+- PGM: Bayesian Network (dubbed 'Propagation Graph')
+  - V: Events (Global variable read, Field R/W, Function Call 등 Tainted Value의 전파에 관여하는 모든 command들
+  - E: Propagation의 방향
+    - Information Flow Analysis로 찾아냄.
+- Inference Algorithm on PGM:
+  - Linear Constraint Solving (일차부등식을 세우고 풀기)
+    - Node n이 src/sin/san일 확률이 Parameter.
+      - Semi-Supervised Parametric Learning
+    - Belief Propagation Algorithm은 Unscalable하다는 이유에서.
+- Scalability: Maximum 23.1K
+- Object Language: Python
+- 한줄평:
+  - 노드 개수를 지나치게 많이 잡고 있다. 그래서 (NP이기는 하지만) BP algorithm을 쓰지 않고 Linear Constraint Solving으로 때우며, 이 때문에 평균 정확도가 66.6% 로 낮은 듯하다.
+    
+** Taint Analysis
+
+*** FlowDroid
+
+** Miscellaneous Projects Using PGMs
+
+*** Continuously Reasoning about Programs using Differential Bayesian Inference
+
+- Authors: Kihong Heo, Mukund Raghothaman, Xujie Si, Mayur Naik
+- Conference: PLDI '19
+- Subject: Differential Reasoning (Filtering false alarms inherited across versions of a program being continuously developed)
+- Citations: 
+- PGM: Bayesian Network (Converted from a Derivation Graph)
+  - V: Facts (input facts or derived facts)
+  - E: Derivation Relation (추론 규칙의 전제/결론 관계)
+- Inference Algorithm on PGM:
+- Scalability: Maximum 
+- Object Language: C (명확하게 밝혀지지 않음)
+- 한줄평: 

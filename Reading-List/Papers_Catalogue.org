@@ -6,7 +6,8 @@
 - Authors: 
 - Conference: 
 - Subject: 
-- Citations: 
+- Citations:
+- Level of Automation:
 - PGM: 
   - V: 
   - E: 
@@ -16,7 +17,7 @@
 - 한줄평: 
 </Template>
 
-TODO: 적절한 기준을 세워 분류하기. (기준에 따라 여러 가지로 분류가 가능할 텐데, 어느 기준이 나을까?)
+# TODO: 적절한 기준을 세워 분류하기. (기준에 따라 여러 가지로 분류가 가능할 텐데, 어느 기준이 나을까?)
 
 ** Inferring Taint Specifications (with PGM)
 
@@ -26,6 +27,7 @@ TODO: 적절한 기준을 세워 분류하기. (기준에 따라 여러 가지�
 - Conference: PLDI '19
 - Subject: Scalable Taint Specification Inference using a Propagation Graph
 - Citations:
+- Level of Automation:
 - PGM: Bayesian Network (dubbed 'Propagation Graph')
   - V: Events (Global variable read, Field R/W, Function Call 등 Tainted Value의 전파에 관여하는 모든 command들
   - E: Propagation의 방향
@@ -40,6 +42,29 @@ TODO: 적절한 기준을 세워 분류하기. (기준에 따라 여러 가지�
 - 한줄평:
   - 노드 개수를 지나치게 많이 잡고 있다. (이벤트별로 하나씩 만들면 당연히 많지!) 그래서 (NP이기는 하지만) BP algorithm을 쓰지 않고 Linear Constraint Solving으로 때우며, 이 때문에 평균 정확도가 66.6% 로 낮은 듯하다. (Constraint Solving은 너무 낙관적이다)
     
+*** Merlin: Specification Inference for Explicit Information Flow Problems
+    
+- Authors: Benjamin Livshits, Aditya V. Nori, Sriram K. Rajamani, Anindya Banerjee
+- Conference: PLDI '09
+- Subject: Inferring Method Specifications ([src|sin|san|reg]) 
+- Citations: 
+- Level of Automation: Partial answers given from the beginning
+  - "While we can use the above approach to infer specifications without any prior specification, we find that the quality of inference is significantly higher if we use the default specification ... as the initial specification, ..."
+- PGM: Factor Graph
+  - V: Factors Constructed from Methods
+  - E: Defined by definition of Factor Graph
+  - Propagation Graph로부터 Constraint를 얻고, 그 constraint를 사용해 Factor Graph를 건설한다.
+    - Propagation Graph:
+      - V = Set of all Methods
+      - E = (m1, m2) indicates an information flow from m1 to m2
+        - Flow through method arguments, or return values, or pointers
+      - BFS를 응용한 Cycle Detection을 활용해 Cycle을 (강제로) 없앤다.
+- Inference Algorithm on PGM: 
+- Scalability: Maximum 1810K
+- Object Language: C#
+- 한줄평: 위의 PLDI'19 (Seldon)이 낙관적인 Constraint를 세우는 데 영감을 준 논문인 만큼 여기도 아예 'most paths in a propagation graph are secure'이라는 말을 쓰고 있다. Factor Graph의 노드가 181,943개인데도 inference algorithm이 작동했다는 게 놀랍다 (현재 사용하는 Pomegranate가 잘 안 풀리면 Infer.NET을 사용해 봐야겠다).
+ 
+
 ** Inferring Taint Specifications (without PGM)
    
 *** Codebase-Adaptive Detection of Security-Relevant Methods
@@ -48,27 +73,28 @@ TODO: 적절한 기준을 세워 분류하기. (기준에 따라 여러 가지�
 - Conference: ISSTA '19
 - Subject: Classifying Security-Related Methods based on different CWE vulnerabilities using *SVM*
 - Citations: 2
+- Level of Automation:
 - PGM: N/A
-  - Bayesian Network를 사용해 보았다고는 하지만, SVM-based classification에 정확도와 리콜에서 밀려 채택되지 않음 (Evaluation section 참고)
+  - Bayesian Network를 사용해 보았다고는 하지만, SVM-based classification에 정확도와 리콜에서 밀려 채택되지 않음
 - Inference Algorithm on PGM: N/A
 - Scalability: Maximum 128K Methods (Android Framework)
 - Object Language: *Java Frameworks (Android, Apache Commons, Spring, Spark, ...)*
-- 한줄평: 타겟이 비슷하고, interaction을 이용한 정확도 향상을 도모한다는 점에서
-  Scalable Taint Specification Inference with Big Code와 더불어 꽤 마음에
-  걸리는 연구이다. 다만 interaction이 주가 아니라는 점에서 메시지가 비껴가고 있고, semantic feature의 사용이 빈약하다는 점에서 우리의 연구와는 다르다. CWE별로, 코드베이스 별로 어떤 메소드들이 src/san/sin 등인가가 달라져야 한다는 점은 동의하지만, 어떤 메소드가 무슨 레이블을 달아야 하는가는 어차피 인터렉션을 통해 간접적으로 주어지면 될 일.
-  
+- 한줄평: 타겟이 비슷하고, interaction을 이용한 정확도 향상을 도모한다는 점에서 Scalable Taint Specification Inference with Big Code와 더불어 꽤 마음에 걸리는 연구이다. 다만 interaction이 주가 아니라는 점에서 메시지가 비껴가고 있고, semantic feature의 사용이 빈약하다는 점에서 우리의 연구와는 다르다. CWE별로, 코드베이스 별로 어떤 메소드들이 src/san/sin 등인가가 달라져야 한다는 점은 동의하지만, 어떤 메소드가 무슨 레이블을 달아야 하는가는 어차피 인터렉션을 통해 간접적으로 주어지면 될 일.
+ 
 *** SuSi: A Tool for the Fully Automated Classification and Categorization of Android Sources and Sinks
    
 - Authors: Steven Arzt, Siegfried Rasthofer and *Eric Bodden*
 - Conference: NDSS '13
-- Subject: 
+- Subject: "Fully automated" classification of methods into sources or sinks using Supervised Learning of an SVM
 - Citations: 
-- PGM: 
-- Inference Algorithm on PGM: 
-- Scalability: Maximum 
-- Object Language: 
-- 한줄평: Source와 Sink만 분류 가능하다는 점에서 한계가 있고,
+- Level of Automation:
+- PGM: None
+- Inference Algorithm on PGM: None
+- Scalability: 110,000 Public Android Methods
+- Object Language: Java (Android)
+- 한줄평: Source와 Sink만 분류 가능하다는 점에서 한계가 있다. 말은 Fully Automated라는데, 이건 거의 눈 가리고 아웅 하는 식이다. 왜냐하면 SVM을 트레이닝하면서 필요한 Training Set에 더불어 Cross-validation을 위한 Test Set까지 준비해야 하는데, 이건 수동으로 일일이 레이블링한 데이터들이다. 결국 사람의 손이 들어가야 하고, 잘못 레이블링되면 이후의 Inference도 당연히 부정확할 것이다 (그런데 여기서는 Fully automated이기 때문에 사람의 개입을 통한 부정확함이 없다고 말하고 있다). Syntactic Feature는 많긴 하지만 애교 수준이고, Datalog 스타일의 Semantic Features는 그냥 애교다.
 
+    
     
 ** Taint Analysis
 
@@ -78,6 +104,7 @@ TODO: 적절한 기준을 세워 분류하기. (기준에 따라 여러 가지�
 - Conference: PLDI '14
 - Subject: Taint Analysis Tailored Specifically for Android Frameworks and Its Benchmarks
 - Citations: 
+- Level of Automation:
 - PGM: None
 - Inference Algorithm on PGM: None
 - Scalability: N/A
@@ -92,6 +119,7 @@ TODO: 적절한 기준을 세워 분류하기. (기준에 따라 여러 가지�
 - Conference: PLDI '19
 - Subject: Differential Reasoning (Filtering false alarms inherited across versions of a program being continuously developed)
 - Citations: 
+- Level of Automation:
 - PGM: Bayesian Network (Converted from a Derivation Graph)
   - V: Facts (input facts or derived facts)
   - E: Derivation Relation (추론 규칙에 따른 전제/결론 관계)

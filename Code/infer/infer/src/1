@@ -1,0 +1,3781 @@
+      ocamlc .InferModules.objs/byte/inferModules__Boolean.{cmi,cmti}
+type t = Bottom | False | True | Top
+val of_bool : bool -> t
+val equal : t -> t -> bool
+val is_false : t -> bool
+val is_true : t -> bool
+val not_ : t -> t
+val and_ : t -> t -> t
+val or_ : t -> t -> t
+module EqualOrder :
+  sig
+    type b = t
+    type t = { on_equal : b; on_not_equal : b; }
+    val eq : t
+    val ne : t
+    val strict_cmp : t
+    val loose_cmp : t
+    val top : t
+    val of_equal : t -> b -> b
+  end
+Error: Rule failed to generate the following targets:
+- .InferModules.objs/byte/inferModules__Boolean.cmi
+- .InferModules.objs/byte/inferModules__Boolean.cmti
+      ocamlc .InferModules.objs/byte/inferModules__PulseAbstractValue.{cmi,cmti}
+module F = Format
+type t = private int
+val compare : t -> t -> int
+val equal : t -> t -> bool
+val mk_fresh : unit -> t
+val pp : F.formatter -> t -> unit
+val init : unit -> unit
+type state
+val get_state : unit -> state
+val set_state : state -> unit
+module Set :
+  sig
+    type elt = t
+    type t
+    val empty : t
+    val is_empty : t -> bool
+    val mem : elt -> t -> bool
+    val add : elt -> t -> t
+    val singleton : elt -> t
+    val remove : elt -> t -> t
+    val union : t -> t -> t
+    val inter : t -> t -> t
+    val disjoint : t -> t -> bool
+    val diff : t -> t -> t
+    val compare : t -> t -> int
+    val equal : t -> t -> bool
+    val subset : t -> t -> bool
+    val iter : (elt -> unit) -> t -> unit
+    val map : (elt -> elt) -> t -> t
+    val fold : (elt -> 'a -> 'a) -> t -> 'a -> 'a
+    val for_all : (elt -> bool) -> t -> bool
+    val exists : (elt -> bool) -> t -> bool
+    val filter : (elt -> bool) -> t -> t
+    val partition : (elt -> bool) -> t -> t * t
+    val cardinal : t -> int
+    val elements : t -> elt list
+    val min_elt : t -> elt
+    val min_elt_opt : t -> elt option
+    val max_elt : t -> elt
+    val max_elt_opt : t -> elt option
+    val choose : t -> elt
+    val choose_opt : t -> elt option
+    val split : elt -> t -> t * bool * t
+    val find : elt -> t -> elt
+    val find_opt : elt -> t -> elt option
+    val find_first : (elt -> bool) -> t -> elt
+    val find_first_opt : (elt -> bool) -> t -> elt option
+    val find_last : (elt -> bool) -> t -> elt
+    val find_last_opt : (elt -> bool) -> t -> elt option
+    val of_list : elt list -> t
+    val to_seq_from : elt -> t -> elt Seq.t
+    val to_seq : t -> elt Seq.t
+    val add_seq : elt Seq.t -> t -> t
+    val of_seq : elt Seq.t -> t
+    val is_singleton_or_more :
+      t -> elt InferStdlib.IContainer.singleton_or_more
+    val pp : F.formatter -> t -> unit
+    val pp_element : F.formatter -> elt -> unit
+  end
+module Map :
+  sig
+    type key = t
+    type +'a t
+    val empty : 'a t
+    val is_empty : 'a t -> bool
+    val mem : key -> 'a t -> bool
+    val add : key -> 'a -> 'a t -> 'a t
+    val update : key -> ('a option -> 'a option) -> 'a t -> 'a t
+    val singleton : key -> 'a -> 'a t
+    val remove : key -> 'a t -> 'a t
+    val merge :
+      (key -> 'a option -> 'b option -> 'c option) -> 'a t -> 'b t -> 'c t
+    val union : (key -> 'a -> 'a -> 'a option) -> 'a t -> 'a t -> 'a t
+    val compare : ('a -> 'a -> int) -> 'a t -> 'a t -> int
+    val equal : ('a -> 'a -> bool) -> 'a t -> 'a t -> bool
+    val iter : (key -> 'a -> unit) -> 'a t -> unit
+    val fold : (key -> 'a -> 'b -> 'b) -> 'a t -> 'b -> 'b
+    val for_all : (key -> 'a -> bool) -> 'a t -> bool
+    val exists : (key -> 'a -> bool) -> 'a t -> bool
+    val filter : (key -> 'a -> bool) -> 'a t -> 'a t
+    val partition : (key -> 'a -> bool) -> 'a t -> 'a t * 'a t
+    val cardinal : 'a t -> int
+    val bindings : 'a t -> (key * 'a) list
+    val min_binding : 'a t -> key * 'a
+    val min_binding_opt : 'a t -> (key * 'a) option
+    val max_binding : 'a t -> key * 'a
+    val max_binding_opt : 'a t -> (key * 'a) option
+    val choose : 'a t -> key * 'a
+    val choose_opt : 'a t -> (key * 'a) option
+    val split : key -> 'a t -> 'a t * 'a option * 'a t
+    val find : key -> 'a t -> 'a
+    val find_opt : key -> 'a t -> 'a option
+    val find_first : (key -> bool) -> 'a t -> key * 'a
+    val find_first_opt : (key -> bool) -> 'a t -> (key * 'a) option
+    val find_last : (key -> bool) -> 'a t -> key * 'a
+    val find_last_opt : (key -> bool) -> 'a t -> (key * 'a) option
+    val map : ('a -> 'b) -> 'a t -> 'b t
+    val mapi : (key -> 'a -> 'b) -> 'a t -> 'b t
+    val to_seq : 'a t -> (key * 'a) Seq.t
+    val to_seq_from : key -> 'a t -> (key * 'a) Seq.t
+    val add_seq : (key * 'a) Seq.t -> 'a t -> 'a t
+    val of_seq : (key * 'a) Seq.t -> 'a t
+    val fold_map : 'a t -> init:'b -> f:('b -> 'a -> 'b * 'c) -> 'b * 'c t
+    val is_singleton_or_more :
+      'a t -> (key * 'a) IContainer.singleton_or_more
+    val pp_key : F.formatter -> key -> unit
+    val pp :
+      pp_value:(F.formatter -> 'a -> unit) -> F.formatter -> 'a t -> unit
+  end
+Error: Rule failed to generate the following targets:
+- .InferModules.objs/byte/inferModules__PulseAbstractValue.cmi
+- .InferModules.objs/byte/inferModules__PulseAbstractValue.cmti
+      ocamlc .InferModules.objs/byte/inferModules__AbstractDomain.{cmi,cmti}
+module Types :
+  sig
+    type 'astate bottom_lifted = Bottom | NonBottom of 'astate
+    type 'astate top_lifted = Top | NonTop of 'astate
+    type ('below, 'above) below_above = Below of 'below | Above of 'above
+  end
+exception Stop_analysis
+module type NoJoin =
+  sig
+    type t
+    val pp : Format.formatter -> t -> unit
+    val leq : lhs:t -> rhs:t -> bool
+  end
+module type S =
+  sig
+    type t
+    val pp : Format.formatter -> t -> unit
+    val leq : lhs:t -> rhs:t -> bool
+    val join : t -> t -> t
+    val widen : prev:t -> next:t -> num_iters:int -> t
+  end
+module Empty :
+  sig
+    type t = unit
+    val pp : Format.formatter -> t -> t
+    val leq : lhs:t -> rhs:t -> bool
+    val join : t -> t -> t
+    val widen : prev:t -> next:t -> num_iters:int -> t
+  end
+module type WithBottom =
+  sig
+    type t
+    val pp : Format.formatter -> t -> unit
+    val leq : lhs:t -> rhs:t -> bool
+    val join : t -> t -> t
+    val widen : prev:t -> next:t -> num_iters:int -> t
+    val bottom : t
+    val is_bottom : t -> bool
+  end
+module type WithTop =
+  sig
+    type t
+    val pp : Format.formatter -> t -> unit
+    val leq : lhs:t -> rhs:t -> bool
+    val join : t -> t -> t
+    val widen : prev:t -> next:t -> num_iters:int -> t
+    val top : t
+    val is_top : t -> bool
+  end
+module BottomLifted :
+  functor (Domain : S) ->
+    sig
+      type t = Domain.t Types.bottom_lifted
+      val pp : Format.formatter -> t -> unit
+      val leq : lhs:t -> rhs:t -> bool
+      val join : t -> t -> t
+      val widen : prev:t -> next:t -> num_iters:int -> t
+      val bottom : t
+      val is_bottom : t -> bool
+      val map : f:(Domain.t -> Domain.t) -> t -> t
+    end
+module TopLifted :
+  functor (Domain : S) ->
+    sig
+      type t = Domain.t Types.top_lifted
+      val pp : Format.formatter -> t -> unit
+      val leq : lhs:t -> rhs:t -> bool
+      val join : t -> t -> t
+      val widen : prev:t -> next:t -> num_iters:int -> t
+      val top : t
+      val is_top : t -> bool
+    end
+module TopLiftedUtils : sig val pp_top : Format.formatter -> unit end
+module Pair :
+  functor (Domain1 : S) (Domain2 : S) ->
+    sig
+      type t = Domain1.t * Domain2.t
+      val pp : Format.formatter -> t -> unit
+      val leq : lhs:t -> rhs:t -> bool
+      val join : t -> t -> t
+      val widen : prev:t -> next:t -> num_iters:int -> t
+    end
+module Flat :
+  functor (V : InferStdlib.PrettyPrintable.PrintableEquatableType) ->
+    sig
+      type t
+      val bottom : t
+      val is_bottom : t -> bool
+      val pp : Format.formatter -> t -> unit
+      val leq : lhs:t -> rhs:t -> bool
+      val join : t -> t -> t
+      val widen : prev:t -> next:t -> num_iters:int -> t
+      val top : t
+      val is_top : t -> bool
+      val v : V.t -> t
+      val get : t -> V.t option
+    end
+module Stacked :
+  functor (Below : S) (Above : S) ->
+    sig
+      type t = (Below.t, Above.t) Types.below_above
+      val pp : Format.formatter -> t -> unit
+      val leq : lhs:t -> rhs:t -> bool
+      val join : t -> t -> t
+      val widen : prev:t -> next:t -> num_iters:int -> t
+    end
+module StackedUtils :
+  sig
+    val leq :
+      leq_below:(lhs:'b -> rhs:'b -> bool) ->
+      leq_above:(lhs:'a -> rhs:'a -> bool) ->
+      lhs:('b, 'a) Types.below_above ->
+      rhs:('b, 'a) Types.below_above -> bool
+    val compare :
+      ('b, 'a) Types.below_above ->
+      ('b, 'a) Types.below_above ->
+      cmp_below:('b -> 'b -> int) -> cmp_above:('a -> 'a -> int) -> int
+    val pp :
+      pp_below:(Format.formatter -> 'b -> unit) ->
+      pp_above:(Format.formatter -> 'a -> unit) ->
+      Format.formatter -> ('b, 'a) Types.below_above -> unit
+    val combine :
+      dir:[ `Decreasing | `Increasing ] ->
+      ('b, 'a) Types.below_above ->
+      ('b, 'a) Types.below_above ->
+      f_below:('b -> 'b -> 'b) ->
+      f_above:('a -> 'a -> 'a) -> ('b, 'a) Types.below_above
+    val map :
+      ('b, 'a) Types.below_above ->
+      f_below:('b -> 'b2) ->
+      f_above:('a -> 'a2) -> ('b2, 'a2) Types.below_above
+  end
+module MinReprSet :
+  functor (Element : InferStdlib.PrettyPrintable.PrintableOrderedType) ->
+    sig
+      type elt = Element.t
+      type t
+      val compare : t -> t -> int
+      val pp : Format.formatter -> t -> unit
+      val leq : lhs:t -> rhs:t -> bool
+      val join : t -> t -> t
+      val widen : prev:t -> next:t -> num_iters:int -> t
+      val bottom : t
+      val is_bottom : t -> bool
+      val singleton : elt -> t
+      val min_elt : t -> elt option
+      val add : elt -> t -> t
+      val map : (elt -> elt) -> t -> t
+      val fold : (elt -> 'a -> 'a) -> t -> 'a -> 'a
+      val exists : (elt -> bool) -> t -> bool
+    end
+module type FiniteSetS =
+  sig
+    type elt
+    type t
+    val empty : t
+    val is_empty : t -> bool
+    val mem : elt -> t -> bool
+    val add : elt -> t -> t
+    val singleton : elt -> t
+    val remove : elt -> t -> t
+    val union : t -> t -> t
+    val inter : t -> t -> t
+    val disjoint : t -> t -> bool
+    val diff : t -> t -> t
+    val compare : t -> t -> int
+    val equal : t -> t -> bool
+    val subset : t -> t -> bool
+    val iter : (elt -> unit) -> t -> unit
+    val map : (elt -> elt) -> t -> t
+    val fold : (elt -> 'a -> 'a) -> t -> 'a -> 'a
+    val for_all : (elt -> bool) -> t -> bool
+    val exists : (elt -> bool) -> t -> bool
+    val filter : (elt -> bool) -> t -> t
+    val partition : (elt -> bool) -> t -> t * t
+    val cardinal : t -> int
+    val elements : t -> elt list
+    val min_elt : t -> elt
+    val min_elt_opt : t -> elt option
+    val max_elt : t -> elt
+    val max_elt_opt : t -> elt option
+    val choose : t -> elt
+    val choose_opt : t -> elt option
+    val split : elt -> t -> t * bool * t
+    val find : elt -> t -> elt
+    val find_opt : elt -> t -> elt option
+    val find_first : (elt -> bool) -> t -> elt
+    val find_first_opt : (elt -> bool) -> t -> elt option
+    val find_last : (elt -> bool) -> t -> elt
+    val find_last_opt : (elt -> bool) -> t -> elt option
+    val of_list : elt list -> t
+    val to_seq_from : elt -> t -> elt Seq.t
+    val to_seq : t -> elt Seq.t
+    val add_seq : elt Seq.t -> t -> t
+    val of_seq : elt Seq.t -> t
+    val is_singleton_or_more :
+      t -> elt InferStdlib.IContainer.singleton_or_more
+    val pp_element : Format.formatter -> elt -> unit
+    val pp : Format.formatter -> t -> unit
+    val leq : lhs:t -> rhs:t -> bool
+    val join : t -> t -> t
+    val widen : prev:t -> next:t -> num_iters:int -> t
+    val bottom : t
+    val is_bottom : t -> bool
+  end
+module FiniteSetOfPPSet :
+  functor (PPSet : InferStdlib.PrettyPrintable.PPSet) ->
+    sig
+      type elt = PPSet.elt
+      type t
+      val empty : t
+      val is_empty : t -> bool
+      val mem : elt -> t -> bool
+      val add : elt -> t -> t
+      val singleton : elt -> t
+      val remove : elt -> t -> t
+      val union : t -> t -> t
+      val inter : t -> t -> t
+      val disjoint : t -> t -> bool
+      val diff : t -> t -> t
+      val compare : t -> t -> int
+      val equal : t -> t -> bool
+      val subset : t -> t -> bool
+      val iter : (elt -> unit) -> t -> unit
+      val map : (elt -> elt) -> t -> t
+      val fold : (elt -> 'a -> 'a) -> t -> 'a -> 'a
+      val for_all : (elt -> bool) -> t -> bool
+      val exists : (elt -> bool) -> t -> bool
+      val filter : (elt -> bool) -> t -> t
+      val partition : (elt -> bool) -> t -> t * t
+      val cardinal : t -> int
+      val elements : t -> elt list
+      val min_elt : t -> elt
+      val min_elt_opt : t -> elt option
+      val max_elt : t -> elt
+      val max_elt_opt : t -> elt option
+      val choose : t -> elt
+      val choose_opt : t -> elt option
+      val split : elt -> t -> t * bool * t
+      val find : elt -> t -> elt
+      val find_opt : elt -> t -> elt option
+      val find_first : (elt -> bool) -> t -> elt
+      val find_first_opt : (elt -> bool) -> t -> elt option
+      val find_last : (elt -> bool) -> t -> elt
+      val find_last_opt : (elt -> bool) -> t -> elt option
+      val of_list : elt list -> t
+      val to_seq_from : elt -> t -> elt Seq.t
+      val to_seq : t -> elt Seq.t
+      val add_seq : elt Seq.t -> t -> t
+      val of_seq : elt Seq.t -> t
+      val is_singleton_or_more : t -> elt IContainer.singleton_or_more
+      val pp_element : Format.formatter -> elt -> unit
+      val pp : Format.formatter -> t -> unit
+      val leq : lhs:t -> rhs:t -> bool
+      val join : t -> t -> t
+      val widen : prev:t -> next:t -> num_iters:int -> t
+      val bottom : t
+      val is_bottom : t -> bool
+    end
+module FiniteSet :
+  functor (Element : InferStdlib.PrettyPrintable.PrintableOrderedType) ->
+    sig
+      type elt = Element.t
+      type t
+      val empty : t
+      val is_empty : t -> bool
+      val mem : elt -> t -> bool
+      val add : elt -> t -> t
+      val singleton : elt -> t
+      val remove : elt -> t -> t
+      val union : t -> t -> t
+      val inter : t -> t -> t
+      val disjoint : t -> t -> bool
+      val diff : t -> t -> t
+      val compare : t -> t -> int
+      val equal : t -> t -> bool
+      val subset : t -> t -> bool
+      val iter : (elt -> unit) -> t -> unit
+      val map : (elt -> elt) -> t -> t
+      val fold : (elt -> 'a -> 'a) -> t -> 'a -> 'a
+      val for_all : (elt -> bool) -> t -> bool
+      val exists : (elt -> bool) -> t -> bool
+      val filter : (elt -> bool) -> t -> t
+      val partition : (elt -> bool) -> t -> t * t
+      val cardinal : t -> int
+      val elements : t -> elt list
+      val min_elt : t -> elt
+      val min_elt_opt : t -> elt option
+      val max_elt : t -> elt
+      val max_elt_opt : t -> elt option
+      val choose : t -> elt
+      val choose_opt : t -> elt option
+      val split : elt -> t -> t * bool * t
+      val find : elt -> t -> elt
+      val find_opt : elt -> t -> elt option
+      val find_first : (elt -> bool) -> t -> elt
+      val find_first_opt : (elt -> bool) -> t -> elt option
+      val find_last : (elt -> bool) -> t -> elt
+      val find_last_opt : (elt -> bool) -> t -> elt option
+      val of_list : elt list -> t
+      val to_seq_from : elt -> t -> elt Seq.t
+      val to_seq : t -> elt Seq.t
+      val add_seq : elt Seq.t -> t -> t
+      val of_seq : elt Seq.t -> t
+      val is_singleton_or_more : t -> elt IContainer.singleton_or_more
+      val pp_element : Format.formatter -> elt -> unit
+      val pp : Format.formatter -> t -> unit
+      val leq : lhs:t -> rhs:t -> bool
+      val join : t -> t -> t
+      val widen : prev:t -> next:t -> num_iters:int -> t
+      val bottom : t
+      val is_bottom : t -> bool
+    end
+module type InvertedSetS =
+  sig
+    type elt
+    type t
+    val empty : t
+    val is_empty : t -> bool
+    val mem : elt -> t -> bool
+    val add : elt -> t -> t
+    val singleton : elt -> t
+    val remove : elt -> t -> t
+    val union : t -> t -> t
+    val inter : t -> t -> t
+    val disjoint : t -> t -> bool
+    val diff : t -> t -> t
+    val compare : t -> t -> int
+    val equal : t -> t -> bool
+    val subset : t -> t -> bool
+    val iter : (elt -> unit) -> t -> unit
+    val map : (elt -> elt) -> t -> t
+    val fold : (elt -> 'a -> 'a) -> t -> 'a -> 'a
+    val for_all : (elt -> bool) -> t -> bool
+    val exists : (elt -> bool) -> t -> bool
+    val filter : (elt -> bool) -> t -> t
+    val partition : (elt -> bool) -> t -> t * t
+    val cardinal : t -> int
+    val elements : t -> elt list
+    val min_elt : t -> elt
+    val min_elt_opt : t -> elt option
+    val max_elt : t -> elt
+    val max_elt_opt : t -> elt option
+    val choose : t -> elt
+    val choose_opt : t -> elt option
+    val split : elt -> t -> t * bool * t
+    val find : elt -> t -> elt
+    val find_opt : elt -> t -> elt option
+    val find_first : (elt -> bool) -> t -> elt
+    val find_first_opt : (elt -> bool) -> t -> elt option
+    val find_last : (elt -> bool) -> t -> elt
+    val find_last_opt : (elt -> bool) -> t -> elt option
+    val of_list : elt list -> t
+    val to_seq_from : elt -> t -> elt Seq.t
+    val to_seq : t -> elt Seq.t
+    val add_seq : elt Seq.t -> t -> t
+    val of_seq : elt Seq.t -> t
+    val is_singleton_or_more : t -> elt IContainer.singleton_or_more
+    val pp_element : Format.formatter -> elt -> unit
+    val pp : Format.formatter -> t -> unit
+    val leq : lhs:t -> rhs:t -> bool
+    val join : t -> t -> t
+    val widen : prev:t -> next:t -> num_iters:int -> t
+    val top : t
+    val is_top : t -> bool
+  end
+module InvertedSet :
+  functor (Element : InferStdlib.PrettyPrintable.PrintableOrderedType) ->
+    sig
+      type elt = Element.t
+      type t
+      val empty : t
+      val is_empty : t -> bool
+      val mem : elt -> t -> bool
+      val add : elt -> t -> t
+      val singleton : elt -> t
+      val remove : elt -> t -> t
+      val union : t -> t -> t
+      val inter : t -> t -> t
+      val disjoint : t -> t -> bool
+      val diff : t -> t -> t
+      val compare : t -> t -> int
+      val equal : t -> t -> bool
+      val subset : t -> t -> bool
+      val iter : (elt -> unit) -> t -> unit
+      val map : (elt -> elt) -> t -> t
+      val fold : (elt -> 'a -> 'a) -> t -> 'a -> 'a
+      val for_all : (elt -> bool) -> t -> bool
+      val exists : (elt -> bool) -> t -> bool
+      val filter : (elt -> bool) -> t -> t
+      val partition : (elt -> bool) -> t -> t * t
+      val cardinal : t -> int
+      val elements : t -> elt list
+      val min_elt : t -> elt
+      val min_elt_opt : t -> elt option
+      val max_elt : t -> elt
+      val max_elt_opt : t -> elt option
+      val choose : t -> elt
+      val choose_opt : t -> elt option
+      val split : elt -> t -> t * bool * t
+      val find : elt -> t -> elt
+      val find_opt : elt -> t -> elt option
+      val find_first : (elt -> bool) -> t -> elt
+      val find_first_opt : (elt -> bool) -> t -> elt option
+      val find_last : (elt -> bool) -> t -> elt
+      val find_last_opt : (elt -> bool) -> t -> elt option
+      val of_list : elt list -> t
+      val to_seq_from : elt -> t -> elt Seq.t
+      val to_seq : t -> elt Seq.t
+      val add_seq : elt Seq.t -> t -> t
+      val of_seq : elt Seq.t -> t
+      val is_singleton_or_more : t -> elt IContainer.singleton_or_more
+      val pp_element : Format.formatter -> elt -> unit
+      val pp : Format.formatter -> t -> unit
+      val leq : lhs:t -> rhs:t -> bool
+      val join : t -> t -> t
+      val widen : prev:t -> next:t -> num_iters:int -> t
+      val top : t
+      val is_top : t -> bool
+    end
+module type MapS =
+  sig
+    type key
+    type value
+    type t
+    val empty : t
+    val is_empty : t -> bool
+    val mem : key -> t -> bool
+    val add : key -> value -> t -> t
+    val update : key -> (value option -> value option) -> t -> t
+    val singleton : key -> value -> t
+    val remove : key -> t -> t
+    val merge :
+      (key -> value option -> value option -> value option) -> t -> t -> t
+    val union : (key -> value -> value -> value option) -> t -> t -> t
+    val compare : (value -> value -> int) -> t -> t -> int
+    val equal : (value -> value -> bool) -> t -> t -> bool
+    val iter : (key -> value -> unit) -> t -> unit
+    val fold : (key -> value -> 'a -> 'a) -> t -> 'a -> 'a
+    val for_all : (key -> value -> bool) -> t -> bool
+    val exists : (key -> value -> bool) -> t -> bool
+    val filter : (key -> value -> bool) -> t -> t
+    val partition : (key -> value -> bool) -> t -> t * t
+    val cardinal : t -> int
+    val bindings : t -> (key * value) list
+    val min_binding : t -> key * value
+    val min_binding_opt : t -> (key * value) option
+    val max_binding : t -> key * value
+    val max_binding_opt : t -> (key * value) option
+    val choose : t -> key * value
+    val choose_opt : t -> (key * value) option
+    val split : key -> t -> t * value option * t
+    val find : key -> t -> value
+    val find_opt : key -> t -> value option
+    val find_first : (key -> bool) -> t -> key * value
+    val find_first_opt : (key -> bool) -> t -> (key * value) option
+    val find_last : (key -> bool) -> t -> key * value
+    val find_last_opt : (key -> bool) -> t -> (key * value) option
+    val map : (value -> value) -> t -> t
+    val mapi : (key -> value -> value) -> t -> t
+    val is_singleton_or_more :
+      t -> (key * value) IContainer.singleton_or_more
+    val fold_map : t -> init:'a -> f:('a -> value -> 'a * value) -> 'a * t
+    val of_seq : (key * value) Seq.t -> t
+    val pp_key : Format.formatter -> key -> unit
+    val pp : Format.formatter -> t -> unit
+    val leq : lhs:t -> rhs:t -> bool
+    val join : t -> t -> t
+    val widen : prev:t -> next:t -> num_iters:int -> t
+    val bottom : t
+    val is_bottom : t -> bool
+  end
+module MapOfPPMap :
+  functor (PPMap : InferStdlib.PrettyPrintable.PPMap) (ValueDomain : S) ->
+    sig
+      type key = PPMap.key
+      type value = ValueDomain.t
+      type t = value PPMap.t
+      val empty : t
+      val is_empty : t -> bool
+      val mem : key -> t -> bool
+      val add : key -> value -> t -> t
+      val update : key -> (value option -> value option) -> t -> t
+      val singleton : key -> value -> t
+      val remove : key -> t -> t
+      val merge :
+        (key -> value option -> value option -> value option) -> t -> t -> t
+      val union : (key -> value -> value -> value option) -> t -> t -> t
+      val compare : (value -> value -> int) -> t -> t -> int
+      val equal : (value -> value -> bool) -> t -> t -> bool
+      val iter : (key -> value -> unit) -> t -> unit
+      val fold : (key -> value -> 'a -> 'a) -> t -> 'a -> 'a
+      val for_all : (key -> value -> bool) -> t -> bool
+      val exists : (key -> value -> bool) -> t -> bool
+      val filter : (key -> value -> bool) -> t -> t
+      val partition : (key -> value -> bool) -> t -> t * t
+      val cardinal : t -> int
+      val bindings : t -> (key * value) list
+      val min_binding : t -> key * value
+      val min_binding_opt : t -> (key * value) option
+      val max_binding : t -> key * value
+      val max_binding_opt : t -> (key * value) option
+      val choose : t -> key * value
+      val choose_opt : t -> (key * value) option
+      val split : key -> t -> t * value option * t
+      val find : key -> t -> value
+      val find_opt : key -> t -> value option
+      val find_first : (key -> bool) -> t -> key * value
+      val find_first_opt : (key -> bool) -> t -> (key * value) option
+      val find_last : (key -> bool) -> t -> key * value
+      val find_last_opt : (key -> bool) -> t -> (key * value) option
+      val map : (value -> value) -> t -> t
+      val mapi : (key -> value -> value) -> t -> t
+      val is_singleton_or_more :
+        t -> (key * value) IContainer.singleton_or_more
+      val fold_map : t -> init:'a -> f:('a -> value -> 'a * value) -> 'a * t
+      val of_seq : (key * value) Seq.t -> t
+      val pp_key : Format.formatter -> key -> unit
+      val pp : Format.formatter -> t -> unit
+      val leq : lhs:t -> rhs:t -> bool
+      val join : t -> t -> t
+      val widen : prev:t -> next:t -> num_iters:int -> t
+      val bottom : t
+      val is_bottom : t -> bool
+    end
+module Map :
+  functor
+    (Key : InferStdlib.PrettyPrintable.PrintableOrderedType) (ValueDomain : S) ->
+    sig
+      type key = Key.t
+      type value = ValueDomain.t
+      type t
+      val empty : t
+      val is_empty : t -> bool
+      val mem : key -> t -> bool
+      val add : key -> value -> t -> t
+      val update : key -> (value option -> value option) -> t -> t
+      val singleton : key -> value -> t
+      val remove : key -> t -> t
+      val merge :
+        (key -> value option -> value option -> value option) -> t -> t -> t
+      val union : (key -> value -> value -> value option) -> t -> t -> t
+      val compare : (value -> value -> int) -> t -> t -> int
+      val equal : (value -> value -> bool) -> t -> t -> bool
+      val iter : (key -> value -> unit) -> t -> unit
+      val fold : (key -> value -> 'a -> 'a) -> t -> 'a -> 'a
+      val for_all : (key -> value -> bool) -> t -> bool
+      val exists : (key -> value -> bool) -> t -> bool
+      val filter : (key -> value -> bool) -> t -> t
+      val partition : (key -> value -> bool) -> t -> t * t
+      val cardinal : t -> int
+      val bindings : t -> (key * value) list
+      val min_binding : t -> key * value
+      val min_binding_opt : t -> (key * value) option
+      val max_binding : t -> key * value
+      val max_binding_opt : t -> (key * value) option
+      val choose : t -> key * value
+      val choose_opt : t -> (key * value) option
+      val split : key -> t -> t * value option * t
+      val find : key -> t -> value
+      val find_opt : key -> t -> value option
+      val find_first : (key -> bool) -> t -> key * value
+      val find_first_opt : (key -> bool) -> t -> (key * value) option
+      val find_last : (key -> bool) -> t -> key * value
+      val find_last_opt : (key -> bool) -> t -> (key * value) option
+      val map : (value -> value) -> t -> t
+      val mapi : (key -> value -> value) -> t -> t
+      val is_singleton_or_more :
+        t -> (key * value) IContainer.singleton_or_more
+      val fold_map : t -> init:'a -> f:('a -> value -> 'a * value) -> 'a * t
+      val of_seq : (key * value) Seq.t -> t
+      val pp_key : Format.formatter -> key -> unit
+      val pp : Format.formatter -> t -> unit
+      val leq : lhs:t -> rhs:t -> bool
+      val join : t -> t -> t
+      val widen : prev:t -> next:t -> num_iters:int -> t
+      val bottom : t
+      val is_bottom : t -> bool
+    end
+module type InvertedMapS =
+  sig
+    type key
+    type value
+    type t
+    val empty : t
+    val is_empty : t -> bool
+    val mem : key -> t -> bool
+    val add : key -> value -> t -> t
+    val update : key -> (value option -> value option) -> t -> t
+    val singleton : key -> value -> t
+    val remove : key -> t -> t
+    val merge :
+      (key -> value option -> value option -> value option) -> t -> t -> t
+    val union : (key -> value -> value -> value option) -> t -> t -> t
+    val compare : (value -> value -> int) -> t -> t -> int
+    val equal : (value -> value -> bool) -> t -> t -> bool
+    val iter : (key -> value -> unit) -> t -> unit
+    val fold : (key -> value -> 'a -> 'a) -> t -> 'a -> 'a
+    val for_all : (key -> value -> bool) -> t -> bool
+    val exists : (key -> value -> bool) -> t -> bool
+    val filter : (key -> value -> bool) -> t -> t
+    val partition : (key -> value -> bool) -> t -> t * t
+    val cardinal : t -> int
+    val bindings : t -> (key * value) list
+    val min_binding : t -> key * value
+    val min_binding_opt : t -> (key * value) option
+    val max_binding : t -> key * value
+    val max_binding_opt : t -> (key * value) option
+    val choose : t -> key * value
+    val choose_opt : t -> (key * value) option
+    val split : key -> t -> t * value option * t
+    val find : key -> t -> value
+    val find_opt : key -> t -> value option
+    val find_first : (key -> bool) -> t -> key * value
+    val find_first_opt : (key -> bool) -> t -> (key * value) option
+    val find_last : (key -> bool) -> t -> key * value
+    val find_last_opt : (key -> bool) -> t -> (key * value) option
+    val map : (value -> value) -> t -> t
+    val mapi : (key -> value -> value) -> t -> t
+    val is_singleton_or_more :
+      t -> (key * value) IContainer.singleton_or_more
+    val fold_map : t -> init:'a -> f:('a -> value -> 'a * value) -> 'a * t
+    val of_seq : (key * value) Seq.t -> t
+    val pp_key : Format.formatter -> key -> unit
+    val pp : Format.formatter -> t -> unit
+    val leq : lhs:t -> rhs:t -> bool
+    val join : t -> t -> t
+    val widen : prev:t -> next:t -> num_iters:int -> t
+    val top : t
+    val is_top : t -> bool
+  end
+module InvertedMap :
+  functor
+    (Key : InferStdlib.PrettyPrintable.PrintableOrderedType) (ValueDomain : S) ->
+    sig
+      type key = Key.t
+      type value = ValueDomain.t
+      type t
+      val empty : t
+      val is_empty : t -> bool
+      val mem : key -> t -> bool
+      val add : key -> value -> t -> t
+      val update : key -> (value option -> value option) -> t -> t
+      val singleton : key -> value -> t
+      val remove : key -> t -> t
+      val merge :
+        (key -> value option -> value option -> value option) -> t -> t -> t
+      val union : (key -> value -> value -> value option) -> t -> t -> t
+      val compare : (value -> value -> int) -> t -> t -> int
+      val equal : (value -> value -> bool) -> t -> t -> bool
+      val iter : (key -> value -> unit) -> t -> unit
+      val fold : (key -> value -> 'a -> 'a) -> t -> 'a -> 'a
+      val for_all : (key -> value -> bool) -> t -> bool
+      val exists : (key -> value -> bool) -> t -> bool
+      val filter : (key -> value -> bool) -> t -> t
+      val partition : (key -> value -> bool) -> t -> t * t
+      val cardinal : t -> int
+      val bindings : t -> (key * value) list
+      val min_binding : t -> key * value
+      val min_binding_opt : t -> (key * value) option
+      val max_binding : t -> key * value
+      val max_binding_opt : t -> (key * value) option
+      val choose : t -> key * value
+      val choose_opt : t -> (key * value) option
+      val split : key -> t -> t * value option * t
+      val find : key -> t -> value
+      val find_opt : key -> t -> value option
+      val find_first : (key -> bool) -> t -> key * value
+      val find_first_opt : (key -> bool) -> t -> (key * value) option
+      val find_last : (key -> bool) -> t -> key * value
+      val find_last_opt : (key -> bool) -> t -> (key * value) option
+      val map : (value -> value) -> t -> t
+      val mapi : (key -> value -> value) -> t -> t
+      val is_singleton_or_more :
+        t -> (key * value) IContainer.singleton_or_more
+      val fold_map : t -> init:'a -> f:('a -> value -> 'a * value) -> 'a * t
+      val of_seq : (key * value) Seq.t -> t
+      val pp_key : Format.formatter -> key -> unit
+      val pp : Format.formatter -> t -> unit
+      val leq : lhs:t -> rhs:t -> bool
+      val join : t -> t -> t
+      val widen : prev:t -> next:t -> num_iters:int -> t
+      val top : t
+      val is_top : t -> bool
+    end
+module SafeInvertedMap :
+  functor
+    (Key : InferStdlib.PrettyPrintable.PrintableOrderedType) (ValueDomain : WithTop) ->
+    sig
+      type key = Key.t
+      type value = ValueDomain.t
+      type t
+      val empty : t
+      val is_empty : t -> bool
+      val mem : key -> t -> bool
+      val add : key -> value -> t -> t
+      val update : key -> (value option -> value option) -> t -> t
+      val singleton : key -> value -> t
+      val remove : key -> t -> t
+      val merge :
+        (key -> value option -> value option -> value option) -> t -> t -> t
+      val union : (key -> value -> value -> value option) -> t -> t -> t
+      val compare : (value -> value -> int) -> t -> t -> int
+      val equal : (value -> value -> bool) -> t -> t -> bool
+      val iter : (key -> value -> unit) -> t -> unit
+      val fold : (key -> value -> 'a -> 'a) -> t -> 'a -> 'a
+      val for_all : (key -> value -> bool) -> t -> bool
+      val exists : (key -> value -> bool) -> t -> bool
+      val filter : (key -> value -> bool) -> t -> t
+      val partition : (key -> value -> bool) -> t -> t * t
+      val cardinal : t -> int
+      val bindings : t -> (key * value) list
+      val min_binding : t -> key * value
+      val min_binding_opt : t -> (key * value) option
+      val max_binding : t -> key * value
+      val max_binding_opt : t -> (key * value) option
+      val choose : t -> key * value
+      val choose_opt : t -> (key * value) option
+      val split : key -> t -> t * value option * t
+      val find : key -> t -> value
+      val find_opt : key -> t -> value option
+      val find_first : (key -> bool) -> t -> key * value
+      val find_first_opt : (key -> bool) -> t -> (key * value) option
+      val find_last : (key -> bool) -> t -> key * value
+      val find_last_opt : (key -> bool) -> t -> (key * value) option
+      val map : (value -> value) -> t -> t
+      val mapi : (key -> value -> value) -> t -> t
+      val is_singleton_or_more :
+        t -> (key * value) IContainer.singleton_or_more
+      val fold_map : t -> init:'a -> f:('a -> value -> 'a * value) -> 'a * t
+      val of_seq : (key * value) Seq.t -> t
+      val pp_key : Format.formatter -> key -> unit
+      val pp : Format.formatter -> t -> unit
+      val leq : lhs:t -> rhs:t -> bool
+      val join : t -> t -> t
+      val widen : prev:t -> next:t -> num_iters:int -> t
+      val top : t
+      val is_top : t -> bool
+    end
+module FiniteMultiMap :
+  functor
+    (Key : InferStdlib.PrettyPrintable.PrintableOrderedType) (Value : InferStdlib.PrettyPrintable.PrintableOrderedType) ->
+    sig
+      type t
+      val pp : Format.formatter -> t -> unit
+      val leq : lhs:t -> rhs:t -> bool
+      val join : t -> t -> t
+      val widen : prev:t -> next:t -> num_iters:int -> t
+      val bottom : t
+      val is_bottom : t -> bool
+      val add : Key.t -> Value.t -> t -> t
+      val mem : Key.t -> t -> bool
+      val remove : Key.t -> Value.t -> t -> t
+    end
+module BooleanAnd :
+  sig
+    type t = bool
+    val pp : Format.formatter -> t -> unit
+    val leq : lhs:t -> rhs:t -> t
+    val join : t -> t -> t
+    val widen : prev:t -> next:t -> num_iters:int -> t
+  end
+module BooleanOr :
+  sig
+    type t = bool
+    val pp : Format.formatter -> t -> unit
+    val leq : lhs:t -> rhs:t -> t
+    val join : t -> t -> t
+    val widen : prev:t -> next:t -> num_iters:int -> t
+    val bottom : t
+    val is_bottom : t -> t
+  end
+module type MaxCount = sig val max : int end
+module CountDomain :
+  functor (MaxCount : MaxCount) ->
+    sig
+      type t = private int
+      val bottom : t
+      val is_bottom : t -> bool
+      val pp : Format.formatter -> t -> unit
+      val leq : lhs:t -> rhs:t -> bool
+      val join : t -> t -> t
+      val widen : prev:t -> next:t -> num_iters:int -> t
+      val top : t
+      val is_top : t -> bool
+      val increment : t -> t
+      val decrement : t -> t
+      val add : t -> t -> t
+    end
+module DownwardIntDomain :
+  functor (MaxCount : MaxCount) ->
+    sig
+      type t = private int
+      val top : t
+      val is_top : t -> bool
+      val pp : Format.formatter -> t -> unit
+      val leq : lhs:t -> rhs:t -> bool
+      val join : t -> t -> t
+      val widen : prev:t -> next:t -> num_iters:int -> t
+      val bottom : t
+      val is_bottom : t -> bool
+      val increment : t -> t
+      val decrement : t -> t
+    end
+Error: Rule failed to generate the following targets:
+- .InferModules.objs/byte/inferModules__AbstractDomain.cmi
+- .InferModules.objs/byte/inferModules__AbstractDomain.cmti
+      ocamlc .InferModules.objs/byte/inferModules__Predicates.{cmi,cmti}
+module F = Format
+type offset = Off_fld of Fieldname.t * Typ.typ | Off_index of Exp.t
+type atom =
+    Aeq of Exp.t * Exp.t
+  | Aneq of Exp.t * Exp.t
+  | Apred of PredSymb.t * Exp.t list
+  | Anpred of PredSymb.t * Exp.t list
+val compare_atom : atom -> atom -> int
+val equal_atom : atom -> atom -> bool
+val atom_has_local_addr : atom -> bool
+type lseg_kind = Lseg_NE | Lseg_PE
+val compare_lseg_kind : lseg_kind -> lseg_kind -> int
+val equal_lseg_kind : lseg_kind -> lseg_kind -> bool
+type zero_flag = bool option
+type null_case_flag = bool
+type inst =
+    Iabstraction
+  | Iactual_precondition
+  | Ialloc
+  | Iformal of zero_flag * null_case_flag
+  | Iinitial
+  | Ilookup
+  | Inone
+  | Inullify
+  | Irearrange of zero_flag * null_case_flag * int * PredSymb.path_pos
+  | Itaint
+  | Iupdate of zero_flag * null_case_flag * int * PredSymb.path_pos
+  | Ireturn_from_call of int
+val compare_inst : inst -> inst -> int
+val equal_inst : inst -> inst -> null_case_flag
+val inst_actual_precondition : inst
+val inst_formal : inst
+val inst_initial : inst
+val inst_lookup : inst
+val inst_none : inst
+val inst_nullify : inst
+val inst_rearrange :
+  null_case_flag -> Location.t -> PredSymb.path_pos -> inst
+val inst_update : Location.t -> PredSymb.path_pos -> inst
+val inst_set_null_case_flag : inst -> inst
+val inst_new_loc : Location.t -> inst -> inst
+val update_inst : inst -> inst -> inst
+exception JoinFail
+val inst_partial_join : inst -> inst -> inst
+val inst_partial_meet : inst -> inst -> inst
+type 'inst strexp0 =
+    Eexp of Exp.t * 'inst
+  | Estruct of (Fieldname.t * 'inst strexp0) list * 'inst
+  | Earray of Exp.t * (Exp.t * 'inst strexp0) list * 'inst
+val compare_strexp0 :
+  ('inst -> 'inst -> int) -> 'inst strexp0 -> 'inst strexp0 -> int
+type strexp = inst strexp0
+val compare_strexp : ?inst:null_case_flag -> strexp -> strexp -> int
+val equal_strexp : ?inst:null_case_flag -> strexp -> strexp -> null_case_flag
+type 'inst hpred0 =
+    Hpointsto of Exp.t * 'inst strexp0 * Exp.t
+  | Hlseg of lseg_kind * 'inst hpara0 * Exp.t * Exp.t * Exp.t list
+  | Hdllseg of lseg_kind * 'inst hpara_dll0 * Exp.t * Exp.t * Exp.t * 
+      Exp.t * Exp.t list
+and 'inst hpara0 = {
+  root : Ident.t;
+  next : Ident.t;
+  svars : Ident.t list;
+  evars : Ident.t list;
+  body : 'inst hpred0 list;
+}
+and 'inst hpara_dll0 = {
+  cell : Ident.t;
+  blink : Ident.t;
+  flink : Ident.t;
+  svars_dll : Ident.t list;
+  evars_dll : Ident.t list;
+  body_dll : 'inst hpred0 list;
+}
+val compare_hpred0 :
+  ('inst -> 'inst -> int) -> 'inst hpred0 -> 'inst hpred0 -> int
+val compare_hpara0 :
+  ('inst -> 'inst -> int) -> 'inst hpara0 -> 'inst hpara0 -> int
+val compare_hpara_dll0 :
+  ('inst -> 'inst -> int) -> 'inst hpara_dll0 -> 'inst hpara_dll0 -> int
+type hpred = inst hpred0
+type hpara = inst hpara0
+type hpara_dll = inst hpara_dll0
+val compare_hpred : ?inst:null_case_flag -> hpred -> hpred -> int
+val equal_hpred : ?inst:null_case_flag -> hpred -> hpred -> null_case_flag
+module HpredSet :
+  sig
+    type elt = hpred
+    type t
+    val empty : t
+    val is_empty : t -> null_case_flag
+    val mem : elt -> t -> null_case_flag
+    val add : elt -> t -> t
+    val singleton : elt -> t
+    val remove : elt -> t -> t
+    val union : t -> t -> t
+    val inter : t -> t -> t
+    val disjoint : t -> t -> null_case_flag
+    val diff : t -> t -> t
+    val compare : t -> t -> int
+    val equal : t -> t -> null_case_flag
+    val subset : t -> t -> null_case_flag
+    val iter : (elt -> unit) -> t -> unit
+    val map : (elt -> elt) -> t -> t
+    val fold : (elt -> 'a -> 'a) -> t -> 'a -> 'a
+    val for_all : (elt -> null_case_flag) -> t -> null_case_flag
+    val exists : (elt -> null_case_flag) -> t -> null_case_flag
+    val filter : (elt -> null_case_flag) -> t -> t
+    val partition : (elt -> null_case_flag) -> t -> t * t
+    val cardinal : t -> int
+    val elements : t -> elt list
+    val min_elt : t -> elt
+    val min_elt_opt : t -> elt option
+    val max_elt : t -> elt
+    val max_elt_opt : t -> elt option
+    val choose : t -> elt
+    val choose_opt : t -> elt option
+    val split : elt -> t -> t * null_case_flag * t
+    val find : elt -> t -> elt
+    val find_opt : elt -> t -> elt option
+    val find_first : (elt -> null_case_flag) -> t -> elt
+    val find_first_opt : (elt -> null_case_flag) -> t -> elt option
+    val find_last : (elt -> null_case_flag) -> t -> elt
+    val find_last_opt : (elt -> null_case_flag) -> t -> elt option
+    val of_list : elt list -> t
+    val to_seq_from : elt -> t -> elt Seq.t
+    val to_seq : t -> elt Seq.t
+    val add_seq : elt Seq.t -> t -> t
+    val of_seq : elt Seq.t -> t
+  end
+type sharing_env
+val create_sharing_env : unit -> sharing_env
+val hpred_compact : sharing_env -> hpred -> hpred
+val is_objc_object : hpred -> null_case_flag
+val pp_offset : Pp.env -> F.formatter -> offset -> unit
+val d_offset_list : offset list -> unit
+val pp_atom : Pp.env -> F.formatter -> atom -> unit
+val d_atom : atom -> unit
+val pp_inst : F.formatter -> inst -> unit
+val pp_sexp : Pp.env -> F.formatter -> strexp -> unit
+val d_sexp : strexp -> unit
+val pp_hpred : Pp.env -> F.formatter -> hpred -> unit
+val d_hpred : hpred -> unit
+val pp_hpara : Pp.env -> F.formatter -> hpara -> unit
+val pp_hpara_dll : Pp.env -> F.formatter -> hpara_dll -> unit
+module Env :
+  sig
+    type t
+    val mk_empty : unit -> t
+    val is_empty : t -> null_case_flag
+    val iter :
+      t -> (int -> hpara -> unit) -> (int -> hpara_dll -> unit) -> unit
+    val process_hpred : t -> hpred -> unit
+  end
+val pp_hpred_env : Pp.env -> Env.t option -> F.formatter -> hpred -> unit
+val strexp_expmap :
+  (Exp.t * inst option -> Exp.t * inst option) -> strexp -> strexp
+val hpred_expmap :
+  (Exp.t * inst option -> Exp.t * inst option) -> hpred -> hpred
+val hpred_instmap : (inst -> inst) -> hpred -> hpred
+val hpred_list_expmap :
+  (Exp.t * inst option -> Exp.t * inst option) -> hpred list -> hpred list
+val atom_expmap : (Exp.t -> Exp.t) -> atom -> atom
+val hpred_list_get_lexps :
+  (Exp.t -> null_case_flag) -> hpred list -> Exp.t list
+val hpred_entries : hpred -> Exp.t list
+val atom_free_vars : atom -> Ident.t Sequence.t
+val atom_gen_free_vars : atom -> (unit, Ident.t) Sequence.Generator.t
+val hpred_free_vars : hpred -> Ident.t Sequence.t
+val hpred_gen_free_vars : hpred -> (unit, Ident.t) Sequence.Generator.t
+val hpara_shallow_free_vars : hpara -> Ident.t Sequence.t
+val hpara_dll_shallow_free_vars : hpara_dll -> Ident.t Sequence.t
+type subst = private (Ident.t * Exp.t) list
+val compare_subst : subst -> subst -> int
+val equal_subst : subst -> subst -> null_case_flag
+val subst_of_list : (Ident.t * Exp.t) list -> subst
+val subst_of_list_duplicates : (Ident.t * Exp.t) list -> subst
+val sub_to_list : subst -> (Ident.t * Exp.t) list
+val sub_empty : subst
+val is_sub_empty : subst -> null_case_flag
+val sub_join : subst -> subst -> subst
+val sub_symmetric_difference : subst -> subst -> subst * subst * subst
+val sub_find : (Ident.t -> null_case_flag) -> subst -> Exp.t
+val sub_filter : (Ident.t -> null_case_flag) -> subst -> subst
+val sub_filter_pair : subst -> f:(Ident.t * Exp.t -> null_case_flag) -> subst
+val sub_range_partition : (Exp.t -> null_case_flag) -> subst -> subst * subst
+val sub_domain_partition :
+  (Ident.t -> null_case_flag) -> subst -> subst * subst
+val sub_domain : subst -> Ident.t list
+val sub_range : subst -> Exp.t list
+val sub_range_map : (Exp.t -> Exp.t) -> subst -> subst
+val sub_map : (Ident.t -> Ident.t) -> (Exp.t -> Exp.t) -> subst -> subst
+val extend_sub : subst -> Ident.t -> Exp.t -> subst option
+val subst_free_vars : subst -> Ident.t Sequence.t
+val subst_gen_free_vars : subst -> (unit, Ident.t) Sequence.Generator.t
+val exp_sub : subst -> Exp.t -> Exp.t
+val atom_sub : subst -> atom -> atom
+val instr_sub : subst -> Sil.instr -> Sil.instr
+val hpred_sub : subst -> hpred -> hpred
+val exp_replace_exp : (Exp.t * Exp.t) list -> Exp.t -> Exp.t
+val atom_replace_exp : (Exp.t * Exp.t) list -> atom -> atom
+val hpred_replace_exp : (Exp.t * Exp.t) list -> hpred -> hpred
+val exp_get_offsets : Exp.t -> offset list
+val exp_add_offsets : Exp.t -> offset list -> Exp.t
+val sigma_to_sigma_ne : hpred list -> (atom list * hpred list) list
+val hpara_instantiate :
+  hpara -> Exp.t -> Exp.t -> Exp.t list -> Ident.t list * hpred list
+val hpara_dll_instantiate :
+  hpara_dll ->
+  Exp.t -> Exp.t -> Exp.t -> Exp.t list -> Ident.t list * hpred list
+val custom_error : Pvar.t
+Error: Rule failed to generate the following targets:
+- .InferModules.objs/byte/inferModules__Predicates.cmi
+- .InferModules.objs/byte/inferModules__Predicates.cmti
+      ocamlc .InferModules.objs/byte/inferModules__FormalMap.{cmi,cmti}
+module F = Format
+type t
+val make : Procdesc.t -> t
+val empty : t
+val is_formal : AccessPath.base -> t -> bool
+val get_formal_index : AccessPath.base -> t -> int option
+val get_formal_base : int -> t -> AccessPath.base option
+val get_formals_indexes : t -> (AccessPath.base * int) list
+val pp : F.formatter -> t -> unit
+val cardinal : t -> int
+val iter : (AccessPath.base -> int -> unit) -> t -> unit
+Error: Rule failed to generate the following targets:
+- .InferModules.objs/byte/inferModules__FormalMap.cmi
+- .InferModules.objs/byte/inferModules__FormalMap.cmti
+      ocamlc .InferModules.objs/byte/inferModules__NullsafeMode.{cmi,cmti}
+module Trust :
+  sig
+    type t = All | Only of Typ.name list
+    val compare : t -> t -> int
+    val equal : t -> t -> bool
+    val none : t
+    val of_annot : Annot.t -> t option
+    val pp : Format.formatter -> t -> unit
+  end
+type t = Default | Local of Trust.t | Strict
+val compare : t -> t -> int
+val equal : t -> t -> bool
+val of_annot : Annot.t -> t option
+val of_class : Tenv.t -> Typ.name -> t
+val severity : t -> Exceptions.severity
+val pp : Format.formatter -> t -> unit
+Error: Rule failed to generate the following targets:
+- .InferModules.objs/byte/inferModules__NullsafeMode.cmi
+- .InferModules.objs/byte/inferModules__NullsafeMode.cmti
+      ocamlc .InferModules.objs/byte/inferModules__Ints.{cmi,cmti}
+module F = Format
+module NonZeroInt :
+  sig
+    type t = private Z.t
+    val compare : t -> t -> int
+    exception DivisionNotExact
+    val one : t
+    val minus_one : t
+    val of_big_int : Z.t -> t option
+    val opt_to_big_int : t option -> Z.t
+    val is_one : t -> bool
+    val is_minus_one : t -> bool
+    val is_multiple : Z.t -> t -> bool
+    val is_negative : t -> bool
+    val is_positive : t -> bool
+    val ( ~- ) : t -> t
+    val ( * ) : t -> t -> t
+    val plus : t -> t -> t option
+    val exact_div_exn : t -> t -> t
+    val max : t -> t -> t
+    val min : t -> t -> t
+  end
+module NonNegativeInt :
+  sig
+    type t = private Z.t
+    val compare : t -> t -> int
+    val zero : t
+    val one : t
+    val of_big_int : Z.t -> t option
+    val of_int_exn : int -> t
+    val of_big_int_exn : Z.t -> t
+    val to_int_exn : t -> int
+    val is_zero : t -> bool
+    val is_one : t -> bool
+    val leq : lhs:t -> rhs:t -> bool
+    val succ : t -> t
+    val log2_ceil_exn : t -> t
+    val ( + ) : t -> t -> t
+    val ( * ) : t -> t -> t
+    val pp : F.formatter -> t -> unit
+  end
+module PositiveInt :
+  sig
+    type t = private NonNegativeInt.t
+    val compare : t -> t -> int
+    val one : t
+    val of_big_int : Z.t -> t option
+    val succ : t -> t
+    val pp_exponent : F.formatter -> t -> unit
+  end
+Error: Rule failed to generate the following targets:
+- .InferModules.objs/byte/inferModules__Ints.cmi
+- .InferModules.objs/byte/inferModules__Ints.cmti
+      ocamlc .InferModules.objs/byte/inferModules__Sanitizer.{cmi,cmti}
+module F = Format
+module type S =
+  sig
+    type t
+    val compare : t -> t -> int
+    val get : Procname.t -> Tenv.t -> t option
+    val pp : F.formatter -> t -> unit
+  end
+module Dummy : S
+Error: Rule failed to generate the following targets:
+- .InferModules.objs/byte/inferModules__Sanitizer.cmi
+- .InferModules.objs/byte/inferModules__Sanitizer.cmti
+      ocamlc .InferModules.objs/byte/inferModules__Passthrough.{cmi,cmti}
+type t
+val compare : t -> t -> int
+val make : CallSite.t -> t
+val site : t -> CallSite.t
+module Set :
+  sig
+    type elt = t
+    type t
+    val empty : t
+    val is_empty : t -> bool
+    val mem : elt -> t -> bool
+    val add : elt -> t -> t
+    val singleton : elt -> t
+    val remove : elt -> t -> t
+    val union : t -> t -> t
+    val inter : t -> t -> t
+    val disjoint : t -> t -> bool
+    val diff : t -> t -> t
+    val compare : t -> t -> int
+    val equal : t -> t -> bool
+    val subset : t -> t -> bool
+    val iter : (elt -> unit) -> t -> unit
+    val map : (elt -> elt) -> t -> t
+    val fold : (elt -> 'a -> 'a) -> t -> 'a -> 'a
+    val for_all : (elt -> bool) -> t -> bool
+    val exists : (elt -> bool) -> t -> bool
+    val filter : (elt -> bool) -> t -> t
+    val partition : (elt -> bool) -> t -> t * t
+    val cardinal : t -> int
+    val elements : t -> elt list
+    val min_elt : t -> elt
+    val min_elt_opt : t -> elt option
+    val max_elt : t -> elt
+    val max_elt_opt : t -> elt option
+    val choose : t -> elt
+    val choose_opt : t -> elt option
+    val split : elt -> t -> t * bool * t
+    val find : elt -> t -> elt
+    val find_opt : elt -> t -> elt option
+    val find_first : (elt -> bool) -> t -> elt
+    val find_first_opt : (elt -> bool) -> t -> elt option
+    val find_last : (elt -> bool) -> t -> elt
+    val find_last_opt : (elt -> bool) -> t -> elt option
+    val of_list : elt list -> t
+    val to_seq_from : elt -> t -> elt Seq.t
+    val to_seq : t -> elt Seq.t
+    val add_seq : elt Seq.t -> t -> t
+    val of_seq : elt Seq.t -> t
+    val is_singleton_or_more :
+      t -> elt InferStdlib.IContainer.singleton_or_more
+    val pp : Format.formatter -> t -> unit
+    val pp_element : Format.formatter -> elt -> unit
+  end
+Error: Rule failed to generate the following targets:
+- .InferModules.objs/byte/inferModules__Passthrough.cmi
+- .InferModules.objs/byte/inferModules__Passthrough.cmti
+      ocamlc .InferModules.objs/byte/inferModules__PulseArithmetic.{cmi,cmti}
+module F = Format
+type t
+val compare : t -> t -> int
+val equal_to : IntLit.t -> t
+val is_equal_to_zero : t -> bool
+val pp : F.formatter -> t -> unit
+type abduction_result = Unsatisfiable | Satisfiable of t option * t option
+val abduce_binop_is_true :
+  negated:bool -> Binop.t -> t option -> t option -> abduction_result
+val binop : Binop.t -> t -> t -> t option
+val unop : Unop.t -> t -> t option
+val zero_inf : t
+Error: Rule failed to generate the following targets:
+- .InferModules.objs/byte/inferModules__PulseArithmetic.cmi
+- .InferModules.objs/byte/inferModules__PulseArithmetic.cmti
+      ocamlc .InferModules.objs/byte/inferModules__TraceElem.{cmi,cmo,cmt}
+module F = Format
+module type Kind =
+  sig
+    type t
+    val compare : t -> t -> int
+    val matches : caller:t -> callee:t -> bool
+    val pp : F.formatter -> t -> unit
+  end
+module type S =
+  sig
+    type t
+    val compare : t -> t -> int
+    module Kind : Kind
+    val call_site : t -> CallSite.t
+    val kind : t -> Kind.t
+    val make : ?indexes:IntSet.t -> Kind.t -> CallSite.t -> t
+    val with_callsite : t -> CallSite.t -> t
+    val pp : F.formatter -> t -> unit
+    module Set :
+      sig
+        type elt = t
+        type t
+        val empty : t
+        val is_empty : t -> bool
+        val mem : elt -> t -> bool
+        val add : elt -> t -> t
+        val singleton : elt -> t
+        val remove : elt -> t -> t
+        val union : t -> t -> t
+        val inter : t -> t -> t
+        val disjoint : t -> t -> bool
+        val diff : t -> t -> t
+        val compare : t -> t -> int
+        val equal : t -> t -> bool
+        val subset : t -> t -> bool
+        val iter : (elt -> unit) -> t -> unit
+        val map : (elt -> elt) -> t -> t
+        val fold : (elt -> 'a -> 'a) -> t -> 'a -> 'a
+        val for_all : (elt -> bool) -> t -> bool
+        val exists : (elt -> bool) -> t -> bool
+        val filter : (elt -> bool) -> t -> t
+        val partition : (elt -> bool) -> t -> t * t
+        val cardinal : t -> int
+        val elements : t -> elt list
+        val min_elt : t -> elt
+        val min_elt_opt : t -> elt option
+        val max_elt : t -> elt
+        val max_elt_opt : t -> elt option
+        val choose : t -> elt
+        val choose_opt : t -> elt option
+        val split : elt -> t -> t * bool * t
+        val find : elt -> t -> elt
+        val find_opt : elt -> t -> elt option
+        val find_first : (elt -> bool) -> t -> elt
+        val find_first_opt : (elt -> bool) -> t -> elt option
+        val find_last : (elt -> bool) -> t -> elt
+        val find_last_opt : (elt -> bool) -> t -> elt option
+        val of_list : elt list -> t
+        val to_seq_from : elt -> t -> elt Seq.t
+        val to_seq : t -> elt Seq.t
+        val add_seq : elt Seq.t -> t -> t
+        val of_seq : elt Seq.t -> t
+        val is_singleton_or_more :
+          t -> elt InferStdlib.IContainer.singleton_or_more
+        val pp : F.formatter -> t -> unit
+        val pp_element : F.formatter -> elt -> unit
+      end
+  end
+Error: Rule failed to generate the following targets:
+- .InferModules.objs/byte/inferModules__TraceElem.cmi
+- .InferModules.objs/byte/inferModules__TraceElem.cmo
+- .InferModules.objs/byte/inferModules__TraceElem.cmt
+      ocamlc .InferModules.objs/byte/inferModules__PulseCallEvent.{cmi,cmti}
+module F = Format
+type t =
+    Call of Procname.t
+  | Model of string
+  | SkippedKnownCall of Procname.t
+  | SkippedUnknownCall of Exp.t
+val compare : t -> t -> int
+val pp : F.formatter -> t -> unit
+val describe : F.formatter -> t -> unit
+Error: Rule failed to generate the following targets:
+- .InferModules.objs/byte/inferModules__PulseCallEvent.cmi
+- .InferModules.objs/byte/inferModules__PulseCallEvent.cmti
+      ocamlc .InferModules.objs/byte/inferModules__PulseInvalidation.{cmi,cmti}
+module F = Format
+type std_vector_function =
+    Assign
+  | Clear
+  | Emplace
+  | EmplaceBack
+  | Insert
+  | PushBack
+  | Reserve
+  | ShrinkToFit
+val compare_std_vector_function :
+  std_vector_function -> std_vector_function -> int
+val pp_std_vector_function : F.formatter -> std_vector_function -> unit
+type t =
+    CFree
+  | ConstantDereference of IntLit.t
+  | CppDelete
+  | GoneOutOfScope of Pvar.t * Typ.typ
+  | StdVector of std_vector_function
+val compare : t -> t -> int
+val pp : F.formatter -> t -> unit
+val issue_type_of_cause : t -> IssueType.t
+val describe : F.formatter -> t -> unit
+Error: Rule failed to generate the following targets:
+- .InferModules.objs/byte/inferModules__PulseInvalidation.cmi
+- .InferModules.objs/byte/inferModules__PulseInvalidation.cmti
+      ocamlc .InferModules.objs/byte/inferModules__StarvationModels.{cmi,cmti}
+module F = Format
+type severity = Low | Medium | High
+val compare_severity : severity -> severity -> int
+val pp_severity : F.formatter -> severity -> unit
+val may_block : Tenv.t -> Procname.t -> HilExp.t list -> severity option
+val is_strict_mode_violation : Tenv.t -> Procname.t -> HilExp.t list -> bool
+val is_monitor_wait : Tenv.t -> Procname.t -> HilExp.t list -> bool
+val is_synchronized_library_call : Tenv.t -> Procname.t -> bool
+val should_skip_analysis : Tenv.t -> Procname.t -> HilExp.t list -> bool
+val is_annotated_nonblocking :
+  attrs_of_pname:(Procname.t -> ProcAttributes.t option) ->
+  Tenv.t -> Procname.t -> bool
+val is_annotated_lockless :
+  attrs_of_pname:(Procname.t -> ProcAttributes.t option) ->
+  Tenv.t -> Procname.t -> bool
+val schedules_work : Tenv.t -> Procname.t -> bool
+type scheduler_thread_constraint =
+    ForUIThread
+  | ForNonUIThread
+  | ForUnknownThread
+val equal_scheduler_thread_constraint :
+  scheduler_thread_constraint -> scheduler_thread_constraint -> bool
+val get_executor_thread_annotation_constraint :
+  Tenv.t -> HilExp.access_expression -> scheduler_thread_constraint option
+val get_run_method_from_runnable :
+  Tenv.t -> HilExp.access_expression -> Procname.t option
+val get_returned_executor :
+  attrs_of_pname:(Procname.t -> ProcAttributes.t option) ->
+  Tenv.t -> Procname.t -> HilExp.t list -> scheduler_thread_constraint option
+val schedules_work_on_ui_thread : Tenv.t -> Procname.t -> bool
+val schedules_work_on_bg_thread : Tenv.t -> Procname.t -> bool
+val is_getMainLooper : Tenv.t -> Procname.t -> HilExp.t list -> bool
+val is_handler_constructor : Tenv.t -> Procname.t -> HilExp.t list -> bool
+val is_thread_constructor : Tenv.t -> Procname.t -> HilExp.t list -> bool
+val is_future_get : Tenv.t -> Procname.t -> HilExp.t list -> bool
+val is_future_is_done : Tenv.t -> Procname.t -> HilExp.t list -> bool
+val is_assume_true : Tenv.t -> Procname.t -> HilExp.t list -> bool
+Error: Rule failed to generate the following targets:
+- .InferModules.objs/byte/inferModules__StarvationModels.cmi
+- .InferModules.objs/byte/inferModules__StarvationModels.cmti
+      ocamlc .InferModules.objs/byte/inferModules__AccessPathTestUtils.{cmi,cmti}
+val make_var : string -> Pvar.t
+val make_fieldname : string -> Fieldname.t
+val make_base : ?typ:Typ.typ -> string -> AccessPath.base
+val make_field_access : string -> AccessPath.access
+val make_array_access : Typ.typ -> AccessPath.access
+val make_access_path : string -> string list -> AccessPath.t
+Error: Rule failed to generate the following targets:
+- .InferModules.objs/byte/inferModules__AccessPathTestUtils.cmi
+- .InferModules.objs/byte/inferModules__AccessPathTestUtils.cmti
+      ocamlc .InferModules.objs/byte/inferModules__AllNullsafeTests.{cmi,cmti}
+val tests : OUnit2.test list
+Error: Rule failed to generate the following targets:
+- .InferModules.objs/byte/inferModules__AllNullsafeTests.cmi
+- .InferModules.objs/byte/inferModules__AllNullsafeTests.cmti
+      ocamlc .InferModules.objs/byte/inferModules__AndroidFramework.{cmi,cmti}
+val drawable_prefix : string
+val is_autocloseable : Tenv.t -> Typ.name -> bool
+val is_view : Tenv.t -> Typ.name -> bool
+val is_fragment : Tenv.t -> Typ.name -> bool
+val is_destroy_method : Procname.t -> bool
+Error: Rule failed to generate the following targets:
+- .InferModules.objs/byte/inferModules__AndroidFramework.cmi
+- .InferModules.objs/byte/inferModules__AndroidFramework.cmti
+      ocamlc .InferModules.objs/byte/inferModules__BackendStats.{cmi,cmti}
+type t
+val initial : t
+val incr_summary_file_try_load : unit -> unit
+val incr_summary_read_from_disk : unit -> unit
+val incr_summary_cache_hits : unit -> unit
+val incr_summary_cache_misses : unit -> unit
+val incr_summary_has_model_queries : unit -> unit
+val incr_ondemand_procs_analyzed : unit -> unit
+val incr_ondemand_local_cache_hits : unit -> unit
+val incr_ondemand_local_cache_misses : unit -> unit
+val add_to_proc_locker_lock_sys_time : float -> unit
+val add_to_proc_locker_unlock_sys_time : float -> unit
+val reset : unit -> unit
+val get : unit -> t
+val pp : Format.formatter -> t -> unit
+val merge : t -> t -> t
+val log_to_scuba : t -> unit
+Error: Rule failed to generate the following targets:
+- .InferModules.objs/byte/inferModules__BackendStats.cmi
+- .InferModules.objs/byte/inferModules__BackendStats.cmti
+      ocamlc .InferModules.objs/byte/inferModules__Exe_env.{cmi,cmti}
+type file_data
+type t = private {
+  proc_map : file_data Procname.Hash.t;
+  file_map : file_data SourceFile.Hash.t;
+}
+val mk : unit -> t
+val get_tenv : t -> Procname.t -> Tenv.t
+val get_integer_type_widths : t -> Procname.t -> Typ.IntegerWidths.t
+Error: Rule failed to generate the following targets:
+- .InferModules.objs/byte/inferModules__Exe_env.cmi
+- .InferModules.objs/byte/inferModules__Exe_env.cmti
+      ocamlc .InferModules.objs/byte/inferModules__BiabductionConfig.{cmi,cmti}
+val footprint : bool ref
+val run_in_footprint_mode : ('a -> 'b) -> 'a -> 'b
+val run_in_re_execution_mode : ('a -> 'b) -> 'a -> 'b
+val abs_val : int ref
+val reset_abs_val : unit -> unit
+val run_with_abs_val_equal_zero : ('a -> 'b) -> 'a -> 'b
+val allow_leak : bool ref
+Error: Rule failed to generate the following targets:
+- .InferModules.objs/byte/inferModules__BiabductionConfig.cmi
+- .InferModules.objs/byte/inferModules__BiabductionConfig.cmti
+      ocamlc .InferModules.objs/byte/inferModules__Annotations.{cmi,cmti}
+val any_thread : string
+val auto_cleanup : string
+val expensive : string
+val inject_prop : string
+val lockless : string
+val no_allocation : string
+val nullable : string
+val nonnull : string
+val performance_critical : string
+val prop : string
+val for_non_ui_thread : string
+val for_ui_thread : string
+val guarded_by : string
+val suppress_lint : string
+val thread_safe : string
+val mainthread : string
+val ui_thread : string
+val worker_thread : string
+val visibleForTesting : string
+val generated_graphql : string
+val annot_ends_with : Annot.t -> string -> bool
+val ia_ends_with : Annot.Item.t -> string -> bool
+val ia_has_annotation_with : Annot.Item.t -> (Annot.t -> bool) -> bool
+val ia_is_false_on_null : Annot.Item.t -> bool
+val ia_is_initializer : Annot.Item.t -> bool
+val ia_is_cleanup : Annot.Item.t -> bool
+val ia_is_field_injector_readonly : Annot.Item.t -> bool
+val ia_is_field_injector_readwrite : Annot.Item.t -> bool
+val ia_is_nonnull : Annot.Item.t -> bool
+val ia_is_nullable : Annot.Item.t -> bool
+val ia_is_nullsafe_strict : Annot.Item.t -> bool
+val ia_find_nullsafe : Annot.Item.t -> Annot.t option
+val ia_is_true_on_null : Annot.Item.t -> bool
+val ia_is_expensive : Annot.Item.t -> bool
+val ia_is_functional : Annot.Item.t -> bool
+val ia_is_propagates_nullable : Annot.Item.t -> bool
+val ia_is_ignore_allocations : Annot.Item.t -> bool
+val ia_is_inject : Annot.Item.t -> bool
+val ia_is_json_field : Annot.Item.t -> bool
+val ia_is_suppress_lint : Annot.Item.t -> bool
+val ia_is_not_thread_safe : Annot.Item.t -> bool
+val ia_is_nonblocking : Annot.Item.t -> bool
+val ia_is_returns_ownership : Annot.Item.t -> bool
+val ia_is_synchronized_collection : Annot.Item.t -> bool
+val ia_is_thread_safe : Annot.Item.t -> bool
+val ia_is_thread_confined : Annot.Item.t -> bool
+val ia_is_thrift_service : Annot.Item.t -> bool
+val ia_is_volatile : Annot.Item.t -> bool
+val ia_is_worker_thread : Annot.Item.t -> bool
+val ia_is_uithread_equivalent : Annot.Item.t -> bool
+val pdesc_has_return_annot : Procdesc.t -> (Annot.Item.t -> bool) -> bool
+val pname_has_return_annot :
+  Procname.t ->
+  attrs_of_pname:(Procname.t -> ProcAttributes.t option) ->
+  (Annot.Item.t -> bool) -> bool
+val pdesc_return_annot_ends_with : Procdesc.t -> string -> bool
+val ma_has_annotation_with : Annot.Method.t -> (Annot.t -> bool) -> bool
+val field_has_annot :
+  Fieldname.t -> Struct.t -> (Annot.Item.t -> bool) -> bool
+val struct_typ_has_annot : Struct.t -> (Annot.Item.t -> bool) -> bool
+Error: Rule failed to generate the following targets:
+- .InferModules.objs/byte/inferModules__Annotations.cmi
+- .InferModules.objs/byte/inferModules__Annotations.cmti
+      ocamlc .InferModules.objs/byte/inferModules__BuckGenrule.{cmi,cmti}
+val capture : string list -> unit
+Error: Rule failed to generate the following targets:
+- .InferModules.objs/byte/inferModules__BuckGenrule.cmi
+- .InferModules.objs/byte/inferModules__BuckGenrule.cmti
+      ocamlc .InferModules.objs/byte/inferModules__Buck.{cmi,cmti}
+val buck_config : BuckMode.t -> string list
+val parse_command_and_targets :
+  BuckMode.t ->
+  filter_kind:[< `Auto | `No | `Yes ] ->
+  string list -> string * string list * string list
+type flavored_arguments = {
+  command : string;
+  rev_not_targets : string list;
+  targets : string list;
+}
+val add_flavors_to_buck_arguments :
+  BuckMode.t ->
+  filter_kind:[< `Auto | `No | `Yes ] ->
+  extra_flavors:string list -> string list -> flavored_arguments
+val store_args_in_file : string list -> string list
+val filter_compatible : [> `Targets ] -> string list -> string list
+Error: Rule failed to generate the following targets:
+- .InferModules.objs/byte/inferModules__Buck.cmi
+- .InferModules.objs/byte/inferModules__Buck.cmti
+      ocamlc .InferModules.objs/byte/inferModules__Buckets.{cmi,cmti}
+val classify_access :
+  Localise.error_desc ->
+  Localise.access option ->
+  DecompiledExp.t option -> bool -> Localise.error_desc
+Error: Rule failed to generate the following targets:
+- .InferModules.objs/byte/inferModules__Buckets.cmi
+- .InferModules.objs/byte/inferModules__Buckets.cmti
+      ocamlc .InferModules.objs/byte/inferModules__BufferOverrunField.{cmi,cmti}
+val pp :
+  pp_lhs:(Format.formatter -> 'a -> unit) ->
+  sep:string -> Format.formatter -> 'a -> Fieldname.t -> unit
+val get_type : Fieldname.t -> Typ.typ option
+val c_strlen : unit -> Fieldname.t
+val cpp_vector_elem : vec_typ:Typ.typ -> elt_typ:Typ.typ -> Fieldname.t
+val java_collection_internal_array : Fieldname.t
+val is_cpp_vector_elem : Fieldname.t -> bool
+val is_java_collection_internal_array : Fieldname.t -> bool
+Error: Rule failed to generate the following targets:
+- .InferModules.objs/byte/inferModules__BufferOverrunField.cmi
+- .InferModules.objs/byte/inferModules__BufferOverrunField.cmti
+      ocamlc .InferModules.objs/byte/inferModules__CTLParserHelper.{cmi,cmti}
+val validate_al_files : unit -> (unit, string) result
+Error: Rule failed to generate the following targets:
+- .InferModules.objs/byte/inferModules__CTLParserHelper.cmi
+- .InferModules.objs/byte/inferModules__CTLParserHelper.cmti
+      ocamlc .InferModules.objs/byte/inferModules__CStubsTests.{cmi,cmo,cmt}
+val pp_diff_of_hashed_value : Format.formatter -> string * string -> unit
+val test_fnv64_hash_function : OUnitTest.test list
+val tests : OUnitTest.test
+Error: Rule failed to generate the following targets:
+- .InferModules.objs/byte/inferModules__CStubsTests.cmi
+- .InferModules.objs/byte/inferModules__CStubsTests.cmo
+- .InferModules.objs/byte/inferModules__CStubsTests.cmt
+      ocamlc .InferModules.objs/byte/inferModules__Clang.{cmi,cmti}
+type compiler = Clang | Make
+val compare_compiler : compiler -> compiler -> int
+val capture : compiler -> prog:string -> args:string list -> unit
+Error: Rule failed to generate the following targets:
+- .InferModules.objs/byte/inferModules__Clang.cmi
+- .InferModules.objs/byte/inferModules__Clang.cmti
+      ocamlc .InferModules.objs/byte/inferModules__CallGraph.{cmi,cmti}
+module F = Format
+module type NodeSig =
+  sig
+    type t = private {
+      id : int;
+      pname : Procname.t;
+      mutable successors : int list;
+      mutable flag : bool;
+    }
+    val make : int -> Procname.t -> int list -> t
+    val add_successor : t -> int -> unit
+    val set_flag : t -> unit
+    val unset_flag : t -> unit
+    val pp_dot : F.formatter -> t -> unit
+  end
+module Node : NodeSig
+type t
+val reset : t -> unit
+val create : int -> t
+val n_procs : t -> int
+val mem : t -> int -> bool
+val flag : t -> Procname.t -> unit
+val flag_reachable : t -> Procname.t -> unit
+val iter_unflagged_leaves : f:(Node.t -> unit) -> t -> unit
+val remove : t -> Procname.t -> unit
+val to_dotty : t -> string -> unit
+val trim_id_map : t -> unit
+val remove_unflagged_and_unflag_all : t -> unit
+val add_edge : t -> pname:Procname.t -> successor_pname:Procname.t -> unit
+val create_node : t -> Procname.t -> Procname.t list -> unit
+val fold_flagged : t -> f:(Node.t -> 'a -> 'a) -> 'a -> 'a
+val default_initial_capacity : int
+Error: Rule failed to generate the following targets:
+- .InferModules.objs/byte/inferModules__CallGraph.cmi
+- .InferModules.objs/byte/inferModules__CallGraph.cmti
+      ocamlc .InferModules.objs/byte/inferModules__CompilationDatabase.{cmi,cmti}
+type t
+type compilation_data = {
+  directory : string;
+  executable : string;
+  escaped_arguments : string list;
+}
+val filter_compilation_data :
+  t -> f:(SourceFile.t -> bool) -> (SourceFile.t * compilation_data) list
+val from_json_files : [< `Escaped of string | `Raw of string ] list -> t
+Error: Rule failed to generate the following targets:
+- .InferModules.objs/byte/inferModules__CompilationDatabase.cmi
+- .InferModules.objs/byte/inferModules__CompilationDatabase.cmti
+      ocamlc .InferModules.objs/byte/inferModules__ClangQuotes.{cmi,cmti}
+type style = EscapedDoubleQuotes | SingleQuotes | EscapedNoQuotes
+val quote : style -> string -> string
+val mk_arg_file : string -> style -> string list -> string
+Error: Rule failed to generate the following targets:
+- .InferModules.objs/byte/inferModules__ClangQuotes.cmi
+- .InferModules.objs/byte/inferModules__ClangQuotes.cmti
+      ocamlc .InferModules.objs/byte/inferModules__ClangWrapper.{cmi,cmti}
+val exe : prog:string -> args:string list -> unit
+Error: Rule failed to generate the following targets:
+- .InferModules.objs/byte/inferModules__ClangWrapper.cmi
+- .InferModules.objs/byte/inferModules__ClangWrapper.cmti
+      ocamlc .InferModules.objs/byte/inferModules__ClangTests.{cmi,cmo,cmt}
+val tests : OUnitTest.test list
+Error: Rule failed to generate the following targets:
+- .InferModules.objs/byte/inferModules__ClangTests.cmi
+- .InferModules.objs/byte/inferModules__ClangTests.cmo
+- .InferModules.objs/byte/inferModules__ClangTests.cmt
+      ocamlc .InferModules.objs/byte/inferModules__ProcCfg.{cmi,cmti}
+module type Node =
+  sig
+    type t
+    type id
+    val kind : t -> Procdesc.Node.nodekind
+    val id : t -> id
+    val hash : t -> int
+    val loc : t -> Location.t
+    val underlying_node : t -> Procdesc.NodeSet.elt
+    val of_underlying_node : Procdesc.NodeSet.elt -> t
+    val compare_id : id -> id -> int
+    val pp_id : Format.formatter -> id -> unit
+    module IdMap :
+      sig
+        type key = id
+        type +'a t
+        val empty : 'a t
+        val is_empty : 'a t -> bool
+        val mem : key -> 'a t -> bool
+        val add : key -> 'a -> 'a t -> 'a t
+        val update : key -> ('a option -> 'a option) -> 'a t -> 'a t
+        val singleton : key -> 'a -> 'a t
+        val remove : key -> 'a t -> 'a t
+        val merge :
+          (key -> 'a option -> 'b option -> 'c option) ->
+          'a t -> 'b t -> 'c t
+        val union : (key -> 'a -> 'a -> 'a option) -> 'a t -> 'a t -> 'a t
+        val compare : ('a -> 'a -> int) -> 'a t -> 'a t -> int
+        val equal : ('a -> 'a -> bool) -> 'a t -> 'a t -> bool
+        val iter : (key -> 'a -> unit) -> 'a t -> unit
+        val fold : (key -> 'a -> 'b -> 'b) -> 'a t -> 'b -> 'b
+        val for_all : (key -> 'a -> bool) -> 'a t -> bool
+        val exists : (key -> 'a -> bool) -> 'a t -> bool
+        val filter : (key -> 'a -> bool) -> 'a t -> 'a t
+        val partition : (key -> 'a -> bool) -> 'a t -> 'a t * 'a t
+        val cardinal : 'a t -> int
+        val bindings : 'a t -> (key * 'a) list
+        val min_binding : 'a t -> key * 'a
+        val min_binding_opt : 'a t -> (key * 'a) option
+        val max_binding : 'a t -> key * 'a
+        val max_binding_opt : 'a t -> (key * 'a) option
+        val choose : 'a t -> key * 'a
+        val choose_opt : 'a t -> (key * 'a) option
+        val split : key -> 'a t -> 'a t * 'a option * 'a t
+        val find : key -> 'a t -> 'a
+        val find_opt : key -> 'a t -> 'a option
+        val find_first : (key -> bool) -> 'a t -> key * 'a
+        val find_first_opt : (key -> bool) -> 'a t -> (key * 'a) option
+        val find_last : (key -> bool) -> 'a t -> key * 'a
+        val find_last_opt : (key -> bool) -> 'a t -> (key * 'a) option
+        val map : ('a -> 'b) -> 'a t -> 'b t
+        val mapi : (key -> 'a -> 'b) -> 'a t -> 'b t
+        val to_seq : 'a t -> (key * 'a) Seq.t
+        val to_seq_from : key -> 'a t -> (key * 'a) Seq.t
+        val add_seq : (key * 'a) Seq.t -> 'a t -> 'a t
+        val of_seq : (key * 'a) Seq.t -> 'a t
+        val fold_map :
+          'a t -> init:'b -> f:('b -> 'a -> 'b * 'c) -> 'b * 'c t
+        val is_singleton_or_more :
+          'a t -> (key * 'a) IContainer.singleton_or_more
+        val pp_key : Format.formatter -> key -> unit
+        val pp :
+          pp_value:(Format.formatter -> 'a -> unit) ->
+          Format.formatter -> 'a t -> unit
+      end
+    module IdSet :
+      sig
+        type elt = id
+        type t
+        val empty : t
+        val is_empty : t -> bool
+        val mem : elt -> t -> bool
+        val add : elt -> t -> t
+        val singleton : elt -> t
+        val remove : elt -> t -> t
+        val union : t -> t -> t
+        val inter : t -> t -> t
+        val disjoint : t -> t -> bool
+        val diff : t -> t -> t
+        val compare : t -> t -> int
+        val equal : t -> t -> bool
+        val subset : t -> t -> bool
+        val iter : (elt -> unit) -> t -> unit
+        val map : (elt -> elt) -> t -> t
+        val fold : (elt -> 'a -> 'a) -> t -> 'a -> 'a
+        val for_all : (elt -> bool) -> t -> bool
+        val exists : (elt -> bool) -> t -> bool
+        val filter : (elt -> bool) -> t -> t
+        val partition : (elt -> bool) -> t -> t * t
+        val cardinal : t -> int
+        val elements : t -> elt list
+        val min_elt : t -> elt
+        val min_elt_opt : t -> elt option
+        val max_elt : t -> elt
+        val max_elt_opt : t -> elt option
+        val choose : t -> elt
+        val choose_opt : t -> elt option
+        val split : elt -> t -> t * bool * t
+        val find : elt -> t -> elt
+        val find_opt : elt -> t -> elt option
+        val find_first : (elt -> bool) -> t -> elt
+        val find_first_opt : (elt -> bool) -> t -> elt option
+        val find_last : (elt -> bool) -> t -> elt
+        val find_last_opt : (elt -> bool) -> t -> elt option
+        val of_list : elt list -> t
+        val to_seq_from : elt -> t -> elt Seq.t
+        val to_seq : t -> elt Seq.t
+        val add_seq : elt Seq.t -> t -> t
+        val of_seq : elt Seq.t -> t
+        val is_singleton_or_more : t -> elt IContainer.singleton_or_more
+        val pp : Format.formatter -> t -> unit
+        val pp_element : Format.formatter -> elt -> unit
+      end
+  end
+module type S =
+  sig
+    type t
+    type instrs_dir
+    module Node : Node
+    val instrs : Node.t -> instrs_dir Instrs.t
+    val fold_succs : t -> (Node.t, Node.t, 'accum) Container.fold
+    val fold_preds : t -> (Node.t, Node.t, 'accum) Container.fold
+    val fold_normal_succs : t -> (Node.t, Node.t, 'accum) Container.fold
+    val fold_normal_preds : t -> (Node.t, Node.t, 'accum) Container.fold
+    val fold_exceptional_succs : t -> (Node.t, Node.t, 'accum) Container.fold
+    val fold_exceptional_preds : t -> (Node.t, Node.t, 'accum) Container.fold
+    val start_node : t -> Node.t
+    val exit_node : t -> Node.t
+    val proc_desc : t -> Procdesc.t
+    val fold_nodes : (t, Node.t, 'accum) Container.fold
+    val from_pdesc : Procdesc.t -> t
+    val is_loop_head : Procdesc.t -> Node.t -> bool
+    val wto : t -> Node.t WeakTopologicalOrder.Partition.t
+  end
+module DefaultNode :
+  sig
+    type t = Procdesc.NodeSet.elt
+    type id = Procdesc.Node.id
+    val kind : t -> Procdesc.Node.nodekind
+    val id : t -> id
+    val hash : t -> int
+    val loc : t -> Location.t
+    val underlying_node : t -> t
+    val of_underlying_node : t -> t
+    val compare_id : id -> id -> int
+    val pp_id : Format.formatter -> id -> unit
+    module IdMap :
+      sig
+        type key = id
+        type +'a t
+        val empty : 'a t
+        val is_empty : 'a t -> bool
+        val mem : key -> 'a t -> bool
+        val add : key -> 'a -> 'a t -> 'a t
+        val update : key -> ('a option -> 'a option) -> 'a t -> 'a t
+        val singleton : key -> 'a -> 'a t
+        val remove : key -> 'a t -> 'a t
+        val merge :
+          (key -> 'a option -> 'b option -> 'c option) ->
+          'a t -> 'b t -> 'c t
+        val union : (key -> 'a -> 'a -> 'a option) -> 'a t -> 'a t -> 'a t
+        val compare : ('a -> 'a -> int) -> 'a t -> 'a t -> int
+        val equal : ('a -> 'a -> bool) -> 'a t -> 'a t -> bool
+        val iter : (key -> 'a -> unit) -> 'a t -> unit
+        val fold : (key -> 'a -> 'b -> 'b) -> 'a t -> 'b -> 'b
+        val for_all : (key -> 'a -> bool) -> 'a t -> bool
+        val exists : (key -> 'a -> bool) -> 'a t -> bool
+        val filter : (key -> 'a -> bool) -> 'a t -> 'a t
+        val partition : (key -> 'a -> bool) -> 'a t -> 'a t * 'a t
+        val cardinal : 'a t -> int
+        val bindings : 'a t -> (key * 'a) list
+        val min_binding : 'a t -> key * 'a
+        val min_binding_opt : 'a t -> (key * 'a) option
+        val max_binding : 'a t -> key * 'a
+        val max_binding_opt : 'a t -> (key * 'a) option
+        val choose : 'a t -> key * 'a
+        val choose_opt : 'a t -> (key * 'a) option
+        val split : key -> 'a t -> 'a t * 'a option * 'a t
+        val find : key -> 'a t -> 'a
+        val find_opt : key -> 'a t -> 'a option
+        val find_first : (key -> bool) -> 'a t -> key * 'a
+        val find_first_opt : (key -> bool) -> 'a t -> (key * 'a) option
+        val find_last : (key -> bool) -> 'a t -> key * 'a
+        val find_last_opt : (key -> bool) -> 'a t -> (key * 'a) option
+        val map : ('a -> 'b) -> 'a t -> 'b t
+        val mapi : (key -> 'a -> 'b) -> 'a t -> 'b t
+        val to_seq : 'a t -> (key * 'a) Seq.t
+        val to_seq_from : key -> 'a t -> (key * 'a) Seq.t
+        val add_seq : (key * 'a) Seq.t -> 'a t -> 'a t
+        val of_seq : (key * 'a) Seq.t -> 'a t
+        val fold_map :
+          'a t -> init:'b -> f:('b -> 'a -> 'b * 'c) -> 'b * 'c t
+        val is_singleton_or_more :
+          'a t -> (key * 'a) IContainer.singleton_or_more
+        val pp_key : Format.formatter -> key -> unit
+        val pp :
+          pp_value:(Format.formatter -> 'a -> unit) ->
+          Format.formatter -> 'a t -> unit
+      end
+    module IdSet :
+      sig
+        type elt = id
+        type t
+        val empty : t
+        val is_empty : t -> bool
+        val mem : id -> t -> bool
+        val add : id -> t -> t
+        val singleton : id -> t
+        val remove : id -> t -> t
+        val union : t -> t -> t
+        val inter : t -> t -> t
+        val disjoint : t -> t -> bool
+        val diff : t -> t -> t
+        val compare : t -> t -> int
+        val equal : t -> t -> bool
+        val subset : t -> t -> bool
+        val iter : (id -> unit) -> t -> unit
+        val map : (id -> id) -> t -> t
+        val fold : (id -> 'a -> 'a) -> t -> 'a -> 'a
+        val for_all : (id -> bool) -> t -> bool
+        val exists : (id -> bool) -> t -> bool
+        val filter : (id -> bool) -> t -> t
+        val partition : (id -> bool) -> t -> t * t
+        val cardinal : t -> int
+        val elements : t -> id list
+        val min_elt : t -> id
+        val min_elt_opt : t -> id option
+        val max_elt : t -> id
+        val max_elt_opt : t -> id option
+        val choose : t -> id
+        val choose_opt : t -> id option
+        val split : id -> t -> t * bool * t
+        val find : id -> t -> id
+        val find_opt : id -> t -> id option
+        val find_first : (id -> bool) -> t -> id
+        val find_first_opt : (id -> bool) -> t -> id option
+        val find_last : (id -> bool) -> t -> id
+        val find_last_opt : (id -> bool) -> t -> id option
+        val of_list : id list -> t
+        val to_seq_from : id -> t -> id Seq.t
+        val to_seq : t -> id Seq.t
+        val add_seq : id Seq.t -> t -> t
+        val of_seq : id Seq.t -> t
+        val is_singleton_or_more : t -> id IContainer.singleton_or_more
+        val pp : Format.formatter -> t -> unit
+        val pp_element : Format.formatter -> id -> unit
+      end
+  end
+module InstrNode :
+  sig
+    type instr_index
+    type t = DefaultNode.t * instr_index
+    type id = DefaultNode.id * instr_index
+    val kind : t -> Procdesc.Node.nodekind
+    val id : t -> id
+    val hash : t -> int
+    val loc : t -> Location.t
+    val underlying_node : t -> DefaultNode.t
+    val of_underlying_node : DefaultNode.t -> t
+    val compare_id : id -> id -> int
+    val pp_id : Format.formatter -> id -> unit
+    module IdMap :
+      sig
+        type key = id
+        type +'a t
+        val empty : 'a t
+        val is_empty : 'a t -> bool
+        val mem : key -> 'a t -> bool
+        val add : key -> 'a -> 'a t -> 'a t
+        val update : key -> ('a option -> 'a option) -> 'a t -> 'a t
+        val singleton : key -> 'a -> 'a t
+        val remove : key -> 'a t -> 'a t
+        val merge :
+          (key -> 'a option -> 'b option -> 'c option) ->
+          'a t -> 'b t -> 'c t
+        val union : (key -> 'a -> 'a -> 'a option) -> 'a t -> 'a t -> 'a t
+        val compare : ('a -> 'a -> int) -> 'a t -> 'a t -> int
+        val equal : ('a -> 'a -> bool) -> 'a t -> 'a t -> bool
+        val iter : (key -> 'a -> unit) -> 'a t -> unit
+        val fold : (key -> 'a -> 'b -> 'b) -> 'a t -> 'b -> 'b
+        val for_all : (key -> 'a -> bool) -> 'a t -> bool
+        val exists : (key -> 'a -> bool) -> 'a t -> bool
+        val filter : (key -> 'a -> bool) -> 'a t -> 'a t
+        val partition : (key -> 'a -> bool) -> 'a t -> 'a t * 'a t
+        val cardinal : 'a t -> int
+        val bindings : 'a t -> (key * 'a) list
+        val min_binding : 'a t -> key * 'a
+        val min_binding_opt : 'a t -> (key * 'a) option
+        val max_binding : 'a t -> key * 'a
+        val max_binding_opt : 'a t -> (key * 'a) option
+        val choose : 'a t -> key * 'a
+        val choose_opt : 'a t -> (key * 'a) option
+        val split : key -> 'a t -> 'a t * 'a option * 'a t
+        val find : key -> 'a t -> 'a
+        val find_opt : key -> 'a t -> 'a option
+        val find_first : (key -> bool) -> 'a t -> key * 'a
+        val find_first_opt : (key -> bool) -> 'a t -> (key * 'a) option
+        val find_last : (key -> bool) -> 'a t -> key * 'a
+        val find_last_opt : (key -> bool) -> 'a t -> (key * 'a) option
+        val map : ('a -> 'b) -> 'a t -> 'b t
+        val mapi : (key -> 'a -> 'b) -> 'a t -> 'b t
+        val to_seq : 'a t -> (key * 'a) Seq.t
+        val to_seq_from : key -> 'a t -> (key * 'a) Seq.t
+        val add_seq : (key * 'a) Seq.t -> 'a t -> 'a t
+        val of_seq : (key * 'a) Seq.t -> 'a t
+        val fold_map :
+          'a t -> init:'b -> f:('b -> 'a -> 'b * 'c) -> 'b * 'c t
+        val is_singleton_or_more :
+          'a t -> (key * 'a) IContainer.singleton_or_more
+        val pp_key : Format.formatter -> key -> unit
+        val pp :
+          pp_value:(Format.formatter -> 'a -> unit) ->
+          Format.formatter -> 'a t -> unit
+      end
+    module IdSet :
+      sig
+        type elt = id
+        type t
+        val empty : t
+        val is_empty : t -> bool
+        val mem : id -> t -> bool
+        val add : id -> t -> t
+        val singleton : id -> t
+        val remove : id -> t -> t
+        val union : t -> t -> t
+        val inter : t -> t -> t
+        val disjoint : t -> t -> bool
+        val diff : t -> t -> t
+        val compare : t -> t -> int
+        val equal : t -> t -> bool
+        val subset : t -> t -> bool
+        val iter : (id -> unit) -> t -> unit
+        val map : (id -> id) -> t -> t
+        val fold : (id -> 'a -> 'a) -> t -> 'a -> 'a
+        val for_all : (id -> bool) -> t -> bool
+        val exists : (id -> bool) -> t -> bool
+        val filter : (id -> bool) -> t -> t
+        val partition : (id -> bool) -> t -> t * t
+        val cardinal : t -> int
+        val elements : t -> id list
+        val min_elt : t -> id
+        val min_elt_opt : t -> id option
+        val max_elt : t -> id
+        val max_elt_opt : t -> id option
+        val choose : t -> id
+        val choose_opt : t -> id option
+        val split : id -> t -> t * bool * t
+        val find : id -> t -> id
+        val find_opt : id -> t -> id option
+        val find_first : (id -> bool) -> t -> id
+        val find_first_opt : (id -> bool) -> t -> id option
+        val find_last : (id -> bool) -> t -> id
+        val find_last_opt : (id -> bool) -> t -> id option
+        val of_list : id list -> t
+        val to_seq_from : id -> t -> id Seq.t
+        val to_seq : t -> id Seq.t
+        val add_seq : id Seq.t -> t -> t
+        val of_seq : id Seq.t -> t
+        val is_singleton_or_more : t -> id IContainer.singleton_or_more
+        val pp : Format.formatter -> t -> unit
+        val pp_element : Format.formatter -> id -> unit
+      end
+  end
+module Normal :
+  sig
+    type t = Procdesc.t
+    type instrs_dir = Instrs.not_reversed
+    module Node :
+      sig
+        type t = DefaultNode.t
+        type id = DefaultNode.id
+        val kind : t -> Procdesc.Node.nodekind
+        val id : t -> id
+        val hash : t -> int
+        val loc : t -> Location.t
+        val underlying_node : t -> t
+        val of_underlying_node : t -> t
+        val compare_id : id -> id -> int
+        val pp_id : Format.formatter -> id -> unit
+        module IdMap :
+          sig
+            type key = id
+            type 'a t = 'a DefaultNode.IdMap.t
+            val empty : 'a t
+            val is_empty : 'a t -> bool
+            val mem : key -> 'a t -> bool
+            val add : key -> 'a -> 'a t -> 'a t
+            val update : key -> ('a option -> 'a option) -> 'a t -> 'a t
+            val singleton : key -> 'a -> 'a t
+            val remove : key -> 'a t -> 'a t
+            val merge :
+              (key -> 'a option -> 'b option -> 'c option) ->
+              'a t -> 'b t -> 'c t
+            val union :
+              (key -> 'a -> 'a -> 'a option) -> 'a t -> 'a t -> 'a t
+            val compare : ('a -> 'a -> int) -> 'a t -> 'a t -> int
+            val equal : ('a -> 'a -> bool) -> 'a t -> 'a t -> bool
+            val iter : (key -> 'a -> unit) -> 'a t -> unit
+            val fold : (key -> 'a -> 'b -> 'b) -> 'a t -> 'b -> 'b
+            val for_all : (key -> 'a -> bool) -> 'a t -> bool
+            val exists : (key -> 'a -> bool) -> 'a t -> bool
+            val filter : (key -> 'a -> bool) -> 'a t -> 'a t
+            val partition : (key -> 'a -> bool) -> 'a t -> 'a t * 'a t
+            val cardinal : 'a t -> int
+            val bindings : 'a t -> (key * 'a) list
+            val min_binding : 'a t -> key * 'a
+            val min_binding_opt : 'a t -> (key * 'a) option
+            val max_binding : 'a t -> key * 'a
+            val max_binding_opt : 'a t -> (key * 'a) option
+            val choose : 'a t -> key * 'a
+            val choose_opt : 'a t -> (key * 'a) option
+            val split : key -> 'a t -> 'a t * 'a option * 'a t
+            val find : key -> 'a t -> 'a
+            val find_opt : key -> 'a t -> 'a option
+            val find_first : (key -> bool) -> 'a t -> key * 'a
+            val find_first_opt : (key -> bool) -> 'a t -> (key * 'a) option
+            val find_last : (key -> bool) -> 'a t -> key * 'a
+            val find_last_opt : (key -> bool) -> 'a t -> (key * 'a) option
+            val map : ('a -> 'b) -> 'a t -> 'b t
+            val mapi : (key -> 'a -> 'b) -> 'a t -> 'b t
+            val to_seq : 'a t -> (key * 'a) Seq.t
+            val to_seq_from : key -> 'a t -> (key * 'a) Seq.t
+            val add_seq : (key * 'a) Seq.t -> 'a t -> 'a t
+            val of_seq : (key * 'a) Seq.t -> 'a t
+            val fold_map :
+              'a t -> init:'b -> f:('b -> 'a -> 'b * 'c) -> 'b * 'c t
+            val is_singleton_or_more :
+              'a t -> (key * 'a) IContainer.singleton_or_more
+            val pp_key : Format.formatter -> key -> unit
+            val pp :
+              pp_value:(Format.formatter -> 'a -> unit) ->
+              Format.formatter -> 'a t -> unit
+          end
+        module IdSet :
+          sig
+            type elt = id
+            type t = DefaultNode.IdSet.t
+            val empty : t
+            val is_empty : t -> bool
+            val mem : id -> t -> bool
+            val add : id -> t -> t
+            val singleton : id -> t
+            val remove : id -> t -> t
+            val union : t -> t -> t
+            val inter : t -> t -> t
+            val disjoint : t -> t -> bool
+            val diff : t -> t -> t
+            val compare : t -> t -> int
+            val equal : t -> t -> bool
+            val subset : t -> t -> bool
+            val iter : (id -> unit) -> t -> unit
+            val map : (id -> id) -> t -> t
+            val fold : (id -> 'a -> 'a) -> t -> 'a -> 'a
+            val for_all : (id -> bool) -> t -> bool
+            val exists : (id -> bool) -> t -> bool
+            val filter : (id -> bool) -> t -> t
+            val partition : (id -> bool) -> t -> t * t
+            val cardinal : t -> int
+            val elements : t -> id list
+            val min_elt : t -> id
+            val min_elt_opt : t -> id option
+            val max_elt : t -> id
+            val max_elt_opt : t -> id option
+            val choose : t -> id
+            val choose_opt : t -> id option
+            val split : id -> t -> t * bool * t
+            val find : id -> t -> id
+            val find_opt : id -> t -> id option
+            val find_first : (id -> bool) -> t -> id
+            val find_first_opt : (id -> bool) -> t -> id option
+            val find_last : (id -> bool) -> t -> id
+            val find_last_opt : (id -> bool) -> t -> id option
+            val of_list : id list -> t
+            val to_seq_from : id -> t -> id Seq.t
+            val to_seq : t -> id Seq.t
+            val add_seq : id Seq.t -> t -> t
+            val of_seq : id Seq.t -> t
+            val is_singleton_or_more : t -> id IContainer.singleton_or_more
+            val pp : Format.formatter -> t -> unit
+            val pp_element : Format.formatter -> id -> unit
+          end
+      end
+    val instrs : Node.t -> instrs_dir Instrs.t
+    val fold_succs : t -> (Node.t, Node.t, 'accum) Container.fold
+    val fold_preds : t -> (Node.t, Node.t, 'accum) Container.fold
+    val fold_normal_succs : t -> (Node.t, Node.t, 'accum) Container.fold
+    val fold_normal_preds : t -> (Node.t, Node.t, 'accum) Container.fold
+    val fold_exceptional_succs : t -> (Node.t, Node.t, 'accum) Container.fold
+    val fold_exceptional_preds : t -> (Node.t, Node.t, 'accum) Container.fold
+    val start_node : t -> Node.t
+    val exit_node : t -> Node.t
+    val proc_desc : t -> t
+    val fold_nodes : (t, Node.t, 'accum) Container.fold
+    val from_pdesc : t -> t
+    val is_loop_head : t -> Node.t -> bool
+    val wto : t -> Node.t WeakTopologicalOrder.Partition.t
+  end
+module Exceptional :
+  sig
+    type t = Normal.t * DefaultNode.t list Procdesc.IdMap.t
+    type instrs_dir = Normal.instrs_dir
+    module Node :
+      sig
+        type t = DefaultNode.t
+        type id = DefaultNode.id
+        val kind : t -> Procdesc.Node.nodekind
+        val id : t -> id
+        val hash : t -> int
+        val loc : t -> Location.t
+        val underlying_node : t -> t
+        val of_underlying_node : t -> t
+        val compare_id : id -> id -> int
+        val pp_id : Format.formatter -> id -> unit
+        module IdMap :
+          sig
+            type key = id
+            type 'a t = 'a DefaultNode.IdMap.t
+            val empty : 'a t
+            val is_empty : 'a t -> bool
+            val mem : key -> 'a t -> bool
+            val add : key -> 'a -> 'a t -> 'a t
+            val update : key -> ('a option -> 'a option) -> 'a t -> 'a t
+            val singleton : key -> 'a -> 'a t
+            val remove : key -> 'a t -> 'a t
+            val merge :
+              (key -> 'a option -> 'b option -> 'c option) ->
+              'a t -> 'b t -> 'c t
+            val union :
+              (key -> 'a -> 'a -> 'a option) -> 'a t -> 'a t -> 'a t
+            val compare : ('a -> 'a -> int) -> 'a t -> 'a t -> int
+            val equal : ('a -> 'a -> bool) -> 'a t -> 'a t -> bool
+            val iter : (key -> 'a -> unit) -> 'a t -> unit
+            val fold : (key -> 'a -> 'b -> 'b) -> 'a t -> 'b -> 'b
+            val for_all : (key -> 'a -> bool) -> 'a t -> bool
+            val exists : (key -> 'a -> bool) -> 'a t -> bool
+            val filter : (key -> 'a -> bool) -> 'a t -> 'a t
+            val partition : (key -> 'a -> bool) -> 'a t -> 'a t * 'a t
+            val cardinal : 'a t -> int
+            val bindings : 'a t -> (key * 'a) list
+            val min_binding : 'a t -> key * 'a
+            val min_binding_opt : 'a t -> (key * 'a) option
+            val max_binding : 'a t -> key * 'a
+            val max_binding_opt : 'a t -> (key * 'a) option
+            val choose : 'a t -> key * 'a
+            val choose_opt : 'a t -> (key * 'a) option
+            val split : key -> 'a t -> 'a t * 'a option * 'a t
+            val find : key -> 'a t -> 'a
+            val find_opt : key -> 'a t -> 'a option
+            val find_first : (key -> bool) -> 'a t -> key * 'a
+            val find_first_opt : (key -> bool) -> 'a t -> (key * 'a) option
+            val find_last : (key -> bool) -> 'a t -> key * 'a
+            val find_last_opt : (key -> bool) -> 'a t -> (key * 'a) option
+            val map : ('a -> 'b) -> 'a t -> 'b t
+            val mapi : (key -> 'a -> 'b) -> 'a t -> 'b t
+            val to_seq : 'a t -> (key * 'a) Seq.t
+            val to_seq_from : key -> 'a t -> (key * 'a) Seq.t
+            val add_seq : (key * 'a) Seq.t -> 'a t -> 'a t
+            val of_seq : (key * 'a) Seq.t -> 'a t
+            val fold_map :
+              'a t -> init:'b -> f:('b -> 'a -> 'b * 'c) -> 'b * 'c t
+            val is_singleton_or_more :
+              'a t -> (key * 'a) IContainer.singleton_or_more
+            val pp_key : Format.formatter -> key -> unit
+            val pp :
+              pp_value:(Format.formatter -> 'a -> unit) ->
+              Format.formatter -> 'a t -> unit
+          end
+        module IdSet :
+          sig
+            type elt = id
+            type t = DefaultNode.IdSet.t
+            val empty : t
+            val is_empty : t -> bool
+            val mem : id -> t -> bool
+            val add : id -> t -> t
+            val singleton : id -> t
+            val remove : id -> t -> t
+            val union : t -> t -> t
+            val inter : t -> t -> t
+            val disjoint : t -> t -> bool
+            val diff : t -> t -> t
+            val compare : t -> t -> int
+            val equal : t -> t -> bool
+            val subset : t -> t -> bool
+            val iter : (id -> unit) -> t -> unit
+            val map : (id -> id) -> t -> t
+            val fold : (id -> 'a -> 'a) -> t -> 'a -> 'a
+            val for_all : (id -> bool) -> t -> bool
+            val exists : (id -> bool) -> t -> bool
+            val filter : (id -> bool) -> t -> t
+            val partition : (id -> bool) -> t -> t * t
+            val cardinal : t -> int
+            val elements : t -> id list
+            val min_elt : t -> id
+            val min_elt_opt : t -> id option
+            val max_elt : t -> id
+            val max_elt_opt : t -> id option
+            val choose : t -> id
+            val choose_opt : t -> id option
+            val split : id -> t -> t * bool * t
+            val find : id -> t -> id
+            val find_opt : id -> t -> id option
+            val find_first : (id -> bool) -> t -> id
+            val find_first_opt : (id -> bool) -> t -> id option
+            val find_last : (id -> bool) -> t -> id
+            val find_last_opt : (id -> bool) -> t -> id option
+            val of_list : id list -> t
+            val to_seq_from : id -> t -> id Seq.t
+            val to_seq : t -> id Seq.t
+            val add_seq : id Seq.t -> t -> t
+            val of_seq : id Seq.t -> t
+            val is_singleton_or_more : t -> id IContainer.singleton_or_more
+            val pp : Format.formatter -> t -> unit
+            val pp_element : Format.formatter -> id -> unit
+          end
+      end
+    val instrs : Node.t -> instrs_dir Instrs.t
+    val fold_succs : t -> (Node.t, Node.t, 'accum) Container.fold
+    val fold_preds : t -> (Node.t, Node.t, 'accum) Container.fold
+    val fold_normal_succs : t -> (Node.t, Node.t, 'accum) Container.fold
+    val fold_normal_preds : t -> (Node.t, Node.t, 'accum) Container.fold
+    val fold_exceptional_succs : t -> (Node.t, Node.t, 'accum) Container.fold
+    val fold_exceptional_preds : t -> (Node.t, Node.t, 'accum) Container.fold
+    val start_node : t -> Node.t
+    val exit_node : t -> Node.t
+    val proc_desc : t -> Normal.t
+    val fold_nodes : (t, Node.t, 'accum) Container.fold
+    val from_pdesc : Normal.t -> t
+    val is_loop_head : Normal.t -> Node.t -> bool
+    val wto : t -> Node.t WeakTopologicalOrder.Partition.t
+  end
+module Backward :
+  functor
+    (Base : sig
+              type t
+              type instrs_dir = Exceptional.instrs_dir
+              module Node : Node
+              val instrs : Node.t -> instrs_dir Instrs.t
+              val fold_succs : t -> (Node.t, Node.t, 'accum) Container.fold
+              val fold_preds : t -> (Node.t, Node.t, 'accum) Container.fold
+              val fold_normal_succs :
+                t -> (Node.t, Node.t, 'accum) Container.fold
+              val fold_normal_preds :
+                t -> (Node.t, Node.t, 'accum) Container.fold
+              val fold_exceptional_succs :
+                t -> (Node.t, Node.t, 'accum) Container.fold
+              val fold_exceptional_preds :
+                t -> (Node.t, Node.t, 'accum) Container.fold
+              val start_node : t -> Node.t
+              val exit_node : t -> Node.t
+              val proc_desc : t -> Normal.t
+              val fold_nodes : (t, Node.t, 'accum) Container.fold
+              val from_pdesc : Normal.t -> t
+              val is_loop_head : Normal.t -> Node.t -> bool
+              val wto : t -> Node.t WeakTopologicalOrder.Partition.t
+            end) ->
+    sig
+      type t = Base.t
+      type instrs_dir = Instrs.reversed
+      module Node :
+        sig
+          type t = Base.Node.t
+          type id = Base.Node.id
+          val kind : t -> Procdesc.Node.nodekind
+          val id : t -> id
+          val hash : t -> int
+          val loc : t -> Location.t
+          val underlying_node : t -> DefaultNode.t
+          val of_underlying_node : DefaultNode.t -> t
+          val compare_id : id -> id -> int
+          val pp_id : Format.formatter -> id -> unit
+          module IdMap :
+            sig
+              type key = id
+              type 'a t = 'a Base.Node.IdMap.t
+              val empty : 'a t
+              val is_empty : 'a t -> bool
+              val mem : key -> 'a t -> bool
+              val add : key -> 'a -> 'a t -> 'a t
+              val update : key -> ('a option -> 'a option) -> 'a t -> 'a t
+              val singleton : key -> 'a -> 'a t
+              val remove : key -> 'a t -> 'a t
+              val merge :
+                (key -> 'a option -> 'b option -> 'c option) ->
+                'a t -> 'b t -> 'c t
+              val union :
+                (key -> 'a -> 'a -> 'a option) -> 'a t -> 'a t -> 'a t
+              val compare : ('a -> 'a -> int) -> 'a t -> 'a t -> int
+              val equal : ('a -> 'a -> bool) -> 'a t -> 'a t -> bool
+              val iter : (key -> 'a -> unit) -> 'a t -> unit
+              val fold : (key -> 'a -> 'b -> 'b) -> 'a t -> 'b -> 'b
+              val for_all : (key -> 'a -> bool) -> 'a t -> bool
+              val exists : (key -> 'a -> bool) -> 'a t -> bool
+              val filter : (key -> 'a -> bool) -> 'a t -> 'a t
+              val partition : (key -> 'a -> bool) -> 'a t -> 'a t * 'a t
+              val cardinal : 'a t -> int
+              val bindings : 'a t -> (key * 'a) list
+              val min_binding : 'a t -> key * 'a
+              val min_binding_opt : 'a t -> (key * 'a) option
+              val max_binding : 'a t -> key * 'a
+              val max_binding_opt : 'a t -> (key * 'a) option
+              val choose : 'a t -> key * 'a
+              val choose_opt : 'a t -> (key * 'a) option
+              val split : key -> 'a t -> 'a t * 'a option * 'a t
+              val find : key -> 'a t -> 'a
+              val find_opt : key -> 'a t -> 'a option
+              val find_first : (key -> bool) -> 'a t -> key * 'a
+              val find_first_opt : (key -> bool) -> 'a t -> (key * 'a) option
+              val find_last : (key -> bool) -> 'a t -> key * 'a
+              val find_last_opt : (key -> bool) -> 'a t -> (key * 'a) option
+              val map : ('a -> 'b) -> 'a t -> 'b t
+              val mapi : (key -> 'a -> 'b) -> 'a t -> 'b t
+              val to_seq : 'a t -> (key * 'a) Seq.t
+              val to_seq_from : key -> 'a t -> (key * 'a) Seq.t
+              val add_seq : (key * 'a) Seq.t -> 'a t -> 'a t
+              val of_seq : (key * 'a) Seq.t -> 'a t
+              val fold_map :
+                'a t -> init:'b -> f:('b -> 'a -> 'b * 'c) -> 'b * 'c t
+              val is_singleton_or_more :
+                'a t -> (key * 'a) IContainer.singleton_or_more
+              val pp_key : Format.formatter -> key -> unit
+              val pp :
+                pp_value:(Format.formatter -> 'a -> unit) ->
+                Format.formatter -> 'a t -> unit
+            end
+          module IdSet :
+            sig
+              type elt = id
+              type t = Base.Node.IdSet.t
+              val empty : t
+              val is_empty : t -> bool
+              val mem : id -> t -> bool
+              val add : id -> t -> t
+              val singleton : id -> t
+              val remove : id -> t -> t
+              val union : t -> t -> t
+              val inter : t -> t -> t
+              val disjoint : t -> t -> bool
+              val diff : t -> t -> t
+              val compare : t -> t -> int
+              val equal : t -> t -> bool
+              val subset : t -> t -> bool
+              val iter : (id -> unit) -> t -> unit
+              val map : (id -> id) -> t -> t
+              val fold : (id -> 'a -> 'a) -> t -> 'a -> 'a
+              val for_all : (id -> bool) -> t -> bool
+              val exists : (id -> bool) -> t -> bool
+              val filter : (id -> bool) -> t -> t
+              val partition : (id -> bool) -> t -> t * t
+              val cardinal : t -> int
+              val elements : t -> id list
+              val min_elt : t -> id
+              val min_elt_opt : t -> id option
+              val max_elt : t -> id
+              val max_elt_opt : t -> id option
+              val choose : t -> id
+              val choose_opt : t -> id option
+              val split : id -> t -> t * bool * t
+              val find : id -> t -> id
+              val find_opt : id -> t -> id option
+              val find_first : (id -> bool) -> t -> id
+              val find_first_opt : (id -> bool) -> t -> id option
+              val find_last : (id -> bool) -> t -> id
+              val find_last_opt : (id -> bool) -> t -> id option
+              val of_list : id list -> t
+              val to_seq_from : id -> t -> id Seq.t
+              val to_seq : t -> id Seq.t
+              val add_seq : id Seq.t -> t -> t
+              val of_seq : id Seq.t -> t
+              val is_singleton_or_more : t -> id IContainer.singleton_or_more
+              val pp : Format.formatter -> t -> unit
+              val pp_element : Format.formatter -> id -> unit
+            end
+        end
+      val instrs : Node.t -> instrs_dir Instrs.t
+      val fold_succs : t -> (Node.t, Node.t, 'accum) Container.fold
+      val fold_preds : t -> (Node.t, Node.t, 'accum) Container.fold
+      val fold_normal_succs : t -> (Node.t, Node.t, 'accum) Container.fold
+      val fold_normal_preds : t -> (Node.t, Node.t, 'accum) Container.fold
+      val fold_exceptional_succs :
+        t -> (Node.t, Node.t, 'accum) Container.fold
+      val fold_exceptional_preds :
+        t -> (Node.t, Node.t, 'accum) Container.fold
+      val start_node : t -> Node.t
+      val exit_node : t -> Node.t
+      val proc_desc : t -> Normal.t
+      val fold_nodes : (t, Node.t, 'accum) Container.fold
+      val from_pdesc : Normal.t -> t
+      val is_loop_head : Normal.t -> Node.t -> bool
+      val wto : t -> Node.t WeakTopologicalOrder.Partition.t
+    end
+module OneInstrPerNode :
+  functor
+    (Base : sig
+              type t
+              type instrs_dir
+              module Node :
+                sig
+                  type t = DefaultNode.t
+                  type id = DefaultNode.id
+                  val kind : t -> Procdesc.Node.nodekind
+                  val id : t -> id
+                  val hash : t -> int
+                  val loc : t -> Location.t
+                  val underlying_node : t -> t
+                  val of_underlying_node : t -> t
+                  val compare_id : id -> id -> int
+                  val pp_id : Format.formatter -> id -> unit
+                  module IdMap :
+                    sig
+                      type key = id
+                      type 'a t = 'a DefaultNode.IdMap.t
+                      val empty : 'a t
+                      val is_empty : 'a t -> bool
+                      val mem : key -> 'a t -> bool
+                      val add : key -> 'a -> 'a t -> 'a t
+                      val update :
+                        key -> ('a option -> 'a option) -> 'a t -> 'a t
+                      val singleton : key -> 'a -> 'a t
+                      val remove : key -> 'a t -> 'a t
+                      val merge :
+                        (key -> 'a option -> 'b option -> 'c option) ->
+                        'a t -> 'b t -> 'c t
+                      val union :
+                        (key -> 'a -> 'a -> 'a option) ->
+                        'a t -> 'a t -> 'a t
+                      val compare : ('a -> 'a -> int) -> 'a t -> 'a t -> int
+                      val equal : ('a -> 'a -> bool) -> 'a t -> 'a t -> bool
+                      val iter : (key -> 'a -> unit) -> 'a t -> unit
+                      val fold : (key -> 'a -> 'b -> 'b) -> 'a t -> 'b -> 'b
+                      val for_all : (key -> 'a -> bool) -> 'a t -> bool
+                      val exists : (key -> 'a -> bool) -> 'a t -> bool
+                      val filter : (key -> 'a -> bool) -> 'a t -> 'a t
+                      val partition :
+                        (key -> 'a -> bool) -> 'a t -> 'a t * 'a t
+                      val cardinal : 'a t -> int
+                      val bindings : 'a t -> (key * 'a) list
+                      val min_binding : 'a t -> key * 'a
+                      val min_binding_opt : 'a t -> (key * 'a) option
+                      val max_binding : 'a t -> key * 'a
+                      val max_binding_opt : 'a t -> (key * 'a) option
+                      val choose : 'a t -> key * 'a
+                      val choose_opt : 'a t -> (key * 'a) option
+                      val split : key -> 'a t -> 'a t * 'a option * 'a t
+                      val find : key -> 'a t -> 'a
+                      val find_opt : key -> 'a t -> 'a option
+                      val find_first : (key -> bool) -> 'a t -> key * 'a
+                      val find_first_opt :
+                        (key -> bool) -> 'a t -> (key * 'a) option
+                      val find_last : (key -> bool) -> 'a t -> key * 'a
+                      val find_last_opt :
+                        (key -> bool) -> 'a t -> (key * 'a) option
+                      val map : ('a -> 'b) -> 'a t -> 'b t
+                      val mapi : (key -> 'a -> 'b) -> 'a t -> 'b t
+                      val to_seq : 'a t -> (key * 'a) Seq.t
+                      val to_seq_from : key -> 'a t -> (key * 'a) Seq.t
+                      val add_seq : (key * 'a) Seq.t -> 'a t -> 'a t
+                      val of_seq : (key * 'a) Seq.t -> 'a t
+                      val fold_map :
+                        'a t ->
+                        init:'b -> f:('b -> 'a -> 'b * 'c) -> 'b * 'c t
+                      val is_singleton_or_more :
+                        'a t -> (key * 'a) IContainer.singleton_or_more
+                      val pp_key : Format.formatter -> key -> unit
+                      val pp :
+                        pp_value:(Format.formatter -> 'a -> unit) ->
+                        Format.formatter -> 'a t -> unit
+                    end
+                  module IdSet :
+                    sig
+                      type elt = id
+                      type t = DefaultNode.IdSet.t
+                      val empty : t
+                      val is_empty : t -> bool
+                      val mem : id -> t -> bool
+                      val add : id -> t -> t
+                      val singleton : id -> t
+                      val remove : id -> t -> t
+                      val union : t -> t -> t
+                      val inter : t -> t -> t
+                      val disjoint : t -> t -> bool
+                      val diff : t -> t -> t
+                      val compare : t -> t -> int
+                      val equal : t -> t -> bool
+                      val subset : t -> t -> bool
+                      val iter : (id -> unit) -> t -> unit
+                      val map : (id -> id) -> t -> t
+                      val fold : (id -> 'a -> 'a) -> t -> 'a -> 'a
+                      val for_all : (id -> bool) -> t -> bool
+                      val exists : (id -> bool) -> t -> bool
+                      val filter : (id -> bool) -> t -> t
+                      val partition : (id -> bool) -> t -> t * t
+                      val cardinal : t -> int
+                      val elements : t -> id list
+                      val min_elt : t -> id
+                      val min_elt_opt : t -> id option
+                      val max_elt : t -> id
+                      val max_elt_opt : t -> id option
+                      val choose : t -> id
+                      val choose_opt : t -> id option
+                      val split : id -> t -> t * bool * t
+                      val find : id -> t -> id
+                      val find_opt : id -> t -> id option
+                      val find_first : (id -> bool) -> t -> id
+                      val find_first_opt : (id -> bool) -> t -> id option
+                      val find_last : (id -> bool) -> t -> id
+                      val find_last_opt : (id -> bool) -> t -> id option
+                      val of_list : id list -> t
+                      val to_seq_from : id -> t -> id Seq.t
+                      val to_seq : t -> id Seq.t
+                      val add_seq : id Seq.t -> t -> t
+                      val of_seq : id Seq.t -> t
+                      val is_singleton_or_more :
+                        t -> id IContainer.singleton_or_more
+                      val pp : Format.formatter -> t -> unit
+                      val pp_element : Format.formatter -> id -> unit
+                    end
+                end
+              val instrs : Node.t -> instrs_dir Instrs.t
+              val fold_succs : t -> (Node.t, Node.t, 'accum) Container.fold
+              val fold_preds : t -> (Node.t, Node.t, 'accum) Container.fold
+              val fold_normal_succs :
+                t -> (Node.t, Node.t, 'accum) Container.fold
+              val fold_normal_preds :
+                t -> (Node.t, Node.t, 'accum) Container.fold
+              val fold_exceptional_succs :
+                t -> (Node.t, Node.t, 'accum) Container.fold
+              val fold_exceptional_preds :
+                t -> (Node.t, Node.t, 'accum) Container.fold
+              val start_node : t -> Node.t
+              val exit_node : t -> Node.t
+              val proc_desc : t -> Normal.t
+              val fold_nodes : (t, Node.t, 'accum) Container.fold
+              val from_pdesc : Normal.t -> t
+              val is_loop_head : Normal.t -> Node.t -> bool
+              val wto : t -> Node.t WeakTopologicalOrder.Partition.t
+            end) ->
+    sig
+      type t = Base.t
+      type instrs_dir = Exceptional.instrs_dir
+      module Node :
+        sig
+          type instr_index = InstrNode.instr_index
+          type t = DefaultNode.t * instr_index
+          type id = DefaultNode.id * instr_index
+          val kind : t -> Procdesc.Node.nodekind
+          val id : t -> id
+          val hash : t -> int
+          val loc : t -> Location.t
+          val underlying_node : t -> DefaultNode.t
+          val of_underlying_node : DefaultNode.t -> t
+          val compare_id : id -> id -> int
+          val pp_id : Format.formatter -> id -> unit
+          module IdMap :
+            sig
+              type key = id
+              type 'a t = 'a InstrNode.IdMap.t
+              val empty : 'a t
+              val is_empty : 'a t -> bool
+              val mem : key -> 'a t -> bool
+              val add : key -> 'a -> 'a t -> 'a t
+              val update : key -> ('a option -> 'a option) -> 'a t -> 'a t
+              val singleton : key -> 'a -> 'a t
+              val remove : key -> 'a t -> 'a t
+              val merge :
+                (key -> 'a option -> 'b option -> 'c option) ->
+                'a t -> 'b t -> 'c t
+              val union :
+                (key -> 'a -> 'a -> 'a option) -> 'a t -> 'a t -> 'a t
+              val compare : ('a -> 'a -> int) -> 'a t -> 'a t -> int
+              val equal : ('a -> 'a -> bool) -> 'a t -> 'a t -> bool
+              val iter : (key -> 'a -> unit) -> 'a t -> unit
+              val fold : (key -> 'a -> 'b -> 'b) -> 'a t -> 'b -> 'b
+              val for_all : (key -> 'a -> bool) -> 'a t -> bool
+              val exists : (key -> 'a -> bool) -> 'a t -> bool
+              val filter : (key -> 'a -> bool) -> 'a t -> 'a t
+              val partition : (key -> 'a -> bool) -> 'a t -> 'a t * 'a t
+              val cardinal : 'a t -> int
+              val bindings : 'a t -> (key * 'a) list
+              val min_binding : 'a t -> key * 'a
+              val min_binding_opt : 'a t -> (key * 'a) option
+              val max_binding : 'a t -> key * 'a
+              val max_binding_opt : 'a t -> (key * 'a) option
+              val choose : 'a t -> key * 'a
+              val choose_opt : 'a t -> (key * 'a) option
+              val split : key -> 'a t -> 'a t * 'a option * 'a t
+              val find : key -> 'a t -> 'a
+              val find_opt : key -> 'a t -> 'a option
+              val find_first : (key -> bool) -> 'a t -> key * 'a
+              val find_first_opt : (key -> bool) -> 'a t -> (key * 'a) option
+              val find_last : (key -> bool) -> 'a t -> key * 'a
+              val find_last_opt : (key -> bool) -> 'a t -> (key * 'a) option
+              val map : ('a -> 'b) -> 'a t -> 'b t
+              val mapi : (key -> 'a -> 'b) -> 'a t -> 'b t
+              val to_seq : 'a t -> (key * 'a) Seq.t
+              val to_seq_from : key -> 'a t -> (key * 'a) Seq.t
+              val add_seq : (key * 'a) Seq.t -> 'a t -> 'a t
+              val of_seq : (key * 'a) Seq.t -> 'a t
+              val fold_map :
+                'a t -> init:'b -> f:('b -> 'a -> 'b * 'c) -> 'b * 'c t
+              val is_singleton_or_more :
+                'a t -> (key * 'a) IContainer.singleton_or_more
+              val pp_key : Format.formatter -> key -> unit
+              val pp :
+                pp_value:(Format.formatter -> 'a -> unit) ->
+                Format.formatter -> 'a t -> unit
+            end
+          module IdSet :
+            sig
+              type elt = id
+              type t = InstrNode.IdSet.t
+              val empty : t
+              val is_empty : t -> bool
+              val mem : id -> t -> bool
+              val add : id -> t -> t
+              val singleton : id -> t
+              val remove : id -> t -> t
+              val union : t -> t -> t
+              val inter : t -> t -> t
+              val disjoint : t -> t -> bool
+              val diff : t -> t -> t
+              val compare : t -> t -> int
+              val equal : t -> t -> bool
+              val subset : t -> t -> bool
+              val iter : (id -> unit) -> t -> unit
+              val map : (id -> id) -> t -> t
+              val fold : (id -> 'a -> 'a) -> t -> 'a -> 'a
+              val for_all : (id -> bool) -> t -> bool
+              val exists : (id -> bool) -> t -> bool
+              val filter : (id -> bool) -> t -> t
+              val partition : (id -> bool) -> t -> t * t
+              val cardinal : t -> int
+              val elements : t -> id list
+              val min_elt : t -> id
+              val min_elt_opt : t -> id option
+              val max_elt : t -> id
+              val max_elt_opt : t -> id option
+              val choose : t -> id
+              val choose_opt : t -> id option
+              val split : id -> t -> t * bool * t
+              val find : id -> t -> id
+              val find_opt : id -> t -> id option
+              val find_first : (id -> bool) -> t -> id
+              val find_first_opt : (id -> bool) -> t -> id option
+              val find_last : (id -> bool) -> t -> id
+              val find_last_opt : (id -> bool) -> t -> id option
+              val of_list : id list -> t
+              val to_seq_from : id -> t -> id Seq.t
+              val to_seq : t -> id Seq.t
+              val add_seq : id Seq.t -> t -> t
+              val of_seq : id Seq.t -> t
+              val is_singleton_or_more : t -> id IContainer.singleton_or_more
+              val pp : Format.formatter -> t -> unit
+              val pp_element : Format.formatter -> id -> unit
+            end
+        end
+      val instrs : Node.t -> instrs_dir Instrs.t
+      val fold_succs : t -> (Node.t, Node.t, 'accum) Container.fold
+      val fold_preds : t -> (Node.t, Node.t, 'accum) Container.fold
+      val fold_normal_succs : t -> (Node.t, Node.t, 'accum) Container.fold
+      val fold_normal_preds : t -> (Node.t, Node.t, 'accum) Container.fold
+      val fold_exceptional_succs :
+        t -> (Node.t, Node.t, 'accum) Container.fold
+      val fold_exceptional_preds :
+        t -> (Node.t, Node.t, 'accum) Container.fold
+      val start_node : t -> Node.t
+      val exit_node : t -> Node.t
+      val proc_desc : t -> Normal.t
+      val fold_nodes : (t, Node.t, 'accum) Container.fold
+      val from_pdesc : Normal.t -> t
+      val is_loop_head : Normal.t -> Node.t -> bool
+      val wto : t -> Node.t WeakTopologicalOrder.Partition.t
+      val last_of_underlying_node : DefaultNode.t -> Node.t
+    end
+module NormalOneInstrPerNode :
+  sig
+    type t = Normal.t
+    type instrs_dir = Exceptional.instrs_dir
+    module Node :
+      sig
+        type instr_index = InstrNode.instr_index
+        type t = DefaultNode.t * instr_index
+        type id = DefaultNode.id * instr_index
+        val kind : t -> Procdesc.Node.nodekind
+        val id : t -> id
+        val hash : t -> int
+        val loc : t -> Location.t
+        val underlying_node : t -> DefaultNode.t
+        val of_underlying_node : DefaultNode.t -> t
+        val compare_id : id -> id -> int
+        val pp_id : Format.formatter -> id -> unit
+        module IdMap :
+          sig
+            type key = id
+            type 'a t = 'a InstrNode.IdMap.t
+            val empty : 'a t
+            val is_empty : 'a t -> bool
+            val mem : key -> 'a t -> bool
+            val add : key -> 'a -> 'a t -> 'a t
+            val update : key -> ('a option -> 'a option) -> 'a t -> 'a t
+            val singleton : key -> 'a -> 'a t
+            val remove : key -> 'a t -> 'a t
+            val merge :
+              (key -> 'a option -> 'b option -> 'c option) ->
+              'a t -> 'b t -> 'c t
+            val union :
+              (key -> 'a -> 'a -> 'a option) -> 'a t -> 'a t -> 'a t
+            val compare : ('a -> 'a -> int) -> 'a t -> 'a t -> int
+            val equal : ('a -> 'a -> bool) -> 'a t -> 'a t -> bool
+            val iter : (key -> 'a -> unit) -> 'a t -> unit
+            val fold : (key -> 'a -> 'b -> 'b) -> 'a t -> 'b -> 'b
+            val for_all : (key -> 'a -> bool) -> 'a t -> bool
+            val exists : (key -> 'a -> bool) -> 'a t -> bool
+            val filter : (key -> 'a -> bool) -> 'a t -> 'a t
+            val partition : (key -> 'a -> bool) -> 'a t -> 'a t * 'a t
+            val cardinal : 'a t -> int
+            val bindings : 'a t -> (key * 'a) list
+            val min_binding : 'a t -> key * 'a
+            val min_binding_opt : 'a t -> (key * 'a) option
+            val max_binding : 'a t -> key * 'a
+            val max_binding_opt : 'a t -> (key * 'a) option
+            val choose : 'a t -> key * 'a
+            val choose_opt : 'a t -> (key * 'a) option
+            val split : key -> 'a t -> 'a t * 'a option * 'a t
+            val find : key -> 'a t -> 'a
+            val find_opt : key -> 'a t -> 'a option
+            val find_first : (key -> bool) -> 'a t -> key * 'a
+            val find_first_opt : (key -> bool) -> 'a t -> (key * 'a) option
+            val find_last : (key -> bool) -> 'a t -> key * 'a
+            val find_last_opt : (key -> bool) -> 'a t -> (key * 'a) option
+            val map : ('a -> 'b) -> 'a t -> 'b t
+            val mapi : (key -> 'a -> 'b) -> 'a t -> 'b t
+            val to_seq : 'a t -> (key * 'a) Seq.t
+            val to_seq_from : key -> 'a t -> (key * 'a) Seq.t
+            val add_seq : (key * 'a) Seq.t -> 'a t -> 'a t
+            val of_seq : (key * 'a) Seq.t -> 'a t
+            val fold_map :
+              'a t -> init:'b -> f:('b -> 'a -> 'b * 'c) -> 'b * 'c t
+            val is_singleton_or_more :
+              'a t -> (key * 'a) IContainer.singleton_or_more
+            val pp_key : Format.formatter -> key -> unit
+            val pp :
+              pp_value:(Format.formatter -> 'a -> unit) ->
+              Format.formatter -> 'a t -> unit
+          end
+        module IdSet :
+          sig
+            type elt = id
+            type t = InstrNode.IdSet.t
+            val empty : t
+            val is_empty : t -> bool
+            val mem : id -> t -> bool
+            val add : id -> t -> t
+            val singleton : id -> t
+            val remove : id -> t -> t
+            val union : t -> t -> t
+            val inter : t -> t -> t
+            val disjoint : t -> t -> bool
+            val diff : t -> t -> t
+            val compare : t -> t -> int
+            val equal : t -> t -> bool
+            val subset : t -> t -> bool
+            val iter : (id -> unit) -> t -> unit
+            val map : (id -> id) -> t -> t
+            val fold : (id -> 'a -> 'a) -> t -> 'a -> 'a
+            val for_all : (id -> bool) -> t -> bool
+            val exists : (id -> bool) -> t -> bool
+            val filter : (id -> bool) -> t -> t
+            val partition : (id -> bool) -> t -> t * t
+            val cardinal : t -> int
+            val elements : t -> id list
+            val min_elt : t -> id
+            val min_elt_opt : t -> id option
+            val max_elt : t -> id
+            val max_elt_opt : t -> id option
+            val choose : t -> id
+            val choose_opt : t -> id option
+            val split : id -> t -> t * bool * t
+            val find : id -> t -> id
+            val find_opt : id -> t -> id option
+            val find_first : (id -> bool) -> t -> id
+            val find_first_opt : (id -> bool) -> t -> id option
+            val find_last : (id -> bool) -> t -> id
+            val find_last_opt : (id -> bool) -> t -> id option
+            val of_list : id list -> t
+            val to_seq_from : id -> t -> id Seq.t
+            val to_seq : t -> id Seq.t
+            val add_seq : id Seq.t -> t -> t
+            val of_seq : id Seq.t -> t
+            val is_singleton_or_more : t -> id IContainer.singleton_or_more
+            val pp : Format.formatter -> t -> unit
+            val pp_element : Format.formatter -> id -> unit
+          end
+      end
+    val instrs : Node.t -> instrs_dir Instrs.t
+    val fold_succs : t -> (Node.t, Node.t, 'accum) Container.fold
+    val fold_preds : t -> (Node.t, Node.t, 'accum) Container.fold
+    val fold_normal_succs : t -> (Node.t, Node.t, 'accum) Container.fold
+    val fold_normal_preds : t -> (Node.t, Node.t, 'accum) Container.fold
+    val fold_exceptional_succs : t -> (Node.t, Node.t, 'accum) Container.fold
+    val fold_exceptional_preds : t -> (Node.t, Node.t, 'accum) Container.fold
+    val start_node : t -> Node.t
+    val exit_node : t -> Node.t
+    val proc_desc : t -> t
+    val fold_nodes : (t, Node.t, 'accum) Container.fold
+    val from_pdesc : t -> t
+    val is_loop_head : t -> Node.t -> bool
+    val wto : t -> Node.t WeakTopologicalOrder.Partition.t
+    val last_of_underlying_node : DefaultNode.t -> Node.t
+  end
+module MakeOcamlGraph :
+  functor (Base : S) ->
+    sig
+      type t = Base.t
+      module V :
+        sig
+          type t = Base.Node.t
+          val equal : t -> t -> bool
+          val compare : t -> t -> int
+          val hash : t -> int
+        end
+      val pred : t -> V.t -> V.t list
+      val succ : t -> V.t -> V.t list
+      val fold_vertex : (V.t -> 'a -> 'a) -> t -> 'a -> 'a
+      val iter_vertex : (V.t -> unit) -> t -> unit
+      val iter_succ : (V.t -> unit) -> t -> V.t -> unit
+      val nb_vertex : t -> int
+    end
+Error: Rule failed to generate the following targets:
+- .InferModules.objs/byte/inferModules__ProcCfg.cmi
+- .InferModules.objs/byte/inferModules__ProcCfg.cmti
+      ocamlc .InferModules.objs/byte/inferModules__Idenv.{cmi,cmti}
+type t
+val create : Procdesc.t -> t
+val expand_expr : t -> Exp.t -> Exp.t
+val exp_is_temp : t -> Exp.t -> bool
+val expand_expr_temps : t -> Procdesc.NodeSet.elt -> Exp.t -> Exp.t
+Error: Rule failed to generate the following targets:
+- .InferModules.objs/byte/inferModules__Idenv.cmi
+- .InferModules.objs/byte/inferModules__Idenv.cmti
+      ocamlc .InferModules.objs/byte/inferModules__ConcurrencyModels.{cmi,cmti}
+type lock_effect =
+    Lock of HilExp.t list
+  | Unlock of HilExp.t list
+  | LockedIfTrue of HilExp.t list
+  | GuardConstruct of { guard : HilExp.t; lock : HilExp.t;
+      acquire_now : bool;
+    }
+  | GuardLock of HilExp.t
+  | GuardLockedIfTrue of HilExp.t
+  | GuardUnlock of HilExp.t
+  | GuardDestroy of HilExp.t
+  | NoEffect
+type thread =
+    BackgroundThread
+  | MainThread
+  | MainThreadIfTrue
+  | UnknownThread
+val is_thread_utils_method : string -> Procname.t -> bool
+val get_lock_effect : Procname.t -> HilExp.t list -> lock_effect
+val get_thread_assert_effect : Procname.t -> thread
+val get_current_class_and_annotated_superclasses :
+  (Annot.Item.t -> bool) ->
+  Tenv.t -> Procname.t -> (Typ.name * Typ.name list) option
+val is_recursive_lock_type : Typ.name -> bool
+type annotation_trail =
+    DirectlyAnnotated
+  | Override of Procname.t
+  | SuperClass of Typ.name
+val compare_annotation_trail : annotation_trail -> annotation_trail -> int
+val find_override_or_superclass_annotated :
+  attrs_of_pname:(Procname.t -> ProcAttributes.t option) ->
+  (Annot.Item.t -> bool) -> Tenv.t -> Procname.t -> annotation_trail option
+val annotated_as_worker_thread :
+  attrs_of_pname:(Procname.t -> ProcAttributes.t option) ->
+  Tenv.t -> Procname.t -> bool
+val runs_on_ui_thread :
+  attrs_of_pname:(Procname.t -> ProcAttributes.t option) ->
+  Tenv.t -> Procname.t -> bool
+val is_modeled_ui_method : Tenv.t -> Procname.t -> bool
+Error: Rule failed to generate the following targets:
+- .InferModules.objs/byte/inferModules__ConcurrencyModels.cmi
+- .InferModules.objs/byte/inferModules__ConcurrencyModels.cmti
+      ocamlc .InferModules.objs/byte/inferModules__Javac.{cmi,cmti}
+type compiler = Java | Javac
+val compare_compiler : compiler -> compiler -> int
+val capture : compiler -> prog:string -> args:string list -> unit
+Error: Rule failed to generate the following targets:
+- .InferModules.objs/byte/inferModules__Javac.cmi
+- .InferModules.objs/byte/inferModules__Javac.cmti
+      ocamlc .InferModules.objs/byte/inferModules__Differential.{cmi,cmti}
+type t = {
+  introduced : Jsonbug_t.report;
+  fixed : Jsonbug_t.report;
+  preexisting : Jsonbug_t.report;
+  costs_summary : Yojson.Basic.t;
+}
+val of_reports :
+  current_report:Jsonbug_t.report ->
+  previous_report:Jsonbug_t.report ->
+  current_costs:Jsonbug_t.costs_report ->
+  previous_costs:Jsonbug_t.costs_report -> t
+val to_files : t -> string -> unit
+Error: Rule failed to generate the following targets:
+- .InferModules.objs/byte/inferModules__Differential.cmi
+- .InferModules.objs/byte/inferModules__Differential.cmti
+      ocamlc .InferModules.objs/byte/inferModules__DifferentialTestsUtils.{cmi,cmo,cmt}
+val create_fake_jsonbug :
+  ?bug_type:string ->
+  ?qualifier:string ->
+  ?severity:string ->
+  ?line:int ->
+  ?column:int ->
+  ?procedure:string ->
+  ?procedure_start_line:int ->
+  ?file:string ->
+  ?bug_trace:Jsonbug_t.json_trace_item list ->
+  ?key:string ->
+  ?node_key:string option ->
+  ?hash:string ->
+  ?dotty:string option ->
+  ?infer_source_loc:Jsonbug_t.loc option ->
+  ?linters_def_file:string option ->
+  ?doc_url:string -> unit -> Jsonbug_t.jsonbug
+val pp_diff_of_list :
+  pp:(Format.formatter -> 'a -> unit) ->
+  string -> Format.formatter -> 'a list * 'a list -> unit
+val pp_diff_of_string_list :
+  string -> Format.formatter -> string list * string list -> unit
+val pp_diff_of_int_list :
+  string -> Format.formatter -> int list * int list -> unit
+val sorted_hashes_of_issues : Jsonbug_t.report -> string list
+Error: Rule failed to generate the following targets:
+- .InferModules.objs/byte/inferModules__DifferentialTestsUtils.cmi
+- .InferModules.objs/byte/inferModules__DifferentialTestsUtils.cmo
+- .InferModules.objs/byte/inferModules__DifferentialTestsUtils.cmt
+      ocamlc .InferModules.objs/byte/inferModules__Dataflow.{cmi,cmti}
+type throws = DontKnow | Throws | DoesNotThrow
+module type DFStateType =
+  sig
+    type t
+    val equal : t -> t -> bool
+    val join : t -> t -> t
+    val do_node : Tenv.t -> Procdesc.NodeSet.elt -> t -> t list * t list
+    val proc_throws : Procname.t -> throws
+  end
+module type DF =
+  sig
+    type t
+    type state
+    type transition =
+        Dead_state
+      | Transition of state * state list * state list
+    val join : state list -> state -> state
+    val run :
+      Tenv.t -> Procdesc.t -> state -> Procdesc.NodeSet.elt -> transition
+  end
+module MakeDF :
+  functor (St : DFStateType) ->
+    sig
+      type t
+      type state = St.t
+      type transition =
+          Dead_state
+        | Transition of state * state list * state list
+      val join : state list -> state -> state
+      val run :
+        Tenv.t -> Procdesc.t -> state -> Procdesc.NodeSet.elt -> transition
+    end
+Error: Rule failed to generate the following targets:
+- .InferModules.objs/byte/inferModules__Dataflow.cmi
+- .InferModules.objs/byte/inferModules__Dataflow.cmti
+      ocamlc .InferModules.objs/byte/inferModules__EradicateCheckers.{cmi,cmti}
+val report_error :
+  Tenv.t ->
+  Procname.t ->
+  Procdesc.t ->
+  IssueType.t ->
+  Location.t ->
+  ?field_name:Fieldname.t option ->
+  ?exception_kind:(IssueType.t -> Localise.error_desc -> exn) ->
+  ?severity:Exceptions.severity -> string -> unit
+Error: Rule failed to generate the following targets:
+- .InferModules.objs/byte/inferModules__EradicateCheckers.cmi
+- .InferModules.objs/byte/inferModules__EradicateCheckers.cmti
+      ocamlc .InferModules.objs/byte/inferModules__Printer.{cmi,cmti}
+module LineReader :
+  sig
+    type t
+    val create : unit -> t
+    val from_loc : t -> Location.t -> string option
+  end
+val curr_html_formatter : Format.formatter ref
+val force_delayed_prints : unit -> unit
+val node_finish_session : Procdesc.NodeSet.elt -> unit
+val node_start_session :
+  pp_name:(Format.formatter -> unit) -> Procdesc.NodeSet.elt -> int -> unit
+val write_proc_html : Procdesc.t -> unit
+val write_all_html_files : SourceFile.t -> unit
+Error: Rule failed to generate the following targets:
+- .InferModules.objs/byte/inferModules__Printer.cmi
+- .InferModules.objs/byte/inferModules__Printer.cmti
+      ocamlc .InferModules.objs/byte/inferModules__ExternalPerfData.{cmi,cmti}
+val in_profiler_data_map : Procname.t -> bool
+Error: Rule failed to generate the following targets:
+- .InferModules.objs/byte/inferModules__ExternalPerfData.cmi
+- .InferModules.objs/byte/inferModules__ExternalPerfData.cmti
+      ocamlc .InferModules.objs/byte/inferModules__ModelTables.{cmi,cmti}
+type model_table_t = (string, bool * bool list) Hashtbl.t
+val annotated_table_nullability : model_table_t
+val check_not_null_table : model_table_t
+val check_not_null_parameter_table : (string, int) Hashtbl.t
+val check_state_table : model_table_t
+val check_argument_table : model_table_t
+val containsKey_table : model_table_t
+val mapPut_table : model_table_t
+val noreturn_table : model_table_t
+val true_on_null_table : model_table_t
+Error: Rule failed to generate the following targets:
+- .InferModules.objs/byte/inferModules__ModelTables.cmi
+- .InferModules.objs/byte/inferModules__ModelTables.cmti
+      ocamlc .InferModules.objs/byte/inferModules__FbPatternMatch.{cmi,cmti}
+val is_subtype_of_fb_service_handler : Tenv.t -> Typ.name -> bool
+Error: Rule failed to generate the following targets:
+- .InferModules.objs/byte/inferModules__FbPatternMatch.cmi
+- .InferModules.objs/byte/inferModules__FbPatternMatch.cmti
+      ocamlc .InferModules.objs/byte/inferModules__FbThreadSafety.{cmi,cmti}
+val is_custom_init : Tenv.t -> Procname.t -> bool
+val is_logging_method : Procname.t -> bool
+val get_fbthreadsafe_class_annot :
+  Procname.t -> Tenv.t -> (string * string) option
+val message_fbthreadsafe_class : string -> string -> string
+Error: Rule failed to generate the following targets:
+- .InferModules.objs/byte/inferModules__FbThreadSafety.cmi
+- .InferModules.objs/byte/inferModules__FbThreadSafety.cmti
+      ocamlc .InferModules.objs/byte/inferModules__FileDiffTests.{cmi,cmo,cmt}
+module UnixDiffTest =
+  InferBase.FileDiff.UnixDiff.VISIBLE_FOR_TESTING_DO_NOT_USE_DIRECTLY
+val test_unixdiff_process_raw_directives_with_valid_input :
+  OUnitTest.test list
+val test_unixdiff_process_raw_directives_with_invalid_input :
+  OUnitTest.test list
+val test_unixdiff_pp : OUnitTest.test list
+module FileDiffTest =
+  InferBase.FileDiff.VISIBLE_FOR_TESTING_DO_NOT_USE_DIRECTLY
+val u : int -> UnixDiffTest.t list
+val n : int -> UnixDiffTest.t list
+val o : int -> UnixDiffTest.t list
+val test_parse_directives_with_valid_input : OUnitTest.test list
+val test_parse_unix_diff_with_valid_input : OUnitTest.test list
+val tests : OUnitTest.test
+Error: Rule failed to generate the following targets:
+- .InferModules.objs/byte/inferModules__FileDiffTests.cmi
+- .InferModules.objs/byte/inferModules__FileDiffTests.cmo
+- .InferModules.objs/byte/inferModules__FileDiffTests.cmt
+      ocamlc .InferModules.objs/byte/inferModules__SchedulerTypes.{cmi,cmo,cmt}
+type target = Procname of Procname.t | File of SourceFile.t
+Error: Rule failed to generate the following targets:
+- .InferModules.objs/byte/inferModules__SchedulerTypes.cmi
+- .InferModules.objs/byte/inferModules__SchedulerTypes.cmo
+- .InferModules.objs/byte/inferModules__SchedulerTypes.cmt
+      ocamlc .InferModules.objs/byte/inferModules__ThirdPartyMethod.{cmi,cmti}
+type fully_qualified_type = string
+type unique_repr = {
+  class_name : fully_qualified_type;
+  method_name : method_name;
+  param_types : fully_qualified_type list;
+}
+and method_name = Constructor | Method of fully_qualified_type
+val unique_repr_of_java_proc_name : Procname.Java.t -> unique_repr
+val pp_unique_repr : Format.formatter -> unique_repr -> unit
+type nullability = {
+  ret_nullability : type_nullability;
+  param_nullability : type_nullability list;
+}
+and type_nullability = Nullable | Nonnull
+val pp_nullability : Format.formatter -> nullability -> unit
+type parsing_error
+val string_of_parsing_error : parsing_error -> fully_qualified_type
+val parse :
+  fully_qualified_type -> (unique_repr * nullability, parsing_error) result
+val pp_parse_result : Format.formatter -> unique_repr * nullability -> unit
+Error: Rule failed to generate the following targets:
+- .InferModules.objs/byte/inferModules__ThirdPartyMethod.cmi
+- .InferModules.objs/byte/inferModules__ThirdPartyMethod.cmti
+      ocamlc .InferModules.objs/byte/inferModules__IListTests.{cmi,cmo,cmt}
+val inputs : (string * int list) list
+val inter_tests : OUnitTest.test list
+val traverse_test : OUnitTest.test list
+val tests : OUnitTest.test
+Error: Rule failed to generate the following targets:
+- .InferModules.objs/byte/inferModules__IListTests.cmi
+- .InferModules.objs/byte/inferModules__IListTests.cmo
+- .InferModules.objs/byte/inferModules__IListTests.cmt
+      ocamlc .InferModules.objs/byte/inferModules__InferPrint.{cmi,cmti}
+val loc_trace_to_jsonbug_record :
+  Errlog.loc_trace_elem list ->
+  Exceptions.severity -> Jsonbug_t.json_trace_item list
+val censored_reason : IssueType.t -> SourceFile.t -> string option
+val main : report_json:string option -> unit
+Error: Rule failed to generate the following targets:
+- .InferModules.objs/byte/inferModules__InferPrint.cmi
+- .InferModules.objs/byte/inferModules__InferPrint.cmti
+      ocamlc .InferModules.objs/byte/inferModules__Inferconfig.{cmi,cmti}
+type path_filter = SourceFile.t -> bool
+type error_filter = IssueType.t -> bool
+type proc_filter = Procname.t -> bool
+type filters = {
+  path_filter : path_filter;
+  error_filter : error_filter;
+  proc_filter : proc_filter;
+}
+val create_filters : unit -> filters
+val never_return_null_matcher : SourceFile.t -> Procname.t -> bool
+val skip_translation_matcher : SourceFile.t -> Procname.t -> bool
+val skip_implementation_matcher : SourceFile.t -> Procname.t -> bool
+val modeled_expensive_matcher : (string -> bool) -> Procname.t -> bool
+val test : unit -> unit
+Error: Rule failed to generate the following targets:
+- .InferModules.objs/byte/inferModules__Inferconfig.cmi
+- .InferModules.objs/byte/inferModules__Inferconfig.cmti
+      ocamlc .InferModules.objs/byte/inferModules__Initializers.{cmi,cmti}
+val final_initializer_typestates_lazy :
+  Tenv.t ->
+  Procname.t ->
+  Procdesc.t ->
+  (Procname.t -> Procname.t list) ->
+  (bool -> Procname.t -> Procdesc.t -> 'a option -> 'b * 'c option) ->
+  (Procname.t * 'c) list lazy_t
+val final_constructor_typestates_lazy :
+  Tenv.t ->
+  Procname.t ->
+  (Procname.t -> Procname.t list) ->
+  (bool -> Procname.t -> Procdesc.t -> 'a option -> 'b * 'c option) ->
+  (Procname.t * 'c) list lazy_t
+Error: Rule failed to generate the following targets:
+- .InferModules.objs/byte/inferModules__Initializers.cmi
+- .InferModules.objs/byte/inferModules__Initializers.cmti
+      ocamlc .InferModules.objs/byte/inferModules__InferAnalyze.{cmi,cmti}
+val main : changed_files:SourceFile.Set.t option -> unit
+val invalidate_changed_procedures : SourceFile.Set.t option -> unit
+Error: Rule failed to generate the following targets:
+- .InferModules.objs/byte/inferModules__InferAnalyze.cmi
+- .InferModules.objs/byte/inferModules__InferAnalyze.cmti
+      ocamlc .InferModules.objs/byte/inferModules__Issue.{cmi,cmti}
+type t = {
+  proc_name : Procname.t;
+  proc_location : Location.t;
+  err_key : Errlog.err_key;
+  err_data : Errlog.err_data;
+}
+val sort_filter_issues : t list -> t list
+Error: Rule failed to generate the following targets:
+- .InferModules.objs/byte/inferModules__Issue.cmi
+- .InferModules.objs/byte/inferModules__Issue.cmti
+      ocamlc .InferModules.objs/byte/inferModules__IssueAuxData.{cmi,cmti}
+type t = Location.t list
+val encode : t -> string
+val decode : string -> t
+Error: Rule failed to generate the following targets:
+- .InferModules.objs/byte/inferModules__IssueAuxData.cmi
+- .InferModules.objs/byte/inferModules__IssueAuxData.cmti
+      ocamlc .InferModules.objs/byte/inferModules__JMain.{cmi,cmti}
+val from_arguments : string -> unit
+val from_verbose_out : string -> unit
+Error: Rule failed to generate the following targets:
+- .InferModules.objs/byte/inferModules__JMain.cmi
+- .InferModules.objs/byte/inferModules__JMain.cmti
+      ocamlc .InferModules.objs/byte/inferModules__JConfig.{cmi,cmti}
+val boolean_code : string
+val byte_code : string
+val char_code : string
+val double_code : string
+val float_code : string
+val int_code : string
+val long_code : string
+val short_code : string
+val class_code : string -> string
+val boolean_st : string
+val byte_st : string
+val char_st : string
+val double_st : string
+val float_st : string
+val int_st : string
+val long_st : string
+val short_st : string
+val constructor_name : string
+val void : string
+val this : Mangled.t
+val clone_name : string
+val field_cst : string
+val field_st : Mangled.t
+val infer_builtins_cl : string
+Error: Rule failed to generate the following targets:
+- .InferModules.objs/byte/inferModules__JConfig.cmi
+- .InferModules.objs/byte/inferModules__JConfig.cmti
+      ocamlc .InferModules.objs/byte/inferModules__JAnnotation.{cmi,cmti}
+val translate_item :
+  (Javalib_pack.JBasics.annotation * Javalib_pack.Javalib.visibility) list ->
+  Annot.Item.t
+val translate_method :
+  Javalib_pack.Javalib.method_annotations -> Annot.Method.t
+Error: Rule failed to generate the following targets:
+- .InferModules.objs/byte/inferModules__JAnnotation.cmi
+- .InferModules.objs/byte/inferModules__JAnnotation.cmti
+      ocamlc .InferModules.objs/byte/inferModules__JoinState.{cmi,cmti}
+type mode = Pre | Post
+val compare_mode : mode -> mode -> int
+val equal_mode : mode -> mode -> bool
+val get_footprint : unit -> bool
+val set_footprint : bool -> unit
+Error: Rule failed to generate the following targets:
+- .InferModules.objs/byte/inferModules__JoinState.cmi
+- .InferModules.objs/byte/inferModules__JoinState.cmti
+      ocamlc .InferModules.objs/byte/inferModules__JavaProfilerSamples.{cmi,cmti}
+type labeled_profiler_sample = string * Procname.Set.t
+val compare_labeled_profiler_sample :
+  labeled_profiler_sample -> labeled_profiler_sample -> int
+val equal_labeled_profiler_sample :
+  labeled_profiler_sample -> labeled_profiler_sample -> bool
+val from_json_string :
+  string -> use_signature:bool -> labeled_profiler_sample list
+val from_json_file :
+  string -> use_signature:bool -> labeled_profiler_sample list
+Error: Rule failed to generate the following targets:
+- .InferModules.objs/byte/inferModules__JavaProfilerSamples.cmi
+- .InferModules.objs/byte/inferModules__JavaProfilerSamples.cmti
+      ocamlc .InferModules.objs/byte/inferModules__LogEntry.{cmi,cmti}
+type count_entry_data = { value : int; }
+type time_entry_data = { duration_ms : int; }
+type entry_data = Count of count_entry_data | Time of time_entry_data
+type t = { label : string; created_at_ts : int; data : entry_data; }
+val mk_count : label:string -> value:int -> t
+val mk_time : label:string -> duration_ms:int -> t
+val global_log_get : unit -> t list
+val global_log_erase : unit -> unit
+val global_log_add : t -> unit
+Error: Rule failed to generate the following targets:
+- .InferModules.objs/byte/inferModules__LogEntry.cmi
+- .InferModules.objs/byte/inferModules__LogEntry.cmti
+      ocamlc .InferModules.objs/byte/inferModules__Maven.{cmi,cmti}
+val capture : prog:string -> args:string list -> unit
+Error: Rule failed to generate the following targets:
+- .InferModules.objs/byte/inferModules__Maven.cmi
+- .InferModules.objs/byte/inferModules__Maven.cmti
+      ocamlc .InferModules.objs/byte/inferModules__MergeCapture.{cmi,cmti}
+val merge_captured_targets : unit -> unit
+val merge_changed_functions : unit -> unit
+Error: Rule failed to generate the following targets:
+- .InferModules.objs/byte/inferModules__MergeCapture.cmi
+- .InferModules.objs/byte/inferModules__MergeCapture.cmti
+      ocamlc .InferModules.objs/byte/inferModules__MaximumSharingTests.{cmi,cmo,cmt}
+val inputs :
+  (string * Obj.t *
+   [> `MarshalNoSharing_MustBeBetter | `MarshalWithSharing | `PhysEqual ])
+  list
+val tests : OUnitTest.test
+Error: Rule failed to generate the following targets:
+- .InferModules.objs/byte/inferModules__MaximumSharingTests.cmi
+- .InferModules.objs/byte/inferModules__MaximumSharingTests.cmo
+- .InferModules.objs/byte/inferModules__MaximumSharingTests.cmt
+      ocamlc .InferModules.objs/byte/inferModules__JClasspath.{cmi,cmti}
+val add_models : string -> unit
+val is_model : Procname.t -> bool
+type file_entry =
+    Singleton of SourceFile.t
+  | Duplicate of (string * SourceFile.t) list
+type t =
+    string * file_entry IStd.String.Map.t * Javalib_pack.JBasics.ClassSet.t
+val load_from_verbose_output : string -> t
+val load_from_arguments : string -> t
+type classmap =
+    Javalib_pack.JCode.jcode Javalib_pack.Javalib.interface_or_class
+    Javalib_pack.JBasics.ClassMap.t
+type program
+val get_classmap : program -> classmap
+val mem_classmap : Javalib_pack.JBasics.class_name -> program -> bool
+val get_models : program -> classmap
+val cleanup : program -> unit
+val load_program : string -> Javalib_pack.JBasics.ClassSet.t -> program
+val lookup_node :
+  Javalib_pack.JBasics.class_name ->
+  program ->
+  Javalib_pack.JCode.jcode Javalib_pack.Javalib.interface_or_class option
+val add_missing_callee :
+  program ->
+  Procname.t ->
+  Javalib_pack.JBasics.class_name ->
+  Javalib_pack.JBasics.method_signature -> unit
+val set_callee_translated : program -> Procname.t -> unit
+val iter_missing_callees :
+  program ->
+  f:(Procname.t ->
+     Javalib_pack.JBasics.class_name ->
+     Javalib_pack.JBasics.method_signature -> unit) ->
+  unit
+Error: Rule failed to generate the following targets:
+- .InferModules.objs/byte/inferModules__JClasspath.cmi
+- .InferModules.objs/byte/inferModules__JClasspath.cmti
+      ocamlc .InferModules.objs/byte/inferModules__JProcname.{cmi,cmti}
+module JNI :
+  sig
+    val void_method_with_no_arguments : string
+    module VISIBLE_FOR_TESTING_DO_NOT_USE_DIRECTLY :
+      sig
+        type t =
+            Boolean
+          | Byte
+          | Char
+          | Short
+          | Int
+          | Long
+          | Float
+          | Double
+          | Void
+          | FullyQualifiedClass of (string * string)
+          | Array of t
+          | Method of (t list * t)
+        val compare : t -> t -> int
+        val equal : t -> t -> bool
+        val parse_str : string -> t list
+        val parse_method_str : string -> t list * t
+        val to_java_type : t -> Procname.Java.java_type
+        val pp : Format.formatter -> t -> unit
+      end
+  end
+val create_procname :
+  classname:string ->
+  methodname:string -> signature:string -> use_signature:bool -> Procname.t
+val make_void_signature_procname :
+  classname:string -> methodname:string -> Procname.t
+Error: Rule failed to generate the following targets:
+- .InferModules.objs/byte/inferModules__JProcname.cmi
+- .InferModules.objs/byte/inferModules__JProcname.cmti
+      ocamlc .InferModules.objs/byte/inferModules__NullsafeInit.{cmi,cmti}
+val init : unit -> unit
+Error: Rule failed to generate the following targets:
+- .InferModules.objs/byte/inferModules__NullsafeInit.cmi
+- .InferModules.objs/byte/inferModules__NullsafeInit.cmti
+      ocamlc .InferModules.objs/byte/inferModules__NullabilityPreanalysis.{cmi,cmti}
+val analysis : Cfg.t -> Tenv.t -> unit
+Error: Rule failed to generate the following targets:
+- .InferModules.objs/byte/inferModules__NullabilityPreanalysis.cmi
+- .InferModules.objs/byte/inferModules__NullabilityPreanalysis.cmti
+      ocamlc .InferModules.objs/byte/inferModules__MethodMatcher.{cmi,cmti}
+type t = Tenv.t -> Procname.t -> HilExp.t list -> bool
+type record = {
+  search_superclasses : bool;
+  method_prefix : bool;
+  actuals_pred : HilExp.t list -> bool;
+  classname : string;
+  methods : string list;
+}
+val default : record
+val of_record : record -> t
+val of_json : Yojson.Basic.t -> t
+val of_list : t list -> t
+val of_records : record list -> t
+Error: Rule failed to generate the following targets:
+- .InferModules.objs/byte/inferModules__MethodMatcher.cmi
+- .InferModules.objs/byte/inferModules__MethodMatcher.cmti
+      ocamlc .InferModules.objs/byte/inferModules__Timeout.{cmi,cmti}
+val exe_timeout : ('a -> unit) -> 'a -> SymOp.failure_kind option
+val resume_previous_timeout : unit -> unit
+val suspend_existing_timeout : keep_symop_total:bool -> unit
+Error: Rule failed to generate the following targets:
+- .InferModules.objs/byte/inferModules__Timeout.cmi
+- .InferModules.objs/byte/inferModules__Timeout.cmti
+      ocamlc .InferModules.objs/byte/inferModules__NodePrinter.{cmi,cmti}
+val with_session :
+  ?kind:[< `ComputePre | `ExecNode | `ExecNodeNarrowing | `WTO ] ->
+  pp_name:(Format.formatter -> unit) ->
+  Procdesc.NodeSet.elt -> f:(unit -> 'a) -> 'a
+Error: Rule failed to generate the following targets:
+- .InferModules.objs/byte/inferModules__NodePrinter.cmi
+- .InferModules.objs/byte/inferModules__NodePrinter.cmti
+      ocamlc .InferModules.objs/byte/inferModules__PerfProfilerATDParserTest.{cmi,cmo,cmt}
+val test_parser : OUnitTest.test list
+val tests : OUnitTest.test
+Error: Rule failed to generate the following targets:
+- .InferModules.objs/byte/inferModules__PerfProfilerATDParserTest.cmi
+- .InferModules.objs/byte/inferModules__PerfProfilerATDParserTest.cmo
+- .InferModules.objs/byte/inferModules__PerfProfilerATDParserTest.cmt
+      ocamlc .InferModules.objs/byte/inferModules__ProcLocker.{cmi,cmti}
+exception UnlockNotLocked of Procname.t
+val setup : unit -> unit
+val try_lock : Procname.t -> bool
+val unlock : Procname.t -> unit
+val clean : unit -> unit
+Error: Rule failed to generate the following targets:
+- .InferModules.objs/byte/inferModules__ProcLocker.cmi
+- .InferModules.objs/byte/inferModules__ProcLocker.cmti
+      ocamlc .InferModules.objs/byte/inferModules__Procedures.{cmi,cmti}
+val get_all : filter:Filtering.procedures_filter -> unit -> Procname.t list
+val pp_all :
+  filter:Filtering.procedures_filter ->
+  proc_name:bool ->
+  attr_kind:bool ->
+  source_file:bool ->
+  proc_attributes:bool -> Format.formatter -> unit -> unit
+Error: Rule failed to generate the following targets:
+- .InferModules.objs/byte/inferModules__Procedures.cmi
+- .InferModules.objs/byte/inferModules__Procedures.cmti
+      ocamlc .InferModules.objs/byte/inferModules__RegisterCheckers.{cmi,cmti}
+type checker
+val get_active_checkers : unit -> checker list
+val register : checker list -> unit
+val pp_checker : Format.formatter -> checker -> unit
+Error: Rule failed to generate the following targets:
+- .InferModules.objs/byte/inferModules__RegisterCheckers.cmi
+- .InferModules.objs/byte/inferModules__RegisterCheckers.cmti
+      ocamlc .InferModules.objs/byte/inferModules__PerfStats.{cmi,cmti}
+type perf_stats
+type stats_kind =
+    Time of Mtime_clock.counter * Unix.process_times
+  | Memory
+  | TimeAndMemory
+type stats_type =
+    ClangLinters of SourceFile.t
+  | ClangFrontend of SourceFile.t
+  | ClangProcessAST of SourceFile.t
+  | JavaFrontend of SourceFile.t
+  | TotalFrontend
+  | Backend of SourceFile.t
+  | TotalBackend
+  | Reporting
+  | Driver
+val from_json : Yojson.Basic.t -> perf_stats
+val aggregate : perf_stats list -> Yojson.Basic.t
+val register_report : stats_kind -> stats_type -> unit
+val get_reporter : stats_type -> unit -> unit
+val register_report_at_exit : stats_type -> unit
+Error: Rule failed to generate the following targets:
+- .InferModules.objs/byte/inferModules__PerfStats.cmi
+- .InferModules.objs/byte/inferModules__PerfStats.cmti
+      ocamlc .InferModules.objs/byte/inferModules__QuandaryConfig.{cmi,cmti}
+module Source :
+  sig
+    type t = { procedure : string; kinds : string list; index : string; }
+    val of_json : [> `List of Yojson.Basic.t list ] -> t list
+  end
+module Sink :
+  sig
+    type t = { procedure : string; kinds : string list; index : string; }
+    val of_json : [> `List of Yojson.Basic.t list ] -> t list
+  end
+module Sanitizer :
+  sig
+    type t = { procedure : string; kind : string; }
+    val of_json : [> `List of Yojson.Basic.t list ] -> t list
+  end
+val is_endpoint : string -> bool
+Error: Rule failed to generate the following targets:
+- .InferModules.objs/byte/inferModules__QuandaryConfig.cmi
+- .InferModules.objs/byte/inferModules__QuandaryConfig.cmti
+      ocamlc .InferModules.objs/byte/inferModules__ReportDiff.{cmi,cmti}
+val reportdiff :
+  current_report:string option ->
+  previous_report:string option ->
+  current_costs:string option -> previous_costs:string option -> unit
+Error: Rule failed to generate the following targets:
+- .InferModules.objs/byte/inferModules__ReportDiff.cmi
+- .InferModules.objs/byte/inferModules__ReportDiff.cmti
+      ocamlc .InferModules.objs/byte/inferModules__Scribe.{cmi,cmti}
+type category = InferEvents
+val log : category -> string list -> unit
+Error: Rule failed to generate the following targets:
+- .InferModules.objs/byte/inferModules__Scribe.cmi
+- .InferModules.objs/byte/inferModules__Scribe.cmti
+      ocamlc .InferModules.objs/byte/inferModules__Scuba.{cmi,cmti}
+type table = InferEvents
+type sample
+val new_sample : time:int option -> sample
+val add_int : name:string -> value:int -> sample -> sample
+val add_normal : name:string -> value:string -> sample -> sample
+val log : table -> sample list -> unit
+Error: Rule failed to generate the following targets:
+- .InferModules.objs/byte/inferModules__Scuba.cmi
+- .InferModules.objs/byte/inferModules__Scuba.cmti
+      ocamlc .InferModules.objs/byte/inferModules__RacerDModels.{cmi,cmti}
+type container_access = ContainerRead | ContainerWrite
+val get_container_access : Procname.t -> Tenv.t -> container_access option
+val has_return_annot : (Annot.Item.t -> bool) -> Procname.t -> bool
+val is_functional : Procname.t -> bool
+val acquires_ownership : Procname.t -> Tenv.t -> bool
+val is_box : Procname.t -> bool
+val is_thread_confined_method : Tenv.t -> Procname.t -> bool
+val should_analyze_proc : Tenv.t -> Procname.t -> bool
+val get_current_class_and_threadsafe_superclasses :
+  Tenv.t -> Procname.t -> (Typ.name * Typ.name list) option
+val is_thread_safe_method : Procname.t -> Tenv.t -> bool
+val is_marked_thread_safe : Procname.t -> Tenv.t -> bool
+val is_safe_access :
+  'a HilExp.Access.t -> HilExp.access_expression -> Tenv.t -> bool
+val should_flag_interface_call :
+  Tenv.t -> HilExp.t list -> CallFlags.t -> Procname.t -> bool
+val is_synchronized_container :
+  Procname.t -> HilExp.access_expression -> Tenv.t -> bool
+val is_abstract_getthis_like : Procname.t -> bool
+val creates_builder : Procname.t -> bool
+val is_builder_passthrough : Procname.t -> bool
+Error: Rule failed to generate the following targets:
+- .InferModules.objs/byte/inferModules__RacerDModels.cmi
+- .InferModules.objs/byte/inferModules__RacerDModels.cmti
+      ocamlc .InferModules.objs/byte/inferModules__StatsAggregator.{cmi,cmti}
+val generate_files : unit -> unit
+Error: Rule failed to generate the following targets:
+- .InferModules.objs/byte/inferModules__StatsAggregator.cmi
+- .InferModules.objs/byte/inferModules__StatsAggregator.cmti
+      ocamlc .InferModules.objs/byte/inferModules__SeverityTests.{cmi,cmo,cmt}
+val order_tests : 'a -> unit
+val tests : OUnitTest.test
+Error: Rule failed to generate the following targets:
+- .InferModules.objs/byte/inferModules__SeverityTests.cmi
+- .InferModules.objs/byte/inferModules__SeverityTests.cmo
+- .InferModules.objs/byte/inferModules__SeverityTests.cmt
+      ocamlc .InferModules.objs/byte/inferModules__ToplName.{cmi,cmti}
+type t = string
+val topl_property : t
+val transition : int -> t
+val arg : int -> t
+val retval : t
+val saved_arg : int -> t
+val reg : t -> t
+val state : t
+val maybe : t
+val execute : t
+val execute_state : int -> t
+val save_args : t
+Error: Rule failed to generate the following targets:
+- .InferModules.objs/byte/inferModules__ToplName.cmi
+- .InferModules.objs/byte/inferModules__ToplName.cmti
+      ocamlc .InferModules.objs/byte/inferModules__ToplAst.{cmi,cmo,cmt}
+type property_name = string
+val compare_property_name : property_name -> property_name -> int
+val hash_fold_property_name :
+  Base_internalhash_types.state ->
+  property_name -> Base_internalhash_types.state
+val hash_property_name : property_name -> int
+val property_name_of_sexp : Sexp.t -> property_name
+val sexp_of_property_name : property_name -> Sexp.t
+type register_name = property_name
+type constant = Exp.t
+type value_pattern =
+    Ignore
+  | SaveInRegister of register_name
+  | EqualToRegister of register_name
+type value =
+    Constant of constant
+  | Register of register_name
+  | Binding of register_name
+type binop = OpEq | OpNe | OpGe | OpGt | OpLe | OpLt
+type predicate = Binop of binop * value * value | Value of value
+type condition = predicate list
+type procedure_name_pattern = register_name
+type label = {
+  arguments : value_pattern list option;
+  condition : condition;
+  procedure_name : procedure_name_pattern;
+  return : value_pattern;
+}
+type vertex = procedure_name_pattern
+val compare_vertex : vertex -> vertex -> int
+val hash_fold_vertex :
+  Base_internalhash_types.state -> vertex -> Base_internalhash_types.state
+val hash_vertex : vertex -> int
+val vertex_of_sexp : Sexp.t -> vertex
+val sexp_of_vertex : vertex -> Sexp.t
+type transition = { source : vertex; target : vertex; label : label; }
+type t = {
+  name : vertex;
+  message : vertex option;
+  prefixes : vertex list;
+  nondet : vertex list;
+  transitions : transition list;
+}
+Error: Rule failed to generate the following targets:
+- .InferModules.objs/byte/inferModules__ToplAst.cmi
+- .InferModules.objs/byte/inferModules__ToplAst.cmo
+- .InferModules.objs/byte/inferModules__ToplAst.cmt
+      ocamlc .InferModules.objs/byte/inferModules__Tasks.{cmi,cmti}
+type 'a doer = 'a -> unit
+val run_sequentially : f:'a doer -> 'a list -> unit
+val fork_protect : f:('a -> 'b) -> 'a -> 'b
+module Runner :
+  sig
+    type ('work, 'final) t
+    val create :
+      jobs:int ->
+      f:'work doer ->
+      child_epilogue:(unit -> 'final) ->
+      tasks:(unit -> 'work ProcessPool.TaskGenerator.t) -> ('work, 'final) t
+    val run : ('a, 'final) t -> 'final option array
+  end
+Error: Rule failed to generate the following targets:
+- .InferModules.objs/byte/inferModules__Tasks.cmi
+- .InferModules.objs/byte/inferModules__Tasks.cmti
+      ocamlc .InferModules.objs/byte/inferModules__ToplUtils.{cmi,cmti}
+val any_type : Typ.typ
+val topl_class_name : Typ.name
+val topl_class_typ : Typ.typ
+val static_var : string -> Exp.t
+val local_var : Procname.t -> string -> Exp.t
+val constant_int : int -> Exp.t
+val topl_call :
+  Ident.t ->
+  Typ.desc -> Location.t -> string -> (Exp.t * Typ.typ) list -> Sil.instr
+val is_synthesized : Procname.t -> bool
+val debug : ('a, Format.formatter, unit) IStd.format -> 'a
+val make_field : string -> Fieldname.t
+Error: Rule failed to generate the following targets:
+- .InferModules.objs/byte/inferModules__ToplUtils.cmi
+- .InferModules.objs/byte/inferModules__ToplUtils.cmti
+      ocamlc .InferModules.objs/byte/inferModules__TestDeterminator.{cmi,cmti}
+val compute_and_emit_test_to_run :
+  ?clang_range_map:((Location.t * Location.t) * ClangProc.t option)
+                   Procname.Map.t ->
+  ?source_file:SourceFile.t -> unit -> unit
+val compute_and_emit_relevant_methods :
+  clang_range_map:((Location.t * Location.t) * ClangProc.t option)
+                  Procname.Map.t ->
+  source_file:SourceFile.t -> unit
+val merge_test_determinator_results : unit -> unit
+Error: Rule failed to generate the following targets:
+- .InferModules.objs/byte/inferModules__TestDeterminator.cmi
+- .InferModules.objs/byte/inferModules__TestDeterminator.cmti
+make: *** [_build/default/infer.exe] Error 1

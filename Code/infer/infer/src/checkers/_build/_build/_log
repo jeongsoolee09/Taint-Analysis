@@ -1,0 +1,12 @@
+### Starting build.
+# Target: MyLivenessCheckerDomain.ml.depends, tags: { extension:ml, file:MyLivenessCheckerDomain.ml, ocaml, ocamldep, quiet }
+ocamlfind ocamldep -modules MyLivenessCheckerDomain.ml > MyLivenessCheckerDomain.ml.depends
+# Target: MyLivenessCheckerDomain.cmo, tags: { byte, compile, extension:cmo, extension:ml, file:MyLivenessCheckerDomain.cmo, file:MyLivenessCheckerDomain.ml, implem, ocaml, quiet }
+ocamlfind ocamlc -c -o MyLivenessCheckerDomain.cmo MyLivenessCheckerDomain.ml
++ ocamlfind ocamlc -c -o MyLivenessCheckerDomain.cmo MyLivenessCheckerDomain.ml
+File "MyLivenessCheckerDomain.ml", line 1, characters 6-10:
+1 | open! IStd
+          ^^^^
+Error: Unbound module IStd
+Command exited with code 2.
+# Compilation unsuccessful.

@@ -1,0 +1,135 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN"
+	"http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd">
+
+<html xmlns="http://www.w3.org/1999/xhtml">
+
+<head>
+<title>README.html</title>
+<meta http-equiv="Content-Type" content="text/html;charset=utf-8"/>
+
+</head>
+
+<body>
+
+<h1 id="build-your-own-resource-leak-analysis">Build your own Resource Leak analysis</h1>
+<p>This is a lab exercise designed to take the participant through the basics of using the Infer.AI framework for building compositional abstract interpreters. We provide the skeleton for a simple intraprocedural resource leak analysis. During this exercise, you will identify limitations in the existing approach and work on extending it to a create a more powerful interprocedural analysis.</p>
+<p>The files to work on are <a href="./ResourceLeaks.ml">ResourceLeaks.ml</a> and <a href="./ResourceLeakDomain.ml">ResourceLeakDomain.ml</a>, and their corresponding .mli files.</p>
+<h2 id="quick-start">(0) Quick Start</h2>
+<h3 id="a-with-docker...">(a) With Docker...</h3>
+<p>Using Docker is the fastest way: you do not need to clone the Infer repository and every thing is set up in the Docker image for you to start hacking on Infer straight away.</p>
+<ol style="list-style-type: decimal">
+<li><p>Get Docker: https://www.docker.com/get-started</p></li>
+<li><p>Run the infer Docker image with <code>docker run -it -v $HOME/infer-docker:/infer-host infer/infer:infer-latest-java-dev /bin/bash</code>. This will give you a prompt <em>inside the Docker image</em>. Do not close that terminal for the duration of the lab.</p></li>
+<li><p>Within Docker, pull the latest version of infer, copy the /infer directory to your mount point, then fully build infer once:</p></li>
+</ol>
+<pre class="shell"><code>cd /infer
+git pull
+cp -av /infer/. /infer-host
+make -C /infer-host -j 4</code></pre>
+<ol start="4" style="list-style-type: decimal">
+<li>Outside Docker, you will likely need to change the permissions of <code>$HOME/infer-docker</code> to make the files editable by your user: <code>sudo chown $USER -R $HOME/infer-docker</code>.</li>
+</ol>
+<p>You can now edit the files <em>locally</em> in <code>$HOME/infer-docker</code> and build infer <em>inside Docker</em> in <code>/infer-host</code> using the shell prompt gotten in step 2. The quickest way is to run <code>make</code> from <code>/infer-host</code> once, then <code>make byte</code> for a quicker edit/compile cycle.</p>
+<h3 id="a-...or-alternatively-build-infer-locally-from-scratch">(a') ...or, alternatively, build Infer locally from scratch</h3>
+<p>Clone the Infer repository at https://github.com/facebook/infer and read the instructions in <a href="https://github.com/facebook/infer/blob/master/INSTALL.md">INSTALL.md</a> to build Infer from source. Note that you only need Infer for Java for this lab: <code>./build-infer.sh java</code>.</p>
+<h3 id="b-set-up-your-development-environment">(b) Set up your Development Environment</h3>
+<p>See <a href="https://github.com/facebook/infer/blob/master/CONTRIBUTING.md#hacking-on-the-code">CONTRIBUTING.md</a> to set your editor and for tips and tricks on how to hack on Infer more efficiently. One of the most useful things to install in your editor to navigate OCaml source code efficiently is <a href="https://github.com/ocaml/merlin/wiki">Merlin</a>.</p>
+<h2 id="warm-up-running-testing-and-debugging-infer">(1) Warm up: running, testing, and debugging Infer</h2>
+<ol style="list-style-type: lower-alpha">
+<li>Change to the test directory (<code>cd infer/tests/codetoanalyze/java/lab</code>) and run infer in its default configuration:</li>
+</ol>
+<pre><code>infer -- javac Leaks.java</code></pre>
+<p>Infer should report 7 resource leaks. These reports come from the separation logic based biabduction analysis.</p>
+<ol start="2" style="list-style-type: lower-alpha">
+<li>Run the analyzer on a single test file to produce the debug HTML:</li>
+</ol>
+<pre><code>infer -g --resource-leak-only -- javac Leaks.java</code></pre>
+<p>Then, open the debug HTML:</p>
+<pre><code>firefox infer-out/captured/*.html</code></pre>
+<p>This helpful artifact shows the Infer warnings alongside the code they are complaining about. It also displays the CFG node(s) associated with each line of code. Clicking a CFG node shows the Infer IR associated with the node, and the pre/post state computed while analyzing the instruction. Come back to the debug HTML early and often when you can't understand what your analysis is doing--it will help!</p>
+<ol start="3" style="list-style-type: lower-alpha">
+<li><p>The <code>Logging.d_printf</code>/<code>Logging.d_printfln</code> functions print to the debug HTML. The logging is contextual: it will print to the log for the CFG node that's being analyzed at the time the logging statement execute. Try adding <code>Logging.d_printfln &quot;Hi Infer&quot;;</code> inside of the case for <code>Call</code> in <a href="./ResourceLeaks.ml">ResourceLeaks.ml</a>, recompiling/re-running. You should see the text you printed inside the appropriate CFG node log in the debug HTML.</p></li>
+<li><p>The <code>Logging.debug_dev</code> function prints to the console. This can be useful for printing information that doesn't happen in the context of a particular CFG node (e.g., performing post-processing on a summary). Try adding <code>Logging.debug_dev &quot;Hi Infer;&quot;</code> to the <code>compute_post</code> function, recompile/re-run and see your text printed on the command line.</p></li>
+</ol>
+<p>Note: Using <code>Logging.debug_dev</code> generates warnings telling you that this function is deprecated. This is used to prevent developers from landing leftover debug instructions.</p>
+<h2 id="integer-domain-for-straight-line-programs">(2) Integer domain for straight-line programs</h2>
+<ol style="list-style-type: lower-alpha">
+<li>Let's start with a simple-minded analysis: count the number of open resources. Change <code>ResourceLeakDomain.t</code> to be of type <code>int</code>:</li>
+</ol>
+<div class="sourceCode"><pre class="sourceCode ocaml"><code class="sourceCode ocaml"><span class="kw">type</span> t = <span class="dt">int</span></code></pre></div>
+<p>You don't need to change <code>join</code> or <code>widen</code> yet, this will be done later. You also don't need to change ResourceLeakDomain.mli, only ResourceLeakDomain.ml.</p>
+<ol start="2" style="list-style-type: lower-alpha">
+<li>Now, in <code>ResourceLeaks.ml</code>, change the first <code>Call</code> case of <code>exec_instr</code> to bump the integer when a resource is acquired, and decrease it when a resource is released. Use <code>acquires_resource</code> (remove the leading <code>_</code>, telling OCaml not to warn that it was unused) and <code>releases_resource</code> (same). For the rest of the lab, it will be useful <strong>not</strong> to expose the type of <code>ResourceLeakDomain.t</code> to <code>ResourceLeaks.ml</code>, so add functions <code>ResourceLeakDomain.acquire_resource</code> and <code>ResourceLeakDomain.release_resource</code> to do the actual integer manipulations. Expose these functions in ResourceLeakDomain.mli`.</li>
+</ol>
+<p>Finally, look again at the HTML debug output of infer on <a href="https://github.com/facebook/infer/blob/master/infer/tests/codetoanalyze/java/lab/Leaks.java">Leaks.java</a>. You should see the resource count be incremented and decremented appropriately.</p>
+<ol start="3" style="list-style-type: lower-alpha">
+<li>Now let's report leaks! Write and expose a function <code>ResourceLeakDomain.has_leak</code>, true when an abstract state shows a leak. Then change <code>ResourceLeaks.report_if_leak</code> to report when <code>ResourceLeakDomain.has_leak post</code> is true. You can use this code to report:</li>
+</ol>
+<div class="sourceCode"><pre class="sourceCode ocaml"><code class="sourceCode ocaml">  <span class="kw">let</span> last_loc = Procdesc.Node.get_loc (Procdesc.get_exit_node proc_data.pdesc) <span class="kw">in</span>
+  <span class="kw">let</span> message = F.asprintf <span class="st">&quot;Leaked %a resource(s)&quot;</span> ResourceLeakDomain.pp post <span class="kw">in</span>
+  Reporting.log_error summary ~loc:last_loc IssueType.resource_leak message</code></pre></div>
+<ol start="4" style="list-style-type: lower-alpha">
+<li><p>Think about the concretization of the resource count. What does a resource count of zero mean? Is there a concrete state in the concretization of &quot;Resource count zero&quot; that leaks a resource? Write a simple test method <code>FN_leakBad</code> in <a href="https://github.com/facebook/infer/blob/master/infer/tests/codetoanalyze/java/lab/Leaks.java">Leaks.java</a> that will produce this concrete state (that is, a false negative test where the program leaks a resource, but the analyzer doesn't catch it).</p></li>
+<li><p>In addition, there are programs that do not leak resources that the analyzer will flag. Write a simple test method <code>FP_noLeakOk</code> that exhibits this problem (that is, a false positive test that demonstrates the imprecision of the analyzer).</p></li>
+<li><p>Do your false negative and false positive examples have a common underlying cause? Can the domain be improved to address them?</p></li>
+</ol>
+<p>Let's stick with just an integer domain to keep things simple until (5).</p>
+<h2 id="integer-domain-for-branching-and-looping-programs">(3) Integer domain for branching and looping programs</h2>
+<ol style="list-style-type: lower-alpha">
+<li><p>Run your checker on <a href="https://github.com/facebook/infer/blob/master/infer/tests/codetoanalyze/java/lab/LeaksBranch.java">LeaksBranch.java</a>. Uh oh, it crashed! Fix it by implementing <code>join</code> for your domain.</p></li>
+<li><p>Now run on <a href="https://github.com/facebook/infer/blob/master/infer/tests/codetoanalyze/java/lab/LeaksLoop.java">LeaksLoop.java</a>, and implement <code>widen</code>. Hmm... There's a termination bug in the abstract domain--do you see it?</p></li>
+<li><p>Time for a richer domain! A classic solution to this problem in abstract interpretation is to add a <code>Top</code> value that is larger than any integer.</p></li>
+</ol>
+<ul>
+<li><p>Fix the domain to make your test pass and ensure that the analyzer will always terminate. Make sure your fix is sufficiently general (remember: the allocation count can be negative :)).</p></li>
+<li><p>Hint: <code>AbstractDomain.TopLifted</code> may be useful for this. Just put all the code in ResourceLeakDomain.ml that corresponds to the signature <code>AbstractDomain.S</code> into a submodule <code>FiniteBounds</code>, then let <code>TopLifted</code> do all the lifting with</p></li>
+</ul>
+<div class="sourceCode"><pre class="sourceCode ocaml"><code class="sourceCode ocaml"><span class="kw">include</span> AbstractDomain.TopLifter (FiniteBounds)</code></pre></div>
+<ul>
+<li>Hint#2: use <code>open AbstractDomain.Types</code> to be able to write, e.g., <code>Top</code> instead of <code>AbstractDomain.Top</code>.</li>
+</ul>
+<h2 id="interprocedural-analysis">(4) Interprocedural analysis</h2>
+<p>Augment the summary type with state to indicate whether the current procedure returns a resource. Allowing a resource to escape to the caller should not be considered a leak. Use this information in callers too by reading from the callee's summary:</p>
+<div class="sourceCode"><pre class="sourceCode ocaml"><code class="sourceCode ocaml">  <span class="kw">match</span> Payload.read pdesc callee_procname <span class="kw">with</span>
+  | <span class="dt">Some</span> summary -&gt;
+      <span class="co">(* interprocedural analysis produced a summary: use it *)</span>
+      ()
+  | <span class="dt">None</span> -&gt;
+     <span class="co">(* No summary for [callee_procname]; it&#39;s native code or missing for some reason *)</span>
+     ()</code></pre></div>
+<p>This improvement should allow your analysis to pass the tests in <a href="https://github.com/facebook/infer/blob/master/infer/tests/codetoanalyze/java/lab/LeaksInterprocedural.java">LeaksInterprocedural.java</a>.</p>
+<p>Hint: What do return values look like in infer? They are assignments to a special variable, detected by <code>Var.is_return</code>. You may also want to match only return variables of some specific object type. Use this code to look at the classname of the type of the return value:</p>
+<div class="sourceCode"><pre class="sourceCode ocaml"><code class="sourceCode ocaml">    | Assign
+        (Base (ret, {Typ.desc= Typ.Tptr ({Typ.desc= Typ.Tstruct ret_typename}, _)}), _rhs_exp, _loc)
+      <span class="kw">when</span> Var.is_return ret -&gt;</code></pre></div>
+<p>Then <code>ret_var</code> is the return variable (if <code>Var.is_return ret_var</code> returns true), of type <code>ret_typename</code> (really <code>ret_typename*</code> in infer's intermediate representation).</p>
+<h2 id="access-paths">(5) Access paths</h2>
+<ol style="list-style-type: lower-alpha">
+<li>Change the simple counting domain to a domain that overapproximates the set of storage locations that hold a resource. As a concrete goal, the new domain should allow you to print the name of the resource(s) that leak in the error message (rather than just the number of resources). The new domain should also allow your analysis to get the correct answer on your false negative and false positive tests from 2(d) and 2(e). Think about the following questions when designing your new domain:</li>
+</ol>
+<ul>
+<li><p>How should we abstract storage locations? Is abstracting the stack program variables (<code>Var.t</code>)'s enough, or do we need an abstraction of the heap as well?</p></li>
+<li><p>How will we handle aliasing (storage locations that store the same address)? More precisely, how to handle assignement?</p></li>
+<li><p>Will it be easy to extend the domain to incorporate information from the callee summaries/represent state that will be instantiated by callers?</p></li>
+<li><p>Some modules that might be useful in creating your new domain (depending on what approach you choose): <code>AbstractDomain.FiniteSet</code>, <code>AbstractDomain.Map</code>, <code>AccessPath</code>, <code>Var</code>.</p></li>
+<li><p>It's okay for the domain to diverge in certain cases for the purpose of this lab. Can you write a method that would make your checker diverge?</p></li>
+</ul>
+<ol start="2" style="list-style-type: lower-alpha">
+<li><p>Write some tests that demonstrate the limitations of your new domain: both false positives (names prefixed with <code>FP_</code> and false negatives (prefixed with <code>FN_</code>). Add them to <a href="https://github.com/facebook/infer/blob/master/infer/tests/codetoanalyze/java/lab/LeaksAccessPath.java">LeaksAccessPaths.java</a>.</p></li>
+<li><p>Augment the summary type with state to indicate formals that are closed by the current function. This should allow your analysis to pass the tests in <a href="https://github.com/facebook/infer/blob/master/infer/tests/codetoanalyze/java/lab/LeaksAccessPathsInterprocedural.java">LeaksAccessPathsInterprocedural.java</a>.</p></li>
+</ol>
+<p>Hint: You will find the <code>FormalMap</code> module useful for this. This module lets you go back and forth between the index of a formal and its name. This utility module is also used in the <code>RacerD</code> and <code>TaintAnalysis</code> modules.</p>
+<h2 id="making-it-practical">(6) Making it practical</h2>
+<ol style="list-style-type: lower-alpha">
+<li><p>Real resource leaks frequently involve failing to close resources along exceptional control-flow paths. For simplicity, the initial version of the current analysis uses a filtered view of the CFG that skips exceptional edges (<code>ProcCfg.Normal</code>). To find more bugs, you might want to switch to using <code>ProcCfg.Exceptional</code> and make sure that your analysis gets the right answer on some realistic exception examples like <a href="https://github.com/facebook/infer/blob/master/infer/tests/codetoanalyze/java/lab/LeaksExceptions.java">LeaksExceptions.java</a>.</p></li>
+<li>Try running on real code! The instructions <a href="http://fm.csl.sri.com/SSFT17/infer-instr.html">here</a> have several suggestions for open-source Android apps to point your analysis at. Try <code>./gradlew assembleDebug -x test</code> first to make sure everything builds correctly without Infer (if not, you are probably missing some dependencies--the error messages should guide you). Once that's working, try <code>./gradlew clean; infer run --resource-leak-only -- ./gradlew assembleDebug -x test</code>.</li>
+</ol>
+<ul>
+<li>Found a real bug? Bonus points! Send a pull request to fix it! Very frequently, the best fix is to use try-with-resources.</li>
+<li>Found a false positive in your analysis? Try re-running Infer with <code>--debug</code> and see if you can narrow down the root cause/fix it.</li>
+<li>How does your analysis compare to Infer's production resource leak analysis? Run with <code>infer -- &lt;gradle command&gt;</code> to see if your analysis finds bugs that Infer misses, or vice versa.</li>
+</ul>
+
+</body>
+</html>

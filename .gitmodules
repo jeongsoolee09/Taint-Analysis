@@ -1,3 +1,0 @@
-[submodule "Code/infer"]
-	path = Code/infer
-	url = https://github.com/facebook/infer.git

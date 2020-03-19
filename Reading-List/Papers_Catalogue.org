@@ -21,26 +21,6 @@
 
 ** Inferring Taint Specifications (with PGM)
 
-*** Scalable Taint Specification Inference with Big Code
-
-- Authors: Victor Chibotaru, Benjamin Bichsel, Veselin Raychev, *Martin Vechev*
-- Conference: PLDI '19
-- Subject: Scalable Taint Specification Inference using a Propagation Graph
-- Citations:
-- Level of Automation:
-- PGM: Bayesian Network (dubbed 'Propagation Graph')
-  - V: Events (Global variable read, Field R/W, Function Call 등 Tainted Value의 전파에 관여하는 모든 command들
-  - E: Propagation의 방향
-    - Information Flow Analysis로 찾아냄.
-- Inference Algorithm on PGM:
-  - Linear Constraint Solving (일차부등식을 세우고 풀기)
-    - Node n이 src/sin/san일 확률이 Parameter.
-      - Semi-Supervised Parametric Learning
-    - Belief Propagation Algorithm은 Unscalable하다는 이유에서.
-- Scalability: Maximum 23.1K
-- Object Language: Python
-- 한줄평:
-  - 노드 개수를 지나치게 많이 잡고 있다. (이벤트별로 하나씩 만들면 당연히 많지!) 그래서 (NP이기는 하지만) BP algorithm을 쓰지 않고 Linear Constraint Solving으로 때우며, 이 때문에 평균 정확도가 66.6% 로 낮은 듯하다. (Constraint Solving은 너무 낙관적이다)
     
 *** Merlin: Specification Inference for Explicit Information Flow Problems
     
@@ -48,7 +28,7 @@
 - Conference: PLDI '09
 - Subject: Inferring Method Specifications ([src|sin|san|reg]) 
 - Citations: 
-- Level of Automation: Partial answers given from the beginning
+- Level of Automation: Automatic (Semi-Supervised)
   - "While we can use the above approach to infer specifications without any prior specification, we find that the quality of inference is significantly higher if we use the default specification ... as the initial specification, ..."
 - PGM: Factor Graph
   - V: Factors Constructed from Methods
@@ -65,15 +45,38 @@
 - 한줄평: 위의 PLDI'19 (Seldon)이 낙관적인 Constraint를 세우는 데 영감을 준 논문인 만큼 여기도 아예 'most paths in a propagation graph are secure'이라는 말을 쓰고 있다. Factor Graph의 노드가 181,943개인데도 inference algorithm이 작동했다는 게 놀랍다 (현재 사용하는 Pomegranate가 잘 안 풀리면 Infer.NET을 사용해 봐야겠다).
  
 
+# TODO: Semi-Supervised와 Supervised의 차이 명확히 하기.
+
 ** Inferring Taint Specifications (without PGM)
    
+*** Scalable Taint Specification Inference with Big Code
+
+- Authors: Victor Chibotaru, Benjamin Bichsel, Veselin Raychev, *Martin Vechev*
+- Conference: PLDI '19
+- Subject: Scalable Taint Specification Inference using a Propagation Graph
+- Citations:
+- Level of Automation: Partial answers given from the beginning (Semi-Supervised)
+- PGM: Bayesian Network (dubbed 'Propagation Graph')
+  - V: Events (Global variable read, Field R/W, Function Call 등 Tainted Value의 전파에 관여하는 모든 command들
+  - E: Propagation의 방향
+    - Information Flow Analysis로 찾아냄.
+- Inference Algorithm on PGM:
+  - Linear Constraint Solving (일차부등식을 세우고 풀기)
+    - Node n이 src/sin/san일 확률이 Parameter.
+      - Semi-Supervised Parametric Learning
+    - Belief Propagation Algorithm은 Unscalable하다는 이유에서.
+- Scalability: Maximum 23.1K
+- Object Language: Python
+- 한줄평:
+  - 노드 개수를 지나치게 많이 잡고 있다. (이벤트별로 하나씩 만들면 당연히 많지!) 그래서 (NP이기는 하지만) BP algorithm을 쓰지 않고 Linear Constraint Solving으로 때우며, 이 때문에 평균 정확도가 66.6% 로 낮은 듯하다. (Constraint Solving은 너무 낙관적이다)
+  - 
 *** Codebase-Adaptive Detection of Security-Relevant Methods
     
 - Authors: Goran Piskachev, Lisa Nguyen Quang Do, *Eric Bodden*
 - Conference: ISSTA '19
 - Subject: Classifying Security-Related Methods based on different CWE vulnerabilities using *SVM*
 - Citations: 2
-- Level of Automation:
+- Level of Automation: Automatic (Supervised Learning)
 - PGM: N/A
   - Bayesian Network를 사용해 보았다고는 하지만, SVM-based classification에 정확도와 리콜에서 밀려 채택되지 않음
 - Inference Algorithm on PGM: N/A
@@ -93,7 +96,6 @@
 - Scalability: 110,000 Public Android Methods
 - Object Language: Java (Android)
 - 한줄평: Source와 Sink만 분류 가능하다는 점에서 한계가 있다. 말은 Fully Automated라는데, 이건 거의 눈 가리고 아웅 하는 식이다. 왜냐하면 SVM을 트레이닝하면서 필요한 Training Set에 더불어 Cross-validation을 위한 Test Set까지 준비해야 하는데, 이건 수동으로 일일이 레이블링한 데이터들이다. 결국 사람의 손이 들어가야 하고, 잘못 레이블링되면 이후의 Inference도 당연히 부정확할 것이다 (그런데 여기서는 Fully automated이기 때문에 사람의 개입을 통한 부정확함이 없다고 말하고 있다). Syntactic Feature는 많긴 하지만 애교 수준이고, Datalog 스타일의 Semantic Features는 그냥 애교다.
-
     
     
 ** Taint Analysis

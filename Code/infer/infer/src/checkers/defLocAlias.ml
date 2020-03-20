@@ -14,6 +14,8 @@ exception CannotExtractPvar
 exception NotSupported
 exception NoMethname
 exception VarDefNotPH 
+exception UnexpectedArg
+exception NotImplemented
 
 module L = Logging
 module F = Format
@@ -169,6 +171,17 @@ module TransferFunctions = struct
     find_tuple_with_ret_inner elements methname []
 
 
+  let rec input_is_void_type (arg_ts:(Exp.t*Typ.t) list) (astate:S.t) : bool =
+    match arg_ts with
+    | [] -> true
+    | (Var var, _)::t ->
+        let (_, vardef, _, _) = weak_search_target_tuple_by_id var astate in
+          if Var.is_this vardef
+          then input_is_void_type t astate (* thisvars are ignored *)
+          else false
+    | (_, _)::_ -> raise UnexpectedArg (* shouldn't actual args be all pure logical vars? *)
+
+
   let exec_store (exp1:Exp.t) (exp2:Exp.t) (methname:Procname.t) (astate:S.t) (node:CFG.Node.t) : S.t =
     match exp1, exp2 with
     | Lvar pv, Var id ->
@@ -255,22 +268,25 @@ module TransferFunctions = struct
       match e_fun with
       | Const (Cfun fn) -> fn
       | _ -> raise NoMethname in
-    match Payload.read ~caller_summary:summary ~callee_pname:callee_methname with
-    | Some summ -> 
-        let targetTuples = find_tuple_with_ret summ callee_methname in
-        begin match List.length targetTuples with
-        | 0 -> (* the variable being returned has not been redefined in callee, create a new def *)
-            let methname = node |> CFG.Node.underlying_node |> Procdesc.Node.get_proc_name in
-            let ph = placeholder_vardef (methname) in
-            let logicalvar = Var.of_id ret_id in
-            let newstate = (methname, ph, Location.dummy, A.singleton logicalvar) in
-            S.add newstate prev
-        | _ -> (* the variable being returned has been redefined in callee, carry that def over *)
-            let update_summ_tuples = fun (procname,vardef,location,aliasset) -> (procname,vardef,location,A.add (Var.of_id ret_id) (A.filter is_logical_var aliasset)) in
-            let targetTuples_set = (List.map ~f:update_summ_tuples targetTuples) |> S.of_list in
-            S.union prev targetTuples_set end
-    | None -> prev
-
+    match input_is_void_type arg_ts prev with
+    | true -> (* All Arguments are Just Constants *)
+        begin match Payload.read ~caller_summary:summary ~callee_pname:callee_methname with
+        | Some summ -> 
+            let targetTuples = find_tuple_with_ret summ callee_methname in
+            begin match List.length targetTuples with
+            | 0 -> (* the variable being returned has not been redefined in callee, create a new def *)
+                let methname = node |> CFG.Node.underlying_node |> Procdesc.Node.get_proc_name in
+                let ph = placeholder_vardef (methname) in
+                let logicalvar = Var.of_id ret_id in
+                let newstate = (methname, ph, Location.dummy, A.singleton logicalvar) in
+                S.add newstate prev
+            | _ -> (* the variable being returned has been redefined in callee, carry that def over *)
+                let update_summ_tuples = fun (procname,vardef,location,aliasset) -> (procname,vardef,location,A.add (Var.of_id ret_id) (A.filter is_logical_var aliasset)) in
+                let targetTuples_set = (List.map ~f:update_summ_tuples targetTuples) |> S.of_list in
+                S.union prev targetTuples_set end
+          | None -> prev end
+    | false -> (* There is at least one argument which is a non-thisvar variable *)
+        raise NotImplemented
 
   let exec_instr : S.t -> extras ProcData.t -> CFG.Node.t -> Sil.instr -> S.t = fun prev {summary} node instr ->
     match instr with

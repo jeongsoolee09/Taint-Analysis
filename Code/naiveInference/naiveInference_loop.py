@@ -4,7 +4,7 @@ import random
 
 methods = pd.read_csv("raw_data.csv", index_col=0)
 ids = methods["id"]
-methods = methods.drop('id', axis=1) # unleash me when you're done!
+methods = methods.drop('id', axis=1)
 edges = pd.read_csv("edges.csv", index_col=0)
 edges.columns = pd.MultiIndex.from_product([['edge1', 'edge2'], methods.columns])
 

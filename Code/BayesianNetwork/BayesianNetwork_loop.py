@@ -1,6 +1,5 @@
 # 현재 문제:
 # 1. 메모리가 터짐
-# 테스트
 
 from pomegranate import *
 import time
@@ -28,7 +27,7 @@ flatPrior = DiscreteDistribution({'src':0.25, 'sin':0.25, 'san':0.25, 'non':0.25
 # Methods for Graphs ================================
 def addNodeToGraph(G):
     """creates a graph for identifying root nodes"""
-    next(dataReader)
+    next(dataReader) # Headers don't taste good
     for data in dataReader:
         code = "G.add_node('"+data[6]+"')"
         exec(code, globals(), locals())

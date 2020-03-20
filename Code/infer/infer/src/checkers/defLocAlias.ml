@@ -42,6 +42,10 @@ module TransferFunctions = struct
 
   let get_most_recent_loc (value:Var.t) = Hashtbl.find history value
 
+
+  let (>>) f g = fun x -> g (f x)
+
+
   let is_pvar_expr (exp:Exp.t) : bool =
     match exp with
     | Lvar _ -> true
@@ -182,6 +186,20 @@ module TransferFunctions = struct
     | (_, _)::_ -> raise UnexpectedArg (* shouldn't actual args be all pure logical vars? *)
 
 
+  let rec extract_nonthisvar_from_args_inner (arg_ts:(Exp.t*Typ.t) list) (astate:S.t) acc : Var.t list =
+    match arg_ts with
+    | [] -> acc
+    | (Var var, _)::t ->
+        let (_, vardef, _, _) = weak_search_target_tuple_by_id var astate in
+        if not (Var.is_this vardef)
+        then extract_nonthisvar_from_args_inner t astate (vardef::acc)
+        else extract_nonthisvar_from_args_inner t astate acc
+    | (_, _)::_ -> raise UnexpectedArg (* shouldn't actual args be all pure logical vars? *)
+
+
+  let extract_nonthisvar_from_args (arg_ts:(Exp.t*Typ.t) list) (astate:S.t) : Var.t list = extract_nonthisvar_from_args_inner arg_ts astate [] 
+
+
   let exec_store (exp1:Exp.t) (exp2:Exp.t) (methname:Procname.t) (astate:S.t) (node:CFG.Node.t) : S.t =
     match exp1, exp2 with
     | Lvar pv, Var id ->
@@ -262,13 +280,13 @@ module TransferFunctions = struct
     | _, _ -> raise NotSupported
 
 
-  let exec_call (ret_id:Ident.t) (e_fun:Exp.t) (arg_ts:(Exp.t*Typ.t) list) (summary:Summary.t) (node:CFG.Node.t) (prev:S.t) =
-    let _ = List.map ~f:(fun ((e,_):Exp.t*Typ.t) -> L.progress "parameters of %a: (%a, sometype)\n" Exp.pp e_fun Exp.pp e) arg_ts in
+  let exec_call (ret_id:Ident.t) (e_fun:Exp.t) (arg_ts:(Exp.t*Typ.t) list) (summary:Summary.t) (node:CFG.Node.t) (astate:S.t) =
+    (* let _ = List.map ~f:(fun ((e,_):Exp.t*Typ.t) -> L.progress "parameters of %a: (%a, sometype)\n" Exp.pp e_fun Exp.pp e) arg_ts in *)
     let callee_methname =
       match e_fun with
       | Const (Cfun fn) -> fn
       | _ -> raise NoMethname in
-    match input_is_void_type arg_ts prev with
+    match input_is_void_type arg_ts astate with
     | true -> (* All Arguments are Just Constants *)
         begin match Payload.read ~caller_summary:summary ~callee_pname:callee_methname with
         | Some summ -> 
@@ -279,14 +297,18 @@ module TransferFunctions = struct
                 let ph = placeholder_vardef (methname) in
                 let logicalvar = Var.of_id ret_id in
                 let newstate = (methname, ph, Location.dummy, A.singleton logicalvar) in
-                S.add newstate prev
+                S.add newstate astate
             | _ -> (* the variable being returned has been redefined in callee, carry that def over *)
                 let update_summ_tuples = fun (procname,vardef,location,aliasset) -> (procname,vardef,location,A.add (Var.of_id ret_id) (A.filter is_logical_var aliasset)) in
                 let targetTuples_set = (List.map ~f:update_summ_tuples targetTuples) |> S.of_list in
-                S.union prev targetTuples_set end
-          | None -> prev end
+                S.union astate targetTuples_set end
+          | None -> astate end
     | false -> (* There is at least one argument which is a non-thisvar variable *)
-        raise NotImplemented
+        let actuals = extract_nonthisvar_from_args arg_ts astate in
+        let formals = Summary.get_formals summary in (* My own summary *)
+        let _ = List.map ~f:(L.progress "actual: %a\n" Var.pp) actuals in
+        let _ = List.map ~f:(fun (m,_) -> L.progress "formal: (%a, sometype)\n" Mangled.pp m) formals in
+        astate
 
   let exec_instr : S.t -> extras ProcData.t -> CFG.Node.t -> Sil.instr -> S.t = fun prev {summary} node instr ->
     match instr with

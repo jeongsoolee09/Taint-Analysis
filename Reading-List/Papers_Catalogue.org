@@ -61,7 +61,7 @@
   - E: Propagation의 방향
     - Information Flow Analysis로 찾아냄.
 - Inference Algorithm on PGM:
-  - Linear Constraint Solving (일차부등식을 세우고 풀기)
+  - Linear Constraint Solving (일차부등식을 세우고 최적해 찾기)
     - Node n이 src/sin/san일 확률이 Parameter.
       - Semi-Supervised Parametric Learning
     - Belief Propagation Algorithm은 Unscalable하다는 이유에서.

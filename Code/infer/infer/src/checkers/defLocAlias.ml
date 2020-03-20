@@ -250,7 +250,7 @@ module TransferFunctions = struct
 
 
   let exec_call (ret_id:Ident.t) (e_fun:Exp.t) (arg_ts:(Exp.t*Typ.t) list) (summary:Summary.t) (node:CFG.Node.t) (prev:S.t) =
-    (* let _ = List.map ~f:(fun ((e,_):Exp.t*Typ.t) -> L.progress "(%a, sometype)" Exp.pp e) arg_ts in *)
+    let _ = List.map ~f:(fun ((e,_):Exp.t*Typ.t) -> L.progress "parameters of %a: (%a, sometype)\n" Exp.pp e_fun Exp.pp e) arg_ts in
     let callee_methname =
       match e_fun with
       | Const (Cfun fn) -> fn

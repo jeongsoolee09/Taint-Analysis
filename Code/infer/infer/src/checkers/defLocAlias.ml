@@ -16,6 +16,7 @@ exception NoMethname
 exception VarDefNotPH 
 exception UnexpectedArg
 exception NotImplemented
+exception LengthError
 
 module L = Logging
 module F = Format
@@ -200,6 +201,21 @@ module TransferFunctions = struct
   let extract_nonthisvar_from_args (arg_ts:(Exp.t*Typ.t) list) (astate:S.t) : Var.t list = extract_nonthisvar_from_args_inner arg_ts astate [] 
 
 
+(** Takes an actual(logical)-formal binding list and adds the formals to the respective pvar tuples of the actual arguments *)
+  let rec add_to_alias_of_tuples (methname:Procname.t) bindinglist (actualtuples:S.elt list) =
+    match bindinglist with
+      | [] -> []
+      | (l, (m,_))::tl ->
+          begin match l with
+          | Var.LogicalVar vl ->
+              let (proc, var, loc, alias) = weak_search_target_tuple_by_id vl (S.of_list actualtuples) in
+              let mangledvar = Pvar.mk m methname in
+              let newTuple = (proc, var, loc, A.add (Var.of_pvar mangledvar) alias) in
+              newTuple::add_to_alias_of_tuples methname tl actualtuples
+          | Var.ProgramVar _ -> raise UndefinedSemantics
+          end
+
+
   let exec_store (exp1:Exp.t) (exp2:Exp.t) (methname:Procname.t) (astate:S.t) (node:CFG.Node.t) : S.t =
     match exp1, exp2 with
     | Lvar pv, Var id ->
@@ -236,7 +252,7 @@ module TransferFunctions = struct
                 else (methname_old, vardef, loc, aliasset_new) in
             let astate_rmvd = S.remove targetTuple astate in
             add_to_history pvar_var loc; S.add newstate astate_rmvd 
-       end
+        end
     | Lvar pv, Const _ when (Var.is_return (Var.of_pvar pv)) -> astate
     | Lvar pv, Const _ ->
         let pvar_var = Var.of_pvar pv in
@@ -280,14 +296,7 @@ module TransferFunctions = struct
     | _, _ -> raise NotSupported
 
 
-  let exec_call (ret_id:Ident.t) (e_fun:Exp.t) (arg_ts:(Exp.t*Typ.t) list) (summary:Summary.t) (node:CFG.Node.t) (astate:S.t) =
-    (* let _ = List.map ~f:(fun ((e,_):Exp.t*Typ.t) -> L.progress "parameters of %a: (%a, sometype)\n" Exp.pp e_fun Exp.pp e) arg_ts in *)
-    let callee_methname =
-      match e_fun with
-      | Const (Cfun fn) -> fn
-      | _ -> raise NoMethname in
-    match input_is_void_type arg_ts astate with
-    | true -> (* All Arguments are Just Constants *)
+  let apply_summary astate summary callee_methname node ret_id =
         begin match Payload.read ~caller_summary:summary ~callee_pname:callee_methname with
         | Some summ -> 
             let targetTuples = find_tuple_with_ret summ callee_methname in
@@ -303,12 +312,38 @@ module TransferFunctions = struct
                 let targetTuples_set = (List.map ~f:update_summ_tuples targetTuples) |> S.of_list in
                 S.union astate targetTuples_set end
           | None -> astate end
+    
+
+  let rec zip (l1:'a list) (l2: 'b list) =
+    match l1, l2 with
+    | [], [] -> []
+    | h1::t1, h2::t2 -> (h1, h2)::zip t1 t2
+    | _, _ -> raise LengthError
+
+
+  let exec_call (ret_id:Ident.t) (e_fun:Exp.t) (arg_ts:(Exp.t*Typ.t) list) (summary:Summary.t) (node:CFG.Node.t) (astate:S.t) (methname:Procname.t) =
+    (* let _ = List.map ~f:(fun ((e,_):Exp.t*Typ.t) -> L.progress "parameters of %a: (%a, sometype)\n" Exp.pp e_fun Exp.pp e) arg_ts in *)
+    let callee_methname =
+      match e_fun with
+      | Const (Cfun fn) -> fn
+      | _ -> raise NoMethname in
+    match input_is_void_type arg_ts astate with
+    | true -> (* All Arguments are Just Constants: just apply the summary and end *)
+        apply_summary astate summary callee_methname node ret_id
     | false -> (* There is at least one argument which is a non-thisvar variable *)
-        let actuals = extract_nonthisvar_from_args arg_ts astate in
+        let actuals_logical = extract_nonthisvar_from_args arg_ts astate in
         let formals = Summary.get_formals summary in (* My own summary *)
-        let _ = List.map ~f:(L.progress "actual: %a\n" Var.pp) actuals in
+        let actuallog_formal_binding = zip actuals_logical formals in
+        let _ = List.map ~f:(L.progress "actual: %a\n" Var.pp) actuals_logical in
         let _ = List.map ~f:(fun (m,_) -> L.progress "formal: (%a, sometype)\n" Mangled.pp m) formals in
-        astate
+        let actuals_pvar_tuples = List.map ~f:(function
+            | Var.LogicalVar id -> search_target_tuple_by_id id methname astate 
+            | Var.ProgramVar _ -> raise UndefinedSemantics) actuals_logical in
+        let actualpvar_alias_added = add_to_alias_of_tuples methname actuallog_formal_binding actuals_pvar_tuples |> S.of_list in
+        let astate_rmvd = S.diff astate (S.of_list actuals_pvar_tuples) in
+        let set_to_apply_summary = S.union astate_rmvd actualpvar_alias_added in
+        apply_summary set_to_apply_summary summary callee_methname node ret_id
+
 
   let exec_instr : S.t -> extras ProcData.t -> CFG.Node.t -> Sil.instr -> S.t = fun prev {summary} node instr ->
     match instr with
@@ -324,7 +359,9 @@ module TransferFunctions = struct
         let methname = node |> CFG.Node.underlying_node |> Procdesc.Node.get_proc_name in
         exec_store exp1 exp2 methname prev node
     | Sil.Prune _ -> prev
-    | Sil.Call ((ret_id, _), e_fun, arg_ts, _, _) -> exec_call ret_id e_fun arg_ts summary node prev
+    | Sil.Call ((ret_id, _), e_fun, arg_ts, _, _) ->
+        let methname = node |> CFG.Node.underlying_node |> Procdesc.Node.get_proc_name in
+        exec_call ret_id e_fun arg_ts summary node prev methname
     | Sil.Metadata _ -> prev
 
 

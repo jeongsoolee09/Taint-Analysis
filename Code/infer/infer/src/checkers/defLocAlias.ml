@@ -216,6 +216,31 @@ module TransferFunctions = struct
           end
 
 
+  let apply_summary astate summary callee_methname node ret_id =
+        begin match Payload.read ~caller_summary:summary ~callee_pname:callee_methname with
+        | Some summ -> 
+            let targetTuples = find_tuple_with_ret summ callee_methname in
+            begin match List.length targetTuples with
+            | 0 -> (* the variable being returned has not been redefined in callee, create a new def *)
+                let methname = node |> CFG.Node.underlying_node |> Procdesc.Node.get_proc_name in
+                let ph = placeholder_vardef (methname) in
+                let logicalvar = Var.of_id ret_id in
+                let newstate = (methname, ph, Location.dummy, A.singleton logicalvar) in
+                S.add newstate astate
+            | _ -> (* the variable being returned has been redefined in callee, carry that def over *)
+                let update_summ_tuples = fun (procname,vardef,location,aliasset) -> (procname,vardef,location,A.add (Var.of_id ret_id) (A.filter is_logical_var aliasset)) in
+                let targetTuples_set = (List.map ~f:update_summ_tuples targetTuples) |> S.of_list in
+                S.union astate targetTuples_set end
+          | None -> astate end
+    
+
+  let rec zip (l1:'a list) (l2: 'b list) =
+    match l1, l2 with
+    | [], [] -> []
+    | h1::t1, h2::t2 -> (h1, h2)::zip t1 t2
+    | _, _ -> raise LengthError
+
+
   let exec_store (exp1:Exp.t) (exp2:Exp.t) (methname:Procname.t) (astate:S.t) (node:CFG.Node.t) : S.t =
     match exp1, exp2 with
     | Lvar pv, Var id ->
@@ -294,31 +319,6 @@ module TransferFunctions = struct
         let newstate = (methname, pvar_var, loc, aliasset_new) in
         add_to_history pvar_var loc; S.add newstate astate
     | _, _ -> raise NotSupported
-
-
-  let apply_summary astate summary callee_methname node ret_id =
-        begin match Payload.read ~caller_summary:summary ~callee_pname:callee_methname with
-        | Some summ -> 
-            let targetTuples = find_tuple_with_ret summ callee_methname in
-            begin match List.length targetTuples with
-            | 0 -> (* the variable being returned has not been redefined in callee, create a new def *)
-                let methname = node |> CFG.Node.underlying_node |> Procdesc.Node.get_proc_name in
-                let ph = placeholder_vardef (methname) in
-                let logicalvar = Var.of_id ret_id in
-                let newstate = (methname, ph, Location.dummy, A.singleton logicalvar) in
-                S.add newstate astate
-            | _ -> (* the variable being returned has been redefined in callee, carry that def over *)
-                let update_summ_tuples = fun (procname,vardef,location,aliasset) -> (procname,vardef,location,A.add (Var.of_id ret_id) (A.filter is_logical_var aliasset)) in
-                let targetTuples_set = (List.map ~f:update_summ_tuples targetTuples) |> S.of_list in
-                S.union astate targetTuples_set end
-          | None -> astate end
-    
-
-  let rec zip (l1:'a list) (l2: 'b list) =
-    match l1, l2 with
-    | [], [] -> []
-    | h1::t1, h2::t2 -> (h1, h2)::zip t1 t2
-    | _, _ -> raise LengthError
 
 
   let exec_call (ret_id:Ident.t) (e_fun:Exp.t) (arg_ts:(Exp.t*Typ.t) list) (summary:Summary.t) (node:CFG.Node.t) (astate:S.t) (methname:Procname.t) =

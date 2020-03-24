@@ -216,18 +216,26 @@ module TransferFunctions = struct
 
 
 (** Takes an actual(logical)-formal binding list and adds the formals to the respective pvar tuples of the actual arguments *)
-  let rec add_to_alias_of_tuples (methname:Procname.t) bindinglist (actualtuples:S.elt list) =
+  let rec add_bindings_to_alias_of_tuples (methname:Procname.t) bindinglist (actualtuples:S.elt list) =
     match bindinglist with
       | [] -> []
-      | (l, (m,_))::tl ->
-          begin match l with
-          | Var.LogicalVar vl ->
-              let (proc, var, loc, alias) = weak_search_target_tuple_by_id vl (S.of_list actualtuples) in
-              let mangledvar = Pvar.mk m methname in
-              let newTuple = (proc, var, loc, A.add (Var.of_pvar mangledvar) alias) in
-              newTuple::add_to_alias_of_tuples methname tl actualtuples
-          | Var.ProgramVar _ -> raise UndefinedSemantics1
-          end
+      | (actualvar, formalvar)::tl ->
+          begin match actualvar with
+            | Var.LogicalVar vl ->
+                let (proc, var, loc, alias) =
+                  weak_search_target_tuple_by_id vl (S.of_list actualtuples) in
+                let newTuple = (proc, var, loc, A.add formalvar alias) in
+                newTuple::add_bindings_to_alias_of_tuples methname tl actualtuples
+            | Var.ProgramVar _ -> raise UndefinedSemantics1
+            end
+
+
+  let rec add_var_to_aliasset (tuplelist:S.elt list) (vars:Var.t list) : S.elt list =
+    match tuplelist, vars with
+    | [], [] -> []
+    | (proc,vardef,loc,aliasset)::t1, var::t2 ->
+        (proc,vardef,loc,A.add var aliasset)::add_var_to_aliasset t1 t2
+    | _, _ -> raise LengthError
 
 
   let apply_summary astate caller_summary callee_methname node ret_id =
@@ -256,6 +264,12 @@ module TransferFunctions = struct
 
 
   let convert_from_mangled = fun methname (m,_) -> Pvar.mk m methname |> Var.of_pvar
+
+
+  let extract_ident (v:Var.t) =
+    match v with
+    | Var.LogicalVar id -> id
+    | Var.ProgramVar _ -> raise UnexpectedArg
 
 
   let exec_store (exp1:Exp.t) (exp2:Exp.t) (methname:Procname.t) (astate:S.t) (node:CFG.Node.t) (my_summary:Summary.t) : S.t =
@@ -352,27 +366,28 @@ module TransferFunctions = struct
       match e_fun with
       | Const (Cfun fn) -> fn
       | _ -> raise NoMethname in
-    let callee_summary =
-      L.progress "%a" Procname.pp callee_methname ;
-      match Summary.OnDisk.get callee_methname with
-      | Some summary -> summary
-      | None -> raise NoSummary in
     match input_is_void_type arg_ts astate with
     | true -> (* All Arguments are Just Constants: just apply the summary and end *)
         apply_summary astate caller_summary callee_methname node ret_id
     | false -> (* There is at least one argument which is a non-thisvar variable *)
         let actuals_logical = extract_nonthisvar_from_args arg_ts astate in
-        let formals = Summary.get_formals callee_summary in (* My own summary *)
+        let formals = get_formals callee_methname in
         let actuallog_formal_binding = zip actuals_logical formals in
         let _ = List.map ~f:(L.progress "actual: %a\n" Var.pp) actuals_logical in
-        let _ = List.map ~f:(fun (m,_) -> L.progress "formal: (%a, sometype)\n" Mangled.pp m) formals in
+        let _ = List.map ~f:(fun m -> L.progress "formal: (%a, sometype)\n" Var.pp m) formals in
         let actuals_pvar_tuples = List.map ~f:(function
             | Var.LogicalVar id -> search_target_tuple_by_id id methname astate 
             | Var.ProgramVar _ -> raise UndefinedSemantics2) actuals_logical in
-        let actualpvar_alias_added = add_to_alias_of_tuples methname actuallog_formal_binding actuals_pvar_tuples |> S.of_list in
+        let actualpvar_alias_added = add_bindings_to_alias_of_tuples methname actuallog_formal_binding actuals_pvar_tuples |> S.of_list in
         let astate_rmvd = S.diff astate (S.of_list actuals_pvar_tuples) in
-        let set_to_apply_summary = S.union astate_rmvd actualpvar_alias_added in
-        apply_summary set_to_apply_summary caller_summary callee_methname node ret_id
+        let state_to_apply_summary = S.union astate_rmvd actualpvar_alias_added in
+        let applied_state = apply_summary state_to_apply_summary caller_summary callee_methname node ret_id in
+        let actualpvars_beforeadd = List.map ~f:(fun idvar -> search_target_tuple_by_id (extract_ident idvar) methname applied_state) actuals_logical in
+        let actualpvars_updated = add_var_to_aliasset actualpvars_beforeadd formals in
+        let actualpvars_beforeset = S.of_list actualpvars_beforeadd in
+        let actualpvars_updatedset = S.of_list actualpvars_updated in
+        let applied_state_rmvd = S.diff applied_state actualpvars_beforeset in
+        S.union applied_state_rmvd actualpvars_updatedset
 
 
   let exec_instr : S.t -> extras ProcData.t -> CFG.Node.t -> Sil.instr -> S.t = fun prev {summary} node instr ->

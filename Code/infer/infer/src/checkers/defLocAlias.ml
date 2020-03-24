@@ -39,11 +39,23 @@ module TransferFunctions = struct
   type extras = ProcData.no_extras
   type instr = Sil.instr
 
-  let history = Hashtbl.create 123456
+
+  let history = Hashtbl.create 777
+
 
   let add_to_history (key:Var.t) (value:Location.t)= Hashtbl.add history key value
 
-  let get_most_recent_loc (value:Var.t) = Hashtbl.find history value
+
+  let get_most_recent_loc (key:Var.t) = Hashtbl.find history key
+
+
+  let formals = Hashtbl.create 777
+
+
+  let add_to_formals (key:Procname.t) (value:Var.t list)= Hashtbl.add formals key value
+
+
+  let get_formals (key:Procname.t) = Hashtbl.find formals key
 
 
   let (>>) f g = fun x -> g (f x)
@@ -243,7 +255,10 @@ module TransferFunctions = struct
     | _, _ -> raise LengthError
 
 
-  let exec_store (exp1:Exp.t) (exp2:Exp.t) (methname:Procname.t) (astate:S.t) (node:CFG.Node.t) : S.t =
+  let convert_from_mangled = fun methname (m,_) -> Pvar.mk m methname |> Var.of_pvar
+
+
+  let exec_store (exp1:Exp.t) (exp2:Exp.t) (methname:Procname.t) (astate:S.t) (node:CFG.Node.t) (my_summary:Summary.t) : S.t =
     match exp1, exp2 with
     | Lvar pv, Var id ->
         begin match Var.is_return (Var.of_pvar pv) with
@@ -261,6 +276,9 @@ module TransferFunctions = struct
               let logicalvar = Var.of_id id in
               let programvar = Var.of_pvar pv in
               let newstate = (proc,var,loc,A.union aliasset' (A.singleton logicalvar |> A.add programvar)) in
+              let formals_mangled = Summary.get_formals my_summary in
+              let formals = List.map ~f:(convert_from_mangled methname) formals_mangled in
+              add_to_formals methname formals ;
               S.add newstate astate_rmvd
             with _ -> (* search_target_tuples_by_pvar failed: the pvar_var is not redefined in the procedure *)
                 S.remove targetTuple astate end
@@ -278,7 +296,8 @@ module TransferFunctions = struct
                   (* Previous Variable Definition Carryover. *)
                 else (methname_old, vardef, loc, aliasset_new) in
             let astate_rmvd = S.remove targetTuple astate in
-            add_to_history pvar_var loc; S.add newstate astate_rmvd 
+            add_to_history pvar_var loc;
+            S.add newstate astate_rmvd
         end
     | Lvar pv, Const _ when (Var.is_return (Var.of_pvar pv)) -> astate
     | Lvar pv, Const _ ->
@@ -298,7 +317,8 @@ module TransferFunctions = struct
           then (procname, pvar_var, loc, aliasset_new)
           else (procname, vardef, loc, aliasset_new) in
         let astate_rmvd = S.remove targetTuple astate in
-        add_to_history pvar_var loc; S.add newstate astate_rmvd
+        add_to_history pvar_var loc;
+        S.add newstate astate_rmvd
     | Lvar pv, BinOp (_, Var _, Const _) | Lvar pv, BinOp (_, Const _, Var _) -> (* This id does not belong to pvar *)
         let pvar_var = Var.of_pvar pv in
         let loc = CFG.Node.loc node in
@@ -313,13 +333,15 @@ module TransferFunctions = struct
         let loc = CFG.Node.loc node in
         let aliasset_new = A.singleton pvar_var in
         let newstate = (methname, pvar_var, loc, aliasset_new) in
-        add_to_history pvar_var loc; S.add newstate astate_rmvd
+        add_to_history pvar_var loc;
+        S.add newstate astate_rmvd
     | Lvar pv, BinOp (_, Const _, Const _) ->
         let pvar_var = Var.of_pvar pv in
         let loc = CFG.Node.loc node in
         let aliasset_new = A.singleton pvar_var in
         let newstate = (methname, pvar_var, loc, aliasset_new) in
-        add_to_history pvar_var loc; S.add newstate astate
+        add_to_history pvar_var loc;
+        S.add newstate astate
     | _, _ -> raise NotSupported
 
 
@@ -354,6 +376,7 @@ module TransferFunctions = struct
 
 
   let exec_instr : S.t -> extras ProcData.t -> CFG.Node.t -> Sil.instr -> S.t = fun prev {summary} node instr ->
+    let my_summary = summary in
     match instr with
     | Sil.Load {id=id; e=exp} when is_pvar_expr exp ->
           let pvar = extract_pvar exp in
@@ -365,11 +388,11 @@ module TransferFunctions = struct
     | Sil.Load _ -> (* Complex things are not supported at this point *) prev 
     | Sil.Store {e1=exp1; e2=exp2} ->
         let methname = node |> CFG.Node.underlying_node |> Procdesc.Node.get_proc_name in
-        exec_store exp1 exp2 methname prev node
+        exec_store exp1 exp2 methname prev node my_summary
     | Sil.Prune _ -> prev
     | Sil.Call ((ret_id, _), e_fun, arg_ts, _, _) ->
         let methname = node |> CFG.Node.underlying_node |> Procdesc.Node.get_proc_name in
-        exec_call ret_id e_fun arg_ts summary node prev methname
+        exec_call ret_id e_fun arg_ts my_summary node prev methname
     | Sil.Metadata _ -> prev
 
 

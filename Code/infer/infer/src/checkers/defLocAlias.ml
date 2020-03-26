@@ -269,16 +269,11 @@ module TransferFunctions = struct
     | Var.ProgramVar _ -> raise UnexpectedArg
 
 
-  let get_formal_args (procname:Procname.t) : Var.t list =
-    match Procdesc.load procname with
-    | Some procdesc ->
-        let formallist = Procdesc.get_formals procdesc in
-        let rec convert_all_mangles lst =
-          match lst with
-            | [] -> []
-            | h::t-> convert_from_mangled procname h::convert_all_mangles t in
-          convert_all_mangles formallist
-    | None -> raise NoSummary
+  let get_formal_args (caller_procname:Procname.t) (caller_summary:Summary.t) (callee_pname:Procname.t) : Var.t list =
+    L.progress "%a 's callee: %a\n" Procname.pp caller_procname Procname.pp callee_pname ;
+      match Payload.read_full ~caller_summary:caller_summary ~callee_pname:callee_pname with
+      | Some (procdesc, _) -> Procdesc.get_formals procdesc |> List.map ~f:(convert_from_mangled caller_procname)
+      | None -> (* Oops, it's a native code outside our focus *) []
 
 
   let exec_store (exp1:Exp.t) (exp2:Exp.t) (methname:Procname.t) (astate:S.t) (node:CFG.Node.t) : S.t =
@@ -366,8 +361,8 @@ module TransferFunctions = struct
 
 
   let exec_call (ret_id:Ident.t) (e_fun:Exp.t) (arg_ts:(Exp.t*Typ.t) list) (caller_summary:Summary.t) (node:CFG.Node.t) (astate:S.t) (methname:Procname.t) =
-    (* let _ = List.map ~f:(fun ((e,_):Exp.t*Typ.t) -> L.progress "parameters of %a: (%a, sometype)\n" Exp.pp e_fun Exp.pp e) arg_ts in
-     * let _ = L.progress "summary: %a\n" Summary.pp_text caller_summary in *)
+    (* let _ = List.map ~f:(fun ((e,_):Exp.t*Typ.t) -> L.progress "parameters of %a: (%a, sometype)\n" Exp.pp e_fun Exp.pp e) arg_ts in *)
+    (* let _ = L.progress "caller summary: %a\n" Summary.pp_text caller_summary in *)
     let callee_methname =
       match e_fun with
       | Const (Cfun fn) -> fn
@@ -376,11 +371,12 @@ module TransferFunctions = struct
     | true -> (* All Arguments are Just Constants: just apply the summary and end *)
         apply_summary astate caller_summary callee_methname node ret_id
     | false -> (* There is at least one argument which is a non-thisvar variable *)
+        (* 외과수술 집도할 곳 *)
         let astate_summary_applied =
               apply_summary astate caller_summary callee_methname node ret_id
         in
         let actuals_logical = extract_nonthisvar_from_args methname arg_ts astate_summary_applied in
-        let formals = get_formal_args callee_methname |> List.filter ~f:(fun x -> Var.is_this x |> not) in
+        let formals = get_formal_args methname caller_summary callee_methname |> List.filter ~f:(fun x -> Var.is_this x |> not) in
         (* let _ = List.map ~f:(L.progress "actual: %a\n" Var.pp) actuals_logical in
          * let _ = List.map ~f:(L.progress "formal: (%a, sometype)\n" Var.pp) formals in *)
         let actuallog_formal_binding = zip actuals_logical formals in

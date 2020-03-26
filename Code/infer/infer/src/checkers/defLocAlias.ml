@@ -53,9 +53,6 @@ module TransferFunctions = struct
   let get_most_recent_loc (key:Var.t) = Hashtbl.find history key
 
 
-  let (>>) f g = fun x -> g (f x)
-
-
   let is_pvar_expr (exp:Exp.t) : bool =
     match exp with
     | Lvar _ -> true
@@ -233,12 +230,6 @@ module TransferFunctions = struct
     | _, _ -> raise LengthError1
 
 
-  let get_summary_for (procname:Procname.t) =
-    match Summary.OnDisk.get procname with
-    | Some summary -> summary
-    | None -> raise IDontKnow2
-
-
   let apply_summary astate caller_summary callee_methname node ret_id =
     match Payload.read ~caller_summary:caller_summary ~callee_pname:callee_methname with
     | Some summ ->
@@ -274,7 +265,6 @@ module TransferFunctions = struct
 
 
   let get_formal_args (caller_procname:Procname.t) (caller_summary:Summary.t) (callee_pname:Procname.t) : Var.t list =
-    (* L.progress "%a 's callee: %a\n" Procname.pp caller_procname Procname.pp callee_pname ; *)
       match Payload.read_full ~caller_summary:caller_summary ~callee_pname:callee_pname with
       | Some (procdesc, _) -> Procdesc.get_formals procdesc |> List.map ~f:(convert_from_mangled caller_procname)
       | None -> (* Oops, it's a native code outside our focus *) []
@@ -299,7 +289,7 @@ module TransferFunctions = struct
               let programvar = Var.of_pvar pv in
               let newstate = (proc,var,loc,A.union aliasset' (A.singleton logicalvar |> A.add programvar)) in
               S.add newstate astate_rmvd
-            with _ -> (* search_target_tuples_by_pvar failed: the pvar_var is not redefined in the procedure. *)
+            with _ -> (* search failed: the pvar_var is not redefined in the procedure. *)
                 S.remove targetTuple astate end
         | false -> (* An ordinary variable assignment. *)
             let (methname_old, vardef, _, aliasset) as targetTuple =
@@ -365,8 +355,6 @@ module TransferFunctions = struct
 
 
   let exec_call (ret_id:Ident.t) (e_fun:Exp.t) (arg_ts:(Exp.t*Typ.t) list) (caller_summary:Summary.t) (node:CFG.Node.t) (astate:S.t) (methname:Procname.t) =
-    (* let _ = List.map ~f:(fun ((e,_):Exp.t*Typ.t) -> L.progress "parameters of %a: (%a, sometype)\n" Exp.pp e_fun Exp.pp e) arg_ts in *)
-    (* let _ = L.progress "caller summary: %a\n" Summary.pp_text caller_summary in *)
     let callee_methname =
       match e_fun with
       | Const (Cfun fn) -> fn
@@ -382,37 +370,38 @@ module TransferFunctions = struct
               astate_summary_applied
           | _ ->  (* Callee in User Code! *)
               let actuals_logical = extract_nonthisvar_from_args methname arg_ts astate_summary_applied in
-              (* let _ = List.map ~f:(L.progress "actual: %a\n" Var.pp) actuals_logical in
-              * let _ = List.map ~f:(L.progress "formal: (%a, sometype)\n" Var.pp) formals in *)
               let actuallog_formal_binding = zip actuals_logical formals in
               let actuals_pvar_tuples = List.map ~f:(function
                   | Var.LogicalVar id -> search_target_tuple_by_id id methname astate 
                   | Var.ProgramVar _ -> raise UndefinedSemantics2) actuals_logical in
-              let actualpvar_alias_added = try add_bindings_to_alias_of_tuples methname actuallog_formal_binding actuals_pvar_tuples |> S.of_list with _ -> raise IDontKnow in
+              let actualpvar_alias_added = add_bindings_to_alias_of_tuples methname actuallog_formal_binding actuals_pvar_tuples |> S.of_list in
               let applied_state_rmvd = S.diff astate_summary_applied actualpvar_alias_added in
               S.union applied_state_rmvd actualpvar_alias_added
         end
 
 
+  let exec_load exp id node astate =
+    let pvar = extract_pvar exp in
+    let double = D.doubleton (Var.of_id id) (Var.of_pvar pvar) in
+    let methname = node |> CFG.Node.underlying_node |> Procdesc.Node.get_proc_name in
+    let ph = placeholder_vardef methname in
+    let newstate = (methname, ph, Location.dummy, double) in
+    S.add newstate astate
+
+
   let exec_instr : S.t -> extras ProcData.t -> CFG.Node.t -> Sil.instr -> S.t = fun prev {summary} node instr ->
     let my_summary = summary in
-    match instr with
-    | Sil.Load {id=id; e=exp} when is_pvar_expr exp ->
-          let pvar = extract_pvar exp in
-          let double = D.doubleton (Var.of_id id) (Var.of_pvar pvar) in
-          let methname = node |> CFG.Node.underlying_node |> Procdesc.Node.get_proc_name in
-          let ph = placeholder_vardef methname in
-          let newstate = (methname, ph, Location.dummy, double) in
-          S.add newstate prev
-    | Sil.Load _ -> prev (* Complex things are not supported at this point *)
-    | Sil.Store {e1=exp1; e2=exp2} ->
-        let methname = node |> CFG.Node.underlying_node |> Procdesc.Node.get_proc_name in
-        exec_store exp1 exp2 methname prev node
-    | Sil.Prune _ -> prev
-    | Sil.Call ((ret_id, _), e_fun, arg_ts, _, _) ->
-        let methname = node |> CFG.Node.underlying_node |> Procdesc.Node.get_proc_name in
-        exec_call ret_id e_fun arg_ts my_summary node prev methname
-    | Sil.Metadata _ -> prev
+    let methname = node |> CFG.Node.underlying_node |> Procdesc.Node.get_proc_name in
+      match instr with
+      | Sil.Load {id=id; e=exp} when is_pvar_expr exp ->
+          exec_load exp id node prev
+      | Sil.Load _ -> prev (* Complex things are not supported at this point *)
+      | Sil.Store {e1=exp1; e2=exp2} ->
+          exec_store exp1 exp2 methname prev node
+      | Sil.Prune _ -> prev
+      | Sil.Call ((ret_id, _), e_fun, arg_ts, _, _) ->
+          exec_call ret_id e_fun arg_ts my_summary node prev methname
+      | Sil.Metadata _ -> prev
 
 
   let leq ~lhs:_ ~rhs:_ = S.subset

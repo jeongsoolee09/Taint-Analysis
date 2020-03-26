@@ -429,8 +429,6 @@ module TransferFunctions = struct
 end
 
 
-
-
 module Analyzer = AbstractInterpreter.MakeRPO (TransferFunctions)
 
 let checker {Callbacks.summary=summary; exe_env} : Summary.t =

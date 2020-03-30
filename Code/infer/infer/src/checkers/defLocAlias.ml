@@ -1,6 +1,6 @@
 open! IStd
 
-(** Interproceural Liveness Checker. *)
+(** Interprocedural Liveness Checker with alias relations in mind. *)
 
 exception UndefinedSemantics1
 exception UndefinedSemantics2
@@ -8,7 +8,6 @@ exception UndefinedSemantics3
 exception UndefinedSemantics4
 exception UndefinedSemantics5
 exception IDontKnow
-exception IDontKnow2
 exception NoMatch
 exception NoMatch1
 exception NoMatch2
@@ -94,6 +93,18 @@ module TransferFunctions = struct
     | ProgramVar _ -> true
 
 
+  let rec search_target_tuple_by_pvar_inner pvar (methname:Procname.t) elements = 
+    match elements with
+    | [] -> raise NoMatch
+    | ((procname, _, _, aliasset) as target)::t ->
+        if Procname.equal procname methname && A.mem pvar aliasset then target else search_target_tuple_by_pvar_inner pvar methname t
+
+
+  let search_target_tuple_by_pvar (pvar:Var.t) (methname:Procname.t) (tupleset:S.t)=
+    let elements = S.elements tupleset in
+    search_target_tuple_by_pvar_inner pvar methname elements
+
+
   let rec search_target_tuple_by_id_inner id (methname:Procname.t) elements = 
     match elements with
     | [] -> raise NoMatch
@@ -142,18 +153,18 @@ module TransferFunctions = struct
       false
 
 
-  let rec search_target_tuples_by_pvar_inner pv (methname:Procname.t) elements acc = 
+  let rec search_target_tuples_by_vardef_inner pv (methname:Procname.t) elements acc = 
     match elements with
     | [] -> acc
     | ((procname, vardef, _, _) as target)::t ->
         if Procname.equal procname methname && Var.equal vardef pv
-        then search_target_tuples_by_pvar_inner pv methname t (target::acc)
-        else search_target_tuples_by_pvar_inner pv methname t acc
+        then search_target_tuples_by_vardef_inner pv methname t (target::acc)
+        else search_target_tuples_by_vardef_inner pv methname t acc
 
 
-  let search_target_tuples_by_pvar (pv:Var.t) (methname:Procname.t) (tupleset:S.t) =
+  let search_target_tuples_by_vardef (pv:Var.t) (methname:Procname.t) (tupleset:S.t) =
     let elements = S.elements tupleset in
-    let result = search_target_tuples_by_pvar_inner pv methname elements [] in
+    let result = search_target_tuples_by_vardef_inner pv methname elements [] in
     if Int.equal (List.length result) 0 then raise NoMatch4 else result 
 
 
@@ -234,10 +245,10 @@ module TransferFunctions = struct
         begin match actualvar with
         | Var.LogicalVar vl ->
             let aliasset = weak_search_target_tuple_by_id vl (S.of_list actualtuples) |> fourth in
-            let pv  = extract_another_pvar aliasset in
-              let candTuples = search_target_tuples_by_pvar pv methname (S.of_list actualtuples) in
-              let most_recent_loc = get_most_recent_loc pv in
-              let (proc,var,loc,aliasset') = search_tuple_by_loc most_recent_loc candTuples in
+            let pv = extract_another_pvar aliasset in
+            let candTuples = search_target_tuples_by_vardef pv methname (S.of_list actualtuples) in
+            let most_recent_loc = get_most_recent_loc pv in
+            let (proc,var,loc,aliasset') = search_tuple_by_loc most_recent_loc candTuples in
             let newTuple = (proc, var, loc, A.add formalvar aliasset') in
             newTuple::add_bindings_to_alias_of_tuples methname tl actualtuples
         | Var.ProgramVar _ -> raise UndefinedSemantics1
@@ -260,6 +271,47 @@ module TransferFunctions = struct
 
   let garbage_collect astate = S.filter (fun (_,x,_,_) -> is_placeholder_vardef x) astate
 
+  let double_equal = fun (proc1, var1) (proc2, var2) -> Procname.equal proc1 proc2 && Var.equal var1 var2
+
+  (** astate로부터 (procname, vardef) 쌍을 중복 없이 만든다. *)
+  let get_keys astate =
+    let elements = S.elements astate in
+    let rec enum_nodup (tuplelist:S.elt list) (current:(Procname.t*Var.t) list) =
+      match tuplelist with
+      | [] -> current
+      | (a,b,_,_)::t ->
+          if not (List.mem current (a,b) ~equal:double_equal)
+             then enum_nodup t ((a,b)::current)
+             else enum_nodup t current in
+    enum_nodup elements []
+
+
+  (** 실행이 끝난 astate에서 중복된 튜플들 (proc과 vardef가 같음)끼리 묶여 있는 list of list를 만든다. *)
+  let group_by_duplicates astate = 
+    let keys = get_keys astate in
+    let rec get_tuple_by_key tuplelist key =
+      match tuplelist with
+      | [] -> []
+      | (proc,name,_,_) as targetTuple::t ->
+          if double_equal key (proc,name)
+          then targetTuple::get_tuple_by_key t key
+          else get_tuple_by_key t key in
+    let rec get_tuples_by_keys tuplelist keys = List.map ~f:(get_tuple_by_key tuplelist) keys in
+    let elements = S.elements astate in
+    get_tuples_by_keys elements keys 
+
+
+  (** group_by_duplicates가 만든 list들 중에서 가장 최근의 것들을 찾아다 현재 환경에 맞게 바꿔 추가한다. *)
+  let move_to_this_env (listlist:S.elt list list) (my_astate:S.t) (my_methname:Procname.t) =
+    let most_recent_tuple = fun lst ->
+      let (proc, var, _, alias) = List.nth_exn lst 0 in
+      (proc, var, get_most_recent_loc var, alias) in
+    let localize = fun (proc,var,loc,alias) ->
+      let (_, var', _, _) = search_target_tuple_by_pvar var my_methname my_astate in
+      (proc, var', loc, alias) in
+    let ( >> ) f g = fun x -> g (f x) in
+    List.map listlist ~f:(most_recent_tuple >> localize)
+    
 
   let apply_summary astate caller_summary callee_methname node ret_id =
     match Payload.read ~caller_summary:caller_summary ~callee_pname:callee_methname with
@@ -279,7 +331,7 @@ module TransferFunctions = struct
     | None -> astate
 
 
-  let rec zip (l1:'a list) (l2: 'b list) =
+  let rec zip (l1:'a list) (l2:'b list) =
     match l1, l2 with
     | [], [] -> []
     | h1::t1, h2::t2 -> (h1, h2)::zip t1 t2

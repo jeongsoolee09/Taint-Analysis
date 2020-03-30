@@ -4,6 +4,9 @@ open! IStd
 
 exception UndefinedSemantics1
 exception UndefinedSemantics2
+exception UndefinedSemantics3
+exception UndefinedSemantics4
+exception UndefinedSemantics5
 exception IDontKnow
 exception IDontKnow2
 exception NoMatch
@@ -12,7 +15,6 @@ exception NoMatch2
 exception NoMatch3
 exception NoMatch4
 exception NoMatch5
-exception CannotExtractPvar
 exception NotSupported
 exception NoMethname
 exception VarDefNotPH 
@@ -53,6 +55,15 @@ module TransferFunctions = struct
   let get_most_recent_loc (key:Var.t) = Hashtbl.find history key
 
 
+  let first (a,_,_,_) = a
+
+  let second (_,b,_,_) = b
+
+  let third (_,_,c,_) = c
+
+  let fourth (_,_,_,d) = d
+
+
   let is_pvar_expr (exp:Exp.t) : bool =
     match exp with
     | Lvar _ -> true
@@ -63,18 +74,6 @@ module TransferFunctions = struct
     match exp with
     | Var _ -> true
     | _ -> false
-
-
-  let is_constant_expr (exp:Exp.t) : bool =
-    match exp with
-    | Const _ -> true
-    | _ -> false
-
-
-  let extract_pvar (exp:Exp.t) : Pvar.t =
-    match exp with
-    | Lvar pv -> pv
-    | _ -> raise CannotExtractPvar
 
 
   let placeholder_vardef (pid:Procname.t) : Var.t =
@@ -197,15 +196,34 @@ module TransferFunctions = struct
     | (_, _)::_ -> false
 
 
-  let rec extract_nonthisvar_from_args methname (arg_ts:(Exp.t*Typ.t) list) (astate:S.t) : Var.t list =
+  let rec extract_nonthisvar_from_args methname (arg_ts:(Exp.t*Typ.t) list) (astate:S.t) : Exp.t list =
     match arg_ts with
     | [] -> []
-    | (Var var, _)::t ->
+    | (Var var as v, _)::t ->
         let (_, _, _, aliasset) = search_target_tuple_by_id var methname  astate in
         if not (A.exists Var.is_this aliasset)
-        then Var.of_id var::extract_nonthisvar_from_args methname t astate
-        else extract_nonthisvar_from_args methname t astate
-    | (_, _)::_ -> raise UnexpectedArg2 (* shouldn't actual args be all pure logical vars? *)
+           then v::extract_nonthisvar_from_args methname t astate
+           else extract_nonthisvar_from_args methname t astate
+    | (other, _)::t -> other::extract_nonthisvar_from_args methname t astate
+
+
+  let leave_only_var_tuples (ziplist:(Exp.t*Var.t) list) =
+    let leave_logical = fun (x,_) -> is_logical_var_expr x in
+    let map_func = function (Exp.Var id, var) -> (Var.of_id id, var) | (_, _) -> raise UndefinedSemantics4 in
+    List.filter ~f:leave_logical ziplist |> List.map ~f:map_func
+
+
+  (** given a doubleton set of lv and pv, extract the pv. *)
+  let extract_another_pvar (doubleton:A.t) =
+    let elements = A.elements doubleton in
+    if List.length elements |> Int.equal 2 |> not (* check if the set is doubleton *)
+    then raise UndefinedSemantics5
+    else match elements with
+      | [x; y] -> if is_program_var x then x else
+                  if is_program_var y then y else
+                  raise UndefinedSemantics5
+      | _ -> raise UndefinedSemantics5 
+
 
 
 (** Takes an actual(logical)-formal binding list and adds the formals to the respective pvar tuples of the actual arguments *)
@@ -215,8 +233,12 @@ module TransferFunctions = struct
     | (actualvar, formalvar)::tl ->
         begin match actualvar with
         | Var.LogicalVar vl ->
-            let (proc, var, loc, alias) = weak_search_target_tuple_by_id vl (S.of_list actualtuples) in
-            let newTuple = (proc, var, loc, A.add formalvar alias) in
+            let aliasset = weak_search_target_tuple_by_id vl (S.of_list actualtuples) |> fourth in
+            let pv  = extract_another_pvar aliasset in
+              let candTuples = search_target_tuples_by_pvar pv methname (S.of_list actualtuples) in
+              let most_recent_loc = get_most_recent_loc pv in
+              let (proc,var,loc,aliasset') = search_tuple_by_loc most_recent_loc candTuples in
+            let newTuple = (proc, var, loc, A.add formalvar aliasset') in
             newTuple::add_bindings_to_alias_of_tuples methname tl actualtuples
         | Var.ProgramVar _ -> raise UndefinedSemantics1
         end
@@ -228,6 +250,15 @@ module TransferFunctions = struct
     | (proc,vardef,loc,aliasset)::t1, var::t2 ->
         (proc,vardef,loc,A.add var aliasset)::add_var_to_aliasset t1 t2
     | _, _ -> raise LengthError1
+
+
+  let is_placeholder_vardef (var:Var.t) =
+    match var with
+    | LogicalVar _ -> false
+    | ProgramVar pv -> String.equal (Pvar.to_string pv) "ph"
+
+
+  let garbage_collect astate = S.filter (fun (_,x,_,_) -> is_placeholder_vardef x) astate
 
 
   let apply_summary astate caller_summary callee_methname node ret_id =
@@ -258,16 +289,16 @@ module TransferFunctions = struct
   let convert_from_mangled : Procname.t -> (Mangled.t*Typ.t) -> Var.t = fun methname (m,_) -> Pvar.mk m methname |> Var.of_pvar
 
 
-  let extract_ident (v:Var.t) =
-    match v with
-    | Var.LogicalVar id -> id
-    | Var.ProgramVar _ -> raise UnexpectedArg3
-
-
   let get_formal_args (caller_procname:Procname.t) (caller_summary:Summary.t) (callee_pname:Procname.t) : Var.t list =
       match Payload.read_full ~caller_summary:caller_summary ~callee_pname:callee_pname with
       | Some (procdesc, _) -> Procdesc.get_formals procdesc |> List.map ~f:(convert_from_mangled caller_procname)
       | None -> (* Oops, it's a native code outside our focus *) []
+
+
+  let is_formal (rhs:Pvar.t) (current_meth:Procname.t) (current_summary:Summary.t) : bool =
+    let formallist = get_formal_args current_meth current_summary current_meth in
+    let rhs_var = Var.of_pvar rhs in
+    List.mem formallist rhs_var ~equal:Var.equal
 
 
   let exec_store (exp1:Exp.t) (exp2:Exp.t) (methname:Procname.t) (astate:S.t) (node:CFG.Node.t) : S.t =
@@ -300,9 +331,9 @@ module TransferFunctions = struct
             let aliasset_new = A.add pvar_var aliasset in
             let newstate =
               if Var.equal vardef (placeholder_vardef methname)
-                  (* Simple Variable Assignment. *)
+                (* Simple Variable Assignment. *)
                 then (methname, pvar_var, loc, aliasset_new)
-                  (* Previous Variable Definition Carryover. *)
+                (* Previous Variable Definition Carryover. *)
                 else (methname_old, vardef, loc, aliasset_new) in
             let astate_rmvd = S.remove targetTuple astate in
             add_to_history pvar_var loc;
@@ -370,23 +401,34 @@ module TransferFunctions = struct
               astate_summary_applied
           | _ ->  (* Callee in User Code! *)
               let actuals_logical = extract_nonthisvar_from_args methname arg_ts astate_summary_applied in
-              let actuallog_formal_binding = zip actuals_logical formals in
-              let actuals_pvar_tuples = List.map ~f:(function
-                  | Var.LogicalVar id -> search_target_tuple_by_id id methname astate 
-                  | Var.ProgramVar _ -> raise UndefinedSemantics2) actuals_logical in
+              let actuallog_formal_binding = zip actuals_logical formals |> leave_only_var_tuples in
+              let actuals_pvar_tuples = actuals_logical |> List.filter ~f:is_logical_var_expr |> List.map ~f:(function
+                  | Exp.Var id -> search_target_tuple_by_id id methname astate 
+                  | _ -> raise UndefinedSemantics2) in
               let actualpvar_alias_added = add_bindings_to_alias_of_tuples methname actuallog_formal_binding actuals_pvar_tuples |> S.of_list in
-              let applied_state_rmvd = S.diff astate_summary_applied actualpvar_alias_added in
+              let applied_state_rmvd = S.diff astate_summary_applied (S.of_list actuals_pvar_tuples) in
               S.union applied_state_rmvd actualpvar_alias_added
         end
 
 
-  let exec_load exp id node astate =
-    let pvar = extract_pvar exp in
-    let double = D.doubleton (Var.of_id id) (Var.of_pvar pvar) in
-    let methname = node |> CFG.Node.underlying_node |> Procdesc.Node.get_proc_name in
-    let ph = placeholder_vardef methname in
-    let newstate = (methname, ph, Location.dummy, double) in
-    S.add newstate astate
+  let exec_load (id:Ident.t) (exp:Exp.t) (astate:S.t) (methname:Procname.t) (summary:Summary.t) =
+    match exp with
+    | Lvar pvar ->
+        begin match is_formal pvar methname summary with
+          | true -> raise NotImplemented
+          | false ->
+              let double = D.doubleton (Var.of_id id) (Var.of_pvar pvar) in
+              let ph = placeholder_vardef methname in
+              let newstate = (methname, ph, Location.dummy, double) in
+              S.add newstate astate
+        end
+    | _ -> raise UndefinedSemantics3
+
+
+  let exec_metadata (instr:Sil.instr_metadata) (astate:S.t) =
+    match instr with
+    | ExitScope _ -> garbage_collect astate
+    | _ -> astate
 
 
   let exec_instr : S.t -> extras ProcData.t -> CFG.Node.t -> Sil.instr -> S.t = fun prev {summary} node instr ->
@@ -394,14 +436,15 @@ module TransferFunctions = struct
     let methname = node |> CFG.Node.underlying_node |> Procdesc.Node.get_proc_name in
       match instr with
       | Sil.Load {id=id; e=exp} when is_pvar_expr exp ->
-          exec_load exp id node prev
+          exec_load id exp prev methname my_summary
       | Sil.Load _ -> prev (* Complex things are not supported at this point *)
       | Sil.Store {e1=exp1; e2=exp2} ->
           exec_store exp1 exp2 methname prev node
       | Sil.Prune _ -> prev
       | Sil.Call ((ret_id, _), e_fun, arg_ts, _, _) ->
           exec_call ret_id e_fun arg_ts my_summary node prev methname
-      | Sil.Metadata _ -> prev
+      | Sil.Metadata md ->
+          exec_metadata md prev
 
 
   let leq ~lhs:_ ~rhs:_ = S.subset

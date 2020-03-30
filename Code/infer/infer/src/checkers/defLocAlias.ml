@@ -44,6 +44,7 @@ module TransferFunctions = struct
   type extras = ProcData.no_extras
   type instr = Sil.instr
 
+  let ( >> ) f g = fun x -> g (f x)
 
   let history = Hashtbl.create 777
 
@@ -302,32 +303,34 @@ module TransferFunctions = struct
 
 
   (** group_by_duplicates가 만든 list들 중에서 가장 최근의 것들을 찾아다 현재 환경에 맞게 바꿔 추가한다. *)
-  let move_to_this_env (listlist:S.elt list list) (my_astate:S.t) (my_methname:Procname.t) =
+  let move_to_this_env (my_astate:S.t) (my_methname:Procname.t) (listlist:S.elt list list) =
     let most_recent_tuple = fun lst ->
       let (proc, var, _, alias) = List.nth_exn lst 0 in
       (proc, var, get_most_recent_loc var, alias) in
     let localize = fun (proc,var,loc,alias) ->
       let (_, var', _, _) = search_target_tuple_by_pvar var my_methname my_astate in
       (proc, var', loc, alias) in
-    let ( >> ) f g = fun x -> g (f x) in
     List.map listlist ~f:(most_recent_tuple >> localize)
     
 
-  let apply_summary astate caller_summary callee_methname node ret_id =
+  let variable_carryover astate callee_methname node ret_id summ_read =
+    let targetTuples = find_tuple_with_ret summ_read callee_methname in
+    begin match List.length targetTuples with
+    | 0 -> (* the variable being returned has not been redefined in callee, create a new def *)
+        let methname = node |> CFG.Node.underlying_node |> Procdesc.Node.get_proc_name in
+        let ph = placeholder_vardef methname in
+        let logicalvar = Var.of_id ret_id in
+        let newstate = (methname, ph, Location.dummy, A.singleton logicalvar) in
+        S.add newstate astate
+    | _ -> (* the variable being returned has been redefined in callee, carry that def over *)
+        let update_summ_tuples = fun (procname,vardef,location,aliasset) -> (procname,vardef,location,A.add (Var.of_id ret_id) (A.filter is_logical_var aliasset)) in
+        let targetTuples_set = (List.map ~f:update_summ_tuples targetTuples) |> S.of_list in
+        S.union astate targetTuples_set end
+
+
+  let apply_summary astate caller_summary callee_methname node ret_id caller_methname : S.t =
     match Payload.read ~caller_summary:caller_summary ~callee_pname:callee_methname with
-    | Some summ ->
-        let targetTuples = find_tuple_with_ret summ callee_methname in
-        begin match List.length targetTuples with
-        | 0 -> (* the variable being returned has not been redefined in callee, create a new def *)
-            let methname = node |> CFG.Node.underlying_node |> Procdesc.Node.get_proc_name in
-            let ph = placeholder_vardef methname in
-            let logicalvar = Var.of_id ret_id in
-            let newstate = (methname, ph, Location.dummy, A.singleton logicalvar) in
-            S.add newstate astate
-        | _ -> (* the variable being returned has been redefined in callee, carry that def over *)
-            let update_summ_tuples = fun (procname,vardef,location,aliasset) -> (procname,vardef,location,A.add (Var.of_id ret_id) (A.filter is_logical_var aliasset)) in
-            let targetTuples_set = (List.map ~f:update_summ_tuples targetTuples) |> S.of_list in
-            S.union astate targetTuples_set end
+    | Some summ -> summ |> variable_carryover astate callee_methname node ret_id |> (group_by_duplicates >> move_to_this_env astate caller_methname) |> S.of_list
     | None -> astate
 
 
@@ -365,7 +368,7 @@ module TransferFunctions = struct
             let pvar_var = A.find_first is_program_var aliasset in
             let most_recent_loc = get_most_recent_loc pvar_var in
             begin try
-              let candTuples = search_target_tuples_by_pvar pvar_var methname astate in
+              let candTuples = search_target_tuples_by_vardef pvar_var methname astate in
               let (proc,var,loc,aliasset') as candTuple = search_tuple_by_loc most_recent_loc candTuples in
               let astate_rmvd = S.remove candTuple astate in
               let logicalvar = Var.of_id id in
@@ -444,9 +447,9 @@ module TransferFunctions = struct
       | _ -> raise NoMethname in
     match input_is_void_type arg_ts astate with
     | true -> (* All Arguments are Just Constants: just apply the summary and end *)
-        apply_summary astate caller_summary callee_methname node ret_id
+        apply_summary astate caller_summary callee_methname node ret_id methname
     | false -> (* There is at least one argument which is a non-thisvar variable *)
-        let astate_summary_applied = apply_summary astate caller_summary callee_methname node ret_id in
+        let astate_summary_applied = apply_summary astate caller_summary callee_methname node ret_id methname in
         let formals = get_formal_args methname caller_summary callee_methname |> List.filter ~f:(fun x -> Var.is_this x |> not) in
         begin match formals with
           | [] -> (* Callee in Native Code! *)

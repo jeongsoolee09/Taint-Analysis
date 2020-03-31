@@ -16,14 +16,12 @@ exception NoMatch4
 exception NoMatch5
 exception NotSupported
 exception NoMethname
-exception VarDefNotPH 
 exception UnexpectedArg1
 exception UnexpectedArg2
 exception UnexpectedArg3
 exception NotImplemented
 exception LengthError1
 exception LengthError2
-exception NoSummary
 
 module L = Logging
 module F = Format
@@ -214,8 +212,8 @@ module TransferFunctions = struct
     | (Var var as v, _)::t ->
         let (_, _, _, aliasset) = search_target_tuple_by_id var methname  astate in
         if not (A.exists Var.is_this aliasset)
-           then v::extract_nonthisvar_from_args methname t astate
-           else extract_nonthisvar_from_args methname t astate
+        then v::extract_nonthisvar_from_args methname t astate
+        else extract_nonthisvar_from_args methname t astate
     | (other, _)::t -> other::extract_nonthisvar_from_args methname t astate
 
 
@@ -272,7 +270,9 @@ module TransferFunctions = struct
 
   let garbage_collect astate = S.filter (fun (_,x,_,_) -> is_placeholder_vardef x) astate
 
+
   let double_equal = fun (proc1, var1) (proc2, var2) -> Procname.equal proc1 proc2 && Var.equal var1 var2
+
 
   (** astate로부터 (procname, vardef) 쌍을 중복 없이 만든다. *)
   let get_keys astate =
@@ -282,8 +282,8 @@ module TransferFunctions = struct
       | [] -> current
       | (a,b,_,_)::t ->
           if not (List.mem current (a,b) ~equal:double_equal)
-             then enum_nodup t ((a,b)::current)
-             else enum_nodup t current in
+          then enum_nodup t ((a,b)::current)
+          else enum_nodup t current in
     enum_nodup elements []
 
 
@@ -297,7 +297,7 @@ module TransferFunctions = struct
           if double_equal key (proc,name)
           then targetTuple::get_tuple_by_key t key
           else get_tuple_by_key t key in
-    let rec get_tuples_by_keys tuplelist keys = List.map ~f:(get_tuple_by_key tuplelist) keys in
+    let get_tuples_by_keys tuplelist keys = List.map ~f:(get_tuple_by_key tuplelist) keys in
     let elements = S.elements astate in
     get_tuples_by_keys elements keys 
 
@@ -313,6 +313,7 @@ module TransferFunctions = struct
     List.map listlist ~f:(most_recent_tuple >> localize)
     
 
+  (** callee가 return c;꼴로 끝날 경우 c의 튜플을 콜러로 끌고 옴 *)
   let variable_carryover astate callee_methname node ret_id summ_read =
     let targetTuples = find_tuple_with_ret summ_read callee_methname in
     begin match List.length targetTuples with
@@ -330,7 +331,7 @@ module TransferFunctions = struct
 
   let apply_summary astate caller_summary callee_methname node ret_id caller_methname : S.t =
     match Payload.read ~caller_summary:caller_summary ~callee_pname:callee_methname with
-    | Some summ -> summ |> variable_carryover astate callee_methname node ret_id |> (group_by_duplicates >> move_to_this_env astate caller_methname) |> S.of_list
+    | Some summ -> summ |> variable_carryover astate callee_methname node ret_id (* |> (group_by_duplicates >> move_to_this_env astate caller_methname) |> S.of_list *)
     | None -> astate
 
 
@@ -345,13 +346,19 @@ module TransferFunctions = struct
 
 
   let get_formal_args (caller_procname:Procname.t) (caller_summary:Summary.t) (callee_pname:Procname.t) : Var.t list =
-      match Payload.read_full ~caller_summary:caller_summary ~callee_pname:callee_pname with
-      | Some (procdesc, _) -> Procdesc.get_formals procdesc |> List.map ~f:(convert_from_mangled caller_procname)
-      | None -> (* Oops, it's a native code outside our focus *) []
+    match Payload.read_full ~caller_summary:caller_summary ~callee_pname:callee_pname with
+    | Some (procdesc, _) -> Procdesc.get_formals procdesc |> List.map ~f:(convert_from_mangled caller_procname)
+    | None -> (* Oops, it's a native code outside our focus *) []
 
 
-  let is_formal (rhs:Pvar.t) (current_meth:Procname.t) (current_summary:Summary.t) : bool =
-    let formallist = get_formal_args current_meth current_summary current_meth in
+  let get_my_formal_args (methname:Procname.t) = 
+    match Procdesc.load methname with
+    | Some pdesc -> L.progress "found procdesc for %a\n" Procname.pp methname; List.map ~f:(convert_from_mangled methname) (Procdesc.get_formals pdesc)
+    | None -> raise IDontKnow 
+
+
+  let is_formal (rhs:Pvar.t) (current_meth:Procname.t) : bool =
+    let formallist = get_my_formal_args current_meth in
     let rhs_var = Var.of_pvar rhs in
     List.mem formallist rhs_var ~equal:Var.equal
 
@@ -466,17 +473,17 @@ module TransferFunctions = struct
         end
 
 
-  let exec_load (id:Ident.t) (exp:Exp.t) (astate:S.t) (methname:Procname.t) (summary:Summary.t) =
+  let exec_load (id:Ident.t) (exp:Exp.t) (astate:S.t) (methname:Procname.t) =
     match exp with
     | Lvar pvar ->
-        begin match is_formal pvar methname summary with
+        (* begin match is_formal pvar methname with
           | true -> raise NotImplemented
-          | false ->
+          | false -> *)
               let double = D.doubleton (Var.of_id id) (Var.of_pvar pvar) in
               let ph = placeholder_vardef methname in
               let newstate = (methname, ph, Location.dummy, double) in
               S.add newstate astate
-        end
+        (* end *)
     | _ -> raise UndefinedSemantics3
 
 
@@ -486,12 +493,33 @@ module TransferFunctions = struct
     | _ -> astate
 
 
-  let exec_instr : S.t -> extras ProcData.t -> CFG.Node.t -> Sil.instr -> S.t = fun prev {summary} node instr ->
+  (** register tuples for formal arguments before a procedure starts. *)
+  let register_formals astate cfg_node methname =
+    let node = CFG.Node.underlying_node cfg_node in
+    match Procdesc.Node.get_kind node with
+    | Start_node ->
+        let formals = get_my_formal_args methname in
+        let _ = L.progress "formals of %a: " Procname.pp methname in
+        let _ = List.map ~f:(L.progress "%a, " Var.pp) formals in
+        let _ = L.progress "# of formals: %a\n" Int.pp (List.length formals) in
+        let proc = Procdesc.Node.get_proc_name node in
+        let loc = Procdesc.Node.get_loc node in
+        let bake_newtuple = fun (var:Var.t) -> (proc, var, loc, A.singleton var) in
+        let tuplelist = List.map ~f:bake_newtuple formals in
+        let tupleset = S.of_list tuplelist in
+        S.union astate tupleset
+    | _ -> astate
+
+  (** this variable인 경우는 추가하지 말자!*)
+  
+
+  let exec_instr : S.t -> extras ProcData.t -> CFG.Node.t -> Sil.instr -> S.t = fun prev' {summary} node instr ->
     let my_summary = summary in
     let methname = node |> CFG.Node.underlying_node |> Procdesc.Node.get_proc_name in
+    let prev = register_formals prev' node methname in
       match instr with
       | Sil.Load {id=id; e=exp} when is_pvar_expr exp ->
-          exec_load id exp prev methname my_summary
+          exec_load id exp prev methname
       | Sil.Load _ -> prev (* Complex things are not supported at this point *)
       | Sil.Store {e1=exp1; e2=exp2} ->
           exec_store exp1 exp2 methname prev node

@@ -14,6 +14,7 @@ exception NoMatch2
 exception NoMatch3
 exception NoMatch4
 exception NoMatch5
+exception NoSummary
 exception NotSupported
 exception NoMethname
 exception UnexpectedArg1
@@ -99,7 +100,7 @@ module TransferFunctions = struct
         if Procname.equal procname methname && A.mem pvar aliasset then target else search_target_tuple_by_pvar_inner pvar methname t
 
 
-  let search_target_tuple_by_pvar (pvar:Var.t) (methname:Procname.t) (tupleset:S.t)=
+  let search_target_tuple_by_pvar (pvar:Var.t) (methname:Procname.t) (tupleset:S.t) =
     let elements = S.elements tupleset in
     search_target_tuple_by_pvar_inner pvar methname elements
 
@@ -116,14 +117,14 @@ module TransferFunctions = struct
     search_target_tuple_by_id_inner (Var.of_id id) methname elements
 
 
-  let rec weak_search_target_tuple_by_id_inner id elements = 
+  let rec weak_search_target_tuple_by_id_inner (id:Var.t) (elements:S.elt list) = 
     match elements with
     | [] -> raise NoMatch1
     | ((_, _, _, aliasset) as target)::t ->
         if A.mem id aliasset then target else weak_search_target_tuple_by_id_inner id t
 
 
-  let weak_search_target_tuple_by_id (id:Ident.t) (tupleset:S.t)=
+  let weak_search_target_tuple_by_id (id:Ident.t) (tupleset:S.t) =
     let elements = S.elements tupleset in
     weak_search_target_tuple_by_id_inner (Var.of_id id) elements
 
@@ -244,22 +245,19 @@ module TransferFunctions = struct
         begin match actualvar with
         | Var.LogicalVar vl ->
             let aliasset = weak_search_target_tuple_by_id vl (S.of_list actualtuples) |> fourth in
-            let pv = extract_another_pvar aliasset in
-            let candTuples = search_target_tuples_by_vardef pv methname (S.of_list actualtuples) in
-            let most_recent_loc = get_most_recent_loc pv in
+            (* the pvar transmitted as an actual argument. *)
+            let actual_pvar = extract_another_pvar aliasset in
+            (* possibly various definitions of the pvar in question. *)
+            let candTuples =
+                  L.progress "methname: %a, var: %a\n" Procname.pp methname Var.pp actual_pvar; search_target_tuples_by_vardef actual_pvar methname (S.of_list actualtuples)
+            in
+            (* the most recent one among the definitions. *)
+            let most_recent_loc = get_most_recent_loc actual_pvar in
             let (proc,var,loc,aliasset') = search_tuple_by_loc most_recent_loc candTuples in
             let newTuple = (proc, var, loc, A.add formalvar aliasset') in
             newTuple::add_bindings_to_alias_of_tuples methname tl actualtuples
         | Var.ProgramVar _ -> raise UndefinedSemantics1
         end
-
-
-  let rec add_var_to_aliasset (tuplelist:S.elt list) (vars:Var.t list) : S.elt list =
-    match tuplelist, vars with
-    | [], [] -> []
-    | (proc,vardef,loc,aliasset)::t1, var::t2 ->
-        (proc,vardef,loc,A.add var aliasset)::add_var_to_aliasset t1 t2
-    | _, _ -> raise LengthError1
 
 
   let is_placeholder_vardef (var:Var.t) =
@@ -317,7 +315,7 @@ module TransferFunctions = struct
   let variable_carryover astate callee_methname node ret_id summ_read =
     let targetTuples = find_tuple_with_ret summ_read callee_methname in
     begin match List.length targetTuples with
-    | 0 -> (* the variable being returned has not been redefined in callee, create a new def *)
+    | 1 -> (* the variable being returned has not been redefined in callee, create a new def *)
         let methname = node |> CFG.Node.underlying_node |> Procdesc.Node.get_proc_name in
         let ph = placeholder_vardef methname in
         let logicalvar = Var.of_id ret_id in
@@ -354,7 +352,7 @@ module TransferFunctions = struct
   let get_my_formal_args (methname:Procname.t) = 
     match Procdesc.load methname with
     | Some pdesc -> L.progress "found procdesc for %a\n" Procname.pp methname; List.map ~f:(convert_from_mangled methname) (Procdesc.get_formals pdesc)
-    | None -> raise IDontKnow 
+    | None -> raise NoSummary 
 
 
   let is_formal (rhs:Pvar.t) (current_meth:Procname.t) : bool =
@@ -418,6 +416,7 @@ module TransferFunctions = struct
           if not (Var.equal vardef (placeholder_vardef methname))
           then (procname, pvar_var, loc, aliasset_new)
           else (procname, vardef, loc, aliasset_new) in
+          (* (procname, pvar_var, loc, aliasset_new) in *)
         let astate_rmvd = S.remove targetTuple astate in
         add_to_history pvar_var loc;
         S.add newstate astate_rmvd
@@ -464,8 +463,9 @@ module TransferFunctions = struct
           | _ ->  (* Callee in User Code! *)
               let actuals_logical = extract_nonthisvar_from_args methname arg_ts astate_summary_applied in
               let actuallog_formal_binding = zip actuals_logical formals |> leave_only_var_tuples in
+              (* pvar tuples transmitted as actual arguments *)
               let actuals_pvar_tuples = actuals_logical |> List.filter ~f:is_logical_var_expr |> List.map ~f:(function
-                  | Exp.Var id -> search_target_tuple_by_id id methname astate 
+                  | Exp.Var id -> search_target_tuple_by_id id methname astate
                   | _ -> raise UndefinedSemantics2) in
               let actualpvar_alias_added = add_bindings_to_alias_of_tuples methname actuallog_formal_binding actuals_pvar_tuples |> S.of_list in
               let applied_state_rmvd = S.diff astate_summary_applied (S.of_list actuals_pvar_tuples) in
@@ -476,14 +476,24 @@ module TransferFunctions = struct
   let exec_load (id:Ident.t) (exp:Exp.t) (astate:S.t) (methname:Procname.t) =
     match exp with
     | Lvar pvar ->
-        (* begin match is_formal pvar methname with
-          | true -> raise NotImplemented
-          | false -> *)
+        begin match is_formal pvar methname with
+          | true ->
+              let double = D.doubleton (Var.of_id id) (Var.of_pvar pvar) in
+              let ph = placeholder_vardef methname in
+              let newstate = (methname, ph, Location.dummy, double) in
+              let candTuples = search_target_tuples_by_vardef (Var.of_pvar pvar) methname astate in
+              let most_recent_loc = get_most_recent_loc (Var.of_pvar pvar) in
+              let (proc,var,loc,aliasset') as targetTuple = search_tuple_by_loc most_recent_loc candTuples in
+              (* 파라미터가 등록되었을 때 search_target_tuple_by_id를 하기 위해. *)
+              let updatedtuple = (proc,var,loc, A.add (Var.of_id id) aliasset') in
+              let astate_rmvd = S.remove targetTuple astate in
+              S.add updatedtuple (S.add newstate astate_rmvd)
+          | false ->
               let double = D.doubleton (Var.of_id id) (Var.of_pvar pvar) in
               let ph = placeholder_vardef methname in
               let newstate = (methname, ph, Location.dummy, double) in
               S.add newstate astate
-        (* end *)
+        end
     | _ -> raise UndefinedSemantics3
 
 
@@ -493,25 +503,34 @@ module TransferFunctions = struct
     | _ -> astate
 
 
+  let is_this_progress (var:Var.t) : unit =
+    match var with
+    | LogicalVar _ -> L.progress "Logical var: should never happen\n"
+    | ProgramVar pv -> if Pvar.is_this pv then L.progress "this-variable\n" else L.progress "Not this-variable\n"
+
+
+  let rec batch_add_to_history (keys:Var.t list) (loc:Location.t) =
+    match keys with
+    | [] -> ()
+    | h::t -> add_to_history h loc; batch_add_to_history t loc
+
+
   (** register tuples for formal arguments before a procedure starts. *)
   let register_formals astate cfg_node methname =
     let node = CFG.Node.underlying_node cfg_node in
     match Procdesc.Node.get_kind node with
     | Start_node ->
         let formals = get_my_formal_args methname in
-        let _ = L.progress "formals of %a: " Procname.pp methname in
-        let _ = List.map ~f:(L.progress "%a, " Var.pp) formals in
-        let _ = L.progress "# of formals: %a\n" Int.pp (List.length formals) in
         let proc = Procdesc.Node.get_proc_name node in
-        let loc = Procdesc.Node.get_loc node in
+        let targetloc = Procdesc.Node.get_loc node in
+        (* 파라미터 라인넘버 보정 *)
+        let loc = {Location.line=targetloc.line-1; Location.col=targetloc.col; Location.file=targetloc.file} in
         let bake_newtuple = fun (var:Var.t) -> (proc, var, loc, A.singleton var) in
         let tuplelist = List.map ~f:bake_newtuple formals in
         let tupleset = S.of_list tuplelist in
-        S.union astate tupleset
+        batch_add_to_history formals loc ; S.union astate tupleset
     | _ -> astate
 
-  (** this variable인 경우는 추가하지 말자!*)
-  
 
   let exec_instr : S.t -> extras ProcData.t -> CFG.Node.t -> Sil.instr -> S.t = fun prev' {summary} node instr ->
     let my_summary = summary in
@@ -527,7 +546,8 @@ module TransferFunctions = struct
       | Sil.Call ((ret_id, _), e_fun, arg_ts, _, _) ->
           exec_call ret_id e_fun arg_ts my_summary node prev methname
       | Sil.Metadata md ->
-          exec_metadata md prev
+          prev
+          (* exec_metadata md prev *)
 
 
   let leq ~lhs:_ ~rhs:_ = S.subset

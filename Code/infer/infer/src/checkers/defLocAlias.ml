@@ -279,14 +279,14 @@ module TransferFunctions = struct
       match tuplelist with
       | [] -> current
       | (a,b,_,_)::t ->
-          if not (List.mem current (a,b) ~equal:double_equal)
+        if not (List.mem current (a,b) ~equal:double_equal) && not (Var.equal b (placeholder_vardef a) || Var.is_this b)
           then enum_nodup t ((a,b)::current)
           else enum_nodup t current in
     enum_nodup elements []
 
 
   (** 실행이 끝난 astate에서 중복된 튜플들 (proc과 vardef가 같음)끼리 묶여 있는 list of list를 만든다. *)
-  let group_by_duplicates astate = 
+  let group_by_duplicates (astate:S.t) : S.elt list list = 
     let keys = get_keys astate in
     let rec get_tuple_by_key tuplelist key =
       match tuplelist with
@@ -304,32 +304,34 @@ module TransferFunctions = struct
   let move_to_this_env (my_astate:S.t) (my_methname:Procname.t) (listlist:S.elt list list) =
     let most_recent_tuple = fun lst ->
       let (proc, var, _, alias) = List.nth_exn lst 0 in
+      L.progress "get the most recent loc of: %a\n" Var.pp var;
       (proc, var, get_most_recent_loc var, alias) in
     let localize = fun (proc,var,loc,alias) ->
+      (* search_target_tuple_by_pvar를 쓰면 안돼! *)
       let (_, var', _, _) = search_target_tuple_by_pvar var my_methname my_astate in
       (proc, var', loc, alias) in
     List.map listlist ~f:(most_recent_tuple >> localize)
-    
-
-  (** callee가 return c;꼴로 끝날 경우 c의 튜플을 콜러로 끌고 옴 *)
-  let variable_carryover astate callee_methname node ret_id summ_read =
-    let targetTuples = find_tuple_with_ret summ_read callee_methname in
-    begin match List.length targetTuples with
-    | 1 -> (* the variable being returned has not been redefined in callee, create a new def *)
-        let methname = node |> CFG.Node.underlying_node |> Procdesc.Node.get_proc_name in
-        let ph = placeholder_vardef methname in
-        let logicalvar = Var.of_id ret_id in
-        let newstate = (methname, ph, Location.dummy, A.singleton logicalvar) in
-        S.add newstate astate
-    | _ -> (* the variable being returned has been redefined in callee, carry that def over *)
-        let update_summ_tuples = fun (procname,vardef,location,aliasset) -> (procname,vardef,location,A.add (Var.of_id ret_id) (A.filter is_logical_var aliasset)) in
-        let targetTuples_set = (List.map ~f:update_summ_tuples targetTuples) |> S.of_list in
-        S.union astate targetTuples_set end
 
 
-  let apply_summary astate caller_summary callee_methname node ret_id caller_methname : S.t =
+  (** callee가 return c;꼴로 끝날 경우 새로 튜플을 만들고 alias set에 c를 추가 *)
+  let variable_carryover astate callee_methname ret_id methname summ_read =
+    let calleeTuples = find_tuple_with_ret summ_read callee_methname in
+    (** 콜리 튜플 하나에 대해, 튜플 하나를 새로 만들어 alias set에 추가 *)
+    let carryfunc tup =
+      let ph = placeholder_vardef methname in
+      let callee_vardef = second tup in
+      let aliasset = D.doubleton callee_vardef (Var.of_id ret_id) in
+      (methname, ph, Location.dummy, aliasset) in
+    let carriedover = List.map calleeTuples ~f:carryfunc |> S.of_list in
+    S.union astate carriedover
+      
+
+  let apply_summary astate caller_summary callee_methname ret_id caller_methname : S.t =
     match Payload.read ~caller_summary:caller_summary ~callee_pname:callee_methname with
-    | Some summ -> summ |> variable_carryover astate callee_methname node ret_id (* |> (group_by_duplicates >> move_to_this_env astate caller_methname) |> S.of_list *)
+    | Some summ -> 
+        let var_carriedover = summ |> variable_carryover astate callee_methname ret_id caller_methname in
+        let var_thisenv =  var_carriedover |> (group_by_duplicates >> move_to_this_env astate caller_methname) |> S.of_list in
+        S.union var_carriedover var_thisenv
     | None -> astate
 
 
@@ -469,8 +471,7 @@ module TransferFunctions = struct
                   | _ -> raise UndefinedSemantics2) in
               let actualpvar_alias_added = add_bindings_to_alias_of_tuples methname actuallog_formal_binding actuals_pvar_tuples |> S.of_list in
               let applied_state_rmvd = S.diff astate_summary_applied (S.of_list actuals_pvar_tuples) in
-              S.union applied_state_rmvd actualpvar_alias_added
-        end
+              S.union applied_state_rmvd actualpvar_alias_added end
 
 
   let exec_load (id:Ident.t) (exp:Exp.t) (astate:S.t) (methname:Procname.t) =

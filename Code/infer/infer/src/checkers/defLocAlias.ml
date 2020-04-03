@@ -54,13 +54,13 @@ module TransferFunctions = struct
   let get_most_recent_loc (key:Var.t) = Hashtbl.find history key
 
 
-  let first (a,_,_,_) = a
+  let first_of (a,_,_,_) = a
 
-  let second (_,b,_,_) = b
+  let second_of (_,b,_,_) = b
 
-  let third (_,_,c,_) = c
+  let third_of (_,_,c,_) = c
 
-  let fourth (_,_,_,d) = d
+  let fourth_of (_,_,_,d) = d
 
 
   let is_pvar_expr (exp:Exp.t) : bool =
@@ -244,7 +244,7 @@ module TransferFunctions = struct
     | (actualvar, formalvar)::tl ->
         begin match actualvar with
         | Var.LogicalVar vl ->
-            let aliasset = weak_search_target_tuple_by_id vl (S.of_list actualtuples) |> fourth in
+            let aliasset = fourth_of @@ weak_search_target_tuple_by_id vl (S.of_list actualtuples) in
             (* the pvar transmitted as an actual argument. *)
             let actual_pvar = extract_another_pvar aliasset in
             (* possibly various definitions of the pvar in question. *)
@@ -300,6 +300,19 @@ module TransferFunctions = struct
     get_tuples_by_keys elements keys 
 
 
+  (** group_by_duplicates가 만든 list of list를 받아서, duplicate된 변수 list를 반환하되, ph와 this는 무시한다. *)
+  let rec detect_duplicates (listlist:S.elt list list) : S.elt list list =
+    match listlist with
+    | [] -> []
+    | lst::t ->
+        let sample_tuple = List.nth_exn lst 0 in
+        let current_var = second_of sample_tuple in
+        let ph_for_compare = placeholder_vardef (first_of sample_tuple) in
+        if not @@ Var.equal current_var ph_for_compare && not @@ Var.is_this current_var
+          then if List.length lst > 1 then lst::detect_duplicates t else detect_duplicates t
+          else detect_duplicates t
+
+
   (** group_by_duplicates가 만든 list들 중에서 가장 최근의 것들을 찾아다 현재 환경에 맞게 바꿔 추가한다. *)
   let move_to_this_env (my_astate:S.t) (my_methname:Procname.t) (listlist:S.elt list list) =
     let most_recent_tuple = fun lst ->
@@ -319,7 +332,7 @@ module TransferFunctions = struct
     (** 콜리 튜플 하나에 대해, 튜플 하나를 새로 만들어 alias set에 추가 *)
     let carryfunc tup =
       let ph = placeholder_vardef methname in
-      let callee_vardef = second tup in
+      let callee_vardef = second_of tup in
       let aliasset = D.doubleton callee_vardef (Var.of_id ret_id) in
       (methname, ph, Location.dummy, aliasset) in
     let carriedover = List.map calleeTuples ~f:carryfunc |> S.of_list in
@@ -330,7 +343,7 @@ module TransferFunctions = struct
     match Payload.read ~caller_summary:caller_summary ~callee_pname:callee_methname with
     | Some summ -> 
         let var_carriedover = summ |> variable_carryover astate callee_methname ret_id caller_methname in
-        let var_thisenv =  var_carriedover |> (group_by_duplicates >> move_to_this_env astate caller_methname) |> S.of_list in
+        let var_thisenv = var_carriedover |> (group_by_duplicates >> move_to_this_env astate caller_methname) |> S.of_list in
         S.union var_carriedover var_thisenv
     | None -> astate
 
@@ -448,16 +461,16 @@ module TransferFunctions = struct
     | _, _ -> raise NotSupported
 
 
-  let exec_call (ret_id:Ident.t) (e_fun:Exp.t) (arg_ts:(Exp.t*Typ.t) list) (caller_summary:Summary.t) (node:CFG.Node.t) (astate:S.t) (methname:Procname.t) =
+  let exec_call (ret_id:Ident.t) (e_fun:Exp.t) (arg_ts:(Exp.t*Typ.t) list) (caller_summary:Summary.t) (astate:S.t) (methname:Procname.t) =
     let callee_methname =
       match e_fun with
       | Const (Cfun fn) -> fn
       | _ -> raise NoMethname in
     match input_is_void_type arg_ts astate with
     | true -> (* All Arguments are Just Constants: just apply the summary and end *)
-        apply_summary astate caller_summary callee_methname node ret_id methname
+        apply_summary astate caller_summary callee_methname ret_id methname
     | false -> (* There is at least one argument which is a non-thisvar variable *)
-        let astate_summary_applied = apply_summary astate caller_summary callee_methname node ret_id methname in
+        let astate_summary_applied = apply_summary astate caller_summary callee_methname ret_id methname in
         let formals = get_formal_args methname caller_summary callee_methname |> List.filter ~f:(fun x -> Var.is_this x |> not) in
         begin match formals with
           | [] -> (* Callee in Native Code! *)
@@ -545,7 +558,7 @@ module TransferFunctions = struct
           exec_store exp1 exp2 methname prev node
       | Sil.Prune _ -> prev
       | Sil.Call ((ret_id, _), e_fun, arg_ts, _, _) ->
-          exec_call ret_id e_fun arg_ts my_summary node prev methname
+          exec_call ret_id e_fun arg_ts my_summary prev methname
       | Sil.Metadata md ->
           prev
           (* exec_metadata md prev *)

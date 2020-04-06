@@ -424,7 +424,7 @@ module TransferFunctions = struct
             let (_, _, _, aliasset) as targetTuple =
               try weak_search_target_tuple_by_id id astate
               with _ ->
-                  (L.progress "==== Search Failed (1): Astate before search_target_tuple at %a := %a ==== @.:%a@." Exp.pp exp1 Exp.pp exp2 S.pp astate ; D.bottuple) in
+                  (L.progress "=== Search Failed (1): Astate before search_target_tuple at %a := %a === @.:%a@." Exp.pp exp1 Exp.pp exp2 S.pp astate ; D.bottuple) in
             let pvar_var = A.find_first is_program_var aliasset in
             let most_recent_loc = get_most_recent_loc pvar_var in
             begin try
@@ -436,11 +436,11 @@ module TransferFunctions = struct
               let newstate = (proc,var,loc,A.union aliasset' (A.singleton logicalvar |> A.add programvar)) in
               S.add newstate astate_rmvd
             with _ -> (* search failed: the pvar_var is not redefined in the procedure. *)
-                S.remove targetTuple astate end
+              S.remove targetTuple astate end
         | false -> (* An ordinary variable assignment. *)
             let (methname_old, vardef, _, aliasset) as targetTuple =
               try weak_search_target_tuple_by_id id astate
-              with _ -> (L.progress "id: %a" Ident.pp id ; L.progress "==== Search Failed (3): Astate before search_target_tuple at %a := %a ==== @.:%a@." Exp.pp exp1 Exp.pp exp2 S.pp astate ; D.bottuple) in
+              with _ -> (L.progress "id: %a" Ident.pp id ; L.progress "=== Search Failed (2): Astate before search_target_tuple at %a := %a === @.:%a@." Exp.pp exp1 Exp.pp exp2 S.pp astate ; D.bottuple) in
             let pvar_var = Var.of_pvar pv in
             let loc = CFG.Node.loc node in
             let aliasset_new = A.add pvar_var aliasset in
@@ -528,9 +528,10 @@ let find_def_for_use id methname astate =
               let actuallog_formal_binding = leave_only_var_tuples @@ zip actuals_logical formals in
               (* pvar tuples transmitted as actual arguments *)
               let actuals_pvar_tuples = actuals_logical |> List.filter ~f:is_logical_var_expr |> List.map ~f:(function
-                  | Exp.Var id -> 
-                  let pvar = fourth_of @@ search_target_tuple_by_id id methname astate |> extract_another_pvar in
-                  search_recent_vardef methname pvar astate
+                  | Exp.Var id ->
+                      L.progress "processing: @.:%a@." S.pp astate;
+                      let pvar = fourth_of @@ search_target_tuple_by_id id methname astate |> extract_another_pvar in
+                      search_recent_vardef methname pvar astate
                   | _ -> raise UndefinedSemantics2) in
               let actualpvar_alias_added = add_bindings_to_alias_of_tuples methname actuallog_formal_binding actuals_pvar_tuples |> S.of_list in
               let applied_state_rmvd = S.diff astate_summary_applied (S.of_list actuals_pvar_tuples) in
@@ -554,14 +555,20 @@ let find_def_for_use id methname astate =
               S.add updatedtuple (S.add newstate astate_rmvd)
           | false ->
               begin match search_target_tuples_by_pvar (Var.of_pvar pvar) methname astate with
-                  | [] -> 
+                  | [] -> (* 한 번도 def된 적 없음 *)
                         let double = D.doubleton (Var.of_id id) (Var.of_pvar pvar) in
                         let ph = placeholder_vardef methname in
                         let newstate = (methname, ph, Location.dummy, double) in
                         S.add newstate astate
-                  | h::t -> raise NotImplemented
-                  end
-            end
+                  | h::_ as tuples -> (* 이전에 def된 적 있음 *)
+                        let var = second_of h in
+                        let most_recent_loc = get_most_recent_loc var in
+                        let (proc, vardef, loc, aliasset) as  most_recent_tuple = search_tuple_by_loc most_recent_loc tuples in
+                        let astate_rmvd = S.remove most_recent_tuple astate in
+                        let mrt_updated = (proc, vardef, loc, A.add (Var.of_id id) aliasset) in
+                        S.add mrt_updated astate_rmvd
+              end
+        end
     | _ -> raise UndefinedSemantics3
 
 

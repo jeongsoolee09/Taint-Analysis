@@ -177,6 +177,26 @@ module TransferFunctions = struct
         else search_tuple_by_loc loc t
 
 
+  let rec search_recent_vardef_by_id_inner methname id tuplelist =
+    match tuplelist with
+    | [] -> raise NoMatch
+    | (proc, var, loc, aliasset) as targetTuple::t ->
+        let proc_cond = Procname.equal proc methname in
+        let id_cond = A.mem id aliasset in
+        let var_cond = not @@ Var.equal var @@ placeholder_vardef proc in
+        if var_cond then 
+        let most_recent_loc = get_most_recent_loc var in
+        let loc_cond = Location.equal most_recent_loc loc in
+        (if proc_cond && id_cond && loc_cond then targetTuple else search_recent_vardef_by_id_inner methname id t)
+        else search_recent_vardef_by_id_inner methname id t
+
+
+  (** id를 토대로 가장 최근의 non-ph 튜플을 찾아내고, 없으면 raise *)
+  let search_recent_vardef_by_id (methname:Procname.t) (id:Ident.t) (astate:S.t) =
+    let elements = S.elements astate in
+    search_recent_vardef_by_id_inner methname (Var.of_id id) elements
+
+
   let rec find_tuple_with_ret_inner (tuplelist:S.elt list) (methname:Procname.t) (acc:S.elt list) =
     match tuplelist with
     | [] -> acc
@@ -248,8 +268,10 @@ module TransferFunctions = struct
             (* the pvar transmitted as an actual argument. *)
             let actual_pvar = extract_another_pvar aliasset in
             (* possibly various definitions of the pvar in question. *)
-            let candTuples =
-                  L.progress "methname: %a, var: %a\n" Procname.pp methname Var.pp actual_pvar; search_target_tuples_by_vardef actual_pvar methname (S.of_list actualtuples)
+            let candTuples = 
+            L.progress "methname: %a, var: %a\n" Procname.pp methname Var.pp actual_pvar; 
+            L.progress "Astate before it's dead: @.:%a@." S.pp (S.of_list actualtuples);
+            search_target_tuples_by_vardef actual_pvar methname (S.of_list actualtuples) 
             in
             (* the most recent one among the definitions. *)
             let most_recent_loc = get_most_recent_loc actual_pvar in
@@ -301,7 +323,7 @@ module TransferFunctions = struct
 
 
   (** group_by_duplicates가 만든 list of list를 받아서, duplicate된 변수 list를 반환하되, ph와 this는 무시한다. *)
-  let rec detect_duplicates (listlist:S.elt list list) : S.elt list list =
+  let rec collect_duplicates (listlist:S.elt list list) : S.elt list list =
     match listlist with
     | [] -> []
     | lst::t ->
@@ -309,8 +331,8 @@ module TransferFunctions = struct
         let current_var = second_of sample_tuple in
         let ph_for_compare = placeholder_vardef (first_of sample_tuple) in
         if not @@ Var.equal current_var ph_for_compare && not @@ Var.is_this current_var
-          then if List.length lst > 1 then lst::detect_duplicates t else detect_duplicates t
-          else detect_duplicates t
+          then if List.length lst > 1 then lst::collect_duplicates t else collect_duplicates t
+          else collect_duplicates t
 
 
   (** group_by_duplicates가 만든 list들 중에서 가장 최근의 것들을 찾아다 현재 환경에 맞게 바꿔 추가한다. *)
@@ -320,8 +342,7 @@ module TransferFunctions = struct
       L.progress "get the most recent loc of: %a\n" Var.pp var;
       (proc, var, get_most_recent_loc var, alias) in
     let localize = fun (proc,var,loc,alias) ->
-      (* search_target_tuple_by_pvar를 쓰면 안돼! *)
-      let (_, var', _, _) = search_target_tuple_by_pvar var my_methname my_astate in
+      let var' = second_of @@ search_target_tuple_by_pvar var my_methname my_astate in
       (proc, var', loc, alias) in
     List.map listlist ~f:(most_recent_tuple >> localize)
 
@@ -339,11 +360,12 @@ module TransferFunctions = struct
     S.union astate carriedover
       
 
+  (** 변수가 리턴된다면 그걸 alias set에 넣고 (variable carryover), 현재 환경에 맞게 재정의된 튜플을 변환한다 *)
   let apply_summary astate caller_summary callee_methname ret_id caller_methname : S.t =
     match Payload.read ~caller_summary:caller_summary ~callee_pname:callee_methname with
-    | Some summ -> 
+    | Some summ ->
         let var_carriedover = summ |> variable_carryover astate callee_methname ret_id caller_methname in
-        let var_thisenv = var_carriedover |> (group_by_duplicates >> move_to_this_env astate caller_methname) |> S.of_list in
+        let var_thisenv = var_carriedover |> (group_by_duplicates >> collect_duplicates >> move_to_this_env astate caller_methname) |> S.of_list in
         S.union var_carriedover var_thisenv
     | None -> astate
 
@@ -461,6 +483,14 @@ module TransferFunctions = struct
     | _, _ -> raise NotSupported
 
 
+(** jump from the ph tuple to the definition tuple. *)
+let jump_definition id methname astate = 
+  L.progress "jumping with id: %a\n" Ident.pp id;
+  let var = second_of @@ search_target_tuple_by_id id methname astate in
+  let vardefs = search_target_tuples_by_vardef var methname astate in
+  search_tuple_by_loc (get_most_recent_loc var) vardefs
+
+
   let exec_call (ret_id:Ident.t) (e_fun:Exp.t) (arg_ts:(Exp.t*Typ.t) list) (caller_summary:Summary.t) (astate:S.t) (methname:Procname.t) =
     let callee_methname =
       match e_fun with
@@ -477,10 +507,10 @@ module TransferFunctions = struct
               astate_summary_applied
           | _ ->  (* Callee in User Code! *)
               let actuals_logical = extract_nonthisvar_from_args methname arg_ts astate_summary_applied in
-              let actuallog_formal_binding = zip actuals_logical formals |> leave_only_var_tuples in
+              let actuallog_formal_binding = leave_only_var_tuples @@ zip actuals_logical formals in
               (* pvar tuples transmitted as actual arguments *)
               let actuals_pvar_tuples = actuals_logical |> List.filter ~f:is_logical_var_expr |> List.map ~f:(function
-                  | Exp.Var id -> search_target_tuple_by_id id methname astate
+                  | Exp.Var id -> search_recent_vardef_by_id methname id astate
                   | _ -> raise UndefinedSemantics2) in
               let actualpvar_alias_added = add_bindings_to_alias_of_tuples methname actuallog_formal_binding actuals_pvar_tuples |> S.of_list in
               let applied_state_rmvd = S.diff astate_summary_applied (S.of_list actuals_pvar_tuples) in

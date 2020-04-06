@@ -105,6 +105,21 @@ module TransferFunctions = struct
     search_target_tuple_by_pvar_inner pvar methname elements
 
 
+  (* 위 함수의 리스트 버전 *)
+  let rec search_target_tuples_by_pvar_inner pvar (methname:Procname.t) elements = 
+    match elements with
+    | [] -> []
+    | ((procname, _, _, aliasset) as target)::t ->
+        if Procname.equal procname methname && A.mem pvar aliasset
+        then target::search_target_tuples_by_pvar_inner pvar methname t
+        else search_target_tuples_by_pvar_inner pvar methname t
+
+
+  let search_target_tuples_by_pvar (pvar:Var.t) (methname:Procname.t) (tupleset:S.t) =
+    let elements = S.elements tupleset in
+    search_target_tuples_by_pvar_inner pvar methname elements
+
+
   let rec search_target_tuple_by_id_inner id (methname:Procname.t) elements = 
     match elements with
     | [] -> raise NoMatch
@@ -112,7 +127,7 @@ module TransferFunctions = struct
         if Procname.equal procname methname && A.mem id aliasset then target else search_target_tuple_by_id_inner id methname t
 
 
-  let search_target_tuple_by_id (id:Ident.t) (methname:Procname.t) (tupleset:S.t)=
+  let search_target_tuple_by_id (id:Ident.t) (methname:Procname.t) (tupleset:S.t) =
     let elements = S.elements tupleset in
     search_target_tuple_by_id_inner (Var.of_id id) methname elements
 
@@ -140,8 +155,7 @@ module TransferFunctions = struct
 
   let search_target_tuples_by_id (id:Ident.t) (methname:Procname.t) (tupleset:S.t) =
     let elements = S.elements tupleset in
-    let result = search_target_tuples_by_id_inner (Var.of_id id) methname elements [] in
-    if Int.equal (List.length result) 0 then raise NoMatch2 else result 
+    search_target_tuples_by_id_inner (Var.of_id id) methname elements []
 
 
   (* There is an alias set which contains both id and pvar <-> id belongs to pvar, because ids never get reused *)
@@ -177,24 +191,26 @@ module TransferFunctions = struct
         else search_tuple_by_loc loc t
 
 
-  let rec search_recent_vardef_by_id_inner methname id tuplelist =
+  let rec search_recent_vardef_inner methname id tuplelist =
     match tuplelist with
-    | [] -> raise NoMatch
+    | [] -> raise IDontKnow
     | (proc, var, loc, aliasset) as targetTuple::t ->
+        L.progress "methname: %a, searching: %a, loc: %a, proc: %a\n" Procname.pp methname Var.pp var Location.pp loc Procname.pp proc;
         let proc_cond = Procname.equal proc methname in
         let id_cond = A.mem id aliasset in
-        let var_cond = not @@ Var.equal var @@ placeholder_vardef proc in
+        let var_cond = not @@ Var.equal var (placeholder_vardef proc) in
         if var_cond then 
-        let most_recent_loc = get_most_recent_loc var in
+        (let most_recent_loc = get_most_recent_loc var in
         let loc_cond = Location.equal most_recent_loc loc in
-        (if proc_cond && id_cond && loc_cond then targetTuple else search_recent_vardef_by_id_inner methname id t)
-        else search_recent_vardef_by_id_inner methname id t
+        if proc_cond && id_cond && loc_cond then
+        targetTuple else search_recent_vardef_inner methname id t)
+        else search_recent_vardef_inner methname id t
 
 
   (** id를 토대로 가장 최근의 non-ph 튜플을 찾아내고, 없으면 raise *)
-  let search_recent_vardef_by_id (methname:Procname.t) (id:Ident.t) (astate:S.t) =
+  let search_recent_vardef (methname:Procname.t) (pvar:Var.t) (astate:S.t) =
     let elements = S.elements astate in
-    search_recent_vardef_by_id_inner methname (Var.of_id id) elements
+    search_recent_vardef_inner methname pvar elements
 
 
   let rec find_tuple_with_ret_inner (tuplelist:S.elt list) (methname:Procname.t) (acc:S.elt list) =
@@ -231,7 +247,7 @@ module TransferFunctions = struct
     match arg_ts with
     | [] -> []
     | (Var var as v, _)::t ->
-        let (_, _, _, aliasset) = search_target_tuple_by_id var methname  astate in
+        let (_, _, _, aliasset) = search_target_tuple_by_id var methname astate in
         if not (A.exists Var.is_this aliasset)
         then v::extract_nonthisvar_from_args methname t astate
         else extract_nonthisvar_from_args methname t astate
@@ -264,13 +280,15 @@ module TransferFunctions = struct
     | (actualvar, formalvar)::tl ->
         begin match actualvar with
         | Var.LogicalVar vl ->
+            L.progress "Processing (%a, %a)\n" Var.pp actualvar Var.pp formalvar;
+            L.progress "methname: %a, id: %a\n" Procname.pp methname Ident.pp vl;
+            L.progress "Astate before death: @.:%a@." S.pp (S.of_list actualtuples);
             let aliasset = fourth_of @@ weak_search_target_tuple_by_id vl (S.of_list actualtuples) in
             (* the pvar transmitted as an actual argument. *)
             let actual_pvar = extract_another_pvar aliasset in
             (* possibly various definitions of the pvar in question. *)
             let candTuples = 
             L.progress "methname: %a, var: %a\n" Procname.pp methname Var.pp actual_pvar; 
-            L.progress "Astate before it's dead: @.:%a@." S.pp (S.of_list actualtuples);
             search_target_tuples_by_vardef actual_pvar methname (S.of_list actualtuples) 
             in
             (* the most recent one among the definitions. *)
@@ -484,7 +502,7 @@ module TransferFunctions = struct
 
 
 (** jump from the ph tuple to the definition tuple. *)
-let jump_definition id methname astate = 
+let find_def_for_use id methname astate = 
   L.progress "jumping with id: %a\n" Ident.pp id;
   let var = second_of @@ search_target_tuple_by_id id methname astate in
   let vardefs = search_target_tuples_by_vardef var methname astate in
@@ -510,7 +528,9 @@ let jump_definition id methname astate =
               let actuallog_formal_binding = leave_only_var_tuples @@ zip actuals_logical formals in
               (* pvar tuples transmitted as actual arguments *)
               let actuals_pvar_tuples = actuals_logical |> List.filter ~f:is_logical_var_expr |> List.map ~f:(function
-                  | Exp.Var id -> search_recent_vardef_by_id methname id astate
+                  | Exp.Var id -> 
+                  let pvar = fourth_of @@ search_target_tuple_by_id id methname astate |> extract_another_pvar in
+                  search_recent_vardef methname pvar astate
                   | _ -> raise UndefinedSemantics2) in
               let actualpvar_alias_added = add_bindings_to_alias_of_tuples methname actuallog_formal_binding actuals_pvar_tuples |> S.of_list in
               let applied_state_rmvd = S.diff astate_summary_applied (S.of_list actuals_pvar_tuples) in
@@ -533,11 +553,15 @@ let jump_definition id methname astate =
               let astate_rmvd = S.remove targetTuple astate in
               S.add updatedtuple (S.add newstate astate_rmvd)
           | false ->
-              let double = D.doubleton (Var.of_id id) (Var.of_pvar pvar) in
-              let ph = placeholder_vardef methname in
-              let newstate = (methname, ph, Location.dummy, double) in
-              S.add newstate astate
-        end
+              begin match search_target_tuples_by_pvar (Var.of_pvar pvar) methname astate with
+                  | [] -> 
+                        let double = D.doubleton (Var.of_id id) (Var.of_pvar pvar) in
+                        let ph = placeholder_vardef methname in
+                        let newstate = (methname, ph, Location.dummy, double) in
+                        S.add newstate astate
+                  | h::t -> raise NotImplemented
+                  end
+            end
     | _ -> raise UndefinedSemantics3
 
 

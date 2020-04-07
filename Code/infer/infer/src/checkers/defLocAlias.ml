@@ -282,7 +282,7 @@ module TransferFunctions = struct
         | Var.LogicalVar vl ->
             L.progress "Processing (%a, %a)\n" Var.pp actualvar Var.pp formalvar;
             L.progress "methname: %a, id: %a\n" Procname.pp methname Ident.pp vl;
-            L.progress "Astate before death: @.:%a@." S.pp (S.of_list actualtuples);
+            L.progress "Astate before death: @.%a@." S.pp (S.of_list actualtuples);
             let actual_pvar = second_of @@ weak_search_target_tuple_by_id vl (S.of_list actualtuples) in
             (* possibly various definitions of the pvar in question. *)
             let candTuples = 
@@ -338,6 +338,19 @@ module TransferFunctions = struct
     get_tuples_by_keys elements keys 
 
 
+  let duplicated_times (var:Var.t) (lst:S.elt list) =
+    let rec duplicated_times_inner (var:Var.t) (current_line:int) (current_time:int) (lst:S.elt list) =
+      match lst with
+      | [] -> 0
+      | (_, vardef, loc, _)::t ->
+          if Var.equal var vardef
+          then (if Int.equal loc.line current_line
+                then duplicated_times_inner var current_line (current_time+1) t
+                else duplicated_times_inner var current_line current_time t)
+          else duplicated_times_inner var current_line current_time t in
+    let first_loc = third_of @@ List.nth_exn lst 0 in
+    duplicated_times_inner var first_loc.line 0 lst
+
   (** group_by_duplicates가 만든 list of list를 받아서, duplicate된 변수 list를 반환하되, ph와 this는 무시한다. *)
   let rec collect_duplicates (listlist:S.elt list list) : S.elt list list =
     match listlist with
@@ -345,21 +358,21 @@ module TransferFunctions = struct
     | lst::t ->
         let sample_tuple = List.nth_exn lst 0 in
         let current_var = second_of sample_tuple in
-        let ph_for_compare = placeholder_vardef (first_of sample_tuple) in
-        if not @@ Var.equal current_var ph_for_compare && not @@ Var.is_this current_var
-          then if List.length lst > 1 then lst::collect_duplicates t else collect_duplicates t
+        if not @@ is_placeholder_vardef current_var && not @@ Var.is_this current_var
+          then if duplicated_times current_var lst >= 2 then lst::collect_duplicates t else collect_duplicates t
           else collect_duplicates t
 
 
   (** group_by_duplicates가 만든 list들 중에서 가장 최근의 것들을 찾아다 현재 환경에 맞게 바꿔 추가한다. *)
   let move_to_this_env (my_astate:S.t) (my_methname:Procname.t) (listlist:S.elt list list) =
     L.progress "moving to %a" Procname.pp my_methname;
+    if List.is_empty listlist then L.progress "empty! :O\n" else L.progress "not empty! :)\n";
     let most_recent_tuple = fun lst ->
       let (proc, var, _, alias) = List.nth_exn lst 0 in
-      L.progress "get the most recent loc of: %a\n" Var.pp var;
+      L.progress "get the most recent loc of: %a\n" Var.pp var; (* No effect! *)
       (proc, var, get_most_recent_loc var, alias) in
     let localize = fun (proc,var,loc,alias) ->
-      L.progress "Localizing...";
+      L.progress "Localizing..."; (* No effect! *)
       let var' = second_of @@ search_target_tuple_by_pvar var my_methname my_astate in
       (proc, var', loc, alias) in
     List.map listlist ~f:(most_recent_tuple >> localize)

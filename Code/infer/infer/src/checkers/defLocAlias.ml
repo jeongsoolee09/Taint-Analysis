@@ -353,11 +353,13 @@ module TransferFunctions = struct
 
   (** group_by_duplicates가 만든 list들 중에서 가장 최근의 것들을 찾아다 현재 환경에 맞게 바꿔 추가한다. *)
   let move_to_this_env (my_astate:S.t) (my_methname:Procname.t) (listlist:S.elt list list) =
+    L.progress "moving to %a" Procname.pp my_methname;
     let most_recent_tuple = fun lst ->
       let (proc, var, _, alias) = List.nth_exn lst 0 in
       L.progress "get the most recent loc of: %a\n" Var.pp var;
       (proc, var, get_most_recent_loc var, alias) in
     let localize = fun (proc,var,loc,alias) ->
+      L.progress "Localizing...";
       let var' = second_of @@ search_target_tuple_by_pvar var my_methname my_astate in
       (proc, var', loc, alias) in
     List.map listlist ~f:(most_recent_tuple >> localize)
@@ -431,7 +433,7 @@ module TransferFunctions = struct
               let astate_rmvd = S.remove candTuple astate in
               let logicalvar = Var.of_id id in
               let programvar = Var.of_pvar pv in
-              let newstate = (proc,var,loc,A.union aliasset' (A.singleton logicalvar |> A.add programvar)) in
+              let newstate = (proc,var,loc,A.union aliasset' (D.doubleton logicalvar programvar)) in
               S.add newstate astate_rmvd
             with _ -> (* search failed: the pvar_var is not redefined in the procedure. *)
               S.remove targetTuple astate end
@@ -464,15 +466,15 @@ module TransferFunctions = struct
         let pvar_var = Var.of_pvar pv in
         let loc = CFG.Node.loc node in
         let aliasset_new = A.add pvar_var aliasset in
-        let newstate = 
-          (* sanity check: check if the vardef is ph *)
-          if not (Var.equal vardef (placeholder_vardef methname))
-          then (procname, pvar_var, loc, aliasset_new)
-          else (procname, vardef, loc, aliasset_new) in
-          (* (procname, pvar_var, loc, aliasset_new) in *)
-        let astate_rmvd = S.remove targetTuple astate in
-        add_to_history pvar_var loc;
-        S.add newstate astate_rmvd
+          if not (is_placeholder_vardef vardef)
+          then let newstate = (procname, vardef, loc, aliasset_new) in
+               L.progress "astate before ++u1: @.%a@." S.pp astate;
+               add_to_history pvar_var loc;
+               S.add newstate astate
+          else let newstate = (procname, vardef, loc, aliasset_new) in
+               let astate_rmvd = S.remove targetTuple astate in
+               add_to_history pvar_var loc;
+               S.add newstate astate_rmvd
     | Lvar pv, BinOp (_, Var _, Const _) | Lvar pv, BinOp (_, Const _, Var _) -> (* This id does not belong to pvar. *)
         let pvar_var = Var.of_pvar pv in
         let loc = CFG.Node.loc node in
@@ -513,8 +515,10 @@ let find_def_for_use id methname astate =
       | Const (Cfun fn) -> fn
       | _ -> raise NoMethname in
     match input_is_void_type arg_ts astate with
-    | true -> (* All Arguments are Just Constants: just apply the summary and end *)
-        apply_summary astate caller_summary callee_methname ret_id methname
+    | true -> (* All Arguments are Just Constants: just apply the summary, make a new tuple and end *)
+        let astate_summary_applied = apply_summary astate caller_summary callee_methname ret_id methname in
+        let newstate = (methname, placeholder_vardef methname, Location.dummy, A.singleton (Var.of_id ret_id)) in
+        S.add newstate astate_summary_applied
     | false -> (* There is at least one argument which is a non-thisvar variable *)
         let astate_summary_applied = apply_summary astate caller_summary callee_methname ret_id methname in
         let formals = get_formal_args methname caller_summary callee_methname |> List.filter ~f:(fun x -> Var.is_this x |> not) in

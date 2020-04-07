@@ -261,16 +261,16 @@ module TransferFunctions = struct
 
 
   (** given a doubleton set of lv and pv, extract the pv. *)
-  let extract_another_pvar (doubleton:A.t) =
-    let elements = A.elements doubleton in
-    if List.length elements |> Int.equal 2 |> not (* check if the set is doubleton *)
-    then raise UndefinedSemantics5
-    else match elements with
-      | [x; y] -> if is_program_var x then x else
-                  if is_program_var y then y else
-                  raise UndefinedSemantics5
-      | _ -> raise UndefinedSemantics5 
-
+  let rec extract_another_pvar (id:Ident.t) (varsetlist:A.t list) : Var.t =
+    match varsetlist with
+    | [] -> raise UndefinedSemantics5
+    | set::t ->
+        if Int.equal (A.cardinal set) 2 && A.mem (Var.of_id id) set
+        then
+          begin match set |> A.remove (Var.of_id id) |> A.elements with
+            | [x] -> x
+            | _ -> raise UndefinedSemantics5 end
+        else extract_another_pvar id t
 
 
 (** Takes an actual(logical)-formal binding list and adds the formals to the respective pvar tuples of the actual arguments *)
@@ -283,9 +283,7 @@ module TransferFunctions = struct
             L.progress "Processing (%a, %a)\n" Var.pp actualvar Var.pp formalvar;
             L.progress "methname: %a, id: %a\n" Procname.pp methname Ident.pp vl;
             L.progress "Astate before death: @.:%a@." S.pp (S.of_list actualtuples);
-            let aliasset = fourth_of @@ weak_search_target_tuple_by_id vl (S.of_list actualtuples) in
-            (* the pvar transmitted as an actual argument. *)
-            let actual_pvar = extract_another_pvar aliasset in
+            let actual_pvar = second_of @@ weak_search_target_tuple_by_id vl (S.of_list actualtuples) in
             (* possibly various definitions of the pvar in question. *)
             let candTuples = 
             L.progress "methname: %a, var: %a\n" Procname.pp methname Var.pp actual_pvar; 
@@ -529,8 +527,8 @@ let find_def_for_use id methname astate =
               (* pvar tuples transmitted as actual arguments *)
               let actuals_pvar_tuples = actuals_logical |> List.filter ~f:is_logical_var_expr |> List.map ~f:(function
                   | Exp.Var id ->
-                      L.progress "processing: @.:%a@." S.pp astate;
-                      let pvar = fourth_of @@ search_target_tuple_by_id id methname astate |> extract_another_pvar in
+                      L.progress "id: %a, processing: @.:%a@." Ident.pp id S.pp astate;
+                      let pvar = search_target_tuples_by_id id methname astate |> List.map ~f:fourth_of |> extract_another_pvar id in
                       search_recent_vardef methname pvar astate
                   | _ -> raise UndefinedSemantics2) in
               let actualpvar_alias_added = add_bindings_to_alias_of_tuples methname actuallog_formal_binding actuals_pvar_tuples |> S.of_list in
@@ -566,7 +564,10 @@ let find_def_for_use id methname astate =
                         let (proc, vardef, loc, aliasset) as  most_recent_tuple = search_tuple_by_loc most_recent_loc tuples in
                         let astate_rmvd = S.remove most_recent_tuple astate in
                         let mrt_updated = (proc, vardef, loc, A.add (Var.of_id id) aliasset) in
-                        S.add mrt_updated astate_rmvd
+                        let double = D.doubleton (Var.of_id id) (Var.of_pvar pvar) in
+                        let ph = placeholder_vardef methname in
+                        let newstate = (methname, ph, Location.dummy, double) in
+                        S.add mrt_updated astate_rmvd |> S.add newstate
               end
         end
     | _ -> raise UndefinedSemantics3

@@ -106,3 +106,20 @@ let rec search_tuple_by_loc (loc:Location.t) (tuplelist:S.elt list) =
       if Location.equal loc l
       then target
       else search_tuple_by_loc loc t
+
+
+  (* x ==> y: y is more recent than x in a same file *)
+  let (==>) (x:Location.t) (y:Location.t) = SourceFile.equal x.file y.file && x.line < y.line
+
+
+let find_least_linenumber (tuplelist:S.elt list) =
+  let rec find_least_linenumber_inner (tuplelist:S.elt list) current_least =
+    match tuplelist with
+    | [] -> current_least
+    | targetTuple::t ->
+        let (_, _, snd_target, _) = targetTuple in
+        let (_, _, snd_current, _) = current_least in
+        if snd_target ==> snd_current
+        then find_least_linenumber_inner t targetTuple
+        else find_least_linenumber_inner t current_least in
+  find_least_linenumber_inner tuplelist (List.nth_exn tuplelist 0)

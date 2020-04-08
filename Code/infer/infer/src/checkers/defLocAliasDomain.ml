@@ -1,6 +1,6 @@
 (** Interprocedural Liveness Checker. *)
 
-open! IStd
+(* open! IStd *)
 
 module F = Format
 
@@ -67,3 +67,14 @@ let placeholder_vardef (pid:Procname.t) : Var.t =
   Var.of_pvar ph_vardef
 
 let bottuple = (Procname.empty_block, placeholder_vardef (Procname.empty_block), Location.dummy, SetofAliases.empty)
+
+(* Utility Functions *)
+let first_of (a,_,_,_) = a
+
+let second_of (_,b,_,_) = b
+
+let third_of (_,_,c,_) = c
+
+let fourth_of (_,_,_,d) = d
+
+let ( >> ) f g = fun x -> g (f x)

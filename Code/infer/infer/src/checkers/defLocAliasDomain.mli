@@ -50,3 +50,13 @@ val initial : AbstractState.t
 val pp : F.formatter -> AbstractState.t -> unit
 
 val bottuple : QuadrupleWithPP.t
+
+val first_of : 'a*'b*'c*'d -> 'a
+
+val second_of : 'a*'b*'c*'d -> 'b
+
+val third_of : 'a*'b*'c*'d -> 'c
+
+val fourth_of : 'a*'b*'c*'d -> 'd
+
+val ( >> ) : ('a -> 'b) -> ('b -> 'c) -> 'a -> 'c

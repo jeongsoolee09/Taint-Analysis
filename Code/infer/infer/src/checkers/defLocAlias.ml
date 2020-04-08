@@ -1,4 +1,7 @@
 open! IStd
+open DefLocAliasDomain
+open DefLocAliasSearches
+open DefLocAliasLogicTests
 
 (** Interprocedural Liveness Checker with alias relations in mind. *)
 
@@ -7,33 +10,23 @@ exception UndefinedSemantics2
 exception UndefinedSemantics3
 exception UndefinedSemantics4
 exception UndefinedSemantics5
-exception IDontKnow
-exception NoMatch
-exception NoMatch1
-exception NoMatch2
-exception NoMatch3
-exception NoMatch4
-exception NoMatch5
 exception NoSummary
 exception NotSupported
 exception NoMethname
-exception UnexpectedArg1
-exception UnexpectedArg2
-exception UnexpectedArg3
 exception NotImplemented
-exception LengthError1
-exception LengthError2
+exception ZipError
+exception SearchRecentVardefFailed
+exception CheckerFailed
 
 module L = Logging
 module F = Format
 module Hashtbl = Caml.Hashtbl
 
-module D = DefLocAliasDomain
 module S = DefLocAliasDomain.AbstractState
 module A = DefLocAliasDomain.SetofAliases
 
 module Payload = SummaryPayload.Make (struct
-    type t = D.t
+    type t = DefLocAliasDomain.t
     let field = Payloads.Fields.def_loc_alias
   end)
 
@@ -43,7 +36,6 @@ module TransferFunctions = struct
   type extras = ProcData.no_extras
   type instr = Sil.instr
 
-  let ( >> ) f g = fun x -> g (f x)
 
   let history = Hashtbl.create 777
 
@@ -51,196 +43,13 @@ module TransferFunctions = struct
   let add_to_history (key:Var.t) (value:Location.t)= Hashtbl.add history key value
 
 
+  let rec batch_add_to_history (keys:Var.t list) (loc:Location.t) =
+    match keys with
+    | [] -> ()
+    | h::t -> add_to_history h loc; batch_add_to_history t loc
+
+
   let get_most_recent_loc (key:Var.t) = Hashtbl.find history key
-
-
-  let first_of (a,_,_,_) = a
-
-  let second_of (_,b,_,_) = b
-
-  let third_of (_,_,c,_) = c
-
-  let fourth_of (_,_,_,d) = d
-
-
-  let is_pvar_expr (exp:Exp.t) : bool =
-    match exp with
-    | Lvar _ -> true
-    | _ -> false
-
-
-  let is_logical_var_expr (exp:Exp.t) : bool =
-    match exp with
-    | Var _ -> true
-    | _ -> false
-
-
-  let placeholder_vardef (pid:Procname.t) : Var.t =
-    let mangled = Mangled.from_string "ph" in
-    let ph_vardef = Pvar.mk mangled pid in
-    Var.of_pvar ph_vardef
-
-
-  let is_logical_var (var:Var.t) : bool =
-    match var with
-    | LogicalVar _ -> true
-    | ProgramVar _ -> false
-
-
-  let is_program_var (var:Var.t) : bool =
-    match var with
-    | LogicalVar _ -> false
-    | ProgramVar _ -> true
-
-
-  let rec search_target_tuple_by_pvar_inner pvar (methname:Procname.t) elements = 
-    match elements with
-    | [] -> raise NoMatch
-    | ((procname, _, _, aliasset) as target)::t ->
-        if Procname.equal procname methname && A.mem pvar aliasset then target else search_target_tuple_by_pvar_inner pvar methname t
-
-
-  let search_target_tuple_by_pvar (pvar:Var.t) (methname:Procname.t) (tupleset:S.t) =
-    let elements = S.elements tupleset in
-    search_target_tuple_by_pvar_inner pvar methname elements
-
-
-  (* 위 함수의 리스트 버전 *)
-  let rec search_target_tuples_by_pvar_inner pvar (methname:Procname.t) elements = 
-    match elements with
-    | [] -> []
-    | ((procname, _, _, aliasset) as target)::t ->
-        if Procname.equal procname methname && A.mem pvar aliasset
-        then target::search_target_tuples_by_pvar_inner pvar methname t
-        else search_target_tuples_by_pvar_inner pvar methname t
-
-
-  let search_target_tuples_by_pvar (pvar:Var.t) (methname:Procname.t) (tupleset:S.t) =
-    let elements = S.elements tupleset in
-    search_target_tuples_by_pvar_inner pvar methname elements
-
-
-  let rec search_target_tuple_by_id_inner id (methname:Procname.t) elements = 
-    match elements with
-    | [] -> raise NoMatch
-    | ((procname, _, _, aliasset) as target)::t ->
-        if Procname.equal procname methname && A.mem id aliasset then target else search_target_tuple_by_id_inner id methname t
-
-
-  let search_target_tuple_by_id (id:Ident.t) (methname:Procname.t) (tupleset:S.t) =
-    let elements = S.elements tupleset in
-    search_target_tuple_by_id_inner (Var.of_id id) methname elements
-
-
-  let rec weak_search_target_tuple_by_id_inner (id:Var.t) (elements:S.elt list) = 
-    match elements with
-    | [] -> raise NoMatch1
-    | ((_, _, _, aliasset) as target)::t ->
-        if A.mem id aliasset then target else weak_search_target_tuple_by_id_inner id t
-
-
-  let weak_search_target_tuple_by_id (id:Ident.t) (tupleset:S.t) =
-    let elements = S.elements tupleset in
-    weak_search_target_tuple_by_id_inner (Var.of_id id) elements
-
-
-  let rec search_target_tuples_by_id_inner id (methname:Procname.t) elements acc = 
-    match elements with
-    | [] -> acc
-    | ((procname, _, _, aliasset) as target)::t ->
-        if Procname.equal procname methname && A.mem id aliasset
-        then search_target_tuples_by_id_inner id methname t (target::acc)
-        else search_target_tuples_by_id_inner id methname t acc
-
-
-  let search_target_tuples_by_id (id:Ident.t) (methname:Procname.t) (tupleset:S.t) =
-    let elements = S.elements tupleset in
-    search_target_tuples_by_id_inner (Var.of_id id) methname elements []
-
-
-  (* There is an alias set which contains both id and pvar <-> id belongs to pvar, because ids never get reused *)
-  let is_mine id pvar methname astate =
-    try
-      let (_, _, _, aliasset) = search_target_tuple_by_id id methname astate in
-      A.mem (Var.of_id id) aliasset && A.mem (Var.of_pvar pvar) aliasset
-    with NoMatch3 ->
-      false
-
-
-  let rec search_target_tuples_by_vardef_inner pv (methname:Procname.t) elements acc = 
-    match elements with
-    | [] -> acc
-    | ((procname, vardef, _, _) as target)::t ->
-        if Procname.equal procname methname && Var.equal vardef pv
-        then search_target_tuples_by_vardef_inner pv methname t (target::acc)
-        else search_target_tuples_by_vardef_inner pv methname t acc
-
-
-  let search_target_tuples_by_vardef (pv:Var.t) (methname:Procname.t) (tupleset:S.t) =
-    let elements = S.elements tupleset in
-    let result = search_target_tuples_by_vardef_inner pv methname elements [] in
-    if Int.equal (List.length result) 0 then raise NoMatch4 else result 
-
-
-  let rec search_tuple_by_loc (loc:Location.t) (tuplelist:S.elt list) =
-    match tuplelist with
-    | [] -> raise NoMatch5
-    | ((_,_,l,_) as target)::t ->
-        if Location.equal loc l
-        then target
-        else search_tuple_by_loc loc t
-
-
-  let rec search_recent_vardef_inner methname id tuplelist =
-    match tuplelist with
-    | [] -> raise IDontKnow
-    | (proc, var, loc, aliasset) as targetTuple::t ->
-        L.progress "methname: %a, searching: %a, loc: %a, proc: %a\n" Procname.pp methname Var.pp var Location.pp loc Procname.pp proc;
-        let proc_cond = Procname.equal proc methname in
-        let id_cond = A.mem id aliasset in
-        let var_cond = not @@ Var.equal var (placeholder_vardef proc) in
-        if var_cond then 
-        (let most_recent_loc = get_most_recent_loc var in
-        let loc_cond = Location.equal most_recent_loc loc in
-        if proc_cond && id_cond && loc_cond then
-        targetTuple else search_recent_vardef_inner methname id t)
-        else search_recent_vardef_inner methname id t
-
-
-  (** id를 토대로 가장 최근의 non-ph 튜플을 찾아내고, 없으면 raise *)
-  let search_recent_vardef (methname:Procname.t) (pvar:Var.t) (astate:S.t) =
-    let elements = S.elements astate in
-    search_recent_vardef_inner methname pvar elements
-
-
-  let rec find_tuple_with_ret_inner (tuplelist:S.elt list) (methname:Procname.t) (acc:S.elt list) =
-    match tuplelist with
-    | [] -> acc
-    | (procname, _, _, aliasset) as target :: t ->
-        if Procname.equal procname methname && A.exists Var.is_return aliasset (* short-circuit! *)
-        then find_tuple_with_ret_inner t methname (target::acc)
-        else find_tuple_with_ret_inner t methname acc
-
-
-  let find_tuple_with_ret (tupleset:S.t) (methname:Procname.t) =
-    let elements = S.elements tupleset in
-    find_tuple_with_ret_inner elements methname []
-
-
-  let input_is_void_type (arg_ts:(Exp.t*Typ.t) list) (astate:S.t) : bool =
-    match arg_ts with
-    | [] -> false
-    | (Var var, _)::[] ->
-        begin try
-          let (_, vardef, _, _) =
-                weak_search_target_tuple_by_id var astate
-          in
-          if Var.is_this vardef then true else false
-          with _ -> (* it's a constructor or something abnormal: We give up soundness *)
-              true end
-    | (Var _, _)::_ -> false
-    | (Lvar _, _)::_ -> raise UnexpectedArg1 (* shouldn't all non-constant actual args be pure logical vars? *)
-    | (_, _)::_ -> false
 
 
   let rec extract_nonthisvar_from_args methname (arg_ts:(Exp.t*Typ.t) list) (astate:S.t) : Exp.t list =
@@ -258,6 +67,34 @@ module TransferFunctions = struct
     let leave_logical = fun (x,_) -> is_logical_var_expr x in
     let map_func = function (Exp.Var id, var) -> (Var.of_id id, var) | (_, _) -> raise UndefinedSemantics4 in
     List.filter ~f:leave_logical ziplist |> List.map ~f:map_func
+
+
+(** jump from the ph tuple to the definition tuple. *)
+let find_def_for_use id methname astate = 
+  L.progress "jumping with id: %a\n" Ident.pp id;
+  let var = second_of @@ search_target_tuple_by_id id methname astate in
+  let vardefs = search_target_tuples_by_vardef var methname astate in
+  search_tuple_by_loc (get_most_recent_loc var) vardefs
+
+
+(** id를 토대로 가장 최근의 non-ph 튜플을 찾아내고, 없으면 raise *)
+let search_recent_vardef (methname:Procname.t) (pvar:Var.t) (astate:S.t) =
+  let elements = S.elements astate in
+  let rec search_recent_vardef_inner methname id tuplelist =
+    match tuplelist with
+    | [] -> raise SearchRecentVardefFailed
+    | (proc, var, loc, aliasset) as targetTuple::t ->
+        L.progress "methname: %a, searching: %a, loc: %a, proc: %a\n" Procname.pp methname Var.pp var Location.pp loc Procname.pp proc;
+        let proc_cond = Procname.equal proc methname in
+        let id_cond = A.mem id aliasset in
+        let var_cond = not @@ Var.equal var (placeholder_vardef proc) in
+        if var_cond then 
+        (let most_recent_loc = get_most_recent_loc var in
+        let loc_cond = Location.equal most_recent_loc loc in
+        if proc_cond && id_cond && loc_cond then
+        targetTuple else search_recent_vardef_inner methname id t)
+        else search_recent_vardef_inner methname id t in
+  search_recent_vardef_inner methname pvar elements
 
 
   (** given a doubleton set of lv and pv, extract the pv. *)
@@ -298,12 +135,6 @@ module TransferFunctions = struct
         end
 
 
-  let is_placeholder_vardef (var:Var.t) =
-    match var with
-    | LogicalVar _ -> false
-    | ProgramVar pv -> String.equal (Pvar.to_string pv) "ph"
-
-
   let garbage_collect astate = S.filter (fun (_,x,_,_) -> is_placeholder_vardef x) astate
 
 
@@ -331,7 +162,7 @@ module TransferFunctions = struct
       | [] -> []
       | (proc,name,_,_) as targetTuple::t ->
           if double_equal key (proc,name)
-          then targetTuple::get_tuple_by_key t key
+          then (L.progress "generating key: %a\n" Var.pp name; targetTuple::get_tuple_by_key t key) 
           else get_tuple_by_key t key in
     let get_tuples_by_keys tuplelist keys = List.map ~f:(get_tuple_by_key tuplelist) keys in
     let elements = S.elements astate in
@@ -341,14 +172,14 @@ module TransferFunctions = struct
   let duplicated_times (var:Var.t) (lst:S.elt list) =
     let rec duplicated_times_inner (var:Var.t) (current_line:int) (current_time:int) (lst:S.elt list) =
       match lst with
-      | [] -> 0
+      | [] -> L.progress "dup time: %a\n" Int.pp current_time; current_time
       | (_, vardef, loc, _)::t ->
           if Var.equal var vardef
-          then (if Int.equal loc.line current_line
+          then (L.progress "Testing var: %a\n" Var.pp vardef; if Int.equal loc.line current_line
                 then duplicated_times_inner var current_line (current_time+1) t
                 else duplicated_times_inner var current_line current_time t)
           else duplicated_times_inner var current_line current_time t in
-    let first_loc = third_of @@ List.nth_exn lst 0 in
+    let first_loc : Location.t = third_of @@ List.nth_exn lst 0 in
     duplicated_times_inner var first_loc.line 0 lst
 
   (** group_by_duplicates가 만든 list of list를 받아서, duplicate된 변수 list를 반환하되, ph와 this는 무시한다. *)
@@ -359,22 +190,26 @@ module TransferFunctions = struct
         let sample_tuple = List.nth_exn lst 0 in
         let current_var = second_of sample_tuple in
         if not @@ is_placeholder_vardef current_var && not @@ Var.is_this current_var
-          then if duplicated_times current_var lst >= 2 then lst::collect_duplicates t else collect_duplicates t
+          then (L.progress "test 1 passed!\n"; if duplicated_times current_var lst >= 2 then (L.progress "test 2 passed!\n"; lst::collect_duplicates t) else collect_duplicates t)
           else collect_duplicates t
 
 
   (** group_by_duplicates가 만든 list들 중에서 가장 최근의 것들을 찾아다 현재 환경에 맞게 바꿔 추가한다. *)
-  let move_to_this_env (my_astate:S.t) (my_methname:Procname.t) (listlist:S.elt list list) =
+  let move_to_this_env (callee_summary:S.t) (my_methname:Procname.t) (callee_methname:Procname.t) (listlist:S.elt list list) =
     L.progress "moving to %a" Procname.pp my_methname;
-    if List.is_empty listlist then L.progress "empty! :O\n" else L.progress "not empty! :)\n";
+    if List.is_empty listlist then L.progress "\nempty! :O\n" else L.progress "\nnot empty! :)\n";
     let most_recent_tuple = fun lst ->
       let (proc, var, _, alias) = List.nth_exn lst 0 in
-      L.progress "get the most recent loc of: %a\n" Var.pp var; (* No effect! *)
+      L.progress "\nget the most recent loc of: %a\n" Var.pp var;
       (proc, var, get_most_recent_loc var, alias) in
-    let localize = fun (proc,var,loc,alias) ->
-      L.progress "Localizing..."; (* No effect! *)
-      let var' = second_of @@ search_target_tuple_by_pvar var my_methname my_astate in
-      (proc, var', loc, alias) in
+    let localize = fun (proc,var,_,alias) ->
+      L.progress "Localizing...";
+      L.progress "Callee summary: @.%a@." S.pp callee_summary;
+      L.progress "callee_methname: %a" Procname.pp callee_methname;
+      let targetTuple = search_target_tuple_by_pvar var callee_methname callee_summary in
+      let var' = second_of targetTuple in
+      let loc' = third_of targetTuple in
+      (proc, var', loc', alias) in
     List.map listlist ~f:(most_recent_tuple >> localize)
 
 
@@ -385,7 +220,7 @@ module TransferFunctions = struct
     let carryfunc tup =
       let ph = placeholder_vardef methname in
       let callee_vardef = second_of tup in
-      let aliasset = D.doubleton callee_vardef (Var.of_id ret_id) in
+      let aliasset = doubleton callee_vardef (Var.of_id ret_id) in
       (methname, ph, Location.dummy, aliasset) in
     let carriedover = List.map calleeTuples ~f:carryfunc |> S.of_list in
     S.union astate carriedover
@@ -393,10 +228,10 @@ module TransferFunctions = struct
 
   (** 변수가 리턴된다면 그걸 alias set에 넣고 (variable carryover), 현재 환경에 맞게 재정의된 튜플을 변환한다 *)
   let apply_summary astate caller_summary callee_methname ret_id caller_methname : S.t =
-    match Payload.read ~caller_summary:caller_summary ~callee_pname:callee_methname with
-    | Some summ ->
+    match Payload.read_full ~caller_summary:caller_summary ~callee_pname:callee_methname with
+    | Some (pdesc, summ) -> L.progress "Applying summary of %a\n" Procname.pp (Procdesc.get_proc_name pdesc);
         let var_carriedover = summ |> variable_carryover astate callee_methname ret_id caller_methname in
-        let var_thisenv = var_carriedover |> (group_by_duplicates >> collect_duplicates >> move_to_this_env astate caller_methname) |> S.of_list in
+        let var_thisenv = summ |> (group_by_duplicates >> collect_duplicates >> move_to_this_env summ caller_methname callee_methname) |> S.of_list in
         S.union var_carriedover var_thisenv
     | None -> astate
 
@@ -405,28 +240,13 @@ module TransferFunctions = struct
     match l1, l2 with
     | [], [] -> []
     | h1::t1, h2::t2 -> (h1, h2)::zip t1 t2
-    | _, _ -> raise LengthError2
-
-
-  let convert_from_mangled : Procname.t -> (Mangled.t*Typ.t) -> Var.t = fun methname (m,_) -> Pvar.mk m methname |> Var.of_pvar
+    | _, _ -> raise ZipError
 
 
   let get_formal_args (caller_procname:Procname.t) (caller_summary:Summary.t) (callee_pname:Procname.t) : Var.t list =
     match Payload.read_full ~caller_summary:caller_summary ~callee_pname:callee_pname with
     | Some (procdesc, _) -> Procdesc.get_formals procdesc |> List.map ~f:(convert_from_mangled caller_procname)
     | None -> (* Oops, it's a native code outside our focus *) []
-
-
-  let get_my_formal_args (methname:Procname.t) = 
-    match Procdesc.load methname with
-    | Some pdesc -> L.progress "found procdesc for %a\n" Procname.pp methname; List.map ~f:(convert_from_mangled methname) (Procdesc.get_formals pdesc)
-    | None -> raise NoSummary 
-
-
-  let is_formal (rhs:Pvar.t) (current_meth:Procname.t) : bool =
-    let formallist = get_my_formal_args current_meth in
-    let rhs_var = Var.of_pvar rhs in
-    List.mem formallist rhs_var ~equal:Var.equal
 
 
   let exec_store (exp1:Exp.t) (exp2:Exp.t) (methname:Procname.t) (astate:S.t) (node:CFG.Node.t) : S.t =
@@ -437,7 +257,7 @@ module TransferFunctions = struct
             let (_, _, _, aliasset) as targetTuple =
               try weak_search_target_tuple_by_id id astate
               with _ ->
-                  (L.progress "=== Search Failed (1): Astate before search_target_tuple at %a := %a === @.:%a@." Exp.pp exp1 Exp.pp exp2 S.pp astate ; D.bottuple) in
+                  (L.progress "=== Search Failed (1): Astate before search_target_tuple at %a := %a === @.:%a@." Exp.pp exp1 Exp.pp exp2 S.pp astate ; bottuple) in
             let pvar_var = A.find_first is_program_var aliasset in
             let most_recent_loc = get_most_recent_loc pvar_var in
             begin try
@@ -446,14 +266,14 @@ module TransferFunctions = struct
               let astate_rmvd = S.remove candTuple astate in
               let logicalvar = Var.of_id id in
               let programvar = Var.of_pvar pv in
-              let newstate = (proc,var,loc,A.union aliasset' (D.doubleton logicalvar programvar)) in
+              let newstate = (proc,var,loc,A.union aliasset' (doubleton logicalvar programvar)) in
               S.add newstate astate_rmvd
             with _ -> (* search failed: the pvar_var is not redefined in the procedure. *)
               S.remove targetTuple astate end
         | false -> (* An ordinary variable assignment. *)
             let (methname_old, vardef, _, aliasset) as targetTuple =
               try weak_search_target_tuple_by_id id astate
-              with _ -> (L.progress "id: %a" Ident.pp id ; L.progress "=== Search Failed (2): Astate before search_target_tuple at %a := %a === @.:%a@." Exp.pp exp1 Exp.pp exp2 S.pp astate ; D.bottuple) in
+              with _ -> (L.progress "id: %a" Ident.pp id ; L.progress "=== Search Failed (2): Astate before search_target_tuple at %a := %a === @.:%a@." Exp.pp exp1 Exp.pp exp2 S.pp astate ; bottuple) in
             let pvar_var = Var.of_pvar pv in
             let loc = CFG.Node.loc node in
             let aliasset_new = A.add pvar_var aliasset in
@@ -514,12 +334,7 @@ module TransferFunctions = struct
     | _, _ -> raise NotSupported
 
 
-(** jump from the ph tuple to the definition tuple. *)
-let find_def_for_use id methname astate = 
-  L.progress "jumping with id: %a\n" Ident.pp id;
-  let var = second_of @@ search_target_tuple_by_id id methname astate in
-  let vardefs = search_target_tuples_by_vardef var methname astate in
-  search_tuple_by_loc (get_most_recent_loc var) vardefs
+  let testvar procname = Pvar.mk (Mangled.from_string "call") procname |> Var.of_pvar
 
 
   let exec_call (ret_id:Ident.t) (e_fun:Exp.t) (arg_ts:(Exp.t*Typ.t) list) (caller_summary:Summary.t) (astate:S.t) (methname:Procname.t) =
@@ -530,7 +345,7 @@ let find_def_for_use id methname astate =
     match input_is_void_type arg_ts astate with
     | true -> (* All Arguments are Just Constants: just apply the summary, make a new tuple and end *)
         let astate_summary_applied = apply_summary astate caller_summary callee_methname ret_id methname in
-        let newstate = (methname, placeholder_vardef methname, Location.dummy, A.singleton (Var.of_id ret_id)) in
+        let newstate = (methname, placeholder_vardef methname, Location.dummy, doubleton (Var.of_id ret_id) (testvar methname)) in
         S.add newstate astate_summary_applied
     | false -> (* There is at least one argument which is a non-thisvar variable *)
         let astate_summary_applied = apply_summary astate caller_summary callee_methname ret_id methname in
@@ -558,20 +373,22 @@ let find_def_for_use id methname astate =
     | Lvar pvar ->
         begin match is_formal pvar methname with
           | true ->
-              let double = D.doubleton (Var.of_id id) (Var.of_pvar pvar) in
-              let ph = placeholder_vardef methname in
-              let newstate = (methname, ph, Location.dummy, double) in
-              let candTuples = search_target_tuples_by_vardef (Var.of_pvar pvar) methname astate in
-              let most_recent_loc = get_most_recent_loc (Var.of_pvar pvar) in
-              let (proc,var,loc,aliasset') as targetTuple = search_tuple_by_loc most_recent_loc candTuples in
-              (* 파라미터가 등록되었을 때 search_target_tuple_by_id를 하기 위해. *)
-              let updatedtuple = (proc,var,loc, A.add (Var.of_id id) aliasset') in
-              let astate_rmvd = S.remove targetTuple astate in
-              S.add updatedtuple (S.add newstate astate_rmvd)
+              (* let double = doubleton (Var.of_id id) (Var.of_pvar pvar) in
+               * let ph = placeholder_vardef methname in
+               * let newstate = (methname, ph, Location.dummy, double) in
+               * let candTuples = search_target_tuples_by_vardef (Var.of_pvar pvar) methname astate in
+               * let most_recent_loc = get_most_recent_loc (Var.of_pvar pvar) in
+               * let (proc,var,loc,aliasset') as targetTuple = search_tuple_by_loc most_recent_loc candTuples in
+               * (\* 파라미터가 등록되었을 때 search_target_tuple_by_id를 하기 위해. *\)
+               * let updatedtuple = (proc,var,loc, A.add (Var.of_id id) aliasset') in
+               * let astate_rmvd = S.remove targetTuple astate in
+               * S.add updatedtuple (S.add newstate astate_rmvd) *)
+              let targetTuple = search_target_tuples_by_vardef (Var.of_pvar pvar) methname astate in
+
           | false ->
               begin match search_target_tuples_by_pvar (Var.of_pvar pvar) methname astate with
                   | [] -> (* 한 번도 def된 적 없음 *)
-                        let double = D.doubleton (Var.of_id id) (Var.of_pvar pvar) in
+                        let double = doubleton (Var.of_id id) (Var.of_pvar pvar) in
                         let ph = placeholder_vardef methname in
                         let newstate = (methname, ph, Location.dummy, double) in
                         S.add newstate astate
@@ -581,7 +398,7 @@ let find_def_for_use id methname astate =
                         let (proc, vardef, loc, aliasset) as  most_recent_tuple = search_tuple_by_loc most_recent_loc tuples in
                         let astate_rmvd = S.remove most_recent_tuple astate in
                         let mrt_updated = (proc, vardef, loc, A.add (Var.of_id id) aliasset) in
-                        let double = D.doubleton (Var.of_id id) (Var.of_pvar pvar) in
+                        let double = doubleton (Var.of_id id) (Var.of_pvar pvar) in
                         let ph = placeholder_vardef methname in
                         let newstate = (methname, ph, Location.dummy, double) in
                         S.add mrt_updated astate_rmvd |> S.add newstate
@@ -594,18 +411,6 @@ let find_def_for_use id methname astate =
     match instr with
     | ExitScope _ -> garbage_collect astate
     | _ -> astate
-
-
-  let is_this_progress (var:Var.t) : unit =
-    match var with
-    | LogicalVar _ -> L.progress "Logical var: should never happen\n"
-    | ProgramVar pv -> if Pvar.is_this pv then L.progress "this-variable\n" else L.progress "Not this-variable\n"
-
-
-  let rec batch_add_to_history (keys:Var.t list) (loc:Location.t) =
-    match keys with
-    | [] -> ()
-    | h::t -> add_to_history h loc; batch_add_to_history t loc
 
 
   (** register tuples for formal arguments before a procedure starts. *)
@@ -629,6 +434,7 @@ let find_def_for_use id methname astate =
     let my_summary = summary in
     let methname = node |> CFG.Node.underlying_node |> Procdesc.Node.get_proc_name in
     let prev = register_formals prev' node methname in
+    (* let prev = prev' in *)
       match instr with
       | Sil.Load {id=id; e=exp} when is_pvar_expr exp ->
           exec_load id exp prev methname
@@ -665,4 +471,4 @@ let checker {Callbacks.summary=summary; exe_env} : Summary.t =
   match Analyzer.compute_post (ProcData.make_default summary tenv) ~initial:DefLocAliasDomain.initial with
   | Some post ->
       Payload.update_summary post summary
-  | None -> raise IDontKnow
+  | None -> raise CheckerFailed

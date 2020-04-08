@@ -10,6 +10,7 @@ exception UndefinedSemantics2
 exception UndefinedSemantics3
 exception UndefinedSemantics4
 exception UndefinedSemantics5
+exception UndefinedSemantics6
 exception NoSummary
 exception NotSupported
 exception NoMethname
@@ -373,18 +374,11 @@ let search_recent_vardef (methname:Procname.t) (pvar:Var.t) (astate:S.t) =
     | Lvar pvar ->
         begin match is_formal pvar methname with
           | true ->
-              (* let double = doubleton (Var.of_id id) (Var.of_pvar pvar) in
-               * let ph = placeholder_vardef methname in
-               * let newstate = (methname, ph, Location.dummy, double) in
-               * let candTuples = search_target_tuples_by_vardef (Var.of_pvar pvar) methname astate in
-               * let most_recent_loc = get_most_recent_loc (Var.of_pvar pvar) in
-               * let (proc,var,loc,aliasset') as targetTuple = search_tuple_by_loc most_recent_loc candTuples in
-               * (\* 파라미터가 등록되었을 때 search_target_tuple_by_id를 하기 위해. *\)
-               * let updatedtuple = (proc,var,loc, A.add (Var.of_id id) aliasset') in
-               * let astate_rmvd = S.remove targetTuple astate in
-               * S.add updatedtuple (S.add newstate astate_rmvd) *)
-              let targetTuple = search_target_tuples_by_vardef (Var.of_pvar pvar) methname astate in
-
+              let targetTuples = search_target_tuples_by_vardef (Var.of_pvar pvar) methname astate in
+              let (proc, var, loc, aliasset) as targetTuple = find_least_linenumber targetTuples in
+              let newtuple = (proc, var, loc, A.add (Var.of_id id) aliasset) in
+              let astate_rmvd = S.remove targetTuple astate in
+              S.add newtuple astate_rmvd
           | false ->
               begin match search_target_tuples_by_pvar (Var.of_pvar pvar) methname astate with
                   | [] -> (* 한 번도 def된 적 없음 *)

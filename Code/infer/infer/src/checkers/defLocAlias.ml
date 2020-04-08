@@ -176,13 +176,14 @@ let search_recent_vardef (methname:Procname.t) (pvar:Var.t) (astate:S.t) =
       | [] -> L.progress "dup time: %a\n" Int.pp current_time; current_time
       | (_, vardef, loc, _)::t ->
           if Var.equal var vardef
-          then (L.progress "Testing var: %a\n" Var.pp vardef; if Int.equal loc.line current_line
+          then (L.progress "Testing var: %a\n" Var.pp vardef; if not @@ Int.equal loc.line current_line
                 then duplicated_times_inner var current_line (current_time+1) t
                 else duplicated_times_inner var current_line current_time t)
           else duplicated_times_inner var current_line current_time t in
     let first_loc : Location.t = third_of @@ List.nth_exn lst 0 in
     duplicated_times_inner var first_loc.line 0 lst
 
+  
   (** group_by_duplicates가 만든 list of list를 받아서, duplicate된 변수 list를 반환하되, ph와 this는 무시한다. *)
   let rec collect_duplicates (listlist:S.elt list list) : S.elt list list =
     match listlist with
@@ -193,25 +194,6 @@ let search_recent_vardef (methname:Procname.t) (pvar:Var.t) (astate:S.t) =
         if not @@ is_placeholder_vardef current_var && not @@ Var.is_this current_var
           then (L.progress "test 1 passed!\n"; if duplicated_times current_var lst >= 2 then (L.progress "test 2 passed!\n"; lst::collect_duplicates t) else collect_duplicates t)
           else collect_duplicates t
-
-
-  (** group_by_duplicates가 만든 list들 중에서 가장 최근의 것들을 찾아다 현재 환경에 맞게 바꿔 추가한다. *)
-  let move_to_this_env (callee_summary:S.t) (my_methname:Procname.t) (callee_methname:Procname.t) (listlist:S.elt list list) =
-    L.progress "moving to %a" Procname.pp my_methname;
-    if List.is_empty listlist then L.progress "\nempty! :O\n" else L.progress "\nnot empty! :)\n";
-    let most_recent_tuple = fun lst ->
-      let (proc, var, _, alias) = List.nth_exn lst 0 in
-      L.progress "\nget the most recent loc of: %a\n" Var.pp var;
-      (proc, var, get_most_recent_loc var, alias) in
-    let localize = fun (proc,var,_,alias) ->
-      L.progress "Localizing...";
-      L.progress "Callee summary: @.%a@." S.pp callee_summary;
-      L.progress "callee_methname: %a" Procname.pp callee_methname;
-      let targetTuple = search_target_tuple_by_pvar var callee_methname callee_summary in
-      let var' = second_of targetTuple in
-      let loc' = third_of targetTuple in
-      (proc, var', loc', alias) in
-    List.map listlist ~f:(most_recent_tuple >> localize)
 
 
   (** callee가 return c;꼴로 끝날 경우 새로 튜플을 만들고 alias set에 c를 추가 *)
@@ -231,9 +213,7 @@ let search_recent_vardef (methname:Procname.t) (pvar:Var.t) (astate:S.t) =
   let apply_summary astate caller_summary callee_methname ret_id caller_methname : S.t =
     match Payload.read_full ~caller_summary:caller_summary ~callee_pname:callee_methname with
     | Some (pdesc, summ) -> L.progress "Applying summary of %a\n" Procname.pp (Procdesc.get_proc_name pdesc);
-        let var_carriedover = summ |> variable_carryover astate callee_methname ret_id caller_methname in
-        let var_thisenv = summ |> (group_by_duplicates >> collect_duplicates >> move_to_this_env summ caller_methname callee_methname) |> S.of_list in
-        S.union var_carriedover var_thisenv
+        summ |> variable_carryover astate callee_methname ret_id caller_methname
     | None -> astate
 
 

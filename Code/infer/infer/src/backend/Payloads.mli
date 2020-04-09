@@ -13,7 +13,24 @@ include sig
 
   (** analysis results *)
   type t =
-    { def_loc_alias: DefLocAliasDomain.summary option}
+    { annot_map: AnnotationReachabilityDomain.t option
+    ; biabduction: BiabductionSummary.t option
+    ; buffer_overrun_analysis: BufferOverrunAnalysisSummary.t option
+    ; buffer_overrun_checker: BufferOverrunCheckerSummary.t option
+    ; class_loads: ClassLoadsDomain.summary option
+    ; cost: CostDomain.summary option
+    ; lab_resource_leaks: ResourceLeakDomain.summary option
+    ; litho_required_props: LithoDomain.summary option
+    ; pulse: PulseSummary.t option
+    ; purity: PurityDomain.summary option
+    ; quandary: QuandarySummary.t option
+    ; racerd: RacerDDomain.summary option
+    ; siof: SiofDomain.Summary.t option
+    ; starvation: StarvationDomain.summary option
+    ; typestate: TypeState.t option
+    ; uninit: UninitDomain.Summary.t option 
+    ; my_liveness_checker: MyLivenessCheckerDomain.summary option
+    ; def_loc_alias: DefLocAliasDomain.summary option}
   [@@deriving fields]
 end
 

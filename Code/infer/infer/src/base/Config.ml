@@ -18,34 +18,7 @@ module L = Die
 type analyzer = Checkers | Linters [@@deriving compare]
 
 type checkers =
-  { annotation_reachability: bool ref
-  ; biabduction: bool ref
-  ; bufferoverrun: bool ref
-  ; class_loads: bool ref
-  ; cost: bool ref
-  ; eradicate: bool ref
-  ; fragment_retains_view: bool ref
-  ; immutable_cast: bool ref
-  ; impurity: bool ref
-  ; inefficient_keyset_iterator: bool ref
-  ; linters: bool ref
-  ; litho_required_props: bool ref
-  ; liveness: bool ref
-  ; loop_hoisting: bool ref
-  ; nullsafe: bool ref
-  ; self_in_block: bool ref
-  ; printf_args: bool ref
-  ; pulse: bool ref
-  ; purity: bool ref
-  ; quandary: bool ref
-  ; quandaryBO: bool ref
-  ; racerd: bool ref
-  ; resource_leak: bool ref
-  ; siof: bool ref
-  ; starvation: bool ref
-  ; uninit: bool ref
-  ; my_liveness_checker: bool ref
-  ; def_loc_alias: bool ref}
+  { def_loc_alias: bool ref}
 
 let equal_analyzer = [%compare.equal: analyzer]
 
@@ -617,34 +590,7 @@ and analyzer =
      instance, to enable only the biabduction analysis, run with $(b,--biabduction-only)."
 
 
-and { annotation_reachability
-    ; biabduction
-    ; bufferoverrun
-    ; class_loads
-    ; cost
-    ; eradicate
-    ; fragment_retains_view
-    ; immutable_cast
-    ; impurity
-    ; inefficient_keyset_iterator
-    ; linters
-    ; litho_required_props
-    ; liveness
-    ; loop_hoisting
-    ; nullsafe
-    ; self_in_block
-    ; printf_args
-    ; pulse
-    ; purity
-    ; quandary
-    ; quandaryBO
-    ; racerd
-    ; resource_leak
-    ; siof
-    ; starvation
-    ; uninit
-    ; my_liveness_checker
-    ; def_loc_alias} =
+and {def_loc_alias} =
   let mk_checker ?(default = false) ?(deprecated = []) ~long doc =
     let var =
       CLOpt.mk_bool ~long ~in_help:InferCommand.[(Analyze, manual_generic)] ~default ~deprecated doc
@@ -652,67 +598,8 @@ and { annotation_reachability
     all_checkers := (var, long, doc, default) :: !all_checkers ;
     var
   in
-  let annotation_reachability =
-    mk_checker ~default:false ~long:"annotation-reachability"
-      "the annotation reachability checker. Given a pair of source and sink annotation, e.g. \
-       @PerformanceCritical and @Expensive, this checker will warn whenever some method annotated \
-       with @PerformanceCritical calls, directly or indirectly, another method annotated with \
-       @Expensive"
-  and biabduction =
-    mk_checker ~long:"biabduction" ~default:true
-      "the separation logic based bi-abduction analysis using the checkers framework"
-  and bufferoverrun = mk_checker ~long:"bufferoverrun" "the buffer overrun analysis"
-  and class_loads = mk_checker ~long:"class-loads" ~default:false "Java class loading analysis"
-  and cost = mk_checker ~long:"cost" ~default:false "checker for performance cost analysis"
-  and eradicate =
-    mk_checker ~long:"eradicate" "the eradicate @Nullable checker for Java annotations"
-  and fragment_retains_view =
-    mk_checker ~long:"fragment-retains-view" ~default:true
-      "detects when Android fragments are not explicitly nullified before becoming unreabable"
-  and immutable_cast =
-    mk_checker ~long:"immutable-cast" ~default:false
-      "the detection of object cast from immutable type to mutable type. For instance, it will \
-       detect cast from ImmutableList to List, ImmutableMap to Map, and ImmutableSet to Set."
-  and impurity = mk_checker ~long:"impurity" ~default:false "[EXPERIMENTAL] Impurity analysis"
-  and inefficient_keyset_iterator =
-    mk_checker ~long:"inefficient-keyset-iterator" ~default:true
-      "Check for inefficient uses of keySet iterator that access both the key and the value."
-  and linters = mk_checker ~long:"linters" ~default:true "syntactic linters"
-  and litho_required_props =
-    mk_checker ~long:"litho-required-props" "[EXPERIMENTAL] Required Prop check for Litho"
-  and liveness =
-    mk_checker ~long:"liveness" ~default:true "the detection of dead stores and unused variables"
-  and loop_hoisting = mk_checker ~long:"loop-hoisting" ~default:false "checker for loop-hoisting"
-  and nullsafe =
-    mk_checker ~long:"nullsafe"
-      ~deprecated:["-check-nullable"; "-suggest-nullable"]
-      "[EXPERIMENTAL] Nullable type checker (incomplete: use --eradicate for now)"
-  and printf_args =
-    mk_checker ~long:"printf-args" ~default:false
-      "the detection of mismatch between the Java printf format strings and the argument types \
-       For, example, this checker will warn about the type error in `printf(\"Hello %d\", \
-       \"world\")`"
-  and pulse =
-    mk_checker ~long:"pulse" ~deprecated:["-ownership"] "[EXPERIMENTAL] C++ lifetime analysis"
-  and purity = mk_checker ~long:"purity" ~default:false "[EXPERIMENTAL] Purity analysis"
-  and quandary = mk_checker ~long:"quandary" ~default:false "the quandary taint analysis"
-  and quandaryBO =
-    mk_checker ~long:"quandaryBO" ~default:false
-      "[EXPERIMENTAL] The quandaryBO tainted buffer access analysis"
-  and racerd =
-    mk_checker ~long:"racerd" ~deprecated:["-threadsafety"] ~default:true
-      "the RacerD thread safety analysis"
-  and resource_leak = mk_checker ~long:"resource-leak" ""
-  and siof =
-    mk_checker ~long:"siof" ~default:true
-      "the Static Initialization Order Fiasco analysis (C++ only)"
-  and starvation = mk_checker ~long:"starvation" ~default:true "starvation analysis"
-  and self_in_block =
-    mk_checker ~long:"self_in_block" ~default:true
-      "checker to flag incorrect uses of when Objective-C blocks capture self"
-  and uninit = mk_checker ~long:"uninit" "checker for use of uninitialized values" ~default:true
-  and my_liveness_checker = mk_checker ~long:"my_liveness_checker" "js's own liveness checker for exercise" ~default:true
-  and def_loc_alias = mk_checker ~long:"def/loc/alias" "Value Definitions, Locations of Definitions, and Aliases" ~default:true
+  
+  let def_loc_alias = mk_checker ~long:"def/loc/alias" "Value Definitions, Locations of Definitions, and Aliases" ~default:true
   in
   let mk_only (var, long, doc, _) =
     let (_ : bool ref) =
@@ -749,34 +636,7 @@ and { annotation_reachability
       [] (* do all the work in ~f *) []
     (* do all the work in ~f *)
   in
-  { annotation_reachability
-  ; biabduction
-  ; bufferoverrun
-  ; class_loads
-  ; cost
-  ; eradicate
-  ; fragment_retains_view
-  ; immutable_cast
-  ; impurity
-  ; inefficient_keyset_iterator
-  ; linters
-  ; litho_required_props
-  ; liveness
-  ; loop_hoisting
-  ; nullsafe
-  ; printf_args
-  ; pulse
-  ; purity
-  ; quandary
-  ; quandaryBO
-  ; racerd
-  ; resource_leak
-  ; self_in_block
-  ; siof
-  ; starvation
-  ; uninit
-  ; my_liveness_checker
-  ; def_loc_alias}
+  { def_loc_alias}
 
 
 and annotation_reachability_cxx =
@@ -2667,13 +2527,11 @@ let post_parsing_initialization command_opt =
     List.rev_map ~f:(fun x -> `Raw x) !compilation_database
     |> List.rev_map_append ~f:(fun x -> `Escaped x) !compilation_database_escaped ;
   (* set analyzer mode to linters in linters developer mode *)
-  if !linters_developer_mode then linters := true ;
   if !default_linters then linters_def_file := linters_def_default_file :: !linters_def_file ;
   ( match !analyzer with
   | Linters ->
       disable_all_checkers () ;
       capture := false ;
-      linters := true
   | Checkers ->
       () ) ;
   Option.value ~default:InferCommand.Run command_opt
@@ -2734,8 +2592,6 @@ and allow_leak = !allow_leak
 
 and analysis_stops = !analysis_stops
 
-and annotation_reachability = !annotation_reachability
-
 and annotation_reachability_cxx = !annotation_reachability_cxx
 
 and annotation_reachability_cxx_sources = !annotation_reachability_cxx_sources
@@ -2745,8 +2601,6 @@ and annotation_reachability_custom_pairs = !annotation_reachability_custom_pairs
 and append_buck_flavors = !append_buck_flavors
 
 and array_level = !array_level
-
-and biabduction = !biabduction
 
 and biabduction_model_alloc_pattern = Option.map ~f:Str.regexp !biabduction_model_alloc_pattern
 
@@ -2792,8 +2646,6 @@ and buck_out = !buck_out
 
 and buck_targets_blacklist = !buck_targets_blacklist
 
-and bufferoverrun = !bufferoverrun
-
 and call_graph_schedule = !call_graph_schedule
 
 and capture = !capture
@@ -2817,8 +2669,6 @@ and censor_report =
 
 and changed_files_index = !changed_files_index
 
-and nullsafe = !nullsafe
-
 and check_version = !check_version
 
 and clang_biniou_file = !clang_biniou_file
@@ -2839,8 +2689,6 @@ and clang_libcxx_include_to_override_regex = !clang_libcxx_include_to_override_r
 
 and classpath = !classpath
 
-and class_loads = !class_loads
-
 and class_loads_roots = String.Set.of_list !class_loads_roots
 
 and compute_analytics = !compute_analytics
@@ -2848,8 +2696,6 @@ and compute_analytics = !compute_analytics
 and continue_analysis = !continue_analysis
 
 and continue_capture = !continue
-
-and cost = !cost
 
 and costs_current = !costs_current
 
@@ -2887,8 +2733,6 @@ and dotty_cfg_libs = !dotty_cfg_libs
 
 and dump_duplicate_symbols = !dump_duplicate_symbols
 
-and eradicate = !eradicate
-
 and eradicate_condition_redundant = !eradicate_condition_redundant
 
 and eradicate_field_over_annotated = !eradicate_field_over_annotated
@@ -2913,8 +2757,6 @@ and filtering = !filtering
 
 and force_delete_results_dir = !force_delete_results_dir
 
-and fragment_retains_view = !fragment_retains_view
-
 and force_integration = !force_integration
 
 and from_json_report = !from_json_report
@@ -2936,12 +2778,6 @@ and html = !html
 and hoisting_report_only_expensive = !hoisting_report_only_expensive
 
 and icfg_dotty_outfile = !icfg_dotty_outfile
-
-and immutable_cast = !immutable_cast
-
-and impurity = !impurity
-
-and inefficient_keyset_iterator = !inefficient_keyset_iterator
 
 and iphoneos_target_sdk_version = !iphoneos_target_sdk_version
 
@@ -2971,8 +2807,6 @@ and join_cond = !join_cond
 
 and linter = !linter
 
-and linters = !linters
-
 and linters_def_file = !linters_def_file
 
 and linters_def_folder = !linters_def_folder
@@ -2982,10 +2816,6 @@ and linters_developer_mode = !linters_developer_mode
 and linters_ignore_clang_failures = !linters_ignore_clang_failures
 
 and linters_validate_syntax_only = !linters_validate_syntax_only
-
-and litho_required_props = !litho_required_props
-
-and liveness = !liveness
 
 and liveness_dangerous_classes = !liveness_dangerous_classes
 
@@ -3000,8 +2830,6 @@ and log_file = !log_file
 and log_skipped = !log_skipped
 
 and perf_profiler_data_file = !perf_profiler_data_file
-
-and loop_hoisting = !loop_hoisting
 
 and max_nesting = !max_nesting
 
@@ -3045,8 +2873,6 @@ and only_footprint = !only_footprint
 
 and only_show = !only_show
 
-and self_in_block = !self_in_block
-
 and passthroughs = !passthroughs
 
 and patterns_modeled_expensive = match patterns_modeled_expensive with k, r -> (k, !r)
@@ -3060,8 +2886,6 @@ and patterns_skip_translation = match patterns_skip_translation with k, r -> (k,
 and pmd_xml = !pmd_xml
 
 and precondition_stats = !precondition_stats
-
-and printf_args = !printf_args
 
 and print_active_checkers = !print_active_checkers
 
@@ -3107,21 +2931,13 @@ and procs_csv = !procs_csv
 
 and project_root = !project_root
 
-and pulse = !pulse
-
 and pulse_intraprocedural_only = !pulse_intraprocedural_only
 
 and pulse_max_disjuncts = !pulse_max_disjuncts
 
 and pulse_widen_threshold = !pulse_widen_threshold
 
-and purity = !purity
-
 and pure_by_default = !pure_by_default
-
-and quandary = !quandary
-
-and quandaryBO = !quandaryBO
 
 and quandary_endpoints = !quandary_endpoints
 
@@ -3132,8 +2948,6 @@ and quandary_sources = !quandary_sources
 and quandary_sinks = !quandary_sinks
 
 and quiet = !quiet
-
-and racerd = !racerd
 
 and racerd_guardedby = !racerd_guardedby
 
@@ -3171,8 +2985,6 @@ and report_suppress_errors = !report_suppress_errors
 
 and reports_include_ml_loc = !reports_include_ml_loc
 
-and resource_leak = !resource_leak
-
 and results_dir = !results_dir
 
 and scheduler = !scheduler
@@ -3186,8 +2998,6 @@ and seconds_per_iteration = !seconds_per_iteration
 and select = !select
 
 and show_buckets = !print_buckets
-
-and siof = !siof
 
 and siof_check_iostreams = !siof_check_iostreams
 
@@ -3228,8 +3038,6 @@ and sqlite_lock_timeout = !sqlite_lock_timeout
 and sqlite_vfs = !sqlite_vfs
 
 and sqlite_write_daemon = !sqlite_write_daemon
-
-and starvation = !starvation
 
 and starvation_skip_analysis = !starvation_skip_analysis
 
@@ -3298,8 +3106,6 @@ and tv_limit_filtered = !tv_limit_filtered
 
 and type_size = !type_size
 
-and uninit = !uninit
-
 and uninit_interproc = !uninit_interproc
 
 and unsafe_malloc = !unsafe_malloc
@@ -3320,8 +3126,6 @@ and xcode_developer_dir = !xcode_developer_dir
 
 and xcpretty = !xcpretty
 
-and my_liveness_checker = !my_liveness_checker (* MODIFICATION HERE *)
-
 and def_loc_alias = !def_loc_alias
 
 (* Don't know if additional definitions are needed, so did not provide any further than my_liveness_checker*)
@@ -3330,39 +3134,12 @@ and def_loc_alias = !def_loc_alias
 
 let captured_dir = results_dir ^/ captured_dir_name
 
-let clang_frontend_action_string =
-  let text = if capture then ["translating"] else [] in
-  let text = if linters then "linting" :: text else text in
-  let text =
-    if process_clang_ast && test_determinator then "Test Determinator with" :: text else text
-  in
-  let text =
-    if process_clang_ast && export_changed_functions then "Export Changed Functions with" :: text
-    else text
-  in
-  String.concat ~sep:", " text
-
-
 let procnames_locks_dir = results_dir ^/ procnames_locks_dir_name
 
 (* Specify treatment of dynamic dispatch in Java code: false 'none' treats dynamic dispatch as
    a call to unknown code and true triggers lazy dynamic dispatch. The latter mode follows the
    JVM semantics and creates procedure descriptions during symbolic execution using the type
    information found in the abstract state *)
-let dynamic_dispatch = biabduction
-
-let quandaryBO_filtered_issues =
-  if quandaryBO then
-    IssueType.
-      [ buffer_overrun_u5
-      ; buffer_overrun_l5
-      ; buffer_overrun_l4
-      ; untrusted_buffer_access
-      ; untrusted_heap_allocation ]
-    |> List.filter ~f:(fun issue ->
-           let enabled = issue.IssueType.enabled || not filtering in
-           IssueType.set_enabled issue true ; not enabled )
-  else []
 
 
 (** Check if a Java package is external to the repository *)

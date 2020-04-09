@@ -41,7 +41,13 @@ module TransferFunctions = struct
   let history = Hashtbl.create 777
 
 
-  let add_to_history (key:Var.t) (value:Location.t)= Hashtbl.add history key value
+  let add_to_history (key:Var.t) (value:Location.t) = Hashtbl.add history key value
+
+
+  let summaries = Hashtbl.create 777
+
+
+  let add_a_summary (key:Procname.t) (value:S.t) = Hashtbl.add summaries key value
 
 
   let rec batch_add_to_history (keys:Var.t list) (loc:Location.t) =
@@ -209,7 +215,7 @@ let search_recent_vardef (methname:Procname.t) (pvar:Var.t) (astate:S.t) =
     S.union astate carriedover
       
 
-  (** 변수가 리턴된다면 그걸 alias set에 넣고 (variable carryover), 현재 환경에 맞게 재정의된 튜플을 변환한다 *)
+  (** 변수가 리턴된다면 그걸 alias set에 넣는다 (variable carryover)*)
   let apply_summary astate caller_summary callee_methname ret_id caller_methname : S.t =
     match Payload.read_full ~caller_summary:caller_summary ~callee_pname:callee_methname with
     | Some (pdesc, summ) -> L.progress "Applying summary of %a\n" Procname.pp (Procdesc.get_proc_name pdesc);
@@ -326,7 +332,7 @@ let search_recent_vardef (methname:Procname.t) (pvar:Var.t) (astate:S.t) =
     match input_is_void_type arg_ts astate with
     | true -> (* All Arguments are Just Constants: just apply the summary, make a new tuple and end *)
         let astate_summary_applied = apply_summary astate caller_summary callee_methname ret_id methname in
-        let newstate = (methname, placeholder_vardef methname, Location.dummy, doubleton (Var.of_id ret_id) (testvar methname)) in
+        let newstate = (methname, placeholder_vardef methname, Location.dummy, A.singleton (Var.of_id ret_id)) in
         S.add newstate astate_summary_applied
     | false -> (* There is at least one argument which is a non-thisvar variable *)
         let astate_summary_applied = apply_summary astate caller_summary callee_methname ret_id methname in
@@ -381,9 +387,9 @@ let search_recent_vardef (methname:Procname.t) (pvar:Var.t) (astate:S.t) =
     | _ -> raise UndefinedSemantics3
 
 
-  let exec_metadata (instr:Sil.instr_metadata) (astate:S.t) =
+  let exec_metadata (instr:Sil.instr_metadata) (astate:S.t) (methname:Procname.t) =
     match instr with
-    | ExitScope _ -> garbage_collect astate
+    | ExitScope _ -> add_a_summary methname astate; astate
     | _ -> astate
 
 
@@ -419,8 +425,7 @@ let search_recent_vardef (methname:Procname.t) (pvar:Var.t) (astate:S.t) =
       | Sil.Call ((ret_id, _), e_fun, arg_ts, _, _) ->
           exec_call ret_id e_fun arg_ts my_summary prev methname
       | Sil.Metadata md ->
-          prev
-          (* exec_metadata md prev *)
+          exec_metadata md prev methname
 
 
   let leq ~lhs:_ ~rhs:_ = S.subset

@@ -94,7 +94,7 @@ let search_recent_vardef (methname:Procname.t) (pvar:Var.t) (astate:S.t) =
         L.progress "methname: %a, searching: %a, loc: %a, proc: %a\n" Procname.pp methname Var.pp var Location.pp loc Procname.pp proc;
         let proc_cond = Procname.equal proc methname in
         let id_cond = A.mem id aliasset in
-        let var_cond = not @@ is_placeholder_vardef var in
+        let var_cond = not @@ Var.equal var (placeholder_vardef proc) in
         if var_cond then 
         (let most_recent_loc = get_most_recent_loc var in
         let loc_cond = Location.equal most_recent_loc loc in
@@ -155,7 +155,7 @@ let search_recent_vardef (methname:Procname.t) (pvar:Var.t) (astate:S.t) =
       match tuplelist with
       | [] -> current
       | (a,b,_,_)::t ->
-        if not @@ List.mem current (a,b) ~equal:double_equal && not @@ is_placeholder_vardef b || Var.is_this b
+        if not (List.mem current (a,b) ~equal:double_equal) && not (Var.equal b (placeholder_vardef a) || Var.is_this b)
           then enum_nodup t ((a,b)::current)
           else enum_nodup t current in
     enum_nodup elements []
@@ -265,7 +265,7 @@ let search_recent_vardef (methname:Procname.t) (pvar:Var.t) (astate:S.t) =
             let loc = CFG.Node.loc node in
             let aliasset_new = A.add pvar_var aliasset in
             let newstate =
-              if not @@ is_placeholder_vardef vardef
+              if Var.equal vardef (placeholder_vardef methname)
                 (* Simple Variable Assignment. *)
                 then (methname, pvar_var, loc, aliasset_new)
                 (* Previous Variable Definition Carryover. *)

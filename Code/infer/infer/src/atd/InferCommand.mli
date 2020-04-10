@@ -18,6 +18,7 @@ type t =
   | Report  (** post-process infer results and reports *)
   | ReportDiff  (** compute the difference of two infer reports *)
   | Run  (** orchestrate the capture, analysis, and reporting of a compilation command *)
+  | SpecHunter (** run a predefined DFA for SpecHunter *)
 [@@deriving compare]
 
 val of_string : string -> t

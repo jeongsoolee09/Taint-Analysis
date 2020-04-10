@@ -31,7 +31,7 @@ let setup () =
       if (not !already_started) && CLOpt.is_originator && DBWriter.use_daemon then (
         DBWriter.start () ;
         Epilogues.register ~f:DBWriter.stop ~description:"Stop Sqlite write daemon" ;
-        already_started := true )
+        already_started := true)
   in
   ( match Config.command with
   | Analyze ->
@@ -50,17 +50,19 @@ let setup () =
              ( Driver.is_analyze_mode driver_mode
              || Config.(
                   continue_capture || infer_is_clang || infer_is_javac || reactive_mode
-                  || incremental_analysis) )
+                  || incremental_analysis))
       then ResultsDir.remove_results_dir () ;
       ResultsDir.create_results_dir () ;
       if
         CLOpt.is_originator && (not Config.continue_capture)
         && not (Driver.is_analyze_mode driver_mode)
-      then ( db_start () ; SourceFiles.mark_all_stale () )
+      then ( db_start () ; SourceFiles.mark_all_stale ())
   | Explore ->
       ResultsDir.assert_results_dir "please run an infer analysis first"
   | Events ->
-      ResultsDir.assert_results_dir "have you run infer before?" ) ;
+      ResultsDir.assert_results_dir "have you run infer before?"
+  | SpecHunter ->
+      ResultsDir.assert_results_dir "hello world! you shouldn't be seeing this") ;
   db_start () ;
   NullsafeInit.init () ;
   if CLOpt.is_originator then (RunState.add_run_to_sequence () ; RunState.store ()) ;
@@ -82,7 +84,7 @@ let print_scheduler () =
     | Restart ->
         "restart"
     | SyntacticCallGraph ->
-        "callgraph" )
+        "callgraph")
 
 
 let print_cores_used () = L.environment_info "Cores used: %d@\n" Config.jobs
@@ -93,7 +95,7 @@ let log_environment_info () =
   | Some file ->
       L.environment_info "Read configuration in %s@\n" file
   | None ->
-      L.environment_info "No .inferconfig file found@\n" ) ;
+      L.environment_info "No .inferconfig file found@\n") ;
   L.environment_info "Project root = %s@\n" Config.project_root ;
   let infer_args =
     Sys.getenv CLOpt.args_env_var
@@ -111,7 +113,7 @@ let log_environment_info () =
       L.environment_info "Could not retrieve available memory (possibly not on Linux)@\n"
   | Some available_memory ->
       L.environment_info "Available memory at startup: %d MB@\n" available_memory ;
-      ScubaLogging.log_count ~label:"startup_mem_avail_MB" ~value:available_memory ) ;
+      ScubaLogging.log_count ~label:"startup_mem_avail_MB" ~value:available_memory) ;
   print_active_checkers () ; print_scheduler () ; print_cores_used ()
 
 
@@ -139,7 +141,7 @@ let () =
     | Ok () ->
         L.exit 0
     | Error e ->
-        print_endline e ; L.exit 3 ) ;
+        print_endline e ; L.exit 3) ;
   ( match Config.check_version with
   | Some check_version ->
       if not (String.equal check_version Version.versionString) then
@@ -147,14 +149,14 @@ let () =
           "Provided version '%s' does not match actual version '%s'" check_version
           Version.versionString
   | None ->
-      () ) ;
+      ()) ;
   if Config.print_builtins then Builtin.print_and_exit () ;
   setup () ;
   log_environment_info () ;
   prepare_events_logging () ;
   if Config.debug_mode && CLOpt.is_originator then (
     L.progress "Logs in %s@." (Config.results_dir ^/ Config.log_file) ;
-    L.progress "Execution ID %Ld@." Config.execution_id ) ;
+    L.progress "Execution ID %Ld@." Config.execution_id) ;
   ( if Config.test_determinator && not Config.process_clang_ast then
     TestDeterminator.compute_and_emit_test_to_run ()
   else
@@ -173,7 +175,7 @@ let () =
               "Expected at least one argument among '--report-current', '--report-previous', \
                '--costs-current', and '--costs-previous'"
         | _ ->
-            () ) ;
+            ()) ;
         ReportDiff.reportdiff ~current_report:Config.report_current
           ~previous_report:Config.report_previous ~current_costs:Config.costs_current
           ~previous_costs:Config.costs_previous
@@ -204,10 +206,10 @@ let () =
                 let cfgs = Procname.Hash.create (List.length proc_names) in
                 List.iter proc_names ~f:(fun proc_name ->
                     Procdesc.load proc_name
-                    |> Option.iter ~f:(fun cfg -> Procname.Hash.add cfgs proc_name cfg) ) ;
+                    |> Option.iter ~f:(fun cfg -> Procname.Hash.add cfgs proc_name cfg)) ;
                 (* emit the dot file in captured/... *)
-                DotCfg.emit_frontend_cfg source_file cfgs ) ;
-            L.result "CFGs written in %s/*/%s@." Config.captured_dir Config.dotty_frontend_output )
+                DotCfg.emit_frontend_cfg source_file cfgs) ;
+            L.result "CFGs written in %s/*/%s@." Config.captured_dir Config.dotty_frontend_output)
       | false, false ->
           let if_some key opt args =
             match opt with None -> args | Some arg -> key :: string_of_int arg :: args
@@ -227,8 +229,13 @@ let () =
               "** Error running the reporting script:@\n**   %s %s@\n** See error above@." prog
               (String.concat ~sep:" " args)
       | true, true ->
-          L.user_error "Options --procedures and --source-files cannot be used together.@\n" )
+          L.user_error "Options --procedures and --source-files cannot be used together.@\n")
     | Events ->
-        EventLogger.dump () ) ;
+        EventLogger.dump ()
+    | SpecHunter ->
+        let changed_files = Driver.read_config_changed_files () in
+        if Option.is_some changed_files && Config.reactive_mode then
+        L.(die UserError) "Please re-analyze the project with the changed files."
+        else SpecHunter.main ()) ;
   (* to make sure the exitcode=0 case is logged, explicitly invoke exit *)
   L.exit 0

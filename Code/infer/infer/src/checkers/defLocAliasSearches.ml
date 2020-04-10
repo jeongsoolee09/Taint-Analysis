@@ -95,8 +95,7 @@ let search_target_tuples_by_vardef (pv:Var.t) (methname:Procname.t) (tupleset:S.
         if Procname.equal procname methname && Var.equal vardef pv
         then search_target_tuples_by_vardef_inner pv methname t (target::acc)
         else search_target_tuples_by_vardef_inner pv methname t acc in
-  let result = search_target_tuples_by_vardef_inner pv methname elements [] in
-  if Int.equal (List.length result) 0 then raise SearchByVardefFailed else result 
+  search_target_tuples_by_vardef_inner pv methname elements []
 
 
 let rec search_tuple_by_loc (loc:Location.t) (tuplelist:S.elt list) =

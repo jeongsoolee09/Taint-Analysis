@@ -24,6 +24,7 @@ let source_dirs =
        ; "integration"
        ; "labs"
        ; "nullsafe"
+       ; "spechunter"
        ; "pulse"
        ; "quandary"
        ; "scuba"

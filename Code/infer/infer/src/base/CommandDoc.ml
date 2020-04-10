@@ -298,6 +298,13 @@ $(b,infer) $(b,analyze) $(i,[options])|} ]
     ~see_also:InferCommand.[Analyze; Capture; Report]
 
 
+let spechunter =
+  mk_command_doc ~title:"SpecHunter"
+  ~short_description:"run a predefined DFA for SpecHunter"
+  ~synopsis:"%(b,infer) @(b,spechunter) $(b,--) $(i, [SpecHunter command])" ~description:[`P ""]
+  ~see_also:InferCommand.[SpecHunter]
+
+
 let command_to_data =
   let mk cmd mk_doc =
     let name = InferCommand.to_string cmd in
@@ -312,7 +319,8 @@ let command_to_data =
   ; mk Explore explore
   ; mk Report report
   ; mk ReportDiff reportdiff
-  ; mk Run run ]
+  ; mk Run run 
+  ; mk SpecHunter spechunter]
 
 
 let data_of_command command = List.Assoc.find_exn ~equal:InferCommand.equal command_to_data command

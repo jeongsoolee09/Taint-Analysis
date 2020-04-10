@@ -75,7 +75,7 @@ let issues_fields_symbols =
   ; ("hash", `Issue_field_hash)
   ; ("line_offset", `Issue_field_line_offset)
   ; ( "qualifier_contains_potential_exception_note"
-    , `Issue_field_qualifier_contains_potential_exception_note ) ]
+    , `Issue_field_qualifier_contains_potential_exception_note) ]
 
 
 type os_type = Unix | Win32 | Cygwin
@@ -139,7 +139,7 @@ let build_system_of_exe_name name =
       (Pp.seq ~print_env:Pp.text_break ~sep:"" F.pp_print_string)
       ( List.map ~f:fst build_system_exe_assoc
       |> List.map ~f:string_of_build_system
-      |> List.dedup_and_sort ~compare:String.compare )
+      |> List.dedup_and_sort ~compare:String.compare)
 
 
 (** Constant configuration values *)
@@ -463,7 +463,7 @@ let locate_sdk_root () =
       try
         let path, _ = Utils.with_process_in cmd In_channel.input_line in
         path
-      with Unix.Unix_error _ -> None )
+      with Unix.Unix_error _ -> None)
   | _ ->
       None
 
@@ -490,7 +490,7 @@ let implicit_sdk_root =
     | None ->
         let maybe_root = locate_sdk_root () in
         let putenv x = Unix.putenv ~key:infer_sdkroot_env_var ~data:x in
-        Option.iter ~f:putenv maybe_root ; maybe_root )
+        Option.iter ~f:putenv maybe_root ; maybe_root)
 
 
 let startup_action =
@@ -512,7 +512,7 @@ let exe_usage =
   Printf.sprintf "%s\nUsage: infer %s [options]\nSee `infer%s --help` for more information."
     version_string
     (Option.value ~default:"command" exe_command_name)
-    (Option.value_map ~default:"" ~f:(( ^ ) " ") exe_command_name)
+    (Option.value_map ~default:"" ~f:((^) " ") exe_command_name)
 
 
 let get_symbol_string json_obj =
@@ -573,7 +573,7 @@ let () =
     match cmd with
     | Report ->
         `Add
-    | Analyze | Capture | Compile | Events | Explore | ReportDiff | Run ->
+    | Analyze | Capture | Compile | Events | Explore | ReportDiff | Run | SpecHunter ->
         `Reject
   in
   (* make sure we generate doc for all the commands we know about *)
@@ -581,7 +581,7 @@ let () =
       let {CommandDoc.name; command_doc} = CommandDoc.data_of_command cmd in
       let on_unknown_arg = on_unknown_arg_from_command cmd in
       let deprecated_long = if InferCommand.(equal ReportDiff) cmd then Some "diff" else None in
-      CLOpt.mk_subcommand cmd ~name ?deprecated_long ~on_unknown_arg (Some command_doc) )
+      CLOpt.mk_subcommand cmd ~name ?deprecated_long ~on_unknown_arg (Some command_doc))
 
 
 let abs_struct =
@@ -721,9 +721,9 @@ and { annotation_reachability
         ~f:(fun b ->
           disable_all_checkers () ;
           var := b ;
-          b )
+          b)
         ( if String.equal doc "" then ""
-        else Printf.sprintf "Enable $(b,--%s) and disable all other checkers" long )
+        else Printf.sprintf "Enable $(b,--%s) and disable all other checkers" long)
         [] (* do all the work in ~f *) []
       (* do all the work in ~f *)
     in
@@ -737,15 +737,15 @@ and { annotation_reachability
       ( "Default checkers: "
       ^ ( List.rev_filter_map
             ~f:(fun (_, long, _, default) ->
-              if default then Some (Printf.sprintf "$(b,--%s)" long) else None )
+              if default then Some (Printf.sprintf "$(b,--%s)" long) else None)
             !all_checkers
-        |> String.concat ~sep:", " ) )
+        |> String.concat ~sep:", "))
       ~f:(fun b ->
         List.iter
           ~f:(fun (var, _, _, default) ->
-            var := if b then default || !var else (not default) && !var )
+            var := if b then default || !var else (not default) && !var)
           !all_checkers ;
-        b )
+        b)
       [] (* do all the work in ~f *) []
     (* do all the work in ~f *)
   in
@@ -804,7 +804,7 @@ and annotation_reachability_cxx =
     ^ "\n\
        This will cause us to create a new ISOLATED_REACHING_CONNECT issue for every function whose \
        source path starts with \"isolated/\" that may reach the function named \"connect\", \
-       ignoring paths that go through a symbol matching the OCaml regexp \".*::Trusted::.*\"." )
+       ignoring paths that go through a symbol matching the OCaml regexp \".*::Trusted::.*\".")
 
 
 and annotation_reachability_cxx_sources =
@@ -927,7 +927,7 @@ and buck_mode =
     ~in_help:InferCommand.[(Capture, manual_buck)]
     ~f:(fun s ->
       buck_mode := `ClangCompilationDB s ;
-      s )
+      s)
     "Buck integration using the compilation database, with or without dependencies. Only includes \
      clang targets, as per Buck's $(i,#compilation-database) flavor."
     ~symbols:[("no-deps", `NoDeps); ("deps", `DepsTmp)]
@@ -1169,10 +1169,10 @@ and ( biabduction_models_mode
     , trace_error
     , write_html
     , write_html_whitelist_regex
-    , write_dotty ) =
+    , write_dotty) =
   let all_generic_manuals =
     List.filter_map InferCommand.all_commands ~f:(fun cmd ->
-        if InferCommand.equal Explore cmd then None else Some (cmd, manual_generic) )
+        if InferCommand.equal Explore cmd then None else Some (cmd, manual_generic))
   in
   let biabduction_models_mode =
     CLOpt.mk_bool_group ~long:"biabduction-models-mode" "Mode for analyzing the biabduction models"
@@ -1251,7 +1251,7 @@ and ( biabduction_models_mode
       ~f:(fun debug ->
         if debug then set_debug_level 2 else set_debug_level 0 ;
         CommandLineOption.keep_args_file := debug ;
-        debug )
+        debug)
       [ developer_mode
       ; print_buckets
       ; print_types
@@ -1302,7 +1302,7 @@ and ( biabduction_models_mode
        $(b,--allowed-failures) and $(b,--default-linters)."
       ~f:(fun debug ->
         debug_level_linters := if debug then 2 else 0 ;
-        debug )
+        debug)
       [debug; developer_mode] [default_linters; keep_going]
   in
   ( biabduction_models_mode
@@ -1329,7 +1329,7 @@ and ( biabduction_models_mode
   , trace_error
   , write_html
   , write_html_whitelist_regex
-  , write_dotty )
+  , write_dotty)
 
 
 and dependencies =
@@ -1347,7 +1347,7 @@ and differential_filter_files =
 
 
 and differential_filter_set =
-  CLOpt.mk_symbol_seq ~long:"differential-filter-set" ~eq:PolyVariantEqual.( = )
+  CLOpt.mk_symbol_seq ~long:"differential-filter-set" ~eq:PolyVariantEqual.(=)
     "Specify which set of the differential results is filtered with the modified files provided \
      through the $(b,--differential-modified-files) argument. By default it is applied to all sets \
      ($(b,introduced), $(b,fixed), and $(b,preexisting))"
@@ -1361,7 +1361,7 @@ and () =
       CLOpt.mk_string_list ?deprecated ~long
         ~f:(fun issue_id ->
           let issue = IssueType.register_from_string issue_id in
-          IssueType.set_enabled issue b ; issue_id )
+          IssueType.set_enabled issue b ; issue_id)
         ?default ~meta:"issue_type"
         ~default_to_string:(fun _ -> "")
         ~in_help:InferCommand.[(Report, manual_generic)]
@@ -1372,7 +1372,7 @@ and () =
   let all_issues = IssueType.all_issues () in
   let disabled_issues_ids =
     List.filter_map all_issues ~f:(fun issue ->
-        Option.some_if (not issue.IssueType.enabled) issue.IssueType.unique_id )
+        Option.some_if (not issue.IssueType.enabled) issue.IssueType.unique_id)
   in
   let pp_issue fmt issue =
     let pp_enabled fmt enabled =
@@ -1470,7 +1470,7 @@ and force_integration =
     (Printf.sprintf
        "Proceed as if the first argument after $(b,--) was $(i,command). Possible values: %s."
        ( List.map build_system_exe_assoc ~f:(fun (_, s) -> Printf.sprintf "$(i,%s)" s)
-       |> String.concat ~sep:", " ))
+       |> String.concat ~sep:", "))
 
 
 and from_json_report =
@@ -1526,7 +1526,7 @@ and help =
 and help_format =
   CLOpt.mk_symbol ~long:"help-format"
     ~symbols:[("auto", `Auto); ("groff", `Groff); ("pager", `Pager); ("plain", `Plain)]
-    ~eq:PolyVariantEqual.( = ) ~default:`Auto
+    ~eq:PolyVariantEqual.(=) ~default:`Auto
     ~in_help:(List.map InferCommand.all_commands ~f:(fun command -> (command, manual_generic)))
     "Show this help in the specified format. $(b,auto) sets the format to $(b,plain) if the \
      environment variable $(b,TERM) is \"dumb\" or undefined, and to $(b,pager) otherwise."
@@ -1575,7 +1575,7 @@ and issues_fields =
       ; `Issue_field_bucket
       ; `Issue_field_severity
       ; `Issue_field_bug_trace ]
-    ~symbols:issues_fields_symbols ~eq:PolyVariantEqual.( = )
+    ~symbols:issues_fields_symbols ~eq:PolyVariantEqual.(=)
     "Fields to emit with $(b,--issues-tests)"
 
 
@@ -1744,7 +1744,7 @@ and ml_buckets =
     {|Specify the memory leak buckets to be checked in C++:
 - $(b,cpp) from C++ code
 |}
-    ~symbols:ml_bucket_symbols ~eq:PolyVariantEqual.( = )
+    ~symbols:ml_bucket_symbols ~eq:PolyVariantEqual.(=)
 
 
 and modified_lines =
@@ -1830,14 +1830,14 @@ and patterns_modeled_expensive =
   ( long
   , CLOpt.mk_json ~deprecated:["modeled_expensive"] ~long
       "Matcher or list of matchers for methods that should be considered expensive by the \
-       performance critical checker." )
+       performance critical checker.")
 
 
 and patterns_never_returning_null =
   let long = "never-returning-null" in
   ( long
   , CLOpt.mk_json ~deprecated:["never_returning_null"] ~long
-      "Matcher or list of matchers for functions that never return $(i,null)." )
+      "Matcher or list of matchers for functions that never return $(i,null).")
 
 
 and patterns_skip_implementation =
@@ -1845,14 +1845,14 @@ and patterns_skip_implementation =
   ( long
   , CLOpt.mk_json ~long
       "Matcher or list of matchers for names of files where we only want to translate the method \
-       declaration, skipping the body of the methods (Java only)." )
+       declaration, skipping the body of the methods (Java only).")
 
 
 and patterns_skip_translation =
   let long = "skip-translation" in
   ( long
   , CLOpt.mk_json ~deprecated:["skip_translation"] ~long
-      "Matcher or list of matchers for names of files that should not be analyzed at all." )
+      "Matcher or list of matchers for names of files that should not be analyzed at all.")
 
 
 and pmd_xml =
@@ -1957,7 +1957,7 @@ and progress_bar =
 and progress_bar_style =
   CLOpt.mk_symbol ~long:"progress-bar-style"
     ~symbols:[("auto", `Auto); ("plain", `Plain); ("multiline", `MultiLine)]
-    ~eq:Stdlib.( = ) ~default:`Auto
+    ~eq:Stdlib.(=) ~default:`Auto
     ~in_help:[(Analyze, manual_generic); (Capture, manual_generic)]
     "Style of the progress bar. $(b,auto) selects $(b,multiline) if connected to a tty, otherwise \
      $(b,plain)."
@@ -2073,7 +2073,7 @@ and report =
 and ( report_blacklist_files_containing
     , report_path_regex_blacklist
     , report_path_regex_whitelist
-    , report_suppress_errors ) =
+    , report_suppress_errors) =
   let mk_filtering_option ~suffix ~help ~meta =
     let deprecated =
       List.map ["checkers"; "infer"] ~f:(fun name -> Printf.sprintf "%s-%s" name suffix)
@@ -2096,7 +2096,7 @@ and ( report_blacklist_files_containing
          which do not match $(b,--report-blacklist-path-regex))"
       ~meta:"path_regex"
   , mk_filtering_option ~suffix:"suppress-errors" ~help:"do not report a type of errors"
-      ~meta:"error_name" )
+      ~meta:"error_name")
 
 
 and report_current =
@@ -2118,7 +2118,7 @@ and report_formatter =
     ~in_help:InferCommand.[(Report, manual_generic)]
     ~default:`Phabricator_formatter
     ~symbols:[("none", `No_formatter); ("phabricator", `Phabricator_formatter)]
-    ~eq:PolyVariantEqual.( = ) "Which formatter to use when emitting the report"
+    ~eq:PolyVariantEqual.(=) "Which formatter to use when emitting the report"
 
 
 and report_hook =
@@ -2143,7 +2143,7 @@ and rest =
     ~in_help:InferCommand.[(Capture, manual_generic); (Run, manual_generic)]
     "Stop argument processing, use remaining arguments as a build command" ~usage:exe_usage
     (fun build_exe ->
-      match Filename.basename build_exe with "java" | "javac" -> CLOpt.Javac | _ -> CLOpt.NoParse )
+      match Filename.basename build_exe with "java" | "javac" -> CLOpt.Javac | _ -> CLOpt.NoParse)
 
 
 and results_dir =
@@ -2517,8 +2517,8 @@ let javac_classes_out =
         let classes_out_infer = resolve classes_out ^/ buck_results_dir_name in
         (* extend env var args to pass args to children that do not receive the rest args *)
         CLOpt.extend_env_args ["--results-dir"; classes_out_infer] ;
-        results_dir := classes_out_infer ) ;
-      classes_out )
+        results_dir := classes_out_infer) ;
+      classes_out)
     ""
 
 
@@ -2561,7 +2561,7 @@ let post_parsing_initialization command_opt =
             CLOpt.init_work_dir ^/ filename
           else filename
         in
-        Unix.putenv ~key:CommandDoc.inferconfig_env_var ~data:abs_filename ) ;
+        Unix.putenv ~key:CommandDoc.inferconfig_env_var ~data:abs_filename) ;
   ( match !version with
   | `Full when !buck ->
       (* Buck reads stderr in some versions, stdout in others *)
@@ -2587,7 +2587,7 @@ let post_parsing_initialization command_opt =
   | `Vcs ->
       print_endline Version.commit
   | `None ->
-      () ) ;
+      ()) ;
   ( match !help with
   | `Help ->
       CLOpt.show_manual !help_format CommandDoc.infer command_opt
@@ -2599,7 +2599,7 @@ let post_parsing_initialization command_opt =
       CLOpt.show_manual ~scrub_defaults:true ~internal_section:manual_internal !help_format
         CommandDoc.infer command_opt
   | `None ->
-      () ) ;
+      ()) ;
   if PolyVariantEqual.(!version <> `None || !help <> `None) then Stdlib.exit 0 ;
   let uncaught_exception_handler exn raw_backtrace =
     let is_infer_exit_zero = match exn with L.InferExit 0 -> true | _ -> false in
@@ -2633,7 +2633,7 @@ let post_parsing_initialization command_opt =
     print_exception () ;
     if (not is_infer_exit_zero) && (should_print_backtrace_default || !developer_mode) then (
       ANSITerminal.prerr_string L.(term_styles_of_style Error) "Error backtrace:\n" ;
-      ANSITerminal.prerr_string L.(term_styles_of_style Error) backtrace ) ;
+      ANSITerminal.prerr_string L.(term_styles_of_style Error) backtrace) ;
     if not is_infer_exit_zero then Out_channel.newline stderr ;
     if suggest_keep_going then
       ANSITerminal.prerr_string
@@ -2675,7 +2675,7 @@ let post_parsing_initialization command_opt =
       capture := false ;
       linters := true
   | Checkers ->
-      () ) ;
+      ()) ;
   Option.value ~default:InferCommand.Run command_opt
 
 
@@ -2812,7 +2812,7 @@ and censor_report =
           in
           (polarity_regex issue_type_re, polarity_regex filename_re, reason_str)
       | _ ->
-          L.(die UserError) "Ill-formed report filter: %s" str )
+          L.(die UserError) "Ill-formed report filter: %s" str)
 
 
 and changed_files_index = !changed_files_index
@@ -3361,7 +3361,7 @@ let quandaryBO_filtered_issues =
       ; untrusted_heap_allocation ]
     |> List.filter ~f:(fun issue ->
            let enabled = issue.IssueType.enabled || not filtering in
-           IssueType.set_enabled issue true ; not enabled )
+           IssueType.set_enabled issue true ; not enabled)
   else []
 
 
@@ -3372,7 +3372,7 @@ let java_package_is_external package =
       false
   | _ ->
       List.exists external_java_packages ~f:(fun (prefix : string) ->
-          String.is_prefix package ~prefix )
+          String.is_prefix package ~prefix)
 
 
 let is_in_custom_symbols list_name symbol =
@@ -3389,5 +3389,5 @@ let toplevel_results_dir =
   if CLOpt.is_originator then (
     (* let subprocesses know where the toplevel process' results dir is *)
     Unix.putenv ~key:infer_top_results_dir_env_var ~data:results_dir ;
-    results_dir )
+    results_dir)
   else Sys.getenv infer_top_results_dir_env_var |> Option.value ~default:results_dir

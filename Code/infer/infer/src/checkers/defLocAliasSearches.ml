@@ -107,6 +107,16 @@ let rec search_tuple_by_loc (loc:Location.t) (tuplelist:S.elt list) =
       else search_tuple_by_loc loc t
 
 
+(** List version of search_tuple_by_loc *)
+let rec search_tuples_by_loc (loc:Location.t) (tuplelist:S.elt list) =
+  match tuplelist with
+  | [] -> []
+  | ((_,_,l,_) as target)::t ->
+      if Location.equal loc l
+      then target::search_tuples_by_loc loc t
+      else search_tuples_by_loc loc t
+
+
   (* x ==> y: y is more recent than x in a same file *)
   let (==>) (x:Location.t) (y:Location.t) = SourceFile.equal x.file y.file && x.line < y.line
 

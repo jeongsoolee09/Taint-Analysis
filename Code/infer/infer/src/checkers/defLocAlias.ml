@@ -31,6 +31,10 @@ module Payload = SummaryPayload.Make (struct
     let field = Payloads.Fields.def_loc_alias
   end)
 
+
+module Callgraph = PrettyPrintable.MakePPMap (Procname)
+
+
 module TransferFunctions = struct
   module CFG = ProcCfg.OneInstrPerNode (ProcCfg.Exceptional)
   module Domain = S
@@ -57,6 +61,12 @@ module TransferFunctions = struct
 
 
   let get_most_recent_loc (key:Var.t) = Hashtbl.find history key
+
+
+  let callgraph = Hashtbl.create 777
+
+
+  let add_edge_to_callgraph (caller:Procname.t) (callee:Procname.t) = Hashtbl.add callgraph caller callee
 
 
   let rec extract_nonthisvar_from_args methname (arg_ts:(Exp.t*Typ.t) list) (astate:S.t) : Exp.t list =
@@ -333,7 +343,7 @@ let search_recent_vardef (methname:Procname.t) (pvar:Var.t) (astate:S.t) =
     | true -> (* All Arguments are Just Constants: just apply the summary, make a new tuple and end *)
         let astate_summary_applied = apply_summary astate caller_summary callee_methname ret_id methname in
         let newstate = (methname, placeholder_vardef methname, Location.dummy, A.singleton (Var.of_id ret_id)) in
-        S.add newstate astate_summary_applied
+        add_edge_to_callgraph methname callee_methname ; S.add newstate astate_summary_applied
     | false -> (* There is at least one argument which is a non-thisvar variable *)
         let astate_summary_applied = apply_summary astate caller_summary callee_methname ret_id methname in
         let formals = get_formal_args methname caller_summary callee_methname |> List.filter ~f:(fun x -> Var.is_this x |> not) in

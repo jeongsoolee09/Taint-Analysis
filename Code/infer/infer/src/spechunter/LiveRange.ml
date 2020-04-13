@@ -15,6 +15,7 @@ type activity =
     Call of (Procname.t * Procname.t)
   | Redefine of (Var.t * Var.t)
   | Define of Var.t
+  | Dead of Var.t
 
 (* a chain is a (Var * activity) list *)
 
@@ -23,12 +24,12 @@ type aliasChain = Var.t list
 (* GOAL: x가 m2에서 u1으로 redefine되었고 m3 이후로 안 쓰인다는 chain 정보 계산하기 *)
 (* TODO: Chain의 Dead point 계산 위해 Call graph 읽어오기 *)
 
-module CallV = Procname
+module CallV = struct
+  include Procname
+  let hash = Hashtbl.hash
+end
 
-module G = Graph.Imperative.Digraph.ConcreteBidirectional (struct
-    include Procname
-    let hash = Hashtbl.hash
-  end)
+module G = Graph.Imperative.Digraph.ConcreteBidirectional (CallV)
 
 module B = Graph.Traverse.Bfs (G)
 
@@ -45,20 +46,36 @@ let update_summary (key:Procname.t) (astate:S.t) = Hashtbl.replace summary_table
 
 let get_summary (key:Procname.t) = Hashtbl.find summary_table key
 
+let callgraph_table = DefLocAlias.TransferFunctions.callgraph
 
+let callgraph = G.create ()
+
+(** 해시 테이블 형태의 콜그래프를 ocamlgraph로 변환한다.*)
+let callg_hash2og () : unit =
+  Hashtbl.iter (fun key value -> G.add_edge callgraph key value) callgraph_table
+
+(** 주어진 변수 var에 대한 alias들을 계산해 낸다. **)
+let compute_alias_chain (var:Var.t) : aliasChain =
+  raise NotImplemented   
+
+(** 콜 그래프 중 변수와 관련된 부분을 가져온다 *)
+(* let get_callgraph_for_var (var:Var.t) *)
+
+(** 분석 결과 중 변수와 관련된 부분을 가져온다. 추가적으로 summary_table을 이용한다. *)
+(* let get_analysis_result_for_var (var:Var.t) : callgraph =  *)
+
+(** 주어진 변수 var에 대한 Dead Point를 계산해 낸다. **)
+(* let compute_dead_point (var:Var.t) : Procname *)
+
+(** 콜 그래프와 분석 결과를 토대로 체인 (Define -> ... -> Dead)을 계산해 낸다 **)
 (* let compute_chain (var:Var.t) : chain *)
-
-(* let callg_hash2og () : callgraph = *)
-
-(* let get_callgraph_for_var (var:Var.t) : callgraph *)
-
 
 (** collect all formals from a summary *)
 (* uses the invariant that procnames are unique in a state *)
 let collect_formals (summary:S.t) =
   let astates = S.elements summary in
   let procname = first_of @@ List.nth_exn astates 0 in
-  let locations = List.sort ~compare:Location.compare (List.map ~f:third_of astates) in (* 잘 되겠지? 안 되면 라인 넘버를 끌고 오자 *)
+  let locations = List.sort ~compare:Location.compare (List.map ~f:third_of astates) in (* 잘 되겠지? 안 되면 explicit하게 라인 넘버를 끌고 오자 *)
   let earliest_location = List.nth_exn locations 0 in
   let parameters_withthis = List.map ~f:second_of @@ search_tuples_by_loc earliest_location astates in
   let parameters = List.filter ~f:(Var.is_this >> not) parameters_withthis in

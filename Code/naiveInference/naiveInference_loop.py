@@ -1,6 +1,6 @@
-import pandas as pd
 import time
 import random
+import pandas as pd
 
 methods = pd.read_csv("raw_data.csv", index_col=0)
 ids = methods["id"]
@@ -58,22 +58,22 @@ def bayesian_update(method_index, oracle_response):
 
 def bayesian_update_without_propagation(method_index, oracle_response):
     global priors
-    if oracle_response == 'src' and priors.loc[method_index, 'src']<=1:
+    if oracle_response == 'src' and priors.loc[method_index, 'src'] <= 1:
         priors.at[method_index, 'src'] = 1 * priors.loc[method_index, 'src'] / 0.25     # src
         priors.at[method_index, 'sin'] = 0 * priors.loc[method_index, 'sin'] / 0.25     # sin
         priors.at[method_index, 'san'] = 0 * priors.loc[method_index, 'san'] / 0.25     # san
         priors.at[method_index, 'non'] = 0 * priors.loc[method_index, 'non'] / 0.25     # non
-    elif oracle_response == 'sin' and priors.loc[method_index, 'sin']<=1:
+    elif oracle_response == 'sin' and priors.loc[method_index, 'sin'] <= 1:
         priors.at[method_index, 'src'] = 0 * priors.loc[method_index, 'src'] / 0.25     # src
         priors.at[method_index, 'sin'] = 1 * priors.loc[method_index, 'sin'] / 0.25     # sin
         priors.at[method_index, 'san'] = 0 * priors.loc[method_index, 'san'] / 0.25     # san
         priors.at[method_index, 'non'] = 0 * priors.loc[method_index, 'non'] / 0.25     # non
-    elif oracle_response == 'san' and priors.loc[method_index, 'san']<=1:
+    elif oracle_response == 'san' and priors.loc[method_index, 'san'] <= 1:
         priors.at[method_index, 'src'] = 0 * priors.loc[method_index, 'src'] / 0.25     # src
         priors.at[method_index, 'sin'] = 0 * priors.loc[method_index, 'sin'] / 0.25     # sin
         priors.at[method_index, 'san'] = 1 * priors.loc[method_index, 'san'] / 0.25     # san
         priors.at[method_index, 'non'] = 0 * priors.loc[method_index, 'non'] / 0.25     # non
-    elif oracle_response == 'non' and priors.loc[method_index, 'non']<=1:
+    elif oracle_response == 'non' and priors.loc[method_index, 'non'] <= 1:
         priors.at[method_index, 'src'] = 0 * priors.loc[method_index, 'src'] / 0.25     # src
         priors.at[method_index, 'sin'] = 0 * priors.loc[method_index, 'sin'] / 0.25     # sin
         priors.at[method_index, 'san'] = 0 * priors.loc[method_index, 'san'] / 0.25     # san
@@ -83,10 +83,10 @@ def bayesian_update_without_propagation(method_index, oracle_response):
 def search_in_edge(node_index):
     """finds an immediate neighbor on the graph structure"""
     # cond1 = methods["index"][node_index] == edges[('edge1','index')]
-    cond2 = methods["pkg"][node_index] == edges[('edge1','pkg')]
-    cond3 = methods["rtntype"][node_index] == edges[('edge1','rtntype')]
-    cond4 = methods["name"][node_index] == edges[('edge1','name')]
-    cond5 = methods["intype"][node_index] == edges[('edge1','intype')]
+    cond2 = methods["pkg"][node_index] == edges[('edge1', 'pkg')]
+    cond3 = methods["rtntype"][node_index] == edges[('edge1', 'rtntype')]
+    cond4 = methods["name"][node_index] == edges[('edge1', 'name')]
+    cond5 = methods["intype"][node_index] == edges[('edge1', 'intype')]
 
     neighbors = edges[cond2 & cond3 & cond4 & cond5]["edge2"]
     neighbors = neighbors.drop_duplicates()
@@ -107,7 +107,6 @@ def belief_propagation(node_index, oracle_response, depth):
 loop(10)
 
 def report_result():
-    global priors
     one_src = priors['src'] == 1
     one_sin = priors['sin'] == 1
     one_san = priors['san'] == 1

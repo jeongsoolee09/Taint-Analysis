@@ -11,6 +11,16 @@ module F = Format
 
 exception NotImplemented
 
+type activity =
+    Call of (Procname.t * Procname.t)
+  | Redefine of (Var.t * Var.t)
+  | Define of Var.t
+
+(* a chain is a (Var * activity) list *)
+(* GOAL: x가 m2에서 u1으로 redefine되었고 m3 이후로 안 쓰인다는 chain 정보 계산하기 *)
+(* TODO: Chain의 Dead point 계산 위해 Call graph 읽어오기 *)
+
+
 (** map from procname to its formal args. *)
 let formal_args = Hashtbl.create 777
 

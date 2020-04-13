@@ -17,9 +17,20 @@ type activity =
   | Define of Var.t
 
 (* a chain is a (Var * activity) list *)
+
+type aliasChain = Var.t list
+
 (* GOAL: x가 m2에서 u1으로 redefine되었고 m3 이후로 안 쓰인다는 chain 정보 계산하기 *)
 (* TODO: Chain의 Dead point 계산 위해 Call graph 읽어오기 *)
 
+module CallV = Procname
+
+module G = Graph.Imperative.Digraph.ConcreteBidirectional (struct
+    include Procname
+    let hash = Hashtbl.hash
+  end)
+
+module B = Graph.Traverse.Bfs (G)
 
 (** map from procname to its formal args. *)
 let formal_args = Hashtbl.create 777
@@ -33,6 +44,14 @@ let summary_table = DefLocAlias.TransferFunctions.summaries
 let update_summary (key:Procname.t) (astate:S.t) = Hashtbl.replace summary_table key astate
 
 let get_summary (key:Procname.t) = Hashtbl.find summary_table key
+
+
+(* let compute_chain (var:Var.t) : chain *)
+
+(* let callg_hash2og () : callgraph = *)
+
+(* let get_callgraph_for_var (var:Var.t) : callgraph *)
+
 
 (** collect all formals from a summary *)
 (* uses the invariant that procnames are unique in a state *)
@@ -58,4 +77,4 @@ let filter_formals (methname:Procname.t) =
 
 
 (** interface with the driver *)
-let run_lrm summary_table = raise NotImplemented 
+let run_lrm () = () 

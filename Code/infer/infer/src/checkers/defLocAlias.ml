@@ -339,11 +339,12 @@ let search_recent_vardef (methname:Procname.t) (pvar:Var.t) (astate:S.t) =
       match e_fun with
       | Const (Cfun fn) -> fn
       | _ -> raise NoMethname in
+    add_edge_to_callgraph methname callee_methname; (* 일단 추가해 주고 *)
     match input_is_void_type arg_ts astate with
     | true -> (* All Arguments are Just Constants: just apply the summary, make a new tuple and end *)
         let astate_summary_applied = apply_summary astate caller_summary callee_methname ret_id methname in
         let newstate = (methname, placeholder_vardef methname, Location.dummy, A.singleton (Var.of_id ret_id)) in
-        add_edge_to_callgraph methname callee_methname ; S.add newstate astate_summary_applied
+        S.add newstate astate_summary_applied
     | false -> (* There is at least one argument which is a non-thisvar variable *)
         let astate_summary_applied = apply_summary astate caller_summary callee_methname ret_id methname in
         let formals = get_formal_args methname caller_summary callee_methname |> List.filter ~f:(fun x -> Var.is_this x |> not) in

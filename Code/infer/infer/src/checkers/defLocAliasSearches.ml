@@ -1,4 +1,5 @@
 open! IStd
+open DefLocAliasDomain
 
 module L = Logging
 module F = Format
@@ -132,3 +133,10 @@ let find_least_linenumber (tuplelist:S.elt list) =
         then find_least_linenumber_inner t targetTuple
         else find_least_linenumber_inner t current_least in
   find_least_linenumber_inner tuplelist (List.nth_exn tuplelist 0)
+
+
+let find_earliest_tuple_within (tuplelist:S.elt list): S.elt =
+  let locations = List.sort ~compare:Location.compare (List.map ~f:third_of tuplelist) in
+  match List.nth locations 0 with
+  | Some earliest_location -> search_tuple_by_loc earliest_location tuplelist
+  | None -> L.progress "Could not find the earliest location"; bottuple

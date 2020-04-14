@@ -17,9 +17,9 @@ type activity =
   | Define of Var.t
   | Dead of Var.t
 
-(* a chain is a (Var * activity) list *)
+type chain = (Var.t * activity) list
 
-(* type aliasChain = Var.t list *)
+type alias_chain = Var.t list
 
 (* GOAL: x가 m2에서 u1으로 redefine되었고 m3 이후로 안 쓰인다는 chain 정보 계산하기 *)
 (* TODO: Var.t를 Var.t의 해시값으로 바꾸기 *)
@@ -60,16 +60,34 @@ let callgraph = G.create ()
 let match_procname_astate (procname:Procname.t) : Procname.t*S.t = (procname, get_summary procname)
                                                                
 (** 해시 테이블 형태의 콜그래프를 ocamlgraph로 변환한다.*)
-(* let callg_hash2og () : unit =
- *   Hashtbl.iter (fun key value -> G.add_edge callgraph key value) callgraph_table *)
+let callg_hash2og () : unit =
+  Hashtbl.iter (fun key value -> G.add_edge callgraph (key, get_summary key) (value, get_summary value)) (callgraph_table)
 
 (** 주어진 변수 var에 있어 가장 이른 정의 튜플을 찾는다. *)
-(* let find_first_occurrence_of (var:Var.t) : S.t =
- *   BFS.fold () *)
+let find_first_occurrence_of (var:Var.t) : Procname.t * S.t * S.elt =
+  let astate = BFS.fold (fun (_, astate) acc ->
+      let var_is_in = fun tupleset ->
+        match S.find_first_opt (fun tup -> Var.equal (second_of tup) var) tupleset with
+        | Some _ -> true
+        | None -> false in
+      match S.find_first_opt (fun tup -> Var.equal (second_of tup) var) astate with
+      | Some _ -> if var_is_in acc then acc else astate
+      | None -> acc) S.empty callgraph in
+  let elements = S.elements astate in
+  let methname = first_of @@ List.nth_exn elements 0 in
+  let targetTuples = search_target_tuples_by_vardef var methname astate in
+  let earliest_tuple = find_earliest_tuple_within targetTuples in
+  (methname, astate, earliest_tuple)
+
 
 (** 주어진 변수 var에 대한 alias들을 계산해 낸다. **)
 (* let compute_alias_chain (var:Var.t) =
- *   let compute_alias_chain_inner var = *)
+ *   let rec compute_alias_chain_inner (var:Var.t) (aliaschain:alias_chain) ()  =
+ *   let (methname, astate, newtuple) = find_first_occurrence_of var in
+ *   
+ *     in
+ *   raise NotImplemented *)
+
 
 (** 콜 그래프 중 변수와 관련된 부분을 가져온다 *)
 (* let get_callgraph_for_var (var:Var.t) *)

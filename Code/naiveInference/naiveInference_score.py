@@ -8,7 +8,7 @@ empty_vector2 = pd.DataFrame(zero_data, columns=["label"], dtype="str")
 
 for_scoring = pd.merge(results_ids, empty_vector2, left_index=True, right_index=True)
 
-labeldict = {0:"src", 1:"sin", 2:"san", 3:"non"}
+labeldict = {0: "src", 1: "sin", 2: "san", 3: "non"}
 
 def findlabel():
     results_only_priors = results.drop("id", axis=1)
@@ -38,7 +38,7 @@ sources_and_sinks.columns = ["id", "label"]
 
 i = 0
 for info in sas:
-    sources_and_sinks.at[i, 'id'] = info.split(',')[1].lstrip().strip(').\n').replace('"', '') # 눈물겹다...
+    sources_and_sinks.at[i, 'id'] = info.split(',')[1].lstrip().strip(').\n').replace('"', '')  # 눈물겹다...
     if info.split('(')[0] == "TaintSourceMethod":
         sources_and_sinks.at[i, 'label'] = "src"
     elif info.split('(')[0] == "LeakingSinkMethod":

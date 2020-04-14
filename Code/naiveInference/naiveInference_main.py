@@ -16,6 +16,7 @@ start = time.time()
 regex = r'\((.*)\)'
 regex = re.compile(regex)
 
+
 # Parsing Function
 def process(info):
     info_ = info
@@ -29,21 +30,25 @@ def process(info):
     name = name.split("(")[0]
     return (pkg, rtntype, name, intype, info_)
 
+
 # Open and parse
-fact = open("/home/jslee/doop/cache/87aad6ef21f79e463d76697e56378be6b592e57d38963ce6dc8c4435ff8c480e/Method.facts", "r+")
+fact = open("/Users/jslee/Taint-Analysis/Code/benchmarks/realworld/Method.facts",
+            "r+")
 factList_original = fact.readlines()
 factList = list(map(lambda x: x.split("\t"), factList_original))
 factList = list(map(lambda x: x[0], factList))
 factList = list(map(process, factList))
-factList = list(filter(lambda tup: tup[2] != "<init>" and tup[2] != "<clinit>", factList))
+factList = list(filter(lambda tup: tup[2] != "<init>" and tup[2] != "<clinit>",
+                       factList))
 
 # Randomly select 1,000 methods from the set of all methods.
 writeList = []
-for i in random.sample(range(0, len(factList)), 500):
+for i in random.sample(range(0, len(factList)), 100):
     writeList.append(factList[i])
 
-writeList = pd.DataFrame(writeList, columns=["pkg", "rtntype", "name", "intype", "id"], dtype="str")
-writeList = writeList.reset_index() # embed the index into a separate column
+writeList = pd.DataFrame(writeList, columns=["pkg", "rtntype", "name",
+                                             "intype", "id"], dtype="str")
+writeList = writeList.reset_index()  # embed the index into a separate column
 writeList.to_csv("raw_data.csv", mode='w')
 
 idList = list(map(lambda x: x.split(">")[0]+'>', factList_original))

@@ -1,6 +1,7 @@
-import time
 import random
 import pandas as pd
+import matplotlib.pyplot as plt
+import networkx as nx
 
 methods = pd.read_csv("raw_data.csv", index_col=0)
 ids = methods["id"]
@@ -12,24 +13,24 @@ max_index_plus_one = methods.shape[0]
 
 # Prior beliefs
 priors = pd.DataFrame(index=methods.index, columns=["src", "sin", "san", "non"])
-priors = priors.fillna(0.25) # Flat priors!
+priors = priors.fillna(0.25)  # Flat priors!
 priors = pd.merge(priors, ids, left_index=True, right_index=True)
 
 
-def loop(times):
-    for time in range(times):
-        i = random.randint(0, max_index_plus_one-1)
-        query = methods.loc[i][3]
-        oracle_response = input("What label does <" + query + "> bear? [src/sin/san/non]: ")
-        if oracle_response == 'src':
-            bayesian_update(i, 'src')
-        elif oracle_response == 'sin':
-            bayesian_update(i, 'sin')
-        elif oracle_response == 'san':
-            bayesian_update(i, 'san')
-        elif oracle_response == 'non':
-            bayesian_update(i, 'non')
-            
+def interact():
+    i = random.randint(0, max_index_plus_one-1)
+    query = methods.loc[i][3]
+    oracle_response = input("What label does <" + query +
+                            "> bear? [src/sin/san/non]: ")
+    if oracle_response == 'src':
+        bayesian_update(i, 'src')
+    elif oracle_response == 'sin':
+        bayesian_update(i, 'sin')
+    elif oracle_response == 'san':
+        bayesian_update(i, 'san')
+    elif oracle_response == 'non':
+        bayesian_update(i, 'non')
+
 
 def bayesian_update(method_index, oracle_response):
     global priors
@@ -94,7 +95,8 @@ def search_in_edge(node_index):
 
 
 def belief_propagation(node_index, oracle_response, depth):
-    """do it recursively: search for all associated tuples and call this function on those, too"""
+    """do it recursively: search for all associated tuples
+    and call this function on those, too"""
     if depth == 0:
         return
     neighbors = search_in_edge(node_index)
@@ -104,7 +106,63 @@ def belief_propagation(node_index, oracle_response, depth):
         bayesian_update_without_propagation(int(neighbor[0]), oracle_response)
         belief_propagation(int(neighbor[0]), oracle_response, depth-1)
 
-loop(10)
+
+def loop(times):
+    '''perform an interaction, color the node with updated beliefs,
+    and show the graph'''
+    for _ in range(times):
+        interact()
+        update_node_color()
+        show_graph()
+
+
+labeldict = {1: "src", 2: "sin", 3: "san", 4: "non"}
+colordict = {"src": "red", "sin": "orange", "san": "yellow", "non": "green"}
+
+
+def update_node_color():
+    global vis_color_map
+    new_color_map = []
+    for probs in priors.itertuples():
+        if probs[1] == probs[2] == probs[3] == probs[4]:
+            new_color_map.append("blue")  # unscorable
+        else:
+            label = labeldict[probs.index(max(probs[1], probs[2],
+                                              probs[3], probs[4]))]
+            color = colordict[label]
+            new_color_map.append(color)
+    vis_color_map = new_color_map
+
+
+def show_graph():
+    nx.draw(graph_for_vis, node_color=vis_color_map, with_labels=True)
+    plt.show()
+
+
+def init_graph():
+    """Initialize a (directed acyclic) graph for visualization."""
+    G = nx.DiGraph()
+    build_graph(G)
+    return G
+
+
+def build_graph(G):
+    """adds edges to reference graph G.
+    V is a subset of index * name"""
+    for edge in edges.itertuples():
+        index1 = edge[1]
+        name1 = edge[4]
+        index2 = edge[6]
+        name2 = edge[9]
+        first = (index1, name1)
+        second = (index2, name2)
+        code = "G.add_edge(first, second)"
+        exec(code, globals(), locals())
+
+
+graph_for_vis = init_graph()
+vis_color_map = []
+
 
 def report_result():
     one_src = priors['src'] == 1
@@ -118,4 +176,7 @@ def report_result():
     priors.to_csv("result.csv", mode='w')
     print("\nreport saved as result.csv")
 
-report_result()
+
+if __name__ == "__main__":
+    loop(5)
+    report_result()

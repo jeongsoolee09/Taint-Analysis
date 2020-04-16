@@ -141,8 +141,7 @@ let search_recent_vardef (methname:Procname.t) (pvar:Var.t) (astate:S.t) =
             (* possibly various definitions of the pvar in question. *)
             let candTuples = 
             L.progress "methname: %a, var: %a\n" Procname.pp methname Var.pp actual_pvar; 
-            search_target_tuples_by_vardef actual_pvar methname (S.of_list actualtuples) 
-            in
+            search_target_tuples_by_vardef actual_pvar methname (S.of_list actualtuples) in
             (* the most recent one among the definitions. *)
             let most_recent_loc = get_most_recent_loc actual_pvar in
             let (proc,var,loc,aliasset') = search_tuple_by_loc most_recent_loc candTuples in
@@ -169,21 +168,6 @@ let search_recent_vardef (methname:Procname.t) (pvar:Var.t) (astate:S.t) =
           then enum_nodup t ((a,b)::current)
           else enum_nodup t current in
     enum_nodup elements []
-
-
-  (** 실행이 끝난 astate에서 중복된 튜플들 (proc과 vardef가 같음)끼리 묶여 있는 list of list를 만든다. *)
-  let group_by_duplicates (astate:S.t) : S.elt list list = 
-    let keys = get_keys astate in
-    let rec get_tuple_by_key tuplelist key =
-      match tuplelist with
-      | [] -> []
-      | (proc,name,_,_) as targetTuple::t ->
-          if double_equal key (proc,name)
-          then (L.progress "generating key: %a\n" Var.pp name; targetTuple::get_tuple_by_key t key) 
-          else get_tuple_by_key t key in
-    let get_tuples_by_keys tuplelist keys = List.map ~f:(get_tuple_by_key tuplelist) keys in
-    let elements = S.elements astate in
-    get_tuples_by_keys elements keys 
 
 
   let duplicated_times (var:Var.t) (lst:S.elt list) =

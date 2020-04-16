@@ -20,11 +20,12 @@ type status =
   | Redefine of Var.t
   | Dead
 
-type chain = (Var.t * status) list
+type chain = (Procname.t * status) list
 
 type alias_chain = Var.t list
 
 (* GOAL: x가 m2에서 u1으로 redefine되었고 m3 이후로 안 쓰인다는 chain 정보 계산하기 *)
+(* --> [(f, Define x), (f, Call (g, y)), (g, Call (m2, u1)), (m2, Redefine u1), (g, Define z), (g, Call (h, w)), (h, Call (m3, u2)), (m3, Dead)] *)
 (* TODO: Var.t를 Var.t의 해시값으로 바꾸기 *)
 
 module type Stype = module type of S
@@ -52,15 +53,16 @@ let get_formal_args (key:Procname.t) = Hashtbl.find formal_args key
 
 let summary_table = DefLocAlias.TransferFunctions.summaries
 
-let update_summary (key:Procname.t) (astate:S.t) = Hashtbl.replace summary_table key astate
-
 let get_summary (key:Procname.t) = Hashtbl.find summary_table key
 
 let callgraph_table = DefLocAlias.TransferFunctions.callgraph
 
 let callgraph = G.create ()
 
-let match_procname_astate (procname:Procname.t) : Procname.t*S.t = (procname, get_summary procname)
+(** 주어진 var이 formal arg인지 검사하고, 맞다면 procname과 formal arg의 리스트를 리턴 *)
+let find_procpair_by_var (var:Var.t) =
+  let key_values = Hashtbl.fold (fun k v acc -> (k, v)::acc) formal_args [] in
+  List.fold_left key_values ~init:[] ~f:(fun acc ((_, varlist) as target) -> if List.mem varlist var ~equal:Var.equal then target::acc else acc)
                                                                
 (** 해시 테이블 형태의 콜그래프를 ocamlgraph로 변환한다.*)
 let callg_hash2og () : unit =
@@ -96,21 +98,10 @@ let cat_some : 'a option list -> 'a list =
       | None -> raise CatFailed)
 
 
-(** 주어진 변수 var에 대한 alias들을 계산해 낸다. **)
-let compute_alias_chain (var:Var.t) : alias_chain =
-  let (methname, astate, firsttuple) = find_first_occurrence_of var in
-  let rec compute_alias_chain_inner (current_methname:Procname.t) (current_tuple:S.elt) (current_astate:S.t) (aliaschain:alias_chain) : alias_chain =
-    let aliases = collect_program_vars_from @@ fourth_of @@ current_tuple in
-    let earliest_alias_tuples = cat_some @@ List.map ~f:(find_earliest_tuple_of_var_within @@ S.elements current_astate) aliases in
-    List.map ~f:(fun tup -> compute_alias_chain_inner current_methname tup current_astate @@ (second_of tup) :: aliaschain) earliest_alias_tuples
-  in
-    compute_alias_chain_inner methname firsttuple astate []
-
-(** 주어진 변수 var에 대한 Dead Point를 계산해 낸다. **)
-(* let compute_dead_point (var:Var.t) : Procname *)
-
 (** 콜 그래프와 분석 결과를 토대로 체인 (Define -> ... -> Dead)을 계산해 낸다 **)
-(* let compute_chain (var:Var.t) : chain *)
+let compute_chain (var:Var.t) : chain =
+  
+
 
 (** interface with the driver *)
 let run_lrm () = () 

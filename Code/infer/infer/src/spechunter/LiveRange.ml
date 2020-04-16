@@ -14,13 +14,13 @@ exception NotImplemented
 exception NoEarliestTuple
 exception CatFailed
 
-type activity =
-    Call of (Procname.t * Procname.t)
-  | Redefine of (Var.t * Var.t)
+type status =
   | Define of Var.t
-  | Dead of Var.t
+  | Call of (Procname.t * Var.t)
+  | Redefine of Var.t
+  | Dead
 
-type chain = (Var.t * activity) list
+type chain = (Var.t * status) list
 
 type alias_chain = Var.t list
 
@@ -106,41 +106,11 @@ let compute_alias_chain (var:Var.t) : alias_chain =
   in
     compute_alias_chain_inner methname firsttuple astate []
 
-
-(** 콜 그래프 중 변수와 관련된 부분을 가져온다 *)
-(* let get_callgraph_for_var (var:Var.t) *)
-
-(** 분석 결과 중 변수와 관련된 부분을 가져온다. 추가적으로 summary_table을 이용한다. *)
-(* let get_analysis_result_for_var (var:Var.t) : callgraph =  *)
-
 (** 주어진 변수 var에 대한 Dead Point를 계산해 낸다. **)
 (* let compute_dead_point (var:Var.t) : Procname *)
 
 (** 콜 그래프와 분석 결과를 토대로 체인 (Define -> ... -> Dead)을 계산해 낸다 **)
 (* let compute_chain (var:Var.t) : chain *)
-
-(** collect all formals from a summary *)
-(* uses the invariant that procnames are unique in a state *)
-let collect_formals (summary:S.t) =
-  let astates = S.elements summary in
-  let procname = first_of @@ List.nth_exn astates 0 in
-  let locations = List.sort ~compare:Location.compare (List.map ~f:third_of astates) in (* 잘 되겠지? 안 되면 explicit하게 라인 넘버를 끌고 오자 *)
-  let earliest_location = List.nth_exn locations 0 in
-  let parameters_withthis = List.map ~f:second_of @@ search_tuples_by_loc earliest_location astates in
-  let parameters = List.filter ~f:(Var.is_this >> not) parameters_withthis in
-  add_formal_args procname parameters
-
-
-(** filter all formals from a summary, accessed by a procname *)
-let filter_formals (methname:Procname.t) =
-  let formals = get_summary methname in
-  let astates = S.elements formals in
-  let locations = List.sort ~compare:Location.compare (List.map ~f:third_of astates) in (* 잘 되겠지? 안 되면 라인 넘버를 끌고 오자 *)
-  let earliest_location = List.nth_exn locations 0 in
-  let tuples_withthis = search_tuples_by_loc earliest_location astates in
-  let formaltuples = List.filter ~f:(fun tup -> not @@ Var.is_this (second_of tup)) tuples_withthis in
-  S.diff formals (S.of_list formaltuples)
-
 
 (** interface with the driver *)
 let run_lrm () = () 

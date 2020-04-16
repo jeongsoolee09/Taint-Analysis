@@ -347,7 +347,7 @@ let search_recent_vardef (methname:Procname.t) (pvar:Var.t) (astate:S.t) =
         S.add newstate astate_summary_applied
     | false -> (* There is at least one argument which is a non-thisvar variable *)
         let astate_summary_applied = apply_summary astate caller_summary callee_methname ret_id methname in
-        let formals = get_formal_args methname caller_summary callee_methname |> List.filter ~f:(fun x -> Var.is_this x |> not) in
+        let formals = get_formal_args methname caller_summary callee_methname |> List.filter ~f:(fun x -> not @@ Var.is_this x) in
         begin match formals with
           | [] -> (* Callee in Native Code! *)
               astate_summary_applied

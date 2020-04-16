@@ -135,8 +135,13 @@ let find_least_linenumber (tuplelist:S.elt list) =
   find_least_linenumber_inner tuplelist (List.nth_exn tuplelist 0)
 
 
-let find_earliest_tuple_within (tuplelist:S.elt list): S.elt =
+let find_earliest_tuple_within (tuplelist:S.elt list): S.elt option =
   let locations = List.sort ~compare:Location.compare (List.map ~f:third_of tuplelist) in
   match List.nth locations 0 with
-  | Some earliest_location -> search_tuple_by_loc earliest_location tuplelist
-  | None -> L.progress "Could not find the earliest location"; bottuple
+  | Some earliest_location -> Some (search_tuple_by_loc earliest_location tuplelist)
+  | None -> None
+
+
+let find_earliest_tuple_of_var_within (tuplelist:S.elt list) (var:Var.t) : S.elt option =
+  let vartuples = List.filter ~f:(fun tup -> Var.equal var (second_of tup)) tuplelist in
+  find_earliest_tuple_within vartuples

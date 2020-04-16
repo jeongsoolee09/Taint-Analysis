@@ -1,5 +1,6 @@
 open! IStd
 open DefLocAliasSearches
+open DefLocAliasLogicTests
 open DefLocAliasDomain
 
 module Hashtbl = Caml.Hashtbl
@@ -10,6 +11,8 @@ module L = Logging
 module F = Format
 
 exception NotImplemented
+exception NoEarliestTuple
+exception CatFailed
 
 type activity =
     Call of (Procname.t * Procname.t)
@@ -76,17 +79,32 @@ let find_first_occurrence_of (var:Var.t) : Procname.t * S.t * S.elt =
   let elements = S.elements astate in
   let methname = first_of @@ List.nth_exn elements 0 in
   let targetTuples = search_target_tuples_by_vardef var methname astate in
-  let earliest_tuple = find_earliest_tuple_within targetTuples in
+  let earliest_tuple =
+    match find_earliest_tuple_within targetTuples with
+    | Some earliest_tuple -> earliest_tuple
+    | None -> raise NoEarliestTuple in
   (methname, astate, earliest_tuple)
 
 
+let collect_program_vars_from (aliases:A.t) : Var.t list =
+  List.filter ~f:is_program_var (A.elements aliases)
+
+
+let cat_some : 'a option list -> 'a list =
+  List.map ~f:(function
+      | Some sth -> sth
+      | None -> raise CatFailed)
+
+
 (** 주어진 변수 var에 대한 alias들을 계산해 낸다. **)
-(* let compute_alias_chain (var:Var.t) =
- *   let rec compute_alias_chain_inner (var:Var.t) (aliaschain:alias_chain) ()  =
- *   let (methname, astate, newtuple) = find_first_occurrence_of var in
- *   
- *     in
- *   raise NotImplemented *)
+let compute_alias_chain (var:Var.t) : alias_chain =
+  let (methname, astate, firsttuple) = find_first_occurrence_of var in
+  let rec compute_alias_chain_inner (current_methname:Procname.t) (current_tuple:S.elt) (current_astate:S.t) (aliaschain:alias_chain) : alias_chain =
+    let aliases = collect_program_vars_from @@ fourth_of @@ current_tuple in
+    let earliest_alias_tuples = cat_some @@ List.map ~f:(find_earliest_tuple_of_var_within @@ S.elements current_astate) aliases in
+    List.map ~f:(fun tup -> compute_alias_chain_inner current_methname tup current_astate @@ (second_of tup) :: aliaschain) earliest_alias_tuples
+  in
+    compute_alias_chain_inner methname firsttuple astate []
 
 
 (** 콜 그래프 중 변수와 관련된 부분을 가져온다 *)

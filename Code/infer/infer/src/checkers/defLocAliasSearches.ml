@@ -12,7 +12,7 @@ exception WeakSearchByIdFailed
 exception SearchRecentVardefFailed
 exception SearchByVardefFailed
 exception SearchByLocFailed
-
+exception NoEarliestTupleInState
 
 let placeholder_vardef (pid:Procname.t) : Var.t =
   let mangled = Mangled.from_string "ph" in
@@ -135,13 +135,13 @@ let find_least_linenumber (tuplelist:S.elt list) =
   find_least_linenumber_inner tuplelist (List.nth_exn tuplelist 0)
 
 
-let find_earliest_tuple_within (tuplelist:S.elt list): S.elt option =
+let find_earliest_tuple_within (tuplelist:S.elt list): S.elt =
   let locations = List.sort ~compare:Location.compare (List.map ~f:third_of tuplelist) in
   match List.nth locations 0 with
-  | Some earliest_location -> Some (search_tuple_by_loc earliest_location tuplelist)
-  | None -> None
+  | Some earliest_location -> search_tuple_by_loc earliest_location tuplelist
+  | None -> raise NoEarliestTupleInState
 
 
-let find_earliest_tuple_of_var_within (tuplelist:S.elt list) (var:Var.t) : S.elt option =
+let find_earliest_tuple_of_var_within (tuplelist:S.elt list) (var:Var.t) : S.elt =
   let vartuples = List.filter ~f:(fun tup -> Var.equal var (second_of tup)) tuplelist in
   find_earliest_tuple_within vartuples

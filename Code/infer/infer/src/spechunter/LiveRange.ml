@@ -1,4 +1,5 @@
 open! IStd
+open DefLocAlias.TransferFunctions
 open DefLocAliasSearches
 open DefLocAliasLogicTests
 open DefLocAliasDomain
@@ -24,8 +25,8 @@ type chain = (Procname.t * status) list
 
 type alias_chain = Var.t list
 
-(* GOAL: x가 m2에서 u1으로 redefine되었고 m3 이후로 안 쓰인다는 chain 정보 계산하기 *)
-(* --> [(f, Define x), (f, Call (g, y)), (g, Call (m2, u1)), (m2, Redefine u1), (g, Define z), (g, Call (h, w)), (h, Call (m3, u2)), (m3, Dead)] *)
+(* GOAL: x가 m2에서 u1으로 redefine되었고 m3 이후로 안 쓰인다는 chain 정보 계산하기
+ * --> [(f, Define x), (f, Call (g, y)), (g, Call (m2, u1)), (m2, Redefine u1), (g, Define z), (g, Call (h, w)), (h, Call (m3, u2)), (m3, Dead)] *)
 (* TODO: Var.t를 Var.t의 해시값으로 바꾸기 *)
 
 module type Stype = module type of S
@@ -59,14 +60,17 @@ let callgraph_table = DefLocAlias.TransferFunctions.callgraph
 
 let callgraph = G.create ()
 
+
 (** 주어진 var이 formal arg인지 검사하고, 맞다면 procname과 formal arg의 리스트를 리턴 *)
 let find_procpair_by_var (var:Var.t) =
-  let key_values = Hashtbl.fold (fun k v acc -> (k, v)::acc) formal_args [] in
+  let key_values = Hashtbl.fold (fun k v acc -> (k, v) ::acc) formal_args [] in
   List.fold_left key_values ~init:[] ~f:(fun acc ((_, varlist) as target) -> if List.mem varlist var ~equal:Var.equal then target::acc else acc)
                                                                
+
 (** 해시 테이블 형태의 콜그래프를 ocamlgraph로 변환한다.*)
 let callg_hash2og () : unit =
   Hashtbl.iter (fun key value -> G.add_edge callgraph (key, get_summary key) (value, get_summary value)) (callgraph_table)
+
 
 (** 주어진 변수 var에 있어 가장 이른 정의 튜플을 찾는다. *)
 let find_first_occurrence_of (var:Var.t) : Procname.t * S.t * S.elt =
@@ -81,26 +85,58 @@ let find_first_occurrence_of (var:Var.t) : Procname.t * S.t * S.elt =
   let elements = S.elements astate in
   let methname = first_of @@ List.nth_exn elements 0 in
   let targetTuples = search_target_tuples_by_vardef var methname astate in
-  let earliest_tuple =
-    match find_earliest_tuple_within targetTuples with
-    | Some earliest_tuple -> earliest_tuple
-    | None -> raise NoEarliestTuple in
+  let earliest_tuple = find_earliest_tuple_within targetTuples in
   (methname, astate, earliest_tuple)
 
 
-let collect_program_vars_from (aliases:A.t) : Var.t list =
-  List.filter ~f:is_program_var (A.elements aliases)
+(** alias set에서 자기 자신, this, ph를 빼고 남은 program variable들을 리턴 *)
+let collect_program_vars_from (aliases:A.t) (self:Var.t) : Var.t list =
+  List.filter ~f:(fun x -> is_program_var x &&
+                           not @@ Var.equal self x &&
+                           not @@ is_placeholder_vardef x &&
+                           not @@ Var.is_this x) (A.elements aliases)
 
 
-let cat_some : 'a option list -> 'a list =
-  List.map ~f:(function
-      | Some sth -> sth
-      | None -> raise CatFailed)
+let select_up_to (tuple:S.elt) (astate:S.t) : S.t =
+  let tuples = S.elements astate in
+  let select_up_to_inner (tuple:S.elt) : S.t =
+    S.of_list @@ List.fold_left tuples ~init:[] ~f:(fun acc elem -> if third_of elem ==> third_of tuple then elem::acc else acc) in
+  select_up_to_inner tuple
 
 
+(** 중복 튜플을 제거함 *)
+(* NOTE: 완성품에는 이 함수가 필요 없어야 함 *)
+(* NOTE: 본 함수에는 ph와 this를 걸러 주는 기능도 있음. *)
+let remove_duplicates_from (astate:S.t) : S.t =
+  let grouped_by_duplicates = (group_by_duplicates >> collect_duplicates) astate in
+  (* 위의 리스트 안의 각 리스트들 안에 들어 있는 튜플들 중 가장 alias set이 큰 놈을 남김 *)
+  let leave_biggest_aliasset = fun lst -> List.fold_left lst ~init:bottuple ~f:(fun acc elem -> if (A.cardinal @@ fourth_of acc) <= (A.cardinal @@ fourth_of elem) then elem else acc) in
+  S.of_list @@ List.map ~f:leave_biggest_aliasset grouped_by_duplicates
+  
+ 
 (** 콜 그래프와 분석 결과를 토대로 체인 (Define -> ... -> Dead)을 계산해 낸다 **)
 let compute_chain (var:Var.t) : chain =
-  
+  (* alias set에서 다음 program var이 발견됨*)
+  let (first_methname, first_astate, first_tuple) = find_first_occurrence_of var in
+  let rec compute_chain_inner (current_methname:Procname.t) (current_astate:S.t) (current_tuple:S.elt) (current_chain:chain) : chain =
+    let aliasset = fourth_of current_tuple in
+    let vardef = second_of current_tuple in
+    match collect_program_vars_from aliasset vardef with
+    | [] -> (* either redefinition or dead end *)
+        let tuples = S.elements current_astate in
+        let redefined_tuples = List.fold_left tuples ~init:[] ~f:(fun acc tup -> if Var.equal vardef @@ second_of tup then tup::acc else acc) in
+        begin match redefined_tuples with
+          | [] -> (* Dead end *) (current_methname, Dead) :: current_chain
+          | _ -> (* Redefinition *)
+              let future_tuples = S.diff current_astate @@ select_up_to current_tuple (remove_duplicates_from current_astate) in
+              let new_tuple = find_earliest_tuple_of_var_within (S.elements future_tuples) vardef in
+              let new_chain = (current_methname, Redefine vardef) :: current_chain in
+              compute_chain_inner current_methname current_astate new_tuple new_chain
+        end
+    | nonempty_list -> (* either definition or call *)
+        
+  in
+  List.rev @@ compute_chain_inner first_methname first_astate first_tuple []
 
 
 (** interface with the driver *)

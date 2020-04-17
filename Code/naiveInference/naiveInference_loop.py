@@ -135,6 +135,7 @@ def update_node_color():
 
 
 def show_graph():
+    """essentially a wrapper for plt.show."""
     nx.draw(graph_for_vis, node_color=vis_color_map, with_labels=True)
     plt.show()
 

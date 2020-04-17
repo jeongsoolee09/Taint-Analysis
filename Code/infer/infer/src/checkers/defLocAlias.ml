@@ -170,6 +170,21 @@ let search_recent_vardef (methname:Procname.t) (pvar:Var.t) (astate:S.t) =
     enum_nodup elements []
 
 
+  (** 실행이 끝난 astate에서 중복된 튜플들 (proc과 vardef가 같음)끼리 묶여 있는 list of list를 만든다. *)
+  let group_by_duplicates (astate:S.t) : S.elt list list = 
+    let keys = get_keys astate in
+    let rec get_tuple_by_key tuplelist key =
+      match tuplelist with
+      | [] -> []
+      | (proc,name,_,_) as targetTuple::t ->
+          if double_equal key (proc,name)
+          then (L.progress "generating key: %a\n" Var.pp name; targetTuple::get_tuple_by_key t key) 
+          else get_tuple_by_key t key in
+    let get_tuples_by_keys tuplelist keys = List.map ~f:(get_tuple_by_key tuplelist) keys in
+    let elements = S.elements astate in
+    get_tuples_by_keys elements keys 
+
+
   let duplicated_times (var:Var.t) (lst:S.elt list) =
     let rec duplicated_times_inner (var:Var.t) (current_line:int) (current_time:int) (lst:S.elt list) =
       match lst with
@@ -192,8 +207,10 @@ let search_recent_vardef (methname:Procname.t) (pvar:Var.t) (astate:S.t) =
         let sample_tuple = List.nth_exn lst 0 in
         let current_var = second_of sample_tuple in
         if not @@ is_placeholder_vardef current_var && not @@ Var.is_this current_var
-          then (L.progress "test 1 passed!\n"; if duplicated_times current_var lst >= 2 then (L.progress "test 2 passed!\n"; lst::collect_duplicates t) else collect_duplicates t)
-          else collect_duplicates t
+        then (if duplicated_times current_var lst >= 2
+              then lst::collect_duplicates t
+              else collect_duplicates t)
+        else collect_duplicates t
 
 
   (** callee가 return c;꼴로 끝날 경우 새로 튜플을 만들고 alias set에 c를 추가 *)

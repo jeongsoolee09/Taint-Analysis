@@ -14,6 +14,7 @@ module F = Format
 exception NotImplemented
 exception NoEarliestTuple
 exception CatFailed
+exception NoParent
 
 type status =
   | Define of Var.t
@@ -113,10 +114,30 @@ let remove_duplicates_from (astate:S.t) : S.t =
   let leave_biggest_aliasset = fun lst -> List.fold_left lst ~init:bottuple ~f:(fun acc elem -> if (A.cardinal @@ fourth_of acc) <= (A.cardinal @@ fourth_of elem) then elem else acc) in
   S.of_list @@ List.map ~f:leave_biggest_aliasset grouped_by_duplicates
   
- 
+
+let equal_btw_vertices : PairOfMS.t -> PairOfMS.t -> bool =
+  fun (m1, s1) (m2, s2) -> Procname.equal m1 m2 && S.equal s1 s2
+
+
+(** accumulator를 따라가면서 최초의 parent (즉, 직전의 caller)를 찾아낸다. *)
+let traverse_accumulator (target_meth:Procname.t) (acc:chain) =
+  let target_vertex = (target_meth, get_summary target_meth) in
+  let rec traverse_accumulator_inner (acc:chain) =
+    match acc with
+    | [] -> raise NoParent
+    | (cand_meth, _)::t ->
+        let is_pred = fun v -> List.mem (G.pred callgraph target_vertex) v ~equal:equal_btw_vertices in
+        let cand_vertex = (cand_meth, get_summary cand_meth) in
+        if is_pred cand_vertex
+        then cand_vertex
+        else traverse_accumulator_inner t
+  in
+  traverse_accumulator_inner acc
+
+
 (** 콜 그래프와 분석 결과를 토대로 체인 (Define -> ... -> Dead)을 계산해 낸다 **)
 let compute_chain (var:Var.t) : chain =
-  (* alias set에서 다음 program var이 발견됨*)
+  (* alias set에서 다음 program var이 발견됨 *)
   let (first_methname, first_astate, first_tuple) = find_first_occurrence_of var in
   let rec compute_chain_inner (current_methname:Procname.t) (current_astate:S.t) (current_tuple:S.elt) (current_chain:chain) : chain =
     let aliasset = fourth_of current_tuple in
@@ -134,7 +155,15 @@ let compute_chain (var:Var.t) : chain =
               compute_chain_inner current_methname current_astate new_tuple new_chain
         end
     | nonempty_list -> (* either definition or call *)
-        
+        if List.exists nonempty_list ~f:Var.is_return
+        then (* caller에서의 define: alternative behavior is needed *)
+          (* 1. 바로 직전 콜러를 찾아간다: accumulator를 따라가면서 처음으로 나타나는 parent를 찾는다. *)
+          (* 2. 그 중에서 리턴되는 변수와 같은 것이 있는지를 본다. *)
+          (*   2-1. 여러 개 있다면, 그 중에서 안 가본 것 중 가장 이른 것을 찾는다.*)
+          let (direct_caller, caller_summary) = traverse_accumulator current_methname current_chain in
+          raise NotImplemented 
+        else (* 동일 procedure 내에서의 define 혹은 call *)
+          raise NotImplemented
   in
   List.rev @@ compute_chain_inner first_methname first_astate first_tuple []
 

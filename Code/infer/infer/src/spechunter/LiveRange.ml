@@ -94,8 +94,8 @@ let find_first_occurrence_of (var:Var.t) : Procname.t * S.t * S.elt =
 let collect_program_vars_from (aliases:A.t) (self:Var.t) : Var.t list =
   List.filter ~f:(fun x -> is_program_var x &&
                            not @@ Var.equal self x &&
-                           not @@ is_placeholder_vardef x &&
-                           not @@ Var.is_this x) (A.elements aliases)
+                           not @@ Var.is_this x &&
+                           not @@ is_placeholder_vardef x) (A.elements aliases)
 
 
 let select_up_to (tuple:S.elt) (astate:S.t) : S.t =
@@ -120,9 +120,9 @@ let equal_btw_vertices : PairOfMS.t -> PairOfMS.t -> bool =
 
 
 (** accumulator를 따라가면서 최초의 parent (즉, 직전의 caller)를 찾아낸다. *)
-let traverse_accumulator (target_meth:Procname.t) (acc:chain) =
+let find_direct_caller (target_meth:Procname.t) (acc:chain) =
   let target_vertex = (target_meth, get_summary target_meth) in
-  let rec traverse_accumulator_inner (acc:chain) =
+  let rec find_direct_caller_inner (acc:chain) =
     match acc with
     | [] -> raise NoParent
     | (cand_meth, _) :: t ->
@@ -130,12 +130,39 @@ let traverse_accumulator (target_meth:Procname.t) (acc:chain) =
         let cand_vertex = (cand_meth, get_summary cand_meth) in
         if is_pred cand_vertex
         then cand_vertex
-        else traverse_accumulator_inner t in
-  traverse_accumulator_inner acc
+        else find_direct_caller_inner t in
+  find_direct_caller_inner acc
+
+
+(** 가 본 적이 있는지를 검사하는 술어. *)
+(** NOTE: status 패턴 매칭 부분이 맞는지 잘 모르겠다.*)
+let rec have_been_before (tuple:S.elt) (acc:chain) : bool =
+  match acc with
+  | [] -> false
+  | (methname, status)::t ->
+      let procname = first_of tuple in
+      let vardef = second_of tuple in
+      begin match status with
+        | Define var ->
+            if Procname.equal procname methname && Var.equal vardef var
+            then true else have_been_before tuple t
+        | Call (callee, var) -> (* 맞으려나? *)
+            if (Procname.equal callee procname || Procname.equal callee methname) && Var.equal vardef var then true else have_been_before tuple t
+        | Redefine var ->
+            if Procname.equal procname methname && Var.equal vardef var
+            then true else have_been_before tuple t
+        | Dead ->
+            have_been_before tuple t
+      end
+
+
+(** 가 본 적이 *없는* 튜플들만을 남긴다. *)
+let filter_have_been_before (tuplelist:S.elt list) (current_chain:chain) =
+  List.fold_left tuplelist ~init:[] ~f:(fun acc tup -> if not @@ have_been_before tup current_chain then tup::acc else acc)
+
 
 (** 콜 그래프와 분석 결과를 토대로 체인 (Define -> ... -> Dead)을 계산해 낸다 *)
 let compute_chain (var:Var.t) : chain =
-  (* alias set에서 다음 program var이 발견됨 *)
   let (first_methname, first_astate, first_tuple) = find_first_occurrence_of var in
   let rec compute_chain_inner (current_methname:Procname.t) (current_astate:S.t) (current_tuple:S.elt) (current_chain:chain) : chain =
     let aliasset = fourth_of current_tuple in
@@ -154,17 +181,21 @@ let compute_chain (var:Var.t) : chain =
         end
     | nonempty_list -> (* either definition or call *)
         if List.exists nonempty_list ~f:Var.is_return
-        then (* caller에서의 define: alternative behavior is needed *)
-          (* 1. 바로 직전 콜러를 찾아간다: accumulator를 따라가면서 처음으로 나타나는 parent를 찾는다. *)
-          (* 2. 그 중에서 리턴되는 변수와 같은 것이 있는지를 본다. *)
-          (*   2-1. 여러 개 있다면, 그 중에서 안 가본 것 중 가장 이른 것을 찾는다. *)
+        then (* caller에서의 define *)
           let var_being_returned = find_var_being_returned aliasset in
-          let (direct_caller, caller_summary) = traverse_accumulator current_methname current_chain in
+          let (direct_caller, caller_summary) = find_direct_caller current_methname current_chain in
           let tuples_with_return_var = search_target_tuples_by_pvar var_being_returned direct_caller caller_summary in
-          let target_tuple = find_earliest_tuple_within tuples_with_return_var in
-          raise NotImplemented
+          let new_tuple = find_earliest_tuple_within @@ filter_have_been_before tuples_with_return_var current_chain in
+          let new_chain = (first_of new_tuple, Define (second_of new_tuple)) :: current_chain in
+          compute_chain_inner direct_caller caller_summary new_tuple new_chain
         else (* 동일 procedure 내에서의 define 혹은 call *)
-          raise NotImplemented
+          (* 다음 튜플을 현재 procedure 내에서 찾을 수 있는지를 기준으로 경우 나누기 *)
+          match batch_search_target_tuples_by_vardef nonempty_list current_methname current_astate with
+          | (false, _) -> (* Call *)
+              (* let callee_methname =  in *)
+              raise NotImplemented
+          | (true, sth) -> (* Define *)
+              raise NotImplemented
   in
   List.rev @@ compute_chain_inner first_methname first_astate first_tuple []
 

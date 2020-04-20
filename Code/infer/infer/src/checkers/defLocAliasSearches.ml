@@ -13,6 +13,8 @@ exception SearchRecentVardefFailed
 exception SearchByVardefFailed
 exception SearchByLocFailed
 exception NoEarliestTupleInState
+exception TooManyReturns
+
 
 let placeholder_vardef (pid:Procname.t) : Var.t =
   let mangled = Mangled.from_string "ph" in
@@ -145,3 +147,18 @@ let find_earliest_tuple_within (tuplelist:S.elt list): S.elt =
 let find_earliest_tuple_of_var_within (tuplelist:S.elt list) (var:Var.t) : S.elt =
   let vartuples = List.filter ~f:(fun tup -> Var.equal var (second_of tup)) tuplelist in
   find_earliest_tuple_within vartuples
+
+
+let is_program_var (var:Var.t) : bool =
+  match var with
+  | LogicalVar _ -> false
+  | ProgramVar _ -> true
+
+
+let find_var_being_returned (aliasset:A.t) : Var.t =
+  let elements = A.elements aliasset in
+  let filtered = List.filter ~f:is_program_var elements
+                 |> List.filter ~f:Var.is_return in
+  match filtered with
+  | [var] -> var
+  | _ -> raise TooManyReturns

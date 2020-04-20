@@ -125,17 +125,15 @@ let traverse_accumulator (target_meth:Procname.t) (acc:chain) =
   let rec traverse_accumulator_inner (acc:chain) =
     match acc with
     | [] -> raise NoParent
-    | (cand_meth, _)::t ->
+    | (cand_meth, _) :: t ->
         let is_pred = fun v -> List.mem (G.pred callgraph target_vertex) v ~equal:equal_btw_vertices in
         let cand_vertex = (cand_meth, get_summary cand_meth) in
         if is_pred cand_vertex
         then cand_vertex
-        else traverse_accumulator_inner t
-  in
+        else traverse_accumulator_inner t in
   traverse_accumulator_inner acc
 
-
-(** 콜 그래프와 분석 결과를 토대로 체인 (Define -> ... -> Dead)을 계산해 낸다 **)
+(** 콜 그래프와 분석 결과를 토대로 체인 (Define -> ... -> Dead)을 계산해 낸다 *)
 let compute_chain (var:Var.t) : chain =
   (* alias set에서 다음 program var이 발견됨 *)
   let (first_methname, first_astate, first_tuple) = find_first_occurrence_of var in
@@ -159,9 +157,12 @@ let compute_chain (var:Var.t) : chain =
         then (* caller에서의 define: alternative behavior is needed *)
           (* 1. 바로 직전 콜러를 찾아간다: accumulator를 따라가면서 처음으로 나타나는 parent를 찾는다. *)
           (* 2. 그 중에서 리턴되는 변수와 같은 것이 있는지를 본다. *)
-          (*   2-1. 여러 개 있다면, 그 중에서 안 가본 것 중 가장 이른 것을 찾는다.*)
+          (*   2-1. 여러 개 있다면, 그 중에서 안 가본 것 중 가장 이른 것을 찾는다. *)
+          let var_being_returned = find_var_being_returned aliasset in
           let (direct_caller, caller_summary) = traverse_accumulator current_methname current_chain in
-          raise NotImplemented 
+          let tuples_with_return_var = search_target_tuples_by_pvar var_being_returned direct_caller caller_summary in
+          let target_tuple = find_earliest_tuple_within tuples_with_return_var in
+          raise NotImplemented
         else (* 동일 procedure 내에서의 define 혹은 call *)
           raise NotImplemented
   in
@@ -170,3 +171,4 @@ let compute_chain (var:Var.t) : chain =
 
 (** interface with the driver *)
 let run_lrm () = () 
+

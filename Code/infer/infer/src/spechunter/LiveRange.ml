@@ -15,7 +15,7 @@ exception NotImplemented
 exception NoEarliestTuple
 exception CatFailed
 exception NoParent
-exception UndefinedSemantics
+exception UnexpectedSituation
 
 type status =
   | Define of Var.t
@@ -66,6 +66,10 @@ let callgraph_table = DefLocAlias.TransferFunctions.callgraph
 
 let callgraph = G.create ()
 
+
+let chains = Hashtbl.create 777
+
+let add_chain (key:Var.t) (value:chain) = Hashtbl.add chains key value
 
 (** 주어진 var이 formal arg인지 검사하고, 맞다면 procname과 formal arg의 리스트를 리턴 *)
 let find_procpair_by_var (var:Var.t) =
@@ -158,8 +162,7 @@ let rec have_been_before (tuple:S.elt) (acc:chain) : bool =
             if Procname.equal procname methname && Var.equal vardef var
             then true else have_been_before tuple t
         | Dead ->
-            have_been_before tuple t
-      end
+            have_been_before tuple t end
 
 
 (** 가 본 적이 *없는* 튜플들만을 남긴다. *)
@@ -208,8 +211,7 @@ let compute_chain (var:Var.t) : chain =
               let future_tuples = S.diff current_astate @@ select_up_to current_tuple (remove_duplicates_from current_astate) in
               let new_tuple = find_earliest_tuple_of_var_within (S.elements future_tuples) vardef in
               let new_chain = (current_methname, Redefine vardef) :: current_chain in
-              compute_chain_inner current_methname current_astate new_tuple new_chain
-        end
+              compute_chain_inner current_methname current_astate new_tuple new_chain end
     | [var] -> (* either definition or call *)
         if Var.is_return var
         then (* caller에서의 define *)
@@ -231,13 +233,20 @@ let compute_chain (var:Var.t) : chain =
           | nonempty_list -> (* 동일 proc에서의 Define *)
               let new_tuple = find_earliest_tuple_within nonempty_list in
               let new_chain = (current_methname, Define var)::current_chain in
-              compute_chain_inner current_methname current_astate new_tuple new_chain
-              end
-    | _ -> raise UndefinedSemantics
-  in
+              compute_chain_inner current_methname current_astate new_tuple new_chain end
+    | _ -> raise UnexpectedSituation in
   List.rev @@ compute_chain_inner first_methname first_astate first_tuple []
 
 
-(** interface with the driver *)
-let run_lrm () = () 
+let collect_all_vars () =
+  let setofallstates =  Hashtbl.fold (fun _ v acc -> S.union v acc) summary_table S.empty in
+  let listofallstates = S.elements setofallstates in
+  let listofallvars = List.map ~f:second_of listofallstates in
+  A.of_list listofallvars
+  
 
+(** interface with the driver *)
+let run_lrm () =
+  callg_hash2og();
+  let setofallvars = collect_all_vars () in
+  A.iter (fun var -> add_chain var (compute_chain var)) setofallvars

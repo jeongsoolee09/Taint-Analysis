@@ -15,6 +15,7 @@ exception NotImplemented
 exception NoEarliestTuple
 exception CatFailed
 exception NoParent
+exception UndefinedSemantics
 
 type status =
   | Define of Var.t
@@ -53,10 +54,14 @@ let add_formal_args (key:Procname.t) (value:Var.t list) = Hashtbl.add formal_arg
 
 let get_formal_args (key:Procname.t) = Hashtbl.find formal_args key
 
+
+(** map from procnames to their summaries. *)
 let summary_table = DefLocAlias.TransferFunctions.summaries
 
 let get_summary (key:Procname.t) = Hashtbl.find summary_table key
 
+
+(** a primitive representation of the call graph. *)
 let callgraph_table = DefLocAlias.TransferFunctions.callgraph
 
 let callgraph = G.create ()
@@ -90,12 +95,13 @@ let find_first_occurrence_of (var:Var.t) : Procname.t * S.t * S.elt =
   (methname, astate, earliest_tuple)
 
 
-(** alias set에서 자기 자신, this, ph를 빼고 남은 program variable들을 리턴 *)
-let collect_program_vars_from (aliases:A.t) (self:Var.t) : Var.t list =
+(** alias set에서 자기 자신, this, ph, 직전 variable을 빼고 남은 program variable들을 리턴 *)
+let collect_program_vars_from (aliases:A.t) (self:Var.t) (just_before:Var.t) : Var.t list =
   List.filter ~f:(fun x -> is_program_var x &&
                            not @@ Var.equal self x &&
                            not @@ Var.is_this x &&
-                           not @@ is_placeholder_vardef x) (A.elements aliases)
+                           not @@ is_placeholder_vardef x &&
+                           not @@ Var.equal just_before x) (A.elements aliases)
 
 
 let select_up_to (tuple:S.elt) (astate:S.t) : S.t =
@@ -161,13 +167,38 @@ let filter_have_been_before (tuplelist:S.elt list) (current_chain:chain) =
   List.fold_left tuplelist ~init:[] ~f:(fun acc tup -> if not @@ have_been_before tup current_chain then tup::acc else acc)
 
 
+(** 바로 다음의 successor들 중에서 파라미터를 들고 있는 함수를 찾아 낸다. 못 찾을 경우, Procname.empty_block을 내뱉는다. *)
+let find_immediate_successor (current_methname:Procname.t) (current_astate:S.t) (param:Var.t) =
+  let succs = G.succ callgraph (current_methname, current_astate) in
+  let succ_meths_and_formals = List.map ~f:(fun (meth, _) -> (meth, get_formal_args meth)) succs in
+  List.fold_left ~init:Procname.empty_block ~f:(fun acc (m, p) -> if List.mem p param ~equal:Var.equal then m else acc) succ_meths_and_formals
+
+
+let pop (lst:'a list) : 'a option =
+  match lst with
+  | [] -> None
+  | _ -> Some (List.nth_exn lst 0)
+
+
+let extract_variable_from_chain_slice (slice:(Procname.t*status) option) : Var.t =
+  match slice with
+  | Some (_, status) ->
+      begin match status with
+      | Define var -> var
+      | Call (_, var) -> var
+      | Redefine var -> var
+      | Dead -> L.progress "Extracting from Dead\n"; second_of bottuple end
+  | None -> L.progress "Extracting from empty chain\n"; second_of bottuple
+
+
 (** 콜 그래프와 분석 결과를 토대로 체인 (Define -> ... -> Dead)을 계산해 낸다 *)
 let compute_chain (var:Var.t) : chain =
   let (first_methname, first_astate, first_tuple) = find_first_occurrence_of var in
   let rec compute_chain_inner (current_methname:Procname.t) (current_astate:S.t) (current_tuple:S.elt) (current_chain:chain) : chain =
     let aliasset = fourth_of current_tuple in
     let vardef = second_of current_tuple in
-    match collect_program_vars_from aliasset vardef with
+    let just_before = extract_variable_from_chain_slice @@ pop current_chain in
+    match collect_program_vars_from aliasset vardef just_before with
     | [] -> (* either redefinition or dead end *)
         let tuples = S.elements current_astate in
         let redefined_tuples = List.fold_left tuples ~init:[] ~f:(fun acc tup -> if Var.equal vardef @@ second_of tup then tup::acc else acc) in
@@ -179,8 +210,8 @@ let compute_chain (var:Var.t) : chain =
               let new_chain = (current_methname, Redefine vardef) :: current_chain in
               compute_chain_inner current_methname current_astate new_tuple new_chain
         end
-    | nonempty_list -> (* either definition or call *)
-        if List.exists nonempty_list ~f:Var.is_return
+    | [var] -> (* either definition or call *)
+        if Var.is_return var
         then (* caller에서의 define *)
           let var_being_returned = find_var_being_returned aliasset in
           let (direct_caller, caller_summary) = find_direct_caller current_methname current_chain in
@@ -190,12 +221,19 @@ let compute_chain (var:Var.t) : chain =
           compute_chain_inner direct_caller caller_summary new_tuple new_chain
         else (* 동일 procedure 내에서의 define 혹은 call *)
           (* 다음 튜플을 현재 procedure 내에서 찾을 수 있는지를 기준으로 경우 나누기 *)
-          match batch_search_target_tuples_by_vardef nonempty_list current_methname current_astate with
-          | (false, _) -> (* Call *)
-              (* let callee_methname =  in *)
-              raise NotImplemented
-          | (true, sth) -> (* Define *)
-              raise NotImplemented
+          begin match search_target_tuples_by_vardef var current_methname current_astate with
+          | [] -> (* Call *)
+              let callee_methname = find_immediate_successor current_methname current_astate var in
+              let new_tuples = search_target_tuples_by_vardef var callee_methname (get_summary callee_methname) in
+              let new_tuple = find_earliest_tuple_within new_tuples in
+              let new_chain = (current_methname, Call (callee_methname, var))::current_chain in
+              compute_chain_inner callee_methname (get_summary callee_methname) new_tuple new_chain
+          | nonempty_list -> (* 동일 proc에서의 Define *)
+              let new_tuple = find_earliest_tuple_within nonempty_list in
+              let new_chain = (current_methname, Define var)::current_chain in
+              compute_chain_inner current_methname current_astate new_tuple new_chain
+              end
+    | _ -> raise UndefinedSemantics
   in
   List.rev @@ compute_chain_inner first_methname first_astate first_tuple []
 

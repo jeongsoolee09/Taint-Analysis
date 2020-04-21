@@ -33,7 +33,7 @@ let is_program_var (var:Var.t) : bool =
   | ProgramVar _ -> true
 
 
-  let convert_from_mangled : Procname.t -> (Mangled.t*Typ.t) -> Var.t = fun methname (m,_) -> Pvar.mk m methname |> Var.of_pvar
+let convert_from_mangled : Procname.t -> (Mangled.t*Typ.t) -> Var.t = fun methname (m,_) -> Pvar.mk m methname |> Var.of_pvar
 
 
 let get_my_formal_args (methname:Procname.t) = 
@@ -68,11 +68,9 @@ let input_is_void_type (arg_ts:(Exp.t*Typ.t) list) (astate:S.t) : bool =
   | [] -> false
   | (Var var, _)::[] ->
       begin try
-        let (_, vardef, _, _) =
-              weak_search_target_tuple_by_id var astate
-        in
+        let (_, vardef, _, _) = weak_search_target_tuple_by_id var astate in
         if Var.is_this vardef then true else false
-        with _ -> (* it's a constructor or something abnormal: We give up soundness *)
+      with _ -> (* it's a constructor or something abnormal: We give up soundness *)
             true end
   | (Var _, _)::_ -> false
   | (Lvar _, _)::_ -> raise NotLogicalArg (* shouldn't all non-constant actual args be pure logical vars? *)

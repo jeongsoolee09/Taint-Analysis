@@ -162,3 +162,13 @@ let find_var_being_returned (aliasset:A.t) : Var.t =
   match filtered with
   | [var] -> var
   | _ -> raise TooManyReturns
+
+
+let batch_search_target_tuples_by_vardef (varlist:Var.t list) (current_methname:Procname.t) (astate:S.t) =
+  List.fold_left ~f:(fun (prev_bool, prev_list) var ->
+      let search_result = search_target_tuples_by_vardef var current_methname astate in
+      if Int.equal (List.length search_result) 0
+      then (false || prev_bool, prev_list)
+      else (true, search_result)) ~init:(false, [])
+    varlist
+

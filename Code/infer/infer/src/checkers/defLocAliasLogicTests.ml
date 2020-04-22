@@ -38,7 +38,7 @@ let convert_from_mangled : Procname.t -> (Mangled.t*Typ.t) -> Var.t = fun methna
 
 let get_my_formal_args (methname:Procname.t) = 
   match Procdesc.load methname with
-  | Some pdesc -> L.progress "found procdesc for %a\n" Procname.pp methname; List.map ~f:(convert_from_mangled methname) (Procdesc.get_formals pdesc)
+  | Some pdesc -> (*L.progress "found procdesc for %a\n" Procname.pp methname;*) List.map ~f:(convert_from_mangled methname) (Procdesc.get_formals pdesc)
   | None -> raise NoSummary 
 
 

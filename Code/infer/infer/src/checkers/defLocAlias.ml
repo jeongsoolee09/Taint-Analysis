@@ -88,7 +88,7 @@ module TransferFunctions = struct
 
 (** jump from the ph tuple to the definition tuple. *)
 let find_def_for_use id methname astate = 
-  L.progress "jumping with id: %a\n" Ident.pp id;
+  (* L.progress "jumping with id: %a\n" Ident.pp id; *)
   let var = second_of @@ search_target_tuple_by_id id methname astate in
   let vardefs = search_target_tuples_by_vardef var methname astate in
   search_tuple_by_loc (get_most_recent_loc var) vardefs
@@ -101,7 +101,7 @@ let search_recent_vardef (methname:Procname.t) (pvar:Var.t) (astate:S.t) =
     match tuplelist with
     | [] -> raise SearchRecentVardefFailed
     | (proc, var, loc, aliasset) as targetTuple::t ->
-        L.progress "methname: %a, searching: %a, loc: %a, proc: %a\n" Procname.pp methname Var.pp var Location.pp loc Procname.pp proc;
+        (* L.progress "methname: %a, searching: %a, loc: %a, proc: %a\n" Procname.pp methname Var.pp var Location.pp loc Procname.pp proc; *)
         let proc_cond = Procname.equal proc methname in
         let id_cond = A.mem id aliasset in
         let var_cond = not @@ Var.equal var (placeholder_vardef proc) in
@@ -134,13 +134,13 @@ let search_recent_vardef (methname:Procname.t) (pvar:Var.t) (astate:S.t) =
     | (actualvar, formalvar)::tl ->
         begin match actualvar with
         | Var.LogicalVar vl ->
-            L.progress "Processing (%a, %a)\n" Var.pp actualvar Var.pp formalvar;
-            L.progress "methname: %a, id: %a\n" Procname.pp methname Ident.pp vl;
-            L.progress "Astate before death: @.%a@." S.pp (S.of_list actualtuples);
+            (* L.progress "Processing (%a, %a)\n" Var.pp actualvar Var.pp formalvar; *)
+            (* L.progress "methname: %a, id: %a\n" Procname.pp methname Ident.pp vl; *)
+            (* L.progress "Astate before death: @.%a@." S.pp (S.of_list actualtuples); *)
             let actual_pvar = second_of @@ weak_search_target_tuple_by_id vl (S.of_list actualtuples) in
             (* possibly various definitions of the pvar in question. *)
             let candTuples = 
-            L.progress "methname: %a, var: %a\n" Procname.pp methname Var.pp actual_pvar; 
+            (* L.progress "methname: %a, var: %a\n" Procname.pp methname Var.pp actual_pvar;  *)
             search_target_tuples_by_vardef actual_pvar methname (S.of_list actualtuples) in
             (* the most recent one among the definitions. *)
             let most_recent_loc = get_most_recent_loc actual_pvar in
@@ -178,7 +178,7 @@ let search_recent_vardef (methname:Procname.t) (pvar:Var.t) (astate:S.t) =
       | [] -> []
       | (proc,name,_,_) as targetTuple::t ->
           if double_equal key (proc,name)
-          then (L.progress "generating key: %a\n" Var.pp name; targetTuple::get_tuple_by_key t key) 
+          then ((*L.progress "generating key: %a\n" Var.pp name;*) targetTuple::get_tuple_by_key t key) 
           else get_tuple_by_key t key in
     let get_tuples_by_keys tuplelist keys = List.map ~f:(get_tuple_by_key tuplelist) keys in
     let elements = S.elements astate in
@@ -188,10 +188,10 @@ let search_recent_vardef (methname:Procname.t) (pvar:Var.t) (astate:S.t) =
   let duplicated_times (var:Var.t) (lst:S.elt list) =
     let rec duplicated_times_inner (var:Var.t) (current_line:int) (current_time:int) (lst:S.elt list) =
       match lst with
-      | [] -> L.progress "dup time: %a\n" Int.pp current_time; current_time
+      | [] -> (*L.progress "dup time: %a\n" Int.pp current_time;*) current_time
       | (_, vardef, loc, _)::t ->
           if Var.equal var vardef
-          then (L.progress "Testing var: %a\n" Var.pp vardef; if not @@ Int.equal loc.line current_line
+          then ((*L.progress "Testing var: %a\n" Var.pp vardef;*) if not @@ Int.equal loc.line current_line
                 then duplicated_times_inner var current_line (current_time+1) t
                 else duplicated_times_inner var current_line current_time t)
           else duplicated_times_inner var current_line current_time t in
@@ -229,8 +229,8 @@ let search_recent_vardef (methname:Procname.t) (pvar:Var.t) (astate:S.t) =
   (** 변수가 리턴된다면 그걸 alias set에 넣는다 (variable carryover)*)
   let apply_summary astate caller_summary callee_methname ret_id caller_methname : S.t =
     match Payload.read_full ~caller_summary:caller_summary ~callee_pname:callee_methname with
-    | Some (pdesc, summ) -> L.progress "Applying summary of %a\n" Procname.pp (Procdesc.get_proc_name pdesc);
-        summ |> variable_carryover astate callee_methname ret_id caller_methname
+    | Some (pdesc, summ) -> (*L.progress "Applying summary of %a\n" Procname.pp (Procdesc.get_proc_name pdesc);*)
+        variable_carryover astate callee_methname ret_id caller_methname summ
     | None -> astate
 
 
@@ -255,7 +255,7 @@ let search_recent_vardef (methname:Procname.t) (pvar:Var.t) (astate:S.t) =
             let (_, _, _, aliasset) as targetTuple =
               try weak_search_target_tuple_by_id id astate
               with _ ->
-                  (L.progress "=== Search Failed (1): Astate before search_target_tuple at %a := %a === @.:%a@." Exp.pp exp1 Exp.pp exp2 S.pp astate ; bottuple) in
+                  ((*L.progress "=== Search Failed (1): Astate before search_target_tuple at %a := %a === @.:%a@." Exp.pp exp1 Exp.pp exp2 S.pp astate ;*) bottuple) in
             let pvar_var = A.find_first is_program_var aliasset in
             let most_recent_loc = get_most_recent_loc pvar_var in
             begin try
@@ -271,7 +271,7 @@ let search_recent_vardef (methname:Procname.t) (pvar:Var.t) (astate:S.t) =
         | false -> (* An ordinary variable assignment. *)
             let (methname_old, vardef, _, aliasset) as targetTuple =
               try weak_search_target_tuple_by_id id astate
-              with _ -> (L.progress "id: %a" Ident.pp id ; L.progress "=== Search Failed (2): Astate before search_target_tuple at %a := %a === @.:%a@." Exp.pp exp1 Exp.pp exp2 S.pp astate ; bottuple) in
+              with _ -> ((*L.progress "id: %a" Ident.pp id ; L.progress "=== Search Failed (2): Astate before search_target_tuple at %a := %a === @.:%a@." Exp.pp exp1 Exp.pp exp2 S.pp astate ;*) bottuple) in
             let pvar_var = Var.of_pvar pv in
             let loc = CFG.Node.loc node in
             let aliasset_new = A.add pvar_var aliasset in
@@ -299,7 +299,7 @@ let search_recent_vardef (methname:Procname.t) (pvar:Var.t) (astate:S.t) =
         let aliasset_new = A.add pvar_var aliasset in
           if not (is_placeholder_vardef vardef)
           then let newstate = (procname, vardef, loc, aliasset_new) in
-               L.progress "astate before ++u1: @.%a@." S.pp astate;
+               (* L.progress "astate before ++u1: @.%a@." S.pp astate; *)
                add_to_history pvar_var loc;
                S.add newstate astate
           else let newstate = (procname, vardef, loc, aliasset_new) in
@@ -358,7 +358,7 @@ let search_recent_vardef (methname:Procname.t) (pvar:Var.t) (astate:S.t) =
               (* pvar tuples transmitted as actual arguments *)
               let actuals_pvar_tuples = actuals_logical |> List.filter ~f:is_logical_var_expr |> List.map ~f:(function
                   | Exp.Var id ->
-                      L.progress "id: %a, processing: @.:%a@." Ident.pp id S.pp astate;
+                      (* L.progress "id: %a, processing: @.:%a@." Ident.pp id S.pp astate; *)
                       let pvar = search_target_tuples_by_id id methname astate |> List.map ~f:fourth_of |> extract_another_pvar id in
                       search_recent_vardef methname pvar astate
                   | _ -> raise UndefinedSemantics2) in

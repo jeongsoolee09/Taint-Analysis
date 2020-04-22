@@ -243,10 +243,38 @@ let collect_all_vars () =
   let listofallstates = S.elements setofallstates in
   let listofallvars = List.map ~f:second_of listofallstates in
   A.of_list listofallvars
-  
+
+let pp_status fmt x =
+  match x with
+  | Define var -> F.fprintf fmt "Defined as %a" Var.pp var
+  | Call (proc, var) -> F.fprintf fmt "Called %a with parameter %a" Procname.pp proc Var.pp var
+  | Redefine var -> F.fprintf fmt "Redefined to %a" Var.pp var
+  | Dead -> F.fprintf fmt "Variable Dead"
+ 
+
+let pp_pair fmt (proc, v) = F.fprintf fmt "(%a, %a)" Procname.pp proc pp_status v
+
+
+let pp_chain fmt x = Pp.seq pp_pair fmt x
+
+
+let to_string hashtbl =
+  Hashtbl.fold (fun k v acc -> String.concat ~sep:"@." [acc; (F.asprintf "%a -> %a" Var.pp k pp_chain v)]) hashtbl ""
+
+
+(* 디버깅 용도로 해시테이블 찍어보기 *)
+let print_chains () =
+  Hashtbl.iter (fun k v -> L.progress "%a --> %a\n" Var.pp k pp_chain v) chains
+
 
 (** interface with the driver *)
 let run_lrm () =
-  callg_hash2og();
+  callg_hash2og ();
   let setofallvars = collect_all_vars () in
-  A.iter (fun var -> add_chain var (compute_chain var)) setofallvars
+  A.iter (fun var -> add_chain var (compute_chain var)) setofallvars;
+  print_chains ();
+  let out_string = F.asprintf "%s" (to_string chains) in
+  let ch = Out_channel.create "chain.txt" in
+  Out_channel.output_string ch out_string;
+  Out_channel.flush ch;
+  Out_channel.close ch

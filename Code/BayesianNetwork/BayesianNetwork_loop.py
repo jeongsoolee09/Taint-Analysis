@@ -53,8 +53,9 @@ def addEdgeToGraph(G):
         intype2 = "()" if row[10] == "void" else "("+row[10]+")"
         firstNodeID = "<"+row[2]+": "+row[3]+" "+row[4] + intype1 + ">"
         secondNodeID = "<"+row[7]+": "+row[8]+" "+row[9] + intype2 + ">"
-        code = "G.add_edge(firstNodeID, secondNodeID)"
-        exec(code, globals(), locals())
+        G.add_edge(firstNodeID, secondNodeID)
+        # code = "G.add_edge(firstNodeID, secondNodeID)"
+        # exec(code, globals(), locals())
 
 
 def initGraph():

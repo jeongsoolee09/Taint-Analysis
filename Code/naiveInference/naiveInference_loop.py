@@ -7,12 +7,14 @@ methods = pd.read_csv("raw_data.csv", index_col=0)
 ids = methods["id"]
 methods = methods.drop('id', axis=1)
 edges = pd.read_csv("edges.csv", index_col=0)
-edges.columns = pd.MultiIndex.from_product([['edge1', 'edge2'], methods.columns])
+edges.columns = pd.MultiIndex.from_product([['edge1', 'edge2'],
+                                            methods.columns])
 
 max_index_plus_one = methods.shape[0]
 
 # Prior beliefs
-priors = pd.DataFrame(index=methods.index, columns=["src", "sin", "san", "non"])
+priors = pd.DataFrame(index=methods.index, columns=["src", "sin",
+                                                    "san", "non"])
 priors = priors.fillna(0.25)  # Flat priors!
 priors = pd.merge(priors, ids, left_index=True, right_index=True)
 
@@ -122,21 +124,26 @@ colordict = {"src": "red", "sin": "orange", "san": "yellow", "non": "green"}
 
 def update_node_color():
     global vis_color_map
-    new_color_map = []
     for probs in priors.itertuples():
+        index = str(probs[0])
+        # nodelist_index = find_in_nodelist(index)
+        nodelist_index = int(index)
         if probs[1] == probs[2] == probs[3] == probs[4]:
-            new_color_map.append("blue")  # unscorable
+            pass  # unscorable
         else:
             label = labeldict[probs.index(max(probs[1], probs[2],
                                               probs[3], probs[4]))]
+            print(label)
             color = colordict[label]
-            new_color_map.append(color)
-    vis_color_map = new_color_map
+            vis_color_map[nodelist_index] = color
+    # vis_color_map = new_color_map
 
 
 def show_graph():
-    """essentially a wrapper for plt.show."""
-    nx.draw(graph_for_vis, node_color=vis_color_map, with_labels=True)
+    """clear the plot and redraw the network again."""
+    plt.clf()
+    nx.draw(graph_for_vis, node_color=vis_color_map,
+            with_labels=True)
     plt.show()
 
 
@@ -148,6 +155,20 @@ def init_graph():
 
 
 def build_graph(G):
+    add_node(G)
+    add_edge(G)
+
+
+# not for demo purposes
+def add_node(G):
+    for method in methods.itertuples():
+        index = method[0]
+        name = method[4]
+        G.add_node((index, name))
+
+
+# use this only for demo purposes
+def add_edge(G):
     """adds edges to reference graph G.
     V is a subset of index * name"""
     for edge in edges.itertuples():
@@ -157,12 +178,23 @@ def build_graph(G):
         name2 = edge[9]
         first = (index1, name1)
         second = (index2, name2)
-        code = "G.add_edge(first, second)"
-        exec(code, globals(), locals())
+        G.add_edge(first, second)
 
 
 graph_for_vis = init_graph()
-vis_color_map = []
+vis_color_map = ["blue"] * graph_for_vis.number_of_nodes()
+
+# only for demo purposes
+nodelist = list(graph_for_vis.nodes())
+
+
+def find_in_nodelist(index):
+    for (index_, meth) in nodelist:
+        if index == index_:
+            print("index = ", index)
+            print("index_ = ", index_)
+            # print(nodelist.index((index_, meth)))
+            return nodelist.index((index_, meth))
 
 
 def report_result():
@@ -178,6 +210,5 @@ def report_result():
     print("\nreport saved as result.csv")
 
 
-if __name__ == "__main__":
-    loop(5)
-    report_result()
+loop(10)
+report_result()

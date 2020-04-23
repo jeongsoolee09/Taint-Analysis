@@ -34,6 +34,11 @@ module Payload = SummaryPayload.Make (struct
 
 module Callgraph = PrettyPrintable.MakePPMap (Procname)
 
+let summaries = Hashtbl.create 777
+
+let teststring = "hi!\n"
+
+let testint = 888
 
 module TransferFunctions = struct
   module CFG = ProcCfg.OneInstrPerNode (ProcCfg.Exceptional)
@@ -46,9 +51,6 @@ module TransferFunctions = struct
 
 
   let add_to_history (key:Var.t) (value:Location.t) = Hashtbl.add history key value
-
-
-  let summaries = Hashtbl.create 777
 
 
   let add_a_summary (key:Procname.t) (value:S.t) = Hashtbl.add summaries key value
@@ -459,6 +461,7 @@ end
 module Analyzer = AbstractInterpreter.MakeRPO (TransferFunctions)
 
 let checker {Callbacks.summary=summary; exe_env} : Summary.t =
+  L.progress "length in analyzer: %d@." (Hashtbl.length summaries);
   let proc_name = Summary.get_proc_name summary in
   let tenv = Exe_env.get_tenv exe_env proc_name in
   match Analyzer.compute_post (ProcData.make_default summary tenv) ~initial:DefLocAliasDomain.initial with

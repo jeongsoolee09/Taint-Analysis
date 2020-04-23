@@ -32,7 +32,7 @@ def process(info):
 
 
 # Open and parse
-fact = open("/Users/jslee/Taint-Analysis/Code/benchmarks/realworld/Method.facts",
+fact = open("/home/jslee/Taint-Analysis/Code/benchmarks/realworld/Method.facts",
             "r+")
 factList_original = fact.readlines()
 factList = list(map(lambda x: x.split("\t"), factList_original))

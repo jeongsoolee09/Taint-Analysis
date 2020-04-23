@@ -56,7 +56,7 @@ let get_formal_args (key:Procname.t) = Hashtbl.find formal_args key
 
 
 (** map from procnames to their summaries. *)
-let summary_table = DefLocAlias.TransferFunctions.summaries
+let summary_table = DefLocAlias.summaries
 
 let get_summary (key:Procname.t) = Hashtbl.find summary_table key
 
@@ -264,18 +264,20 @@ let to_string hashtbl =
 
 
 (* 디버깅 용도로 해시테이블 찍어보기 *)
-let print_chains () =
-  Hashtbl.iter (fun k v -> L.progress "%a --> %a\n" Var.pp k pp_chain v) chains
+let print_summary () =
+  L.progress "Hello Mr.Daven? (Size:%d) @." (Hashtbl.length DefLocAlias.summaries) ;
+  Hashtbl.iter (fun k v -> L.progress "%a --> %a@." Procname.pp k S.pp v)
+    DefLocAlias.summaries
 
 
 (** interface with the driver *)
 let run_lrm () =
   callg_hash2og ();
   let setofallvars = collect_all_vars () in
-  L.progress "Size of all vars: %d" (A.cardinal setofallvars);
+  L.progress "Size of all vars: %d@." (A.cardinal setofallvars);
   A.iter (fun var -> L.progress "Var: %a\n" Var.pp var) setofallvars;
   A.iter (fun var -> add_chain var (compute_chain var)) setofallvars;
-  print_chains ();
+  print_summary ();
   let out_string = F.asprintf "%s" (to_string chains) in
   let ch = Out_channel.create "chain.txt" in
   Out_channel.output_string ch out_string;

@@ -43,7 +43,7 @@ factList = list(filter(lambda tup: tup[2] != "<init>" and tup[2] != "<clinit>",
 
 # Randomly select 1,000 methods from the set of all methods.
 writeList = []
-for i in random.sample(range(0, len(factList)), 100):
+for i in random.sample(range(0, len(factList)), 50):
     writeList.append(factList[i])
 
 writeList = pd.DataFrame(writeList, columns=["pkg", "rtntype", "name",

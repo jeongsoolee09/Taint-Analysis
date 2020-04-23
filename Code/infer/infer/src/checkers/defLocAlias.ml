@@ -401,7 +401,9 @@ let search_recent_vardef (methname:Procname.t) (pvar:Var.t) (astate:S.t) =
 
   let exec_metadata (instr:Sil.instr_metadata) (astate:S.t) (methname:Procname.t) =
     match instr with
-    | ExitScope _ -> add_a_summary methname astate; astate
+    | ExitScope _ -> add_a_summary methname astate;
+        (* Hashtbl.iter (fun k _ -> L.progress "%a@." Procname.pp k) summaries; *)
+        astate
     | _ -> astate
 
 

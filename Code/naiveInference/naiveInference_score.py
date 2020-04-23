@@ -10,6 +10,7 @@ for_scoring = pd.merge(results_ids, empty_vector2, left_index=True, right_index=
 
 labeldict = {0: "src", 1: "sin", 2: "san", 3: "non"}
 
+
 def findlabel():
     results_only_priors = results.drop("id", axis=1)
     i = 0
@@ -20,6 +21,7 @@ def findlabel():
             label = labeldict[rowtuple.index(max(rowtuple))]
             for_scoring.at[i, "label"] = label
         i += 1
+
 
 findlabel()
 

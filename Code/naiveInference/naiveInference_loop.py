@@ -125,25 +125,24 @@ colordict = {"src": "red", "sin": "orange", "san": "yellow", "non": "green"}
 def update_node_color():
     global vis_color_map
     for probs in priors.itertuples():
-        index = str(probs[0])
-        # nodelist_index = find_in_nodelist(index)
-        nodelist_index = int(index)
+        index = probs[0]
+        nodelist_index = find_in_nodelist(str(index))
         if probs[1] == probs[2] == probs[3] == probs[4]:
             pass  # unscorable
         else:
             label = labeldict[probs.index(max(probs[1], probs[2],
                                               probs[3], probs[4]))]
-            print(label)
             color = colordict[label]
+        
+            print(nodelist_index)
             vis_color_map[nodelist_index] = color
-    # vis_color_map = new_color_map
 
 
 def show_graph():
     """clear the plot and redraw the network again."""
     plt.clf()
-    nx.draw(graph_for_vis, node_color=vis_color_map,
-            with_labels=True)
+    nx.draw(graph_for_vis, node_color=vis_color_map, pos=nx.kamada_kawai_layout(graph_for_vis),
+            with_labels=True, node_size=100)
     plt.show()
 
 
@@ -155,7 +154,7 @@ def init_graph():
 
 
 def build_graph(G):
-    add_node(G)
+    # add_node(G)
     add_edge(G)
 
 
@@ -191,8 +190,8 @@ nodelist = list(graph_for_vis.nodes())
 def find_in_nodelist(index):
     for (index_, meth) in nodelist:
         if index == index_:
-            print("index = ", index)
-            print("index_ = ", index_)
+            # print("index = ", index)
+            # print("index_ = ", index_)
             # print(nodelist.index((index_, meth)))
             return nodelist.index((index_, meth))
 

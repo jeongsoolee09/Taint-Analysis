@@ -13,7 +13,6 @@ module F = Format
 
 exception NotImplemented
 exception NoEarliestTuple
-exception CatFailed
 exception NoParent
 exception UnexpectedSituation
 
@@ -56,9 +55,11 @@ let get_formal_args (key:Procname.t) = Hashtbl.find formal_args key
 
 
 (** map from procnames to their summaries. *)
-let summary_table = DefLocAlias.summaries
+let summary_table = Hashtbl.create 777
 
 let get_summary (key:Procname.t) = Hashtbl.find summary_table key
+
+let add_a_summary (key:Procname.t) (value:S.t) = Hashtbl.add summary_table key value
 
 
 (** a primitive representation of the call graph. *)
@@ -265,14 +266,14 @@ let to_string hashtbl =
 
 (* 디버깅 용도로 해시테이블 찍어보기 *)
 let print_summary () =
-  L.progress "Hello Mr.Daven? (Size:%d) @." (Hashtbl.length DefLocAlias.summaries) ;
-  Hashtbl.iter (fun k v -> L.progress "%a --> %a@." Procname.pp k S.pp v)
-    DefLocAlias.summaries
+  Hashtbl.iter (fun k v -> L.progress "%a --> %a@." Procname.pp k S.pp v) summary_table
 
 
 (** interface with the driver *)
 let run_lrm () =
   callg_hash2og ();
+  load_summary_from_disk_to summary_table;
+  L.progress "%d" (Hashtbl.length summary_table);
   let setofallvars = collect_all_vars () in
   L.progress "Size of all vars: %d@." (A.cardinal setofallvars);
   A.iter (fun var -> L.progress "Var: %a\n" Var.pp var) setofallvars;

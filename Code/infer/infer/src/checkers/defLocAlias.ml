@@ -18,6 +18,7 @@ exception NotImplemented
 exception ZipError
 exception SearchRecentVardefFailed
 exception CheckerFailed
+exception CatFailed
 
 module L = Logging
 module F = Format
@@ -32,14 +33,6 @@ module Payload = SummaryPayload.Make (struct
   end)
 
 
-module Callgraph = PrettyPrintable.MakePPMap (Procname)
-
-let summaries = Hashtbl.create 777
-
-let teststring = "hi!\n"
-
-let testint = 888
-
 module TransferFunctions = struct
   module CFG = ProcCfg.OneInstrPerNode (ProcCfg.Exceptional)
   module Domain = S
@@ -51,9 +44,6 @@ module TransferFunctions = struct
 
 
   let add_to_history (key:Var.t) (value:Location.t) = Hashtbl.add history key value
-
-
-  let add_a_summary (key:Procname.t) (value:S.t) = Hashtbl.add summaries key value
 
 
   let rec batch_add_to_history (keys:Var.t list) (loc:Location.t) =
@@ -231,7 +221,7 @@ let search_recent_vardef (methname:Procname.t) (pvar:Var.t) (astate:S.t) =
   (** 변수가 리턴된다면 그걸 alias set에 넣는다 (variable carryover)*)
   let apply_summary astate caller_summary callee_methname ret_id caller_methname : S.t =
     match Payload.read_full ~caller_summary:caller_summary ~callee_pname:callee_methname with
-    | Some (pdesc, summ) -> (*L.progress "Applying summary of %a\n" Procname.pp (Procdesc.get_proc_name pdesc);*)
+    | Some (_, summ) -> (*L.progress "Applying summary of %a\n" Procname.pp (Procdesc.get_proc_name pdesc);*)
         variable_carryover astate callee_methname ret_id caller_methname summ
     | None -> astate
 
@@ -401,14 +391,6 @@ let search_recent_vardef (methname:Procname.t) (pvar:Var.t) (astate:S.t) =
     | _ -> raise UndefinedSemantics3
 
 
-  let exec_metadata (instr:Sil.instr_metadata) (astate:S.t) (methname:Procname.t) =
-    match instr with
-    | ExitScope _ -> add_a_summary methname astate;
-        (* Hashtbl.iter (fun k _ -> L.progress "%a@." Procname.pp k) summaries; *)
-        astate
-    | _ -> astate
-
-
   (** register tuples for formal arguments before a procedure starts. *)
   let register_formals astate cfg_node methname =
     let node = CFG.Node.underlying_node cfg_node in
@@ -426,6 +408,27 @@ let search_recent_vardef (methname:Procname.t) (pvar:Var.t) (astate:S.t) =
     | _ -> astate
 
 
+let rec catMaybes_tuplist (optlist:('a*'b option) list) : ('a*'b) list =
+  match optlist with
+  | [] -> []
+  | (sth1, Some sth2) :: t -> (sth1, sth2)::catMaybes_tuplist t
+  | (_, None)::_ -> raise CatFailed
+  
+
+(** 디스크에서 써머리를 읽어와서 해시테이블에 정리 *)
+let load_summary_from_disk_to hashtbl =
+  let all_source_files = SourceFiles.get_all ~filter:(fun _ -> true) () in
+  let all_procnames_list = List.map ~f:SourceFiles.proc_names_of_source all_source_files in
+  (* 아직은 파일이 하나밖에 없으니까 *)
+  let all_procnames = List.concat all_procnames_list in
+  let all_summaries_optlist = List.map ~f:(fun proc -> (proc, Summary.OnDisk.get proc)) all_procnames in
+  let all_proc_and_summaries_opt = List.filter ~f:(fun (_, summ) -> match summ with Some _ -> true | None -> false) all_summaries_optlist in
+  let all_proc_and_summaries = catMaybes_tuplist all_proc_and_summaries_opt in
+  let all_proc_and_astates_opt = List.map ~f:(fun (proc, summ) -> (proc, Payload.of_summary summ)) all_proc_and_summaries in
+  let all_proc_and_astates = catMaybes_tuplist all_proc_and_astates_opt in
+  List.iter ~f:(fun (proc, astate) -> Hashtbl.add hashtbl proc astate) all_proc_and_astates
+
+
   let exec_instr : S.t -> extras ProcData.t -> CFG.Node.t -> Sil.instr -> S.t = fun prev' {summary} node instr ->
     let my_summary = summary in
     let methname = node |> CFG.Node.underlying_node |> Procdesc.Node.get_proc_name in
@@ -440,8 +443,7 @@ let search_recent_vardef (methname:Procname.t) (pvar:Var.t) (astate:S.t) =
       | Sil.Prune _ -> prev
       | Sil.Call ((ret_id, _), e_fun, arg_ts, _, _) ->
           exec_call ret_id e_fun arg_ts my_summary prev methname
-      | Sil.Metadata md ->
-          exec_metadata md prev methname
+      | Sil.Metadata _ -> prev
 
 
   let leq ~lhs:_ ~rhs:_ = S.subset
@@ -461,10 +463,9 @@ end
 module Analyzer = AbstractInterpreter.MakeRPO (TransferFunctions)
 
 let checker {Callbacks.summary=summary; exe_env} : Summary.t =
-  L.progress "length in analyzer: %d@." (Hashtbl.length summaries);
   let proc_name = Summary.get_proc_name summary in
   let tenv = Exe_env.get_tenv exe_env proc_name in
   match Analyzer.compute_post (ProcData.make_default summary tenv) ~initial:DefLocAliasDomain.initial with
   | Some post ->
       Payload.update_summary post summary
-  | None -> raise CheckerFailed
+  | None -> raise CheckerFailed;;

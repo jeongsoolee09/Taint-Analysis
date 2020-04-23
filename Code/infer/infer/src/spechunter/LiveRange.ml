@@ -198,6 +198,7 @@ let extract_variable_from_chain_slice (slice:(Procname.t*status) option) : Var.t
 let compute_chain (var:Var.t) : chain =
   let (first_methname, first_astate, first_tuple) = find_first_occurrence_of var in
   let rec compute_chain_inner (current_methname:Procname.t) (current_astate:S.t) (current_tuple:S.elt) (current_chain:chain) : chain =
+    L.progress "hihi!\n";
     let aliasset = fourth_of current_tuple in
     let vardef = second_of current_tuple in
     let just_before = extract_variable_from_chain_slice @@ pop current_chain in
@@ -239,7 +240,7 @@ let compute_chain (var:Var.t) : chain =
 
 
 let collect_all_vars () =
-  let setofallstates =  Hashtbl.fold (fun _ v acc -> S.union v acc) summary_table S.empty in
+  let setofallstates =  Hashtbl.fold (fun _ v acc -> L.progress "%a\n" S.pp v ; S.union v acc) summary_table S.empty in
   let listofallstates = S.elements setofallstates in
   let listofallvars = List.map ~f:second_of listofallstates in
   A.of_list listofallvars
@@ -271,6 +272,8 @@ let print_chains () =
 let run_lrm () =
   callg_hash2og ();
   let setofallvars = collect_all_vars () in
+  L.progress "Size of all vars: %d" (A.cardinal setofallvars);
+  A.iter (fun var -> L.progress "Var: %a\n" Var.pp var) setofallvars;
   A.iter (fun var -> add_chain var (compute_chain var)) setofallvars;
   print_chains ();
   let out_string = F.asprintf "%s" (to_string chains) in

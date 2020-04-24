@@ -78,14 +78,6 @@ module TransferFunctions = struct
     List.filter ~f:leave_logical ziplist |> List.map ~f:map_func
 
 
-(** jump from the ph tuple to the definition tuple. *)
-let find_def_for_use id methname astate = 
-  (* L.progress "jumping with id: %a\n" Ident.pp id; *)
-  let var = second_of @@ search_target_tuple_by_id id methname astate in
-  let vardefs = search_target_tuples_by_vardef var methname astate in
-  search_tuple_by_loc (get_most_recent_loc var) vardefs
-
-
 (** id를 토대로 가장 최근의 non-ph 튜플을 찾아내고, 없으면 raise *)
 let search_recent_vardef (methname:Procname.t) (pvar:Var.t) (astate:S.t) =
   let elements = S.elements astate in
@@ -468,4 +460,4 @@ let checker {Callbacks.summary=summary; exe_env} : Summary.t =
   match Analyzer.compute_post (ProcData.make_default summary tenv) ~initial:DefLocAliasDomain.initial with
   | Some post ->
       Payload.update_summary post summary
-  | None -> raise CheckerFailed;;
+  | None -> raise CheckerFailed

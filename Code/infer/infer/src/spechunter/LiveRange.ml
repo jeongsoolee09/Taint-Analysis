@@ -15,6 +15,7 @@ exception NotImplemented
 exception NoEarliestTuple
 exception NoParent
 exception UnexpectedSituation
+exception IDontKnow
 
 type status =
   | Define of Var.t
@@ -59,11 +60,9 @@ let summary_table = Hashtbl.create 777
 
 let get_summary (key:Procname.t) = Hashtbl.find summary_table key
 
-let add_a_summary (key:Procname.t) (value:S.t) = Hashtbl.add summary_table key value
-
 
 (** a primitive representation of the call graph. *)
-let callgraph_table = DefLocAlias.TransferFunctions.callgraph
+let callgraph_table = Hashtbl.create 777
 
 let callgraph = G.create ()
 
@@ -74,30 +73,41 @@ let add_chain (key:Var.t) (value:chain) = Hashtbl.add chains key value
 
 (** 주어진 var이 formal arg인지 검사하고, 맞다면 procname과 formal arg의 리스트를 리턴 *)
 let find_procpair_by_var (var:Var.t) =
-  let key_values = Hashtbl.fold (fun k v acc -> (k, v) ::acc) formal_args [] in
+  let key_values = Hashtbl.fold (fun k v acc -> (k, v)::acc) formal_args [] in
   List.fold_left key_values ~init:[] ~f:(fun acc ((_, varlist) as target) -> if List.mem varlist var ~equal:Var.equal then target::acc else acc)
                                                                
 
 (** 해시 테이블 형태의 콜그래프를 ocamlgraph로 변환한다.*)
 let callg_hash2og () : unit =
-  Hashtbl.iter (fun key value -> G.add_edge callgraph (key, get_summary key) (value, get_summary value)) (callgraph_table)
+  Hashtbl.iter (fun key value -> G.add_edge callgraph (key, get_summary key) (value, get_summary value)) callgraph_table
+
+
+let filter_callgraph_table hashtbl =
+  let procs = Hashtbl.fold (fun k _ acc -> k::acc) summary_table [] in
+  Hashtbl.iter (fun k v ->
+      if not @@ List.mem procs k ~equal:Procname.equal ||
+         not @@ List.mem procs v ~equal:Procname.equal
+      then Hashtbl.remove hashtbl k
+      else ()) hashtbl
 
 
 (** 주어진 변수 var에 있어 가장 이른 정의 튜플을 찾는다. *)
 let find_first_occurrence_of (var:Var.t) : Procname.t * S.t * S.elt =
-  let astate = BFS.fold (fun (_, astate) acc ->
-      let var_is_in = fun tupleset ->
-        match S.find_first_opt (fun tup -> Var.equal (second_of tup) var) tupleset with
-        | Some _ -> true
-        | None -> false in
-      match S.find_first_opt (fun tup -> Var.equal (second_of tup) var) astate with
-      | Some _ -> if var_is_in acc then acc else astate
-      | None -> acc) S.empty callgraph in
-  let elements = S.elements astate in
-  let methname = first_of @@ List.nth_exn elements 0 in
-  let targetTuples = search_target_tuples_by_vardef var methname astate in
+  let tupleset = BFS.fold (fun (_, astate) acc ->
+      match S.exists (fun tup -> Var.equal (second_of tup) var) astate with
+      | true -> L.progress "found it!\n"; astate
+      | false -> L.progress "nah..:(\n"; acc) S.empty callgraph in
+  let elements = S.elements tupleset in
+  let methname = first_of @@ List.nth_exn elements 0
+  in
+  let targetTuples = search_target_tuples_by_vardef var methname tupleset in
   let earliest_tuple = find_earliest_tuple_within targetTuples in
-  (methname, astate, earliest_tuple)
+  (methname, tupleset, earliest_tuple)
+
+
+(** 디버깅 용도로 BFS 사용해서 그래프 출력하기 *)
+let print_graph graph =
+  BFS.iter (fun (proc, _) -> L.progress "proc: %a@." Procname.pp proc) graph
 
 
 (** alias set에서 자기 자신, this, ph, 직전 variable을 빼고 남은 program variable들을 리턴 *)
@@ -197,9 +207,10 @@ let extract_variable_from_chain_slice (slice:(Procname.t*status) option) : Var.t
 
 (** 콜 그래프와 분석 결과를 토대로 체인 (Define -> ... -> Dead)을 계산해 낸다 *)
 let compute_chain (var:Var.t) : chain =
-  let (first_methname, first_astate, first_tuple) = find_first_occurrence_of var in
+  let (first_methname, first_astate, first_tuple) =
+    L.progress "Target Var: %a\n" Var.pp var ; (* outputs x *)
+    find_first_occurrence_of var in
   let rec compute_chain_inner (current_methname:Procname.t) (current_astate:S.t) (current_tuple:S.elt) (current_chain:chain) : chain =
-    L.progress "hihi!\n";
     let aliasset = fourth_of current_tuple in
     let vardef = second_of current_tuple in
     let just_before = extract_variable_from_chain_slice @@ pop current_chain in
@@ -241,7 +252,7 @@ let compute_chain (var:Var.t) : chain =
 
 
 let collect_all_vars () =
-  let setofallstates =  Hashtbl.fold (fun _ v acc -> L.progress "%a\n" S.pp v ; S.union v acc) summary_table S.empty in
+  let setofallstates =  Hashtbl.fold (fun _ v acc -> S.union v acc) summary_table S.empty in
   let listofallstates = S.elements setofallstates in
   let listofallvars = List.map ~f:second_of listofallstates in
   A.of_list listofallvars
@@ -264,21 +275,17 @@ let to_string hashtbl =
   Hashtbl.fold (fun k v acc -> String.concat ~sep:"@." [acc; (F.asprintf "%a -> %a" Var.pp k pp_chain v)]) hashtbl ""
 
 
-(* 디버깅 용도로 해시테이블 찍어보기 *)
-let print_summary () =
-  Hashtbl.iter (fun k v -> L.progress "%a --> %a@." Procname.pp k S.pp v) summary_table
-
-
 (** interface with the driver *)
 let run_lrm () =
-  callg_hash2og ();
+  MyCallGraph.load_summary_from_disk_to callgraph_table;
   load_summary_from_disk_to summary_table;
-  L.progress "%d" (Hashtbl.length summary_table);
-  let setofallvars = collect_all_vars () in
-  L.progress "Size of all vars: %d@." (A.cardinal setofallvars);
-  A.iter (fun var -> L.progress "Var: %a\n" Var.pp var) setofallvars;
+  filter_callgraph_table callgraph_table ;
+  callg_hash2og ();
+  print_graph callgraph;
+  let setofallvars_with_garbage = collect_all_vars () in
+  let setofallvars = A.filter (fun var -> not @@ Var.is_this var && not @@ is_placeholder_vardef var) setofallvars_with_garbage in
+  (* A.iter (fun var -> L.progress "Var: %a\n" Var.pp var) setofallvars; *)
   A.iter (fun var -> add_chain var (compute_chain var)) setofallvars;
-  print_summary ();
   let out_string = F.asprintf "%s" (to_string chains) in
   let ch = Out_channel.create "chain.txt" in
   Out_channel.output_string ch out_string;

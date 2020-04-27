@@ -162,20 +162,20 @@ let search_recent_vardef (methname:Procname.t) (pvar:Var.t) (astate:S.t) =
       | [] -> []
       | (proc,name,_,_) as targetTuple::t ->
           if double_equal key (proc,name)
-          then ((*L.progress "generating key: %a\n" Var.pp name;*) targetTuple::get_tuple_by_key t key) 
+          then ((*L.progress "generating key: %a, targetTuple: %a\n" Var.pp name QuadrupleWithPP.pp targetTuple;*) targetTuple::get_tuple_by_key t key) 
           else get_tuple_by_key t key in
     let get_tuples_by_keys tuplelist keys = List.map ~f:(get_tuple_by_key tuplelist) keys in
     let elements = S.elements astate in
-    get_tuples_by_keys elements keys 
+    get_tuples_by_keys elements keys
 
 
   let duplicated_times (var:Var.t) (lst:S.elt list) =
     let rec duplicated_times_inner (var:Var.t) (current_line:int) (current_time:int) (lst:S.elt list) =
       match lst with
-      | [] -> (*L.progress "dup time: %a\n" Int.pp current_time;*) current_time
+      | [] -> (*L.progress "dup time: %d\n" current_time;*) current_time
       | (_, vardef, loc, _)::t ->
           if Var.equal var vardef
-          then ((*L.progress "Testing var: %a\n" Var.pp vardef;*) if not @@ Int.equal loc.line current_line
+          then (if Int.equal loc.line current_line
                 then duplicated_times_inner var current_line (current_time+1) t
                 else duplicated_times_inner var current_line current_time t)
           else duplicated_times_inner var current_line current_time t in
@@ -189,6 +189,7 @@ let search_recent_vardef (methname:Procname.t) (pvar:Var.t) (astate:S.t) =
     | [] -> []
     | lst::t ->
         let sample_tuple = List.nth_exn lst 0 in
+        L.progress "sample tuple: %a\n" QuadrupleWithPP.pp sample_tuple ;
         let current_var = second_of sample_tuple in
         if not @@ is_placeholder_vardef current_var && not @@ Var.is_this current_var
         then (if duplicated_times current_var lst >= 2
@@ -227,7 +228,7 @@ let search_recent_vardef (methname:Procname.t) (pvar:Var.t) (astate:S.t) =
 
   let get_formal_args (caller_procname:Procname.t) (caller_summary:Summary.t) (callee_pname:Procname.t) : Var.t list =
     match Payload.read_full ~caller_summary:caller_summary ~callee_pname:callee_pname with
-    | Some (procdesc, _) -> Procdesc.get_formals procdesc |> List.map ~f:(convert_from_mangled caller_procname)
+    | Some (procdesc, _) -> Procdesc.get_formals procdesc |> List.map ~f:(convert_from_mangled callee_pname)
     | None -> (* Oops, it's a native code outside our focus *) []
 
 
@@ -421,6 +422,14 @@ let load_summary_from_disk_to hashtbl =
   List.iter ~f:(fun (proc, astate) -> Hashtbl.add hashtbl proc astate) all_proc_and_astates
 
 
+let exec_metadata (md:Sil.instr_metadata) (astate:S.t) =
+  match md with
+  | ExitScope _ -> (* S.filter (fun tup ->
+       * not @@ Var.is_this @@ second_of tup &&
+       * not @@ is_placeholder_vardef @@ second_of tup) *) astate
+  | _ -> astate
+
+
   let exec_instr : S.t -> extras ProcData.t -> CFG.Node.t -> Sil.instr -> S.t = fun prev' {summary} node instr ->
     let my_summary = summary in
     let methname = node |> CFG.Node.underlying_node |> Procdesc.Node.get_proc_name in
@@ -435,7 +444,7 @@ let load_summary_from_disk_to hashtbl =
       | Sil.Prune _ -> prev
       | Sil.Call ((ret_id, _), e_fun, arg_ts, _, _) ->
           exec_call ret_id e_fun arg_ts my_summary prev methname
-      | Sil.Metadata _ -> prev
+      | Sil.Metadata md -> exec_metadata md prev
 
 
   let leq ~lhs:_ ~rhs:_ = S.subset

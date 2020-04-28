@@ -2,13 +2,20 @@ import random
 import pandas as pd
 import matplotlib.pyplot as plt
 import networkx as nx
+import os
 
-methods = pd.read_csv("raw_data.csv", index_col=0)
+current_path = os.path.abspath('')
+# raw_data = os.path.join(current_path, 'naiveInference', 'raw_data.csv')
+# edges = os.path.join(current_path, 'naiveInference', 'edges.csv')
+raw_data = os.path.join(current_path, 'raw_data.csv')
+edges = os.path.join(current_path, 'edges.csv')
+methods = pd.read_csv(raw_data, index_col=0)
 ids = methods["id"]
 methods = methods.drop('id', axis=1)
-edges = pd.read_csv("edges.csv", index_col=0)
+edges = pd.read_csv(edges, index_col=0)
 edges.columns = pd.MultiIndex.from_product([['edge1', 'edge2'],
                                             methods.columns])
+
 
 max_index_plus_one = methods.shape[0]
 
@@ -153,7 +160,7 @@ def init_graph():
 
 
 def build_graph(G):
-    # add_node(G)
+    add_node(G)
     add_edge(G)
 
 
@@ -162,7 +169,7 @@ def add_node(G):
     for method in methods.itertuples():
         index = method[0]
         name = method[4]
-        G.add_node((index, name))
+        G.add_node((str(index), name))
 
 
 # use this only for demo purposes
@@ -183,15 +190,12 @@ graph_for_vis = init_graph()
 vis_color_map = ["blue"] * graph_for_vis.number_of_nodes()
 
 # only for demo purposes
-nodelist = list(graph_for_vis.nodes())
+nodelist = list(set(list(graph_for_vis.nodes())))
 
 
 def find_in_nodelist(index):
     for (index_, meth) in nodelist:
         if index == index_:
-            # print("index = ", index)
-            # print("index_ = ", index_)
-            # print(nodelist.index((index_, meth)))
             return nodelist.index((index_, meth))
 
 

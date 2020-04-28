@@ -30,7 +30,7 @@ public class WhatIWantExample {
         m3(w);
     }
 
-    public static void main(String args[]) {
+    public static void main() {
         WhatIWantExample w = new WhatIWantExample();
         w.f();
     }

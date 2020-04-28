@@ -120,7 +120,13 @@ let rec search_tuples_by_loc (loc:Location.t) (tuplelist:S.elt list) =
       else search_tuples_by_loc loc t
 
 
-  (* x ==> y: y is more recent than x in a same file *)
+(* x => y: y is more recent than x in a same file *)
+let (=>) (x:Location.t) (y:Location.t) =
+  (* L.progress "lhs line: %d, rhs line: %d\n" x.line y.line; *)
+  SourceFile.equal x.file y.file && x.line <= y.line
+
+
+  (* x ==> y: y is STRICTLY more recent than x in a same file *)
 let (==>) (x:Location.t) (y:Location.t) =
   (* L.progress "lhs line: %d, rhs line: %d\n" x.line y.line; *)
   SourceFile.equal x.file y.file && x.line < y.line
@@ -160,7 +166,7 @@ let is_program_var (var:Var.t) : bool =
 let find_var_being_returned (aliasset:A.t) : Var.t =
   let elements = A.elements aliasset in
   let filtered = List.filter ~f:is_program_var elements
-                 |> List.filter ~f:Var.is_return in
+                 |> List.filter ~f:(Var.is_return >> not) in
   match filtered with
   | [var] -> var
   | _ -> raise TooManyReturns

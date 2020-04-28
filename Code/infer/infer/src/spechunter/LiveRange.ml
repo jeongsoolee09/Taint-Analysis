@@ -14,7 +14,8 @@ module F = Format
 exception NotImplemented
 exception NoEarliestTuple
 exception NoParent
-exception UnexpectedSituation
+exception UnexpectedSituation1
+exception UnexpectedSituation2
 exception IDontKnow
 exception StripError
 
@@ -141,7 +142,7 @@ let collect_program_vars_from (aliases:A.t) (self:Var.t) (just_before:Var.t) : V
 let select_up_to (tuple:S.elt) ~within:(astate:S.t) : S.t =
   let tuples = S.elements astate in
   let select_up_to_inner (tuple:S.elt) : S.t =
-    S.of_list @@ List.fold_left tuples ~init:[] ~f:(fun acc elem -> if third_of elem ==> third_of tuple then elem::acc else acc) in
+    S.of_list @@ List.fold_left tuples ~init:[] ~f:(fun acc elem -> if third_of elem => third_of tuple then elem::acc else acc) in
   select_up_to_inner tuple
 
 
@@ -210,14 +211,21 @@ let extract_variable_from_chain_slice (slice:(Procname.t*status) option) : Var.t
       | Define var -> var
       | Call (_, var) -> var
       | Redefine var -> var
-      | Dead -> L.progress "Extracting from Dead\n"; second_of bottuple end
-  | None -> L.progress "Extracting from empty chain\n"; second_of bottuple
+      | Dead -> (* L.progress "Extracting from Dead\n"; *) second_of bottuple end
+  | None -> (* L.progress "Extracting from empty chain\n"; *) second_of bottuple
+
+
+let remove_from_aliasset ~from:tuple ~remove:var =
+  let (a, b, c, aliasset) = tuple in
+  let aliasset' = A.remove var aliasset in
+  (a, b, c, aliasset')
+
 
 
 (** 콜 그래프와 분석 결과를 토대로 체인 (Define -> ... -> Dead)을 계산해 낸다 *)
 let compute_chain (var:Var.t) : chain =
   let (first_methname, first_astate, first_tuple) =
-    L.progress "Target Var: %a\n" Var.pp var ; (* outputs x *)
+    (* L.progress "Target Var: %a\n" Var.pp var ; *)
     find_first_occurrence_of var in
   (* L.progress "first_methname: %a\n" Procname.pp first_methname ;
   L.progress "first_astate: %a\n" S.pp first_astate ;
@@ -225,31 +233,38 @@ let compute_chain (var:Var.t) : chain =
   let rec compute_chain_inner  (current_methname:Procname.t) (current_astate:S.t) (current_tuple:S.elt) (current_chain:chain) : chain =
     let aliasset = fourth_of current_tuple in
     let vardef = second_of current_tuple in
-    L.progress "vardef: %a\n" Var.pp vardef;
-    L.progress "current tuple: %a\n" QuadrupleWithPP.pp current_tuple;
+    (* L.progress "vardef: %a\n" Var.pp vardef;
+     * L.progress "current tuple: %a\n" QuadrupleWithPP.pp current_tuple; *)
     let just_before = extract_variable_from_chain_slice @@ pop current_chain in
     match collect_program_vars_from aliasset vardef just_before with
     | [] -> (* either redefinition or dead end *)
-        let tuples = S.elements current_astate in
+        let tuples = S.elements (remove_duplicates_from current_astate) in
         let redefined_tuples = List.fold_left tuples ~init:[] ~f:(fun acc tup -> if Var.equal vardef @@ second_of tup then tup::acc else acc) in
+        (* L.progress "redefined_tuples: "; List.iter ~f:(fun tup -> L.progress "%a, " QuadrupleWithPP.pp tup) redefined_tuples; L.progress "\n"; *)
         begin match redefined_tuples with
-          | [] -> (* Dead end *) (current_methname, Dead) :: current_chain
-          | _ -> (* Redefinition *)
-              let tuples_to_be_deleted = select_up_to current_tuple ~within:(remove_duplicates_from current_astate) in
+          | [_] -> (* Dead end *) (current_methname, Dead) :: current_chain
+          | _::_ -> (* Redefinition *)
+              (* let tuples_to_be_deleted = select_up_to current_tuple ~within:(remove_duplicates_from current_astate) in *)
               let future_tuples = S.diff (remove_duplicates_from current_astate) @@ select_up_to current_tuple ~within:(remove_duplicates_from current_astate) in
-              L.progress "current tuple: %a\n" QuadrupleWithPP.pp current_tuple;
-              L.progress "tuples_to_be_deleted: %a\n future_tuples: %a\n" S.pp tuples_to_be_deleted S.pp future_tuples;
+              (* L.progress "current tuple: %a\n" QuadrupleWithPP.pp current_tuple;
+               * L.progress "tuples_to_be_deleted: %a\n future_tuples: %a\n" S.pp tuples_to_be_deleted S.pp future_tuples; *)
               let new_tuple = find_earliest_tuple_of_var_within (S.elements future_tuples) vardef in
               let new_chain = (current_methname, Redefine vardef) :: current_chain in
-              compute_chain_inner current_methname current_astate new_tuple new_chain end
+              compute_chain_inner current_methname current_astate new_tuple new_chain
+          | _ -> raise UnexpectedSituation1
+        end
     | [var] -> (* either definition or call *)
-        L.progress "next var: %a\n" Var.pp var;
+        (* L.progress "next var: %a\n" Var.pp var; *)
         if Var.is_return var
         then (* caller에서의 define *)
           let var_being_returned = find_var_being_returned aliasset in
+          (* L.progress "var_being_returned: %a\n" Var.pp var_being_returned; *)
           let (direct_caller, caller_summary) = find_direct_caller current_methname current_chain in
-          let tuples_with_return_var = search_target_tuples_by_pvar var_being_returned direct_caller caller_summary in
-          let new_tuple = find_earliest_tuple_within @@ filter_have_been_before tuples_with_return_var current_chain in
+          let tuples_with_return_var = search_target_tuples_by_pvar var_being_returned direct_caller (remove_duplicates_from caller_summary) in
+          (* L.progress "tuples_with_return_var: "; List.iter ~f:(fun tup -> L.progress "%a, " QuadrupleWithPP.pp tup) tuples_with_return_var ; *)
+          let have_been_before_filtered = filter_have_been_before tuples_with_return_var current_chain in
+          (* L.progress "have_been_before_filtered: "; List.iter ~f:(fun tup -> L.progress "%a, " QuadrupleWithPP.pp tup) have_been_before_filtered; *)
+          let new_tuple = remove_from_aliasset ~from:( find_earliest_tuple_within have_been_before_filtered) ~remove:var_being_returned in
           let new_chain = (first_of new_tuple, Define (second_of new_tuple)) :: current_chain in
           compute_chain_inner direct_caller caller_summary new_tuple new_chain
         else (* 동일 procedure 내에서의 define 혹은 call *)
@@ -260,7 +275,7 @@ let compute_chain (var:Var.t) : chain =
               let callee_methname = find_immediate_successor current_methname current_astate var in
               (*L.progress "callee_methname: %a" Procname.pp callee_methname;*)
               let new_tuples = search_target_tuples_by_vardef var callee_methname (remove_duplicates_from @@ get_summary callee_methname) in
-              List.iter ~f:(fun tup -> L.progress "new_tuples: "; L.progress "%a, " QuadrupleWithPP.pp tup; L.progress "\n") new_tuples;
+              (* List.iter ~f:(fun tup -> L.progress "new_tuples: "; L.progress "%a, " QuadrupleWithPP.pp tup; L.progress "\n") new_tuples; *)
               let new_tuple = find_earliest_tuple_within new_tuples in
               let new_chain = (current_methname, Call (callee_methname, var))::current_chain in
               compute_chain_inner callee_methname (get_summary callee_methname) new_tuple new_chain
@@ -268,7 +283,7 @@ let compute_chain (var:Var.t) : chain =
               let new_tuple = find_earliest_tuple_within @@ S.elements (remove_duplicates_from @@ S.of_list nonempty_list) in
               let new_chain = (current_methname, Define var) :: current_chain in
               compute_chain_inner current_methname current_astate new_tuple new_chain end
-    | _ -> raise UnexpectedSituation 
+    | _ -> raise UnexpectedSituation2
     in
   List.rev @@ compute_chain_inner first_methname first_astate first_tuple [(first_methname, Define var)]
 
@@ -308,11 +323,11 @@ let run_lrm () =
   callg_hash2og ();
   let setofallvars_with_garbage = collect_all_vars () in
   let setofallvars = A.filter (fun var -> not @@ Var.is_this var && not @@ is_placeholder_vardef var) setofallvars_with_garbage in
-  let xvar = (List.nth_exn (A.elements setofallvars) 0) in
-  add_chain xvar (compute_chain xvar);
+  (* let xvar = (List.nth_exn (A.elements setofallvars) 0) in *)
+  (* add_chain xvar (compute_chain xvar); *)
   (* A.iter (fun var -> L.progress "Var: %a\n" Var.pp var) setofallvars; *)
-  (* A.iter (fun var -> add_chain var (compute_chain var)) setofallvars; *)
-  let out_string = F.asprintf "%s" (to_string chains) in
+  A.iter (fun var -> L.progress "computing chain for %a\n" Var.pp var; add_chain var (compute_chain var)) setofallvars;
+  let out_string = F.asprintf "%s\n" (to_string chains) in
   let ch = Out_channel.create "chain.txt" in
   Out_channel.output_string ch out_string;
   Out_channel.flush ch;

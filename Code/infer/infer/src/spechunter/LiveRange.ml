@@ -138,7 +138,7 @@ let collect_program_vars_from (aliases:A.t) (self:Var.t) (just_before:Var.t) : V
                            not @@ Var.equal just_before x) (A.elements aliases)
 
 
-let select_up_to (tuple:S.elt) (astate:S.t) : S.t =
+let select_up_to (tuple:S.elt) ~within:(astate:S.t) : S.t =
   let tuples = S.elements astate in
   let select_up_to_inner (tuple:S.elt) : S.t =
     S.of_list @@ List.fold_left tuples ~init:[] ~f:(fun acc elem -> if third_of elem ==> third_of tuple then elem::acc else acc) in
@@ -169,7 +169,7 @@ let find_direct_caller (target_meth:Procname.t) (acc:chain) =
 let rec have_been_before (tuple:S.elt) (acc:chain) : bool =
   match acc with
   | [] -> false
-  | (methname, status)::t ->
+  | (methname, status) :: t ->
       let procname = first_of tuple in
       let vardef = second_of tuple in
       begin match status with
@@ -190,17 +190,11 @@ let filter_have_been_before (tuplelist:S.elt list) (current_chain:chain) =
   List.fold_left tuplelist ~init:[] ~f:(fun acc tup -> if not @@ have_been_before tup current_chain then tup::acc else acc)
 
 
-let cheap_stripsome (opt:'a option): 'a =
-  match opt with
-  | Some sth -> sth
-  | None -> raise StripError
-
-
 (** 바로 다음의 successor들 중에서 파라미터를 들고 있는 함수를 찾아 낸다. 못 찾을 경우, Procname.empty_block을 내뱉는다. *)
 let find_immediate_successor (current_methname:Procname.t) (current_astate:S.t) (param:Var.t) =
   let succs = G.succ callgraph (current_methname, current_astate) in
   let succ_meths_and_formals = List.map ~f:(fun (meth, _) -> (meth, get_formal_args meth)) succs in
-  List.fold_left ~init:Procname.empty_block ~f:(fun acc (m, p) -> L.progress "m: %a, " Procname.pp m; L.progress "p: "; List.iter ~f:(fun v -> L.progress "%a (mangled: %a), " Var.pp v Mangled.pp (Pvar.get_name_of_local_with_procname @@ cheap_stripsome @@ Var.get_pvar v)) p; L.progress "param: %a (mangled: %a)\n" Var.pp param Mangled.pp (Pvar.get_name_of_local_with_procname @@ cheap_stripsome @@ Var.get_pvar param); if List.mem p param ~equal:Var.equal then m else acc) succ_meths_and_formals
+  List.fold_left ~init:Procname.empty_block ~f:(fun acc (m, p) -> (*L.progress "m: %a, " Procname.pp m;*) (*L.progress "p: "; List.iter ~f:(fun v -> L.progress "%a, " Var.pp v) p; L.progress "param: %a\n" Var.pp param;*) if List.mem p param ~equal:Var.equal then m else acc) succ_meths_and_formals
 
 
 let pop (lst:'a list) : 'a option =
@@ -225,14 +219,14 @@ let compute_chain (var:Var.t) : chain =
   let (first_methname, first_astate, first_tuple) =
     L.progress "Target Var: %a\n" Var.pp var ; (* outputs x *)
     find_first_occurrence_of var in
-  L.progress "first_methname: %a\n" Procname.pp first_methname ;
+  (* L.progress "first_methname: %a\n" Procname.pp first_methname ;
   L.progress "first_astate: %a\n" S.pp first_astate ;
-  L.progress "first_tuple: %a\n" QuadrupleWithPP.pp first_tuple ;
-  let rec compute_chain_inner (previous_methname:Procname.t) (current_methname:Procname.t) (current_astate:S.t) (current_tuple:S.elt) (current_chain:chain) : chain =
-    if not @@ Procname.equal previous_methname current_methname
-    then L.exit 1;
+  L.progress "first_tuple: %a\n" QuadrupleWithPP.pp first_tuple ; *)
+  let rec compute_chain_inner  (current_methname:Procname.t) (current_astate:S.t) (current_tuple:S.elt) (current_chain:chain) : chain =
     let aliasset = fourth_of current_tuple in
     let vardef = second_of current_tuple in
+    L.progress "vardef: %a\n" Var.pp vardef;
+    L.progress "current tuple: %a\n" QuadrupleWithPP.pp current_tuple;
     let just_before = extract_variable_from_chain_slice @@ pop current_chain in
     match collect_program_vars_from aliasset vardef just_before with
     | [] -> (* either redefinition or dead end *)
@@ -241,12 +235,15 @@ let compute_chain (var:Var.t) : chain =
         begin match redefined_tuples with
           | [] -> (* Dead end *) (current_methname, Dead) :: current_chain
           | _ -> (* Redefinition *)
-              let future_tuples = S.diff current_astate @@ select_up_to current_tuple (remove_duplicates_from current_astate) in
+              let tuples_to_be_deleted = select_up_to current_tuple ~within:(remove_duplicates_from current_astate) in
+              let future_tuples = S.diff (remove_duplicates_from current_astate) @@ select_up_to current_tuple ~within:(remove_duplicates_from current_astate) in
+              L.progress "current tuple: %a\n" QuadrupleWithPP.pp current_tuple;
+              L.progress "tuples_to_be_deleted: %a\n future_tuples: %a\n" S.pp tuples_to_be_deleted S.pp future_tuples;
               let new_tuple = find_earliest_tuple_of_var_within (S.elements future_tuples) vardef in
               let new_chain = (current_methname, Redefine vardef) :: current_chain in
-              compute_chain_inner current_methname current_methname current_astate new_tuple new_chain end
+              compute_chain_inner current_methname current_astate new_tuple new_chain end
     | [var] -> (* either definition or call *)
-        L.progress "next var: %a\n" Var.pp var;  (* outputs y *)
+        L.progress "next var: %a\n" Var.pp var;
         if Var.is_return var
         then (* caller에서의 define *)
           let var_being_returned = find_var_being_returned aliasset in
@@ -254,7 +251,7 @@ let compute_chain (var:Var.t) : chain =
           let tuples_with_return_var = search_target_tuples_by_pvar var_being_returned direct_caller caller_summary in
           let new_tuple = find_earliest_tuple_within @@ filter_have_been_before tuples_with_return_var current_chain in
           let new_chain = (first_of new_tuple, Define (second_of new_tuple)) :: current_chain in
-          compute_chain_inner current_methname direct_caller caller_summary new_tuple new_chain
+          compute_chain_inner direct_caller caller_summary new_tuple new_chain
         else (* 동일 procedure 내에서의 define 혹은 call *)
           (* 다음 튜플을 현재 procedure 내에서 찾을 수 있는지를 기준으로 경우 나누기 *)
           begin match search_target_tuples_by_vardef var current_methname current_astate with
@@ -262,17 +259,18 @@ let compute_chain (var:Var.t) : chain =
               (*L.progress "current_methname: %a, current_astate: %a\n" Procname.pp current_methname S.pp current_astate;*)
               let callee_methname = find_immediate_successor current_methname current_astate var in
               (*L.progress "callee_methname: %a" Procname.pp callee_methname;*)
-              let new_tuples = search_target_tuples_by_vardef var callee_methname (get_summary callee_methname) in
+              let new_tuples = search_target_tuples_by_vardef var callee_methname (remove_duplicates_from @@ get_summary callee_methname) in
+              List.iter ~f:(fun tup -> L.progress "new_tuples: "; L.progress "%a, " QuadrupleWithPP.pp tup; L.progress "\n") new_tuples;
               let new_tuple = find_earliest_tuple_within new_tuples in
               let new_chain = (current_methname, Call (callee_methname, var))::current_chain in
-              compute_chain_inner current_methname callee_methname (get_summary callee_methname) new_tuple new_chain
+              compute_chain_inner callee_methname (get_summary callee_methname) new_tuple new_chain
           | nonempty_list -> (* 동일 proc에서의 Define *)
-              let new_tuple = find_earliest_tuple_within nonempty_list in
-              let new_chain = (current_methname, Define var)::current_chain in
-              compute_chain_inner current_methname current_methname current_astate new_tuple new_chain end
+              let new_tuple = find_earliest_tuple_within @@ S.elements (remove_duplicates_from @@ S.of_list nonempty_list) in
+              let new_chain = (current_methname, Define var) :: current_chain in
+              compute_chain_inner current_methname current_astate new_tuple new_chain end
     | _ -> raise UnexpectedSituation 
     in
-  List.rev @@ compute_chain_inner first_methname first_methname first_astate first_tuple []
+  List.rev @@ compute_chain_inner first_methname first_astate first_tuple [(first_methname, Define var)]
 
 
 let collect_all_vars () =

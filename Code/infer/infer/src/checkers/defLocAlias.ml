@@ -141,15 +141,18 @@ let search_recent_vardef (methname:Procname.t) (pvar:Var.t) (astate:S.t) =
   let double_equal = fun (proc1, var1) (proc2, var2) -> Procname.equal proc1 proc2 && Var.equal var1 var2
 
 
+  let triple_equal = fun (proc1, var1, loc1) (proc2, var2, loc2) -> Procname.equal proc1 proc2 && Var.equal var1 var2 && Location.equal loc1 loc2
+
+
   (** astate로부터 (procname, vardef) 쌍을 중복 없이 만든다. *)
   let get_keys astate =
     let elements = S.elements astate in
-    let rec enum_nodup (tuplelist:S.elt list) (current:(Procname.t*Var.t) list) =
+    let rec enum_nodup (tuplelist:S.elt list) (current:(Procname.t*Var.t*Location.t) list) =
       match tuplelist with
       | [] -> current
-      | (a,b,_,_)::t ->
-        if not (List.mem current (a,b) ~equal:double_equal) && not (Var.equal b (placeholder_vardef a) || Var.is_this b)
-          then enum_nodup t ((a,b)::current)
+      | (a,b,c,_)::t ->
+        if not (List.mem current (a,b,c) ~equal:triple_equal) && not (Var.equal b (placeholder_vardef a) || Var.is_this b)
+          then enum_nodup t ((a,b,c)::current)
           else enum_nodup t current in
     enum_nodup elements []
 
@@ -160,8 +163,9 @@ let search_recent_vardef (methname:Procname.t) (pvar:Var.t) (astate:S.t) =
     let rec get_tuple_by_key tuplelist key =
       match tuplelist with
       | [] -> []
-      | (proc,name,_,_) as targetTuple::t ->
-          if double_equal key (proc,name)
+      | (proc,name,loc,_) as targetTuple::t ->
+          (* if double_equal key (proc,name) *)
+          if triple_equal key (proc, name, loc)
           then ((*L.progress "generating key: %a, targetTuple: %a\n" Var.pp name QuadrupleWithPP.pp targetTuple;*) targetTuple::get_tuple_by_key t key) 
           else get_tuple_by_key t key in
     let get_tuples_by_keys tuplelist keys = List.map ~f:(get_tuple_by_key tuplelist) keys in
@@ -189,7 +193,7 @@ let search_recent_vardef (methname:Procname.t) (pvar:Var.t) (astate:S.t) =
     | [] -> []
     | lst::t ->
         let sample_tuple = List.nth_exn lst 0 in
-        L.progress "sample tuple: %a\n" QuadrupleWithPP.pp sample_tuple ;
+        (*L.progress "sample tuple: %a\n" QuadrupleWithPP.pp sample_tuple;*)
         let current_var = second_of sample_tuple in
         if not @@ is_placeholder_vardef current_var && not @@ Var.is_this current_var
         then (if duplicated_times current_var lst >= 2

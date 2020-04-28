@@ -121,7 +121,9 @@ let rec search_tuples_by_loc (loc:Location.t) (tuplelist:S.elt list) =
 
 
   (* x ==> y: y is more recent than x in a same file *)
-  let (==>) (x:Location.t) (y:Location.t) = SourceFile.equal x.file y.file && x.line < y.line
+let (==>) (x:Location.t) (y:Location.t) =
+  (* L.progress "lhs line: %d, rhs line: %d\n" x.line y.line; *)
+  SourceFile.equal x.file y.file && x.line < y.line
 
 
 let find_least_linenumber (tuplelist:S.elt list) =
@@ -145,7 +147,7 @@ let find_earliest_tuple_within (tuplelist:S.elt list): S.elt =
 
 
 let find_earliest_tuple_of_var_within (tuplelist:S.elt list) (var:Var.t) : S.elt =
-  let vartuples = List.filter ~f:(fun tup -> Var.equal var (second_of tup)) tuplelist in
+  let vartuples = (* List.filter ~f:(fun tup -> Var.equal var (second_of tup)) *) tuplelist in
   find_earliest_tuple_within vartuples
 
 

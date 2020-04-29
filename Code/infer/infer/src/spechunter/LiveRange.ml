@@ -323,10 +323,10 @@ let run_lrm () =
   callg_hash2og ();
   let setofallvars_with_garbage = collect_all_vars () in
   let setofallvars = A.filter (fun var -> not @@ Var.is_this var && not @@ is_placeholder_vardef var) setofallvars_with_garbage in
-  (* let xvar = (List.nth_exn (A.elements setofallvars) 0) in *)
-  (* add_chain xvar (compute_chain xvar); *)
+  let xvar = (List.nth_exn (A.elements setofallvars) 0) in
+  add_chain xvar (compute_chain xvar);
   (* A.iter (fun var -> L.progress "Var: %a\n" Var.pp var) setofallvars; *)
-  A.iter (fun var -> L.progress "computing chain for %a\n" Var.pp var; add_chain var (compute_chain var)) setofallvars;
+  (* A.iter (fun var -> L.progress "computing chain for %a\n" Var.pp var; add_chain var (compute_chain var)) setofallvars; *)
   let out_string = F.asprintf "%s\n" (to_string chains) in
   let ch = Out_channel.create "chain.txt" in
   Out_channel.output_string ch out_string;

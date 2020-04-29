@@ -1,7 +1,7 @@
 # 현재 문제:
 # 1. 메모리가 터짐
 
-from pomegranate import *
+from pomegranate import DiscreteDistribution, BayesianNetwork
 import time
 import random
 import numpy as np
@@ -22,7 +22,8 @@ dataReader = csv.reader(raw_data)
 edges_data = open("edges.csv", "r+")
 edgesReader = csv.reader(edges_data)
 
-flatPrior = DiscreteDistribution({'src': 0.25, 'sin': 0.25, 'san': 0.25, 'non': 0.25})
+flatPrior = DiscreteDistribution({'src': 0.25, 'sin': 0.25,
+                                  'san': 0.25, 'non': 0.25})
 
 
 # Methods for Graphs ================================
@@ -101,7 +102,7 @@ def addEdgeToBN(BN):
 
 def initBN():
     global graphForReference
-    BN = BayesianNetwork("Automatic Inference of Method Specifications")
+    BN = BayesianNetwork("Automatic Inference of Taint Method Specifications")
     createRootsForBN(graphForReference, BN)
     createInternalLeavesForBN(graphForReference, BN)
     # addEdgeToBN(BN)

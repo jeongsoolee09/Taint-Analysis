@@ -6,52 +6,67 @@
 #     4. If a pair of methods have a similar input type: +10 to the pair
 # If the score is equal to 20, connect the pair with an edge.
 
-# The main module almost exactly inherits the main module of naiveInference.
-
 import pandas as pd
 import time
 import re
 import random
+import os
 
 start = time.time()
 
 regex = r'\((.*)\)'
 regex = re.compile(regex)
 
-# Parsing Function
+current_path = os.path.abspath("..")
+methodfile = os.path.join(current_path, 'benchmarks',
+                          'fabricated', 'Methods.txt')
+
+setofallmethods = []
+
+
+def populate_sofallm():
+    global setofallmethods
+    with open(methodfile, "r+") as f:
+        for line in f.readlines():
+            setofallmethods.append(line.rstrip())
+    setofallmethods = list(filter(lambda string: "<init>" not in string and
+                                  "<clinit>" not in string, setofallmethods))
+    setofallmethods = list(map(lambda meth: process(meth), setofallmethods))
+
+
 def process(info):
-    info_ = info
-    info = info.strip("<>")
-    pkg = info.split(":")[0]
-    # if '$' in pkg:
-    #     pkg = pkg.replace('$', '_')
-    rtntype = info.split(" ")[1]
-    name = info.split(" ")[2]
-    # if '$' in name:
-    #     name = name.replace('$', '_')
-    intype = regex.findall(name)[0]
+    pkg = info.split('.')[0].split(' ')[1]
+    rtntype = info.split('.')[0].split(' ')[0]
+    name_and_type = info.split('.')[1]
+    name = name_and_type.split('(')[0]
+    intype = regex.findall(name_and_type)[0]
     if intype == '':
         intype = 'void'
-    name = name.split("(")[0]
-    return (pkg, rtntype, name, intype, info_)
+    return (pkg, rtntype, name, intype, info)
 
-# Open and parse
-fact = open("/home/jslee/doop/cache/87aad6ef21f79e463d76697e56378be6b592e57d38963ce6dc8c4435ff8c480e/Method.facts", "r+")
-factList_original = fact.readlines()
-factList = list(map(lambda x: x.split("\t"), factList_original))
-factList = list(map(lambda x: x[0], factList))
-factList = list(map(process, factList))
-factList = list(filter(lambda tup: tup[2] != "<init>" and tup[2] != "<clinit>", factList))
 
-# Randomly select 1,000 methods from the set of all methods.
-writeList = []
-for i in random.sample(range(0,len(factList)), 100):
-    writeList.append(factList[i])
+def write_to_csv():
+    """Randomly select 100 methods from the set of all methods,
+       or just use the set of all methods if possible"""
+    writeList = []
+    if len(setofallmethods) < 100:
+        writeList = setofallmethods
+    else:
+        for i in random.sample(range(0, len(setofallmethods)), 100):
+            writeList.append(setofallmethods[i])
+    writeList = pd.DataFrame(writeList, columns=["pkg", "rtntype",
+                                                 "name", "intype",
+                                                 "id"], dtype="str")
+    writeList = writeList.reset_index()  # embed the index into a separate column
+    writeList.to_csv("raw_data.csv", mode='w+')
 
-writeList = pd.DataFrame(writeList, columns=["pkg", "rtntype", "name", "intype", "id"], dtype="str")
-writeList = writeList.reset_index() # embed the index into a separate column
-writeList.to_csv("raw_data.csv", mode='w')
 
-# idList는 아마 만들어도 안 쓰일걸?
+def main():
+    populate_sofallm()
+    write_to_csv()
+
+
+main()
+
 
 print("elapsed time :", time.time() - start)

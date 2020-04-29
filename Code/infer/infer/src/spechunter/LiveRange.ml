@@ -297,10 +297,10 @@ let collect_all_vars () =
 
 let pp_status fmt x =
   match x with
-  | Define var -> F.fprintf fmt "Defined as %a" Var.pp var
-  | Call (proc, var) -> F.fprintf fmt "Called %a with parameter %a" Procname.pp proc Var.pp var
-  | Redefine var -> F.fprintf fmt "Redefined to %a" Var.pp var
-  | Dead -> F.fprintf fmt "Variable Dead"
+  | Define var -> F.fprintf fmt "-> Define (%a)" Var.pp var
+  | Call (proc, var) -> F.fprintf fmt "-> Call (%a, %a)" Procname.pp proc Var.pp var
+  | Redefine var -> F.fprintf fmt "-> Redefine (%a)" Var.pp var
+  | Dead -> F.fprintf fmt "-> Dead"
  
 
 let pp_pair fmt (proc, v) = F.fprintf fmt "(%a, %a)" Procname.pp proc pp_status v
@@ -310,7 +310,7 @@ let pp_chain fmt x = Pp.seq pp_pair fmt x
 
 
 let to_string hashtbl =
-  Hashtbl.fold (fun k v acc -> String.concat ~sep:"@." [acc; (F.asprintf "%a -> %a" Var.pp k pp_chain v)]) hashtbl ""
+  Hashtbl.fold (fun k v acc -> String.concat ~sep:"\n" [acc; (F.asprintf "%a: %a" Var.pp k pp_chain v)]) hashtbl ""
 
 
 (** interface with the driver *)

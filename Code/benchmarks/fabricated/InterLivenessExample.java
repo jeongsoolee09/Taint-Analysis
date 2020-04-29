@@ -28,8 +28,8 @@ public class InterLivenessExample {
         }
     }
 
-    public static void main(String[] args) {
+    public static void main() {
         InterLivenessExample example = new InterLivenessExample();
-        example.example2(2, 3, 4, 5);
+        // example.example2(2, 3, 4, 5);
     }
 }

@@ -9,4 +9,5 @@ module TestMap = PrettyPrintable.MakePPMap (Int)
 
 let main () =
   InferAnalyze.main ~changed_files:None; (* checker를 돌리고 *)
+  SetofAllMeths.calculate ();
   LiveRange.run_lrm () (* LRM 돌리고 *)

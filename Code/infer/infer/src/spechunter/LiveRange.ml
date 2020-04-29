@@ -328,7 +328,7 @@ let run_lrm () =
   (* A.iter (fun var -> L.progress "Var: %a\n" Var.pp var) setofallvars; *)
   (* A.iter (fun var -> L.progress "computing chain for %a\n" Var.pp var; add_chain var (compute_chain var)) setofallvars; *)
   let out_string = F.asprintf "%s\n" (to_string chains) in
-  let ch = Out_channel.create "chain.txt" in
+  let ch = Out_channel.create "Chain.txt" in
   Out_channel.output_string ch out_string;
   Out_channel.flush ch;
   Out_channel.close ch

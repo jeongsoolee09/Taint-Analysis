@@ -148,7 +148,8 @@ def update_node_color():
 def show_graph():
     """clear the plot and redraw the network again."""
     plt.clf()
-    nx.draw(graph_for_vis, node_color=vis_color_map, pos=nx.kamada_kawai_layout(graph_for_vis),
+    nx.draw(graph_for_vis, node_color=vis_color_map,
+            pos=nx.kamada_kawai_layout(graph_for_vis),
             with_labels=True, node_size=100)
     plt.show()
 

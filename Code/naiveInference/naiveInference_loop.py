@@ -137,10 +137,11 @@ def update_node_color():
         if probs[1] == probs[2] == probs[3] == probs[4]:
             pass  # unscorable
         else:
+            # print(probs[1], probs[2], probs[3], probs[4])
+            # print("index: ", probs.index(max(probs[1], probs[2], probs[3], probs[4])))
             label = labeldict[probs.index(max(probs[1], probs[2],
                                               probs[3], probs[4]))]
             color = colordict[label]
-            print(nodelist_index)
             vis_color_map[nodelist_index] = color
 
 

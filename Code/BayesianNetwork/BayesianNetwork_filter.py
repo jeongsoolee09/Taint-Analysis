@@ -1,5 +1,6 @@
 import pandas as pd
 import time
+import os
 
 start = time.time()
 
@@ -9,33 +10,96 @@ methodInfo1 = methodInfo1.drop('id', axis=1)
 methodInfo2 = methodInfo2.drop('id', axis=1)
 
 
+# TODO: Dead 스트링의 끝에 )가 하나 남음
+def tuple_string_to_tuple(tuple_string):
+    string_list = tuple_string.split(", ")
+    string_list[0] = string_list[0].lstrip('(')
+    string_list[1] = string_list[1].rstrip(')')
+    string_list[1] = string_list[1]+')'
+    return (string_list[0], string_list[1])
+
+
+def parse_chain(var_and_chain):
+    var = var_and_chain[0]
+    chain = var_and_chain[1]
+    chain = chain.split(" ->")
+    chain = list(filter(lambda string: string != "", chain))
+    chain = list(map(lambda item: item.lstrip(), chain))
+    chain = list(map(lambda string: tuple_string_to_tuple(string), chain))
+    return [var, chain]
+
+
+path = os.path.abspath("..")
+path = os.path.join(path, "benchmarks", "fabricated", "Chain.txt")
+with open(path, "r+") as chainfile:
+    lines = chainfile.readlines()
+    var_to_chain = list(filter(lambda line: line != "\n", lines))
+    var_to_chain = list(map(lambda line: line.rstrip(), var_to_chain))
+    var_and_chain = list(map(lambda line: line.split(": "), var_to_chain))
+    var_and_chain = list(map(lambda lst: parse_chain(lst), var_and_chain))
+
+
 def scoring_function(info1, info2):
     score = 0
     if info1[1] == info2[1]:  # The two methods belong to the same package
         score += 10
     if info1[2] == info2[2]:  # The two methods have a same return type 
         score += 10
-    if (info1[3] in info2[3]) or (info2[3] in info1[3]) or (info1[3][0:2] == info2[3][0:2]) or (info1[3][0:2] == info2[3][0:2]):  # The two methods start with a same prefix
+    if (info1[3] in info2[3]) or (info2[3] in info1[3]) or (info1[3][0:2] == info2[3][0:2]) or (info1[3][0:2] == info2[3][0:2]):
+        # The two methods start with a same prefix
         score += 10
     if info1[4] == info2[4]:  # The two methods have a same input type
         score += 10
     return score
 
 
+def detect_dataflow():  # method1, method2
+    out = []
+    for [_, chain] in var_and_chain:
+        previous_meth = None
+        for tup in chain:
+            caller_name, activity = tup
+            if "Call" in activity:
+                tmplst = activity.split("with")[0].split("(")
+                callee_name = tmplst[1]+"("+tmplst[2].rstrip()
+                out.append((caller_name, callee_name))
+            if "Define" in activity:
+                out.append((previous_meth, caller_name))
+            previous_meth = caller_name
+    out = list(filter(lambda tup: None not in tup, out))
+    return out
+
+
+dataflow_edges = detect_dataflow()
+
+
+def there_is_dataflow(info1, info2):
+    intype1 = "()" if info1[4] == "void" else "("+info1[4]+")"
+    id1 = info1[2]+" "+info1[1]+"."+info1[3]+intype1
+    intype2 = "()" if info2[4] == "void" else "("+info2[4]+")"
+    id2 = info2[2]+" "+info2[1]+"."+info2[3]+intype2
+    if (id1, id2) in dataflow_edges:
+        return True
+    else:
+        return False
+
+
 print("starting bottleneck")  # ================
+
+
 edge1 = []
 edge2 = []
 
 for row1 in methodInfo1.itertuples(index=False):
     for row2 in methodInfo2.itertuples(index=False):
-        if scoring_function(row1, row2) > 10:
+        if scoring_function(row1, row2) > 20 or there_is_dataflow(row1, row2):
             edge1.append(row1)
             edge2.append(row2)
 print("completed bottleneck")  # ================
 
 
-edge1 = pd.DataFrame(edge1, columns = methodInfo1.columns)
-edge2 = pd.DataFrame(edge2, columns = methodInfo2.columns)
+edge1 = pd.DataFrame(edge1, columns=methodInfo1.columns)
+edge2 = pd.DataFrame(edge2, columns=methodInfo2.columns)
 edges = pd.merge(edge1, edge2, left_index=True, right_index=True)
 edges.columns = pd.MultiIndex.from_product([['edge1', 'edge2'],
                                             methodInfo1.columns])

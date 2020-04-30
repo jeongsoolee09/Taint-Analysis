@@ -297,13 +297,13 @@ let collect_all_vars () =
 
 let pp_status fmt x =
   match x with
-  | Define var -> F.fprintf fmt "-> Define (%a)" Var.pp var
-  | Call (proc, var) -> F.fprintf fmt "-> Call (%a, %a)" Procname.pp proc Var.pp var
-  | Redefine var -> F.fprintf fmt "-> Redefine (%a)" Var.pp var
-  | Dead -> F.fprintf fmt "-> Dead"
+  | Define var -> F.fprintf fmt "Define (%a)" Var.pp var
+  | Call (proc, var) -> F.fprintf fmt "Call (%a with %a)" Procname.pp proc Var.pp var
+  | Redefine var -> F.fprintf fmt "Redefine (%a)" Var.pp var
+  | Dead -> F.fprintf fmt "Dead"
  
 
-let pp_pair fmt (proc, v) = F.fprintf fmt "(%a, %a)" Procname.pp proc pp_status v
+let pp_pair fmt (proc, v) = F.fprintf fmt "(%a, %a) ->" Procname.pp proc pp_status v
 
 
 let pp_chain fmt x = Pp.seq pp_pair fmt x

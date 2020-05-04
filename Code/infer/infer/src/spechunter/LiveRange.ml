@@ -243,10 +243,10 @@ let compute_chain (var:Var.t) : chain =
   let returnv = A.find_first is_returnv first_aliasset in
   let source_meth = procname_of returnv in
   let rec compute_chain_inner  (current_methname:Procname.t) (current_astate:S.t) (current_tuple:S.elt) (current_chain:chain) : chain =
-    let aliasset = fourth_of current_tuple in
+    let aliasset = A.filter (is_returnv >> not) @@ fourth_of current_tuple in
     let vardef = second_of current_tuple in
     (* L.progress "vardef: %a\n" Var.pp vardef;
-     * L.progress "current tuple: %a\n" QuadrupleWithPP.pp current_tuple; *)
+    L.progress "current tuple: %a\n" QuadrupleWithPP.pp current_tuple; *)
     let just_before = extract_variable_from_chain_slice @@ pop current_chain in
     match collect_program_vars_from aliasset vardef just_before with
     | [] -> (* either redefinition or dead end *)
@@ -272,8 +272,8 @@ let compute_chain (var:Var.t) : chain =
           let var_being_returned = find_var_being_returned aliasset in
           (* L.progress "var_being_returned: %a\n" Var.pp var_being_returned; *)
           let (direct_caller, caller_summary) = find_direct_caller current_methname current_chain in
-          let tuples_with_return_var = search_target_tuples_by_vardef (mk_returnv current_methname) direct_caller (remove_duplicates_from caller_summary) in
-          L.progress "tuples_with_return_var: "; List.iter ~f:(fun tup -> L.progress "%a, " QuadrupleWithPP.pp tup) tuples_with_return_var ;
+          let tuples_with_return_var = search_target_tuples_by_pvar (mk_returnv current_methname) direct_caller (remove_duplicates_from caller_summary) in
+          (* L.progress "tuples_with_return_var: "; List.iter ~f:(fun tup -> L.progress "%a, " QuadrupleWithPP.pp tup) tuples_with_return_var ; *)
           let have_been_before_filtered = filter_have_been_before tuples_with_return_var current_chain in
           (* L.progress "have_been_before_filtered: "; List.iter ~f:(fun tup -> L.progress "%a, " QuadrupleWithPP.pp tup) have_been_before_filtered; *)
           let new_tuple = remove_from_aliasset ~from:( find_earliest_tuple_within have_been_before_filtered) ~remove:var_being_returned in
@@ -309,7 +309,7 @@ let collect_all_vars () =
 
 let pp_status fmt x =
   match x with
-  | Define (_, var) -> F.fprintf fmt "Define (%a)" Var.pp var
+  | Define (proc, var) -> F.fprintf fmt "Define (%a, %a)" Procname.pp proc Var.pp var
   | Call (proc, var) -> F.fprintf fmt "Call (%a with %a)" Procname.pp proc Var.pp var
   | Redefine var -> F.fprintf fmt "Redefine (%a)" Var.pp var
   | Dead -> F.fprintf fmt "Dead"

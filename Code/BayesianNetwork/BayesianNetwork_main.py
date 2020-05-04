@@ -21,7 +21,7 @@ current_path = os.path.abspath("..")
 methodfile = os.path.join(current_path, 'benchmarks',
                           'fabricated', 'Methods.txt')
 callmethodfile = os.path.join(current_path, 'benchmarks',
-                          'fabricated', 'Callgraph.txt')
+                              'fabricated', 'Callgraph.txt')
 
 setofallmethods = []
 
@@ -54,7 +54,6 @@ def populate_sofallm():
     callmethods = set(flatten(callmethods))
     setofallmethods = list(methods.union(callmethods))
     setofallmethods = list(map(lambda meth: process(meth), setofallmethods))
-    print(setofallmethods)
 
 
 def process(info):

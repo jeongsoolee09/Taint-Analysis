@@ -76,3 +76,8 @@ let input_is_void_type (arg_ts:(Exp.t*Typ.t) list) (astate:S.t) : bool =
   | (Lvar _, _)::_ -> raise NotLogicalArg (* shouldn't all non-constant actual args be pure logical vars? *)
   | (_, _)::_ -> false
 
+
+let is_returnv (var:Var.t) : bool =
+  match var with
+  | LogicalVar _ -> false
+  | ProgramVar pv -> String.equal (Pvar.to_string pv) "returnv"

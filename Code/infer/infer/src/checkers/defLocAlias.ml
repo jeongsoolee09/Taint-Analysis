@@ -55,7 +55,7 @@ module TransferFunctions = struct
 
 
   (** specially mangled variable to mark a value as returned from callee *)
-  let returnv procname = Pvar.mk (Mangled.from_string "returnv") procname |> Var.of_pvar
+  let mk_returnv procname = Pvar.mk (Mangled.from_string "returnv") procname |> Var.of_pvar
 
 
   let rec extract_nonthisvar_from_args methname (arg_ts:(Exp.t*Typ.t) list) (astate:S.t) : Exp.t list =
@@ -200,7 +200,7 @@ let search_recent_vardef (methname:Procname.t) (pvar:Var.t) (astate:S.t) =
       let ph = placeholder_vardef methname in
       let callee_vardef = second_of tup in
       (* 여기서 returnv를 집어넣자 *)
-      let aliasset = A.add (returnv callee_methname) @@ doubleton callee_vardef (Var.of_id ret_id) in
+      let aliasset = A.add (mk_returnv callee_methname) @@ doubleton callee_vardef (Var.of_id ret_id) in
       (methname, ph, Location.dummy, aliasset) in
     let carriedover = List.map calleeTuples ~f:carryfunc |> S.of_list in
     S.union astate carriedover
@@ -321,7 +321,7 @@ let search_recent_vardef (methname:Procname.t) (pvar:Var.t) (astate:S.t) =
     match input_is_void_type arg_ts astate with
     | true -> (* All Arguments are Just Constants: just apply the summary, make a new tuple and end *)
         let astate_summary_applied = apply_summary astate caller_summary callee_methname ret_id methname in
-        let aliasset = A.add (returnv callee_methname) @@ A.singleton (Var.of_id ret_id) in
+        let aliasset = A.add (mk_returnv callee_methname) @@ A.singleton (Var.of_id ret_id) in
         let newstate = (methname, placeholder_vardef methname, Location.dummy, aliasset) in
         S.add newstate astate_summary_applied
     | false -> (* There is at least one argument which is a non-thisvar variable *)

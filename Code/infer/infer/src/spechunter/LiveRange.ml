@@ -309,7 +309,7 @@ let collect_all_vars () =
 
 let pp_status fmt x =
   match x with
-  | Define (proc, var) -> F.fprintf fmt "Define (%a, %a)" Procname.pp proc Var.pp var
+  | Define (proc, var) -> F.fprintf fmt "Define (%a using %a)" Var.pp var Procname.pp proc
   | Call (proc, var) -> F.fprintf fmt "Call (%a with %a)" Procname.pp proc Var.pp var
   | Redefine var -> F.fprintf fmt "Redefine (%a)" Var.pp var
   | Dead -> F.fprintf fmt "Dead"

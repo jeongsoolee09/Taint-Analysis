@@ -20,18 +20,41 @@ regex = re.compile(regex)
 current_path = os.path.abspath("..")
 methodfile = os.path.join(current_path, 'benchmarks',
                           'fabricated', 'Methods.txt')
+callmethodfile = os.path.join(current_path, 'benchmarks',
+                          'fabricated', 'Callgraph.txt')
 
 setofallmethods = []
 
 
+def flatten(ll):
+    flat_list = []
+    for sublist in ll:
+        for item in sublist:
+            flat_list.append(item)
+    return flat_list
+
+
 def populate_sofallm():
     global setofallmethods
+    methods = []
+    callmethods = []
     with open(methodfile, "r+") as f:
         for line in f.readlines():
-            setofallmethods.append(line.rstrip())
-    setofallmethods = list(filter(lambda string: "<init>" not in string and
-                                  "<clinit>" not in string, setofallmethods))
+            methods.append(line.rstrip())
+    methods = list(filter(lambda string: "<init>" not in string and
+                          "<clinit>" not in string, methods))
+    methods = set(methods)
+    with open(callmethodfile, "r+") as g:
+        for line in g.readlines():
+            callmethods.append(line.rstrip())
+    callmethods = list(filter(lambda line: "__new" not in line
+                              and "<init>" not in line, callmethods))
+    callmethods = list(map(lambda line: line.rstrip(), callmethods))
+    callmethods = list(map(lambda line: line.split(" -> "), callmethods))
+    callmethods = set(flatten(callmethods))
+    setofallmethods = list(methods.union(callmethods))
     setofallmethods = list(map(lambda meth: process(meth), setofallmethods))
+    print(setofallmethods)
 
 
 def process(info):

@@ -22,21 +22,40 @@ def tuple_string_to_tuple(tuple_string):
 def parse_chain(var_and_chain):
     var = var_and_chain[0]
     chain = var_and_chain[1]
-    chain = chain.split(" ->")
+    chain = chain.split(" -> ")
     chain = list(filter(lambda string: string != "", chain))
     chain = list(map(lambda item: item.lstrip(), chain))
     chain = list(map(lambda string: tuple_string_to_tuple(string), chain))
     return [var, chain]
 
 
-path = os.path.abspath("..")
-path = os.path.join(path, "benchmarks", "fabricated", "Chain.txt")
-with open(path, "r+") as chainfile:
-    lines = chainfile.readlines()
-    var_to_chain = list(filter(lambda line: line != "\n", lines))
-    var_to_chain = list(map(lambda line: line.rstrip(), var_to_chain))
-    var_and_chain = list(map(lambda line: line.split(": "), var_to_chain))
-    var_and_chain = list(map(lambda lst: parse_chain(lst), var_and_chain))
+def make_chain():
+    path = os.path.abspath("..")
+    path = os.path.join(path, "benchmarks", "fabricated", "Chain.txt")
+    with open(path, "r+") as chainfile:
+        lines = chainfile.readlines()
+        var_to_chain = list(filter(lambda line: line != "\n", lines))
+        var_to_chain = list(map(lambda line: line.rstrip(), var_to_chain))
+        var_and_chain = list(map(lambda line: line.split(": "), var_to_chain))
+        var_and_chain = list(map(lambda lst: parse_chain(lst), var_and_chain))
+    return var_and_chain
+
+
+def make_calledges():
+    path = os.path.abspath("..")
+    path = os.path.join(path, "benchmarks", "fabricated", "Callgraph.txt")
+    with open(path, "r+") as callgraphfile:
+        lines = callgraphfile.readlines()
+        lines = list(filter(lambda line: "__new" not in line
+                            and "<init>" not in line, lines))
+        lines = list(map(lambda line: line.rstrip(), lines))
+        lines = list(map(lambda line: line.split(" -> "), lines))
+        call_edges = list(map(lambda lst: tuple(lst), lines))
+    return call_edges
+
+
+var_and_chain = make_chain()
+call_edges = make_calledges()
 
 
 def scoring_function(info1, info2):
@@ -84,6 +103,17 @@ def there_is_dataflow(info1, info2):
         return False
 
 
+def there_is_calledge(info1, info2):
+    intype1 = "()" if info1[4] == "void" else "("+info1[4]+")"
+    id1 = info1[2]+" "+info1[1]+"."+info1[3]+intype1
+    intype2 = "()" if info2[4] == "void" else "("+info2[4]+")"
+    id2 = info2[2]+" "+info2[1]+"."+info2[3]+intype2
+    if (id1, id2) in call_edges:
+        return True
+    else:
+        return False
+
+
 print("starting bottleneck")  # ================
 
 
@@ -92,7 +122,8 @@ edge2 = []
 
 for row1 in methodInfo1.itertuples(index=False):
     for row2 in methodInfo2.itertuples(index=False):
-        if scoring_function(row1, row2) > 20 or there_is_dataflow(row1, row2):
+        if scoring_function(row1, row2) > 20 or there_is_dataflow(row1, row2)\
+           or there_is_calledge(row1, row2):
             edge1.append(row1)
             edge2.append(row2)
 print("completed bottleneck")  # ================

@@ -325,9 +325,15 @@ let to_string hashtbl =
   Hashtbl.fold (fun k v acc -> String.concat ~sep:"\n" [acc; (F.asprintf "%a: %a" Var.pp k pp_chain v)]) hashtbl ""
 
 
+let save_callgraph () =
+  let ch = Out_channel.create "Callgraph.txt" in
+  Hashtbl.iter (fun k v -> Out_channel.output_string ch @@ (Procname.to_string k)^"->"^(Procname.to_string v) ) callgraph_table
+
+
 (** interface with the driver *)
 let run_lrm () =
   MyCallGraph.load_summary_from_disk_to callgraph_table;
+  save_callgraph ();
   load_summary_from_disk_to summary_table;
   batch_add_formal_args ();
   (* batch_print_formal_args (); *)

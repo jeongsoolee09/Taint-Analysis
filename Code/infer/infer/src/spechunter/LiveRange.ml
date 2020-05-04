@@ -18,9 +18,10 @@ exception UnexpectedSituation1
 exception UnexpectedSituation2
 exception IDontKnow
 exception StripError
+exception ProcExtractFailed
 
 type status =
-  | Define of Var.t
+  | Define of (Procname.t * Var.t)
   | Call of (Procname.t * Var.t)
   | Redefine of Var.t
   | Dead
@@ -174,7 +175,7 @@ let rec have_been_before (tuple:S.elt) (acc:chain) : bool =
       let procname = first_of tuple in
       let vardef = second_of tuple in
       begin match status with
-        | Define var ->
+        | Define (_, var) ->
             if Procname.equal procname methname && Var.equal vardef var
             then true else have_been_before tuple t
         | Call (callee, var) -> (* 맞으려나? *)
@@ -208,7 +209,7 @@ let extract_variable_from_chain_slice (slice:(Procname.t*status) option) : Var.t
   match slice with
   | Some (_, status) ->
       begin match status with
-      | Define var -> var
+      | Define (_, var) -> var
       | Call (_, var) -> var
       | Redefine var -> var
       | Dead -> (* L.progress "Extracting from Dead\n"; *) second_of bottuple end
@@ -221,6 +222,14 @@ let remove_from_aliasset ~from:tuple ~remove:var =
   (a, b, c, aliasset')
 
 
+let procname_of (var:Var.t) : Procname.t =
+  match var with
+  | ProgramVar pv ->
+      begin match Pvar.get_declaring_function pv with
+        | Some proc -> proc
+        | _ -> raise ProcExtractFailed end
+  | LogicalVar _ -> raise ProcExtractFailed
+
 
 (** 콜 그래프와 분석 결과를 토대로 체인 (Define -> ... -> Dead)을 계산해 낸다 *)
 let compute_chain (var:Var.t) : chain =
@@ -230,6 +239,9 @@ let compute_chain (var:Var.t) : chain =
   (* L.progress "first_methname: %a\n" Procname.pp first_methname ;
   L.progress "first_astate: %a\n" S.pp first_astate ;
   L.progress "first_tuple: %a\n" QuadrupleWithPP.pp first_tuple ; *)
+  let first_aliasset = fourth_of first_tuple in
+  let returnv = A.find_first is_returnv first_aliasset in
+  let source_meth = procname_of returnv in
   let rec compute_chain_inner  (current_methname:Procname.t) (current_astate:S.t) (current_tuple:S.elt) (current_chain:chain) : chain =
     let aliasset = fourth_of current_tuple in
     let vardef = second_of current_tuple in
@@ -260,12 +272,12 @@ let compute_chain (var:Var.t) : chain =
           let var_being_returned = find_var_being_returned aliasset in
           (* L.progress "var_being_returned: %a\n" Var.pp var_being_returned; *)
           let (direct_caller, caller_summary) = find_direct_caller current_methname current_chain in
-          let tuples_with_return_var = search_target_tuples_by_pvar var_being_returned direct_caller (remove_duplicates_from caller_summary) in
-          (* L.progress "tuples_with_return_var: "; List.iter ~f:(fun tup -> L.progress "%a, " QuadrupleWithPP.pp tup) tuples_with_return_var ; *)
+          let tuples_with_return_var = search_target_tuples_by_vardef (mk_returnv current_methname) direct_caller (remove_duplicates_from caller_summary) in
+          L.progress "tuples_with_return_var: "; List.iter ~f:(fun tup -> L.progress "%a, " QuadrupleWithPP.pp tup) tuples_with_return_var ;
           let have_been_before_filtered = filter_have_been_before tuples_with_return_var current_chain in
           (* L.progress "have_been_before_filtered: "; List.iter ~f:(fun tup -> L.progress "%a, " QuadrupleWithPP.pp tup) have_been_before_filtered; *)
           let new_tuple = remove_from_aliasset ~from:( find_earliest_tuple_within have_been_before_filtered) ~remove:var_being_returned in
-          let new_chain = (first_of new_tuple, Define (second_of new_tuple)) :: current_chain in
+          let new_chain = (first_of new_tuple, Define (current_methname, second_of new_tuple)) :: current_chain in
           compute_chain_inner direct_caller caller_summary new_tuple new_chain
         else (* 동일 procedure 내에서의 define 혹은 call *)
           (* 다음 튜플을 현재 procedure 내에서 찾을 수 있는지를 기준으로 경우 나누기 *)
@@ -281,11 +293,11 @@ let compute_chain (var:Var.t) : chain =
               compute_chain_inner callee_methname (get_summary callee_methname) new_tuple new_chain
           | nonempty_list -> (* 동일 proc에서의 Define *)
               let new_tuple = find_earliest_tuple_within @@ S.elements (remove_duplicates_from @@ S.of_list nonempty_list) in
-              let new_chain = (current_methname, Define var) :: current_chain in
+              let new_chain = (current_methname, Define (current_methname, var)) :: current_chain in
               compute_chain_inner current_methname current_astate new_tuple new_chain end
     | _ -> raise UnexpectedSituation2
     in
-  List.rev @@ compute_chain_inner first_methname first_astate first_tuple [(first_methname, Define var)]
+    List.rev @@ compute_chain_inner first_methname first_astate first_tuple [(first_methname, Define (source_meth, var))]
 
 
 let collect_all_vars () =
@@ -297,7 +309,7 @@ let collect_all_vars () =
 
 let pp_status fmt x =
   match x with
-  | Define var -> F.fprintf fmt "Define (%a)" Var.pp var
+  | Define (_, var) -> F.fprintf fmt "Define (%a)" Var.pp var
   | Call (proc, var) -> F.fprintf fmt "Call (%a with %a)" Procname.pp proc Var.pp var
   | Redefine var -> F.fprintf fmt "Redefine (%a)" Var.pp var
   | Dead -> F.fprintf fmt "Dead"

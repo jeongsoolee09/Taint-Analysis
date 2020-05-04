@@ -42,22 +42,20 @@ module TransferFunctions = struct
 
   module HistoryMap = PrettyPrintable.MakePPMap (Var)
 
-  let history =
-  (* Hashtbl.create 777 *)
-  ref HistoryMap.empty
+  let history = ref HistoryMap.empty
 
 
-  let add_to_history (key:Var.t) (value:Location.t) =
-  (* Hashtbl.add history key value *)
-  history := HistoryMap.add key value !history
+  let add_to_history (key:Var.t) (value:Location.t) = history := HistoryMap.add key value !history
 
 
   let batch_add_to_history (keys:Var.t list) (loc:Location.t) = List.iter ~f:(fun h -> add_to_history h loc) keys
 
 
-  let get_most_recent_loc (key:Var.t) =
-  (* Hashtbl.find history key *)
-  HistoryMap.find key !history
+  let get_most_recent_loc (key:Var.t) = HistoryMap.find key !history
+
+
+  (** specially mangled variable to mark a value as returned from callee *)
+  let returnv procname = Pvar.mk (Mangled.from_string "returnv") procname |> Var.of_pvar
 
 
   let rec extract_nonthisvar_from_args methname (arg_ts:(Exp.t*Typ.t) list) (astate:S.t) : Exp.t list =
@@ -134,12 +132,6 @@ let search_recent_vardef (methname:Procname.t) (pvar:Var.t) (astate:S.t) =
         end
 
 
-  let garbage_collect astate = S.filter (fun (_,x,_,_) -> is_placeholder_vardef x) astate
-
-
-  let double_equal = fun (proc1, var1) (proc2, var2) -> Procname.equal proc1 proc2 && Var.equal var1 var2
-
-
   let triple_equal = fun (proc1, var1, loc1) (proc2, var2, loc2) -> Procname.equal proc1 proc2 && Var.equal var1 var2 && Location.equal loc1 loc2
 
 
@@ -163,7 +155,6 @@ let search_recent_vardef (methname:Procname.t) (pvar:Var.t) (astate:S.t) =
       match tuplelist with
       | [] -> []
       | (proc,name,loc,_) as targetTuple::t ->
-          (* if double_equal key (proc,name) *)
           if triple_equal key (proc, name, loc)
           then ((*L.progress "generating key: %a, targetTuple: %a\n" Var.pp name QuadrupleWithPP.pp targetTuple;*) targetTuple::get_tuple_by_key t key) 
           else get_tuple_by_key t key in
@@ -208,7 +199,8 @@ let search_recent_vardef (methname:Procname.t) (pvar:Var.t) (astate:S.t) =
     let carryfunc tup =
       let ph = placeholder_vardef methname in
       let callee_vardef = second_of tup in
-      let aliasset = doubleton callee_vardef (Var.of_id ret_id) in
+      (* 여기서 returnv를 집어넣자 *)
+      let aliasset = A.add (returnv callee_methname) @@ doubleton callee_vardef (Var.of_id ret_id) in
       (methname, ph, Location.dummy, aliasset) in
     let carriedover = List.map calleeTuples ~f:carryfunc |> S.of_list in
     S.union astate carriedover
@@ -321,9 +313,6 @@ let search_recent_vardef (methname:Procname.t) (pvar:Var.t) (astate:S.t) =
     | _, _ -> raise NotSupported
 
 
-  let testvar procname = Pvar.mk (Mangled.from_string "call") procname |> Var.of_pvar
-
-
   let exec_call (ret_id:Ident.t) (e_fun:Exp.t) (arg_ts:(Exp.t*Typ.t) list) (caller_summary:Summary.t) (astate:S.t) (methname:Procname.t) =
     let callee_methname =
       match e_fun with
@@ -332,12 +321,13 @@ let search_recent_vardef (methname:Procname.t) (pvar:Var.t) (astate:S.t) =
     match input_is_void_type arg_ts astate with
     | true -> (* All Arguments are Just Constants: just apply the summary, make a new tuple and end *)
         let astate_summary_applied = apply_summary astate caller_summary callee_methname ret_id methname in
-        let newstate = (methname, placeholder_vardef methname, Location.dummy, A.singleton (Var.of_id ret_id)) in
+        let aliasset = A.add (returnv callee_methname) @@ A.singleton (Var.of_id ret_id) in
+        let newstate = (methname, placeholder_vardef methname, Location.dummy, aliasset) in
         S.add newstate astate_summary_applied
     | false -> (* There is at least one argument which is a non-thisvar variable *)
         let astate_summary_applied = apply_summary astate caller_summary callee_methname ret_id methname in
         let formals = get_formal_args methname caller_summary callee_methname |> List.filter ~f:(fun x -> not @@ Var.is_this x) in
-        L.progress "formals: "; List.iter ~f:(fun var -> L.progress "%a, " Var.pp var) formals;
+        (* L.progress "formals: "; List.iter ~f:(fun var -> L.progress "%a, " Var.pp var) formals; *)
         begin match formals with
           | [] -> (* Callee in Native Code! *)
               astate_summary_applied
@@ -465,7 +455,7 @@ let exec_metadata (md:Sil.instr_metadata) (astate:S.t) =
   let widen ~prev:prev ~next:next ~num_iters:_ = join prev next
 
 
-  let pp_session_name node fmt = Format.fprintf fmt "def/loc/alias %a" CFG.Node.pp_id (CFG.Node.id node)
+  let pp_session_name node fmt = F.fprintf fmt "def/loc/alias %a" CFG.Node.pp_id (CFG.Node.id node)
 
 end
 

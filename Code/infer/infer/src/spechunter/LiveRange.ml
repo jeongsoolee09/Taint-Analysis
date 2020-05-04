@@ -327,7 +327,7 @@ let to_string hashtbl =
 
 let save_callgraph () =
   let ch = Out_channel.create "Callgraph.txt" in
-  Hashtbl.iter (fun k v -> Out_channel.output_string ch @@ (Procname.to_string k)^"->"^(Procname.to_string v^"\n") ) callgraph_table
+  Hashtbl.iter (fun k v -> Out_channel.output_string ch @@ (Procname.to_string k)^" -> "^(Procname.to_string v^"\n") ) callgraph_table
 
 
 (** interface with the driver *)

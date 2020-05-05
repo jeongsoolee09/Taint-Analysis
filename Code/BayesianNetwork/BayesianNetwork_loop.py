@@ -1,6 +1,5 @@
-from pomegranate import DiscreteDistribution, BayesianNetwork, Node
+from pomegranate import DiscreteDistribution, BayesianNetwork, Node, ConditionalProbabilityTable
 import time
-import random
 import numpy as np
 import matplotlib.pyplot as plt
 import pandas as pd
@@ -68,8 +67,6 @@ def create_tactics(chain_without_var):
     sin_suspects = collect_sin(chain_without_var)  # priority 2
     non_suspects = collect_non(chain_without_var, src_suspects, san_suspects,
                                sin_suspects, setofallmethods)  # priority 1
-    print({"src": src_suspects, "san": san_suspects,
-           "sin": sin_suspects, "non": non_suspects})
     return {"src": src_suspects, "san": san_suspects,
             "sin": sin_suspects, "non": non_suspects}
 
@@ -155,8 +152,6 @@ def add_edge_to_graph(G):
         firstNodeID = rtntype1+" "+pkg1+"."+name1+intype1
         secondNodeID = rtntype2+" "+pkg2+"."+name2+intype2
         G.add_edge(firstNodeID, secondNodeID)
-        # code = "G.add_edge(firstNodeID, secondNodeID)"
-        # exec(code, globals(), locals())
 
 
 def init_graph():
@@ -185,14 +180,16 @@ def create_roots_for_BN(G, BN):
 def create_internal_leaves_for_BN(G, BN):
     root = set(findRoot(G))
     internal_leaves = set(G.nodes)-root
-    labels = [1, 2, 3, 4]
+    labels = [1, 2, 3, 4]       # src, sin, san, non
     for node in internal_leaves:
         cond_prob_table_width = len(list(G.predecessors(node)))
-        cond_prob_table_gen = it.repeat(labels, cond_prob_table_width)
+        cond_prob_table_gen = it.repeat(labels, cond_prob_table_width+1)
         cond_prob_table = list(cond_prob_table_gen)
         cond_prob_table = it.product(*cond_prob_table)
         cond_prob_table = it.chain.from_iterable(cond_prob_table)
-        temp = np.fromiter(cond_prob_table, int).reshape(-1, cond_prob_table_width)
+        temp = np.fromiter(cond_prob_table, int).reshape(-1, cond_prob_table_width+1)
+        print(temp)
+        print(type(temp))
     # cond_prob_table = ConditionalProbabilityTable(cond_prob_table, G.predecessors(node))
 
 

@@ -122,8 +122,9 @@ edge2 = []
 
 for row1 in methodInfo1.itertuples(index=False):
     for row2 in methodInfo2.itertuples(index=False):
-        if scoring_function(row1, row2) > 20 or there_is_dataflow(row1, row2)\
-           or there_is_calledge(row1, row2):
+        if there_is_calledge(row1, row2) or\
+           there_is_dataflow(row1, row2) or\
+           scoring_function(row1, row2) > 20:
             edge1.append(row1)
             edge2.append(row2)
 print("completed bottleneck")  # ================

@@ -38,39 +38,55 @@ def tuple_string_to_tuple(tuple_string):
 def parse_chain(var_and_chain):
     var = var_and_chain[0]
     chain = var_and_chain[1]
-    chain = chain.split(" ->")
+    chain = chain.split(" -> ")
     chain = list(filter(lambda string: string != "", chain))
     chain = list(map(lambda item: item.lstrip(), chain))
     chain = list(map(lambda string: tuple_string_to_tuple(string), chain))
     return [var, chain]
 
 
-current_path = os.path.abspath("..")
-chainfile = os.path.join(current_path, "benchmarks", "fabricated", "Chain.txt")
-with open(chainfile, "r+") as chain:
-    lines = chain.readlines()
-    var_to_chain = list(filter(lambda line: line != "\n", lines))
-    var_to_chain = list(map(lambda line: line.rstrip(), var_to_chain))
-    var_and_chain = list(map(lambda line: line.split(": "), var_to_chain))
-    var_and_chain = list(map(lambda lst: parse_chain(lst), var_and_chain))
+def create_var_and_chain():
+    current_path = os.path.abspath("..")
+    chainfile = os.path.join(current_path, "benchmarks", "fabricated",
+                             "Chain.txt")
+    with open(chainfile, "r+") as chain:
+        lines = chain.readlines()
+        var_to_chain = list(filter(lambda line: line != "\n", lines))
+        var_to_chain = list(map(lambda line: line.rstrip(), var_to_chain))
+        var_and_chain = list(map(lambda line: line.split(": "), var_to_chain))
+        var_and_chain = list(map(lambda lst: parse_chain(lst), var_and_chain))
+    return var_and_chain
 
 
+# should be called AFTER graph_for_reference is constructed
 def create_tactics(chain_without_var):
     """consuming a chain in tuple list form,
     plans ahead how to question the oracle"""
+    setofallmethods = graph_for_reference.nodes()
     src_suspects = collect_src(chain_without_var)  # priority 4
     san_suspects = collect_san(chain_without_var)  # priority 3
     sin_suspects = collect_sin(chain_without_var)  # priority 2
-    non_suspects = collect_non(chain_without_var)  # priority 1
+    non_suspects = collect_non(chain_without_var, src_suspects, san_suspects,
+                               sin_suspects, setofallmethods)  # priority 1
+    print({"src": src_suspects, "san": san_suspects,
+           "sin": sin_suspects, "non": non_suspects})
     return {"src": src_suspects, "san": san_suspects,
             "sin": sin_suspects, "non": non_suspects}
+
+
+var_and_chain = create_var_and_chain()
+tactics_per_var = list(map(lambda x: (x[0], create_tactics(x[1])),
+                           var_and_chain))
 
 
 def collect_src(chain_without_var):  # priority 4
     out = []
     chain_head = chain_without_var[0]
     if "Define" in chain_head[1]:  # sanity check
-        out.append(chain_head[0])
+        activity = chain_head[1]
+        callee_methname = activity.split("using")[1]
+        callee_methname = callee_methname.lstrip(" ")
+        out.append(callee_methname)
     return out
 
 
@@ -84,32 +100,20 @@ def collect_san(chain_without_var):  # priority 3
 
 def collect_sin(chain_without_var):  # priority 2
     out = []
-    chain_end = chain_without_var[len(chain)-1]
+    chain_end = chain_without_var[len(chain_without_var)-1]
     if "Dead" in chain_end[1]:
         out.append(chain_end[0])
     return out
 
 
-# TODO: Caller-Callee Relation 고려해서 필터링 기준 엄격하게 하기
-def collect_non(chain_without_var):  # priority 1
-    out = []
-    chain_only_calls = list(filter(lambda tup: "Call" in tup[1],
-                                   chain_without_var))
-    chain_only_calls_procs = list(map(lambda tup: tup[0],
-                                      chain_only_calls))
-    for proc in chain_only_calls_procs:
-        proc_matching_tuples = list(filter(lambda tup: tup[0] == proc,
-                                           chain_without_var))
-        proc_matching_activities = list(map(lambda tup: tup[1],
-                                            proc_matching_tuples))
-        proc_matching_activities = list(filter(lambda act:
-                                               "Define" in act or
-                                               "Redefine" in act or
-                                               "Dead" in act,
-                                               proc_matching_activities))
-        if proc_matching_activities == []:
-            out.append(proc)
-    return out
+def collect_non(chain_without_var, src_s, san_s, sin_s, setofallmethods):
+    # priority 1
+    src_s = set(src_s)
+    san_s = set(san_s)
+    sin_s = set(sin_s)
+    setofallmethods = set(setofallmethods)
+    non_suspects = list(setofallmethods - src_s - san_s - sin_s)
+    return non_suspects
 
 
 flatPrior = DiscreteDistribution({'src': 0.25, 'sin': 0.25,
@@ -214,7 +218,9 @@ BN_for_inference = init_BN()
 print("# of nodes: ", len(list(graph_for_reference.nodes())))
 print("# of edges: ", len(list(graph_for_reference.edges())))
 
-nx.draw_circular(graph_for_reference, font_size=8, with_labels=True)
+plt.clf()
+nx.draw(graph_for_reference, font_size=8, with_labels=True,
+        pos=nx.circular_layout(graph_for_reference))
 
 raw_data.close()
 edges_data.close()

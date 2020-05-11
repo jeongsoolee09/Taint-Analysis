@@ -75,7 +75,6 @@ def scoring_function(info1, info2):
 def detect_dataflow():  # method1, method2
     out = []
     for [_, chain] in var_and_chain:
-        previous_meth = None
         for tup in chain:
             caller_name, activity = tup
             if "Call" in activity:
@@ -83,13 +82,36 @@ def detect_dataflow():  # method1, method2
                 callee_name = tmplst[1]+"("+tmplst[2].rstrip()
                 out.append((caller_name, callee_name))
             if "Define" in activity:
-                out.append((previous_meth, caller_name))
-            previous_meth = caller_name
+                callee_name = activity.split("using")[1]
+                callee_name = callee_name.lstrip(" ")
+                out.append((callee_name, caller_name))
     out = list(filter(lambda tup: None not in tup, out))
     return out
 
 
 dataflow_edges = detect_dataflow()
+
+
+def output_dfedges():
+    global dataflow_edges
+    with open("df.txt", "w+") as df:
+        for (dfsend, dfrcv) in dataflow_edges:
+            df.write(dfsend + ", " + dfrcv + "\n")
+
+
+def output_calledges():
+    global call_edges
+    with open("callg.txt", "w+") as call:
+        for (caller, callee) in call_edges:
+            call.write(caller + ", " + callee + "\n")
+
+
+def output_alledges():
+    output_dfedges()
+    output_calledges()
+
+
+output_alledges()
 
 
 def there_is_dataflow(info1, info2):
@@ -115,15 +137,13 @@ def there_is_calledge(info1, info2):
 
 
 print("starting bottleneck")  # ================
-
-
 edge1 = []
 edge2 = []
 
 for row1 in methodInfo1.itertuples(index=False):
     for row2 in methodInfo2.itertuples(index=False):
-        if there_is_calledge(row1, row2) or\
-           there_is_dataflow(row1, row2) or\
+        if there_is_dataflow(row1, row2) or\
+           there_is_calledge(row1, row2) or\
            scoring_function(row1, row2) > 20:
             edge1.append(row1)
             edge2.append(row2)

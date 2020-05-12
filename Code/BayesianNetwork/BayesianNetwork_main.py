@@ -79,7 +79,8 @@ def write_to_csv():
     writeList = pd.DataFrame(writeList, columns=["pkg", "rtntype",
                                                  "name", "intype",
                                                  "id"], dtype="str")
-    writeList = writeList.reset_index()  # embed the index into a separate column
+    # embed the index into a separate column
+    writeList = writeList.reset_index()
     writeList.to_csv("raw_data.csv", mode='w+')
 
 

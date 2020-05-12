@@ -141,13 +141,23 @@ print("starting bottleneck")  # ================
 edge1 = []
 edge2 = []
 
+i = 0
 for row1 in methodInfo1.itertuples(index=False):
     for row2 in methodInfo2.itertuples(index=False):
-        if there_is_dataflow(row1, row2) or\
-           there_is_calledge(row1, row2) or\
-           scoring_function(row1, row2) > 20:
+        i += 1
+        if there_is_dataflow(row1, row2):
             edge1.append(row1)
             edge2.append(row2)
+        # else:
+        #     if there_is_calledge(row1, row2):
+        #         edge1.append(row1)
+        #         edge2.append(row2)
+        #     else:
+        #         if scoring_function(row1, row2) > 20:
+        #             edge1.append(row1)
+        #             edge2.append(row2)
+
+print(i)
 print("completed bottleneck")  # ================
 
 

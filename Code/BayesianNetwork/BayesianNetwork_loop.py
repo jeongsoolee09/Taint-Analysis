@@ -1,4 +1,5 @@
-from pomegranate import DiscreteDistribution, BayesianNetwork, Node, ConditionalProbabilityTable
+from pomegranate import DiscreteDistribution, BayesianNetwork,\
+     Node, ConditionalProbabilityTable
 import time
 import numpy as np
 import matplotlib.pyplot as plt
@@ -222,7 +223,7 @@ def create_raw_CPTs_for_BN(G, BN):
         print(temp)
         raw_cpts.append(temp)
     return raw_cpts
-        
+
     # cond_prob_table = ConditionalProbabilityTable(cond_prob_table, G.predecessors(node))
 
 
@@ -290,7 +291,7 @@ default_df_probs_64 = [
 ]
 
 
-labelmap = {"src":1, "sin":2, "san":3, "non":4}
+labelmap = {"src": 1, "sin": 2, "san": 3, "non": 4}
 
 
 def take_first_four(lst):

@@ -137,30 +137,42 @@ def there_is_calledge(info1, info2):
         return False
 
 
-print("starting bottleneck")  # ================
-edge1 = []
-edge2 = []
-
-i = 0
-for row1 in methodInfo1.itertuples(index=False):
-    for row2 in methodInfo2.itertuples(index=False):
-        i += 1
-        if there_is_dataflow(row1, row2):
-            edge1.append(row1)
-            edge2.append(row2)
-        # else:
-        #     if there_is_calledge(row1, row2):
-        #         edge1.append(row1)
-        #         edge2.append(row2)
-        #     else:
-        #         if scoring_function(row1, row2) > 20:
-        #             edge1.append(row1)
-        #             edge2.append(row2)
-
-print(i)
-print("completed bottleneck")  # ================
+def there_is_already_an_edge_between(row1, row2, edgelist):
+    if (row1, row2) in edgelist or (row2, row1) in edgelist:
+        return True
+    else:
+        return False
 
 
+def find_that_edge_between(row1, row2, edgelist):
+    if (row1, row2) in edgelist:
+        return (row1, row2)
+    elif (row2, row1) in edgelist:
+        return (row2, row1)
+
+
+def add_edges():
+    edgelist = []
+    for row1 in methodInfo1.itertuples(index=False):
+        for row2 in methodInfo2.itertuples(index=False):
+            if there_is_dataflow(row1, row2):
+                if there_is_already_an_edge_between(row1, row2, edgelist):
+                    edge = find_that_edge_between(row1, row2, edgelist)
+                    print(edge)
+                    edgelist.remove(edge)
+                edgelist.append((row1, row2))
+            else:
+                if there_is_calledge(row1, row2):
+                    edgelist.append((row1, row2))
+                else:
+                    if scoring_function(row1, row2) > 20:
+                        edgelist.append((row1, row2))
+    return edgelist
+
+
+[edge1, edge2] = zip(*add_edges())
+edge1 = list(edge1)
+edge2 = list(edge2)
 edge1 = pd.DataFrame(edge1, columns=methodInfo1.columns)
 edge2 = pd.DataFrame(edge2, columns=methodInfo2.columns)
 edges = pd.merge(edge1, edge2, left_index=True, right_index=True)

@@ -47,13 +47,25 @@ let batch_initialize_graph () =
 
 
 (** updates the graph based on instruction types *)
-let update_graph (instr:Sil.instr) graph = raise NotImplemented
+let update_graph (instr:Sil.instr) (graph:G.t) =
+  match instr with
+  | Load {id=id; e=exp} -> raise NotImplemented
+  | Store {e1=exp1; e2=exp2} -> raise NotImplemented
+  | Prune _ -> graph
+  | Call ((ret_id, _), e_fun, arg_ts, _, _) -> raise NotImplemented
+  | Metadata md -> raise NotImplemented (* maybe gc here? *)
+
 
 (** implements all_aliases *)
 let all_aliases ap = raise NotImplemented
 
+
 (** implements intersect *)
 let intersect g1 g2 = raise NotImplemented
 
+
 (** implements gc *)
 let gc g = raise NotImplemented
+
+let main () =
+  raise NotImplemented

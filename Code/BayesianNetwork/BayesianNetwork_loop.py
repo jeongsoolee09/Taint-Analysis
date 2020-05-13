@@ -221,6 +221,69 @@ def take_fourth_four(lst):
     return lst[12:16]
 
 
+def take_first_16(lst):
+    return lst[0:16]
+
+
+def take_second_16(lst):
+    return lst[16:32]
+
+
+def take_third_16(lst):
+    return lst[32:48]
+
+
+def take_fourth_16(lst):
+    return lst[48:64]
+
+
+default_df_probs_16 = [  # only df
+    0.1, 0.3, 0.3, 0.3,
+    0.2, 0.2, 0.2, 0.4,
+    0.2, 0.3, 0.2, 0.3,
+    0.2, 0.2, 0.2, 0.4
+]
+
+
+default_call_probs_64 = [  # two dfs
+    0.7, 0.1, 0.1, 0.1,
+    0.1, 0.7, 0.1, 0.1,
+    0.1, 0.1, 0.7, 0.1,
+    0.1, 0.1, 0.1, 0.7
+]
+
+
+default_call_df_probs_64 = [  # df and call
+    0.4, 0.2, 0.2, 0.2,
+    0.4, 0.2, 0.2, 0.2,
+    0.4, 0.2, 0.2, 0.2,
+    0.4, 0.2, 0.2, 0.2,
+
+    0.2, 0.4, 0.2, 0.2,
+    0.2, 0.4, 0.2, 0.2,
+    0.2, 0.4, 0.2, 0.2,
+    0.2, 0.4, 0.2, 0.2,
+
+    0.2, 0.2, 0.4, 0.2,
+    0.2, 0.2, 0.4, 0.2,
+    0.2, 0.2, 0.4, 0.2,
+    0.2, 0.2, 0.4, 0.2,
+
+    0.2, 0.2, 0.2, 0.4,
+    0.2, 0.2, 0.2, 0.4,
+    0.2, 0.2, 0.2, 0.4,
+    0.2, 0.2, 0.2, 0.4
+]
+
+
+labelmap = {"src": 1, "sin": 2, "san": 3, "non": 4}
+
+
+def adapt_call_probs_to_current():
+    """Call 엣지에 한정해서, CPT의 끝에 매달기 위한 확률들을 만들어 낸다."""
+    pass
+
+
 def adapt_df_probs_to_current(parent_label, child_label, ndarray):
     """DF 엣지에 한정해서, CPT의 끝에 매달기 위한 확률들을 만들어 낸다."""
     parent_label_num = labelmap[parent_label]
@@ -239,33 +302,44 @@ def adapt_df_probs_to_current(parent_label, child_label, ndarray):
             previous_probs_16[i] = 0.1
 
 
-def adapt_dfcall_edges_to_current(parent_label, child_label, ndarray):
-    parent_label_num = labelmap[parent_label]
-    child_label_num = labelmap[child_label]
-    result = list(zip(*np.where(ndarray == parent_label_num)))
-    result = list(filter(lambda tup: tup[1] == 0, result))
-    indices = list(map(lambda tup: tup[0], result))
-    if len(ndarray) == 64:  # call과 섞여 있는 경우
-        # highest와 lowest의 정의를 다르게 해야 한다.
-        previous_probs_64 = default_df_probs_64[:]
-        # print(indices)
-        if child_label_num == 1:  # src
-            highest_rows = take_first_four(indices)
-        elif child_label_num == 2:  # sin
-            highest_rows = take_second_four(indices)
-        elif child_label_num == 3:  # san
-            highest_rows = take_third_four(indices)
-        elif child_label_num == 4:  # non
-            highest_rows = take_fourth_four(indices)
-        # print(highest_rows)
-        highest = highest_rows[child_label_num-1]
-        # print(highest)
-        highest_rows.remove(highest)
-        lowest = highest_rows
-        previous_probs_64[highest] = 0.7
-        for i in lowest:
-            previous_probs_64[i] = 0.1
-        # print(previous_probs_64)
+def adapt_calldf_edges_to_current(parent_label, parent_label2, child_label, ndarray):
+    """call/df엣지에 한정해, parent_label과 parent_label2에 맞추어 ndarray를 수정한다."""
+    if parent_label == "src":
+        slice_ndarray = take_first_16(ndarray)
+    elif parent_label == "sin":
+        slice_ndarray = take_second_16(ndarray)
+    elif parent_label == "san":
+        slice_ndarray = take_third_16(ndarray)
+    elif parent_label == "non":
+        slice_ndarray = take_fourth_16(ndarray)
+    if parent_label2 == "src":
+        target = take_first_four(slice_ndarray)
+    elif parent_label2 == "sin":
+        target = take_second_four(slice_ndarray)
+    elif parent_label2 == "san":
+        target = take_third_four(slice_ndarray)
+    elif parent_label2 == "non":
+        target = take_fourth_four(slice_ndarray)
+    if child_label == "src":
+        target[0] = 0.7
+        target[1] = 0.1
+        target[2] = 0.1
+        target[3] = 0.1
+    elif child_label == "sin":
+        target[0] = 0.1
+        target[1] = 0.7
+        target[2] = 0.1
+        target[3] = 0.1
+    elif child_label == "san":
+        target[0] = 0.1
+        target[1] = 0.1
+        target[2] = 0.7
+        target[3] = 0.1
+    elif child_label == "non":
+        target[0] = 0.1
+        target[1] = 0.1
+        target[2] = 0.1
+        target[3] = 0.7
 
 
 def create_raw_CPTs_for_BN(G, BN):
@@ -325,42 +399,6 @@ def create_tactics(chain_without_var):
 var_and_chain = create_var_and_chain()
 tactics_per_var = list(map(lambda x: (x[0], create_tactics(x[1])),
                            var_and_chain))
-
-default_df_probs_16 = [
-    0.1, 0.3, 0.3, 0.3,
-    0.2, 0.2, 0.2, 0.4,
-    0.2, 0.3, 0.2, 0.3,
-    0.2, 0.2, 0.2, 0.4
-]
-
-
-default_df_probs_64 = [
-    0.4, 0.2, 0.2, 0.2,
-    0.2, 0.4, 0.2, 0.2,
-    0.2, 0.2, 0.4, 0.2,
-    0.2, 0.2, 0.2, 0.4,
-    0.4, 0.2, 0.2, 0.2,
-    0.2, 0.4, 0.2, 0.2,
-    0.2, 0.2, 0.4, 0.2,
-    0.2, 0.2, 0.2, 0.4,
-    0.4, 0.2, 0.2, 0.2,
-    0.2, 0.4, 0.2, 0.2,
-    0.2, 0.2, 0.4, 0.2,
-    0.2, 0.2, 0.2, 0.4,
-    0.4, 0.2, 0.2, 0.2,
-    0.2, 0.4, 0.2, 0.2,
-    0.2, 0.2, 0.4, 0.2,
-    0.2, 0.2, 0.2, 0.4,
-]
-
-
-labelmap = {"src": 1, "sin": 2, "san": 3, "non": 4}
-
-
-def adapt_call_probs_to_current():
-    """Call 엣지에 한정해서, CPT의 끝에 매달기 위한 확률들을 만들어 낸다."""
-    pass
-
 
 print("# of nodes: ", len(list(graph_for_reference.nodes())))
 print("# of edges: ", len(list(graph_for_reference.edges())))

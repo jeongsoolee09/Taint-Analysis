@@ -158,7 +158,7 @@ def add_edges():
             if there_is_dataflow(row1, row2):
                 if there_is_already_an_edge_between(row1, row2, edgelist):
                     edge = find_that_edge_between(row1, row2, edgelist)
-                    print(edge)
+                    # print(edge)
                     edgelist.remove(edge)
                 edgelist.append((row1, row2))
             else:

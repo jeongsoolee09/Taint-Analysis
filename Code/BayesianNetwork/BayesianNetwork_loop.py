@@ -206,6 +206,7 @@ def create_roots_for_BN(G, BN):
 
 
 def create_raw_CPTs_for_BN(G, BN):
+    """internal node를 파악하고, 그에 대한 CPT를 만들어 준다."""
     root = set(findRoot(G))
     internal_leaves = set(G.nodes)-root
     labels = [1, 2, 3, 4]       # src, sin, san, non
@@ -219,8 +220,8 @@ def create_raw_CPTs_for_BN(G, BN):
         cond_prob_table = list(cond_prob_table_gen)
         cond_prob_table = it.product(*cond_prob_table)
         cond_prob_table = it.chain.from_iterable(cond_prob_table)
-        temp = np.fromiter(cond_prob_table, int).reshape(-1, cond_prob_table_width+1)
-        print(temp)
+        temp = np.fromiter(cond_prob_table,
+                           int).reshape(-1, cond_prob_table_width+1)
         raw_cpts.append(temp)
     return raw_cpts
 
@@ -310,47 +311,55 @@ def take_fourth_four(lst):
     return lst[12:16]
 
 
-def adapt_df_probs_to_current(parent_label, child_label):
+def adapt_df_probs_to_current(parent_label, child_label, ndarray):
+    """DF 엣지에 한정해서, CPT의 끝에 매달기 위한 확률들을 만들어 낸다."""
     parent_label_num = labelmap[parent_label]
     child_label_num = labelmap[child_label]
-    ndarrays = create_raw_CPTs_for_BN(graph_for_reference, BN_for_inference)
-    for ndarray in ndarrays:
-        result = list(zip(*np.where(ndarray == parent_label_num)))
-        result = list(filter(lambda tup: tup[1] == 0, result))
-        indices = list(map(lambda tup: tup[0], result))
-        if len(ndarray) == 16:
-            previous_probs_16 = default_df_probs_16[:]
-            highest = indices[child_label_num-1]
-            indices.remove(highest)
-            lowest = indices
-            # highest에는 0.7을, lowest에는 0.1을 할당하면 된다.
-            previous_probs_16[highest] = 0.7
-            for i in lowest:
-                previous_probs_16[i] = 0.1
-        elif len(ndarray) == 64:
-            # highest와 lowest의 정의를 다르게 해야 한다.
-            previous_probs_64 = default_df_probs_64[:]
-            print(indices)
-            if child_label_num == 1:  # src
-                highest_rows = take_first_four(indices)
-            elif child_label_num == 2:  # sin
-                highest_rows = take_second_four(indices)
-            elif child_label_num == 3:  # san
-                highest_rows = take_third_four(indices)
-            elif child_label_num == 4:  # non
-                highest_rows = take_fourth_four(indices)
-            print(highest_rows)
-            highest = highest_rows[child_label_num-1]
-            # print(highest)
-            highest_rows.remove(highest)
-            lowest = highest_rows
-            previous_probs_64[highest] = 0.7
-            for i in lowest:
-                previous_probs_64[i] = 0.1
-            print(previous_probs_64)
+    result = list(zip(*np.where(ndarray == parent_label_num)))
+    result = list(filter(lambda tup: tup[1] == 0, result))
+    indices = list(map(lambda tup: tup[0], result))
+    if len(ndarray) == 16:
+        previous_probs_16 = default_df_probs_16[:]
+        highest = indices[child_label_num-1]
+        indices.remove(highest)
+        lowest = indices
+        # highest에는 0.7을, lowest에는 0.1을 할당하면 된다.
+        previous_probs_16[highest] = 0.7
+        for i in lowest:
+            previous_probs_16[i] = 0.1
 
 
-def adapt_call_probs_to_current(args):
+def adapt_dfcall_edges_to_current(parent_label, child_label, ndarray):
+    parent_label_num = labelmap[parent_label]
+    child_label_num = labelmap[child_label]
+    result = list(zip(*np.where(ndarray == parent_label_num)))
+    result = list(filter(lambda tup: tup[1] == 0, result))
+    indices = list(map(lambda tup: tup[0], result))
+    if len(ndarray) == 64:  # call과 섞여 있는 경우
+        # highest와 lowest의 정의를 다르게 해야 한다.
+        previous_probs_64 = default_df_probs_64[:]
+        # print(indices)
+        if child_label_num == 1:  # src
+            highest_rows = take_first_four(indices)
+        elif child_label_num == 2:  # sin
+            highest_rows = take_second_four(indices)
+        elif child_label_num == 3:  # san
+            highest_rows = take_third_four(indices)
+        elif child_label_num == 4:  # non
+            highest_rows = take_fourth_four(indices)
+        # print(highest_rows)
+        highest = highest_rows[child_label_num-1]
+        # print(highest)
+        highest_rows.remove(highest)
+        lowest = highest_rows
+        previous_probs_64[highest] = 0.7
+        for i in lowest:
+            previous_probs_64[i] = 0.1
+        # print(previous_probs_64)
+
+
+def adapt_call_probs_to_current():
+    """Call 엣지에 한정해서, CPT의 끝에 매달기 위한 확률들을 만들어 낸다."""
     pass
 
 

@@ -17,8 +17,8 @@ module type Vartype = module type of Var
 module type Loctype = module type of Location
 
 (** The Set of Set of (either Logical or Program) Variables in an alias relation. **)
-module SetofAliases : AbstractDomain.FiniteSetS with type elt = Var.t
-module type SetofAliases = AbstractDomain.FiniteSetS with type elt = Var.t
+module SetofAliases : AbstractDomain.FiniteSetS with type elt = Var.t * AccessPath.access list
+module type SetofAliases = AbstractDomain.FiniteSetS with type elt = Var.t * AccessPath.access list
 
 val doubleton : SetofAliases.elt -> SetofAliases.elt -> SetofAliases.t
 

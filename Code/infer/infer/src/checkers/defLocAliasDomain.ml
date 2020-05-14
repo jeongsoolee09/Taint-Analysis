@@ -20,8 +20,12 @@ module type Loctype = module type of Location
 
 (** The Set of Set of (either Logical or Program) Variables in an alias relation. **)
 module SetofAliases = AbstractDomain.FiniteSet (struct
-    include Var
-    let pp fmt x = Var.pp fmt x
+    type t = Var.t * AccessPath.access list [@@deriving compare]
+    let pp fmt (x:t) =
+      let var, list = x in
+      F.fprintf fmt "(%a, [" Var.pp var;
+      List.iter list ~f:(fun access -> F.fprintf fmt "%a, " AccessPath.pp_access access);
+      F.fprintf fmt "])"
 end)
 
 let doubleton (a:SetofAliases.elt) (b:SetofAliases.elt) : SetofAliases.t =
@@ -29,7 +33,7 @@ let doubleton (a:SetofAliases.elt) (b:SetofAliases.elt) : SetofAliases.t =
   let bset = SetofAliases.singleton b in
   SetofAliases.union aset bset
 
-module type SetofAliases = AbstractDomain.FiniteSetS with type elt = Var.t
+module type SetofAliases = AbstractDomain.FiniteSetS with type elt = Var.t * AccessPath.access list
 
 (** The Quadruple of the above three. **)
 module Quadruple (Domain1:Methname) (Domain2:Vartype) (Domain3:Loctype) (Domain4:SetofAliases) = struct

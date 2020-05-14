@@ -46,7 +46,7 @@ let get_my_formal_args (methname:Procname.t) =
 let is_mine id pvar methname astate =
   try
     let (_, _, _, aliasset) = search_target_tuple_by_id id methname astate in
-    A.mem (Var.of_id id) aliasset && A.mem (Var.of_pvar pvar) aliasset
+    A.mem (Var.of_id id, []) aliasset && A.mem (Var.of_pvar pvar, []) aliasset
   with _ ->
     false
 
@@ -78,6 +78,13 @@ let input_is_void_type (arg_ts:(Exp.t*Typ.t) list) (astate:S.t) : bool =
 
 
 let is_returnv (var:Var.t) : bool =
+  match var with
+  | LogicalVar _ -> false
+  | ProgramVar pv -> String.equal (Pvar.to_string pv) "returnv"
+
+
+let is_returnv_ap (ap:A.elt) : bool =
+  let var, _ = ap in
   match var with
   | LogicalVar _ -> false
   | ProgramVar pv -> String.equal (Pvar.to_string pv) "returnv"

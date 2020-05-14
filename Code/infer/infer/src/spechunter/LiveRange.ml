@@ -133,11 +133,13 @@ let print_graph graph =
 
 (** alias set에서 자기 자신, this, ph, 직전 variable을 빼고 남은 program variable들을 리턴 *)
 let collect_program_vars_from (aliases:A.t) (self:Var.t) (just_before:Var.t) : Var.t list =
-  List.filter ~f:(fun x -> is_program_var x &&
+  let filtered = List.filter ~f:(fun (x, _) -> is_program_var x &&
                            not @@ Var.equal self x &&
                            not @@ Var.is_this x &&
                            not @@ is_placeholder_vardef x &&
-                           not @@ Var.equal just_before x) (A.elements aliases)
+                           not @@ Var.equal just_before x) (A.elements aliases) in
+  List.map ~f:fst filtered
+
 
 
 let select_up_to (tuple:S.elt) ~within:(astate:S.t) : S.t =
@@ -222,7 +224,8 @@ let remove_from_aliasset ~from:tuple ~remove:var =
   (a, b, c, aliasset')
 
 
-let procname_of (var:Var.t) : Procname.t =
+let procname_of (ap:A.elt) : Procname.t =
+  let var, _ = ap in
   match var with
   | ProgramVar pv ->
       begin match Pvar.get_declaring_function pv with
@@ -240,10 +243,10 @@ let compute_chain (var:Var.t) : chain =
   L.progress "first_astate: %a\n" S.pp first_astate ;
   L.progress "first_tuple: %a\n" QuadrupleWithPP.pp first_tuple ; *)
   let first_aliasset = fourth_of first_tuple in
-  let returnv = A.find_first is_returnv first_aliasset in
+  let returnv = A.find_first is_returnv_ap first_aliasset in
   let source_meth = procname_of returnv in
   let rec compute_chain_inner  (current_methname:Procname.t) (current_astate:S.t) (current_tuple:S.elt) (current_chain:chain) : chain =
-    let aliasset = A.filter (is_returnv >> not) @@ fourth_of current_tuple in
+    let aliasset = A.filter (is_returnv_ap >> not) @@ fourth_of current_tuple in
     let vardef = second_of current_tuple in
     (* L.progress "vardef: %a\n" Var.pp vardef;
     L.progress "current tuple: %a\n" QuadrupleWithPP.pp current_tuple; *)
@@ -276,7 +279,7 @@ let compute_chain (var:Var.t) : chain =
           (* L.progress "tuples_with_return_var: "; List.iter ~f:(fun tup -> L.progress "%a, " QuadrupleWithPP.pp tup) tuples_with_return_var ; *)
           let have_been_before_filtered = filter_have_been_before tuples_with_return_var current_chain in
           (* L.progress "have_been_before_filtered: "; List.iter ~f:(fun tup -> L.progress "%a, " QuadrupleWithPP.pp tup) have_been_before_filtered; *)
-          let new_tuple = remove_from_aliasset ~from:( find_earliest_tuple_within have_been_before_filtered) ~remove:var_being_returned in
+          let new_tuple = remove_from_aliasset ~from:( find_earliest_tuple_within have_been_before_filtered) ~remove:(var_being_returned, []) in
           let new_chain = (first_of new_tuple, Define (current_methname, second_of new_tuple)) :: current_chain in
           compute_chain_inner direct_caller caller_summary new_tuple new_chain
         else (* 동일 procedure 내에서의 define 혹은 call *)
@@ -304,7 +307,8 @@ let collect_all_vars () =
   let setofallstates =  Hashtbl.fold (fun _ v acc -> S.union v acc) summary_table S.empty in
   let listofallstates = S.elements setofallstates in
   let listofallvars = List.map ~f:second_of listofallstates in
-  A.of_list listofallvars
+  let listofallvar_aps = List.map ~f:(fun var -> (var, [])) listofallvars in
+  A.of_list listofallvar_aps
 
 
 let pp_status fmt x =
@@ -340,8 +344,8 @@ let run_lrm () =
   filter_callgraph_table callgraph_table;
   callg_hash2og ();
   let setofallvars_with_garbage = collect_all_vars () in
-  let setofallvars = A.filter (fun var -> not @@ Var.is_this var && not @@ is_placeholder_vardef var) setofallvars_with_garbage in
-  let xvar = (List.nth_exn (A.elements setofallvars) 0) in
+  let setofallvars = A.filter (fun (var, _) -> not @@ Var.is_this var && not @@ is_placeholder_vardef var) setofallvars_with_garbage in
+  let xvar, _ = (List.nth_exn (A.elements setofallvars) 0) in
   add_chain xvar (compute_chain xvar);
   (* A.iter (fun var -> L.progress "Var: %a\n" Var.pp var) setofallvars; *)
   (* A.iter (fun var -> L.progress "computing chain for %a\n" Var.pp var; add_chain var (compute_chain var)) setofallvars; *)

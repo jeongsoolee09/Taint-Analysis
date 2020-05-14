@@ -28,18 +28,18 @@ let search_target_tuple_by_pvar (pvar:Var.t) (methname:Procname.t) (tupleset:S.t
     match elements with
     | [] -> raise SearchByPvarFailed
     | ((procname, _, _, aliasset) as target)::t ->
-        if Procname.equal procname methname && A.mem pvar aliasset then target else search_target_tuple_by_pvar_inner pvar methname t in
+        if Procname.equal procname methname && A.mem (pvar, []) aliasset then target else search_target_tuple_by_pvar_inner pvar methname t in
   search_target_tuple_by_pvar_inner pvar methname elements
 
 
-(* 위 함수의 리스트 버전 *)
+(* list version of the above *)
 let search_target_tuples_by_pvar (pvar:Var.t) (methname:Procname.t) (tupleset:S.t) =
   let elements = S.elements tupleset in
   let rec search_target_tuples_by_pvar_inner pvar (methname:Procname.t) elements = 
     match elements with
     | [] -> []
     | ((procname, _, _, aliasset) as target)::t ->
-        if Procname.equal procname methname && A.mem pvar aliasset
+        if Procname.equal procname methname && A.mem (pvar, []) aliasset
         then target::search_target_tuples_by_pvar_inner pvar methname t
         else search_target_tuples_by_pvar_inner pvar methname t in
   search_target_tuples_by_pvar_inner pvar methname elements
@@ -51,18 +51,18 @@ let search_target_tuple_by_id (id:Ident.t) (methname:Procname.t) (tupleset:S.t) 
     match elements with
     | [] -> raise SearchByIdFailed
     | ((procname, _, _, aliasset) as target)::t ->
-        if Procname.equal procname methname && A.mem id aliasset then target else search_target_tuple_by_id_inner id methname t in
-  search_target_tuple_by_id_inner (Var.of_id id) methname elements
+        if Procname.equal procname methname && A.mem (Var.of_id id, []) aliasset then target else search_target_tuple_by_id_inner id methname t in
+  search_target_tuple_by_id_inner id methname elements
 
 
 let weak_search_target_tuple_by_id (id:Ident.t) (tupleset:S.t) =
   let elements = S.elements tupleset in
-  let rec weak_search_target_tuple_by_id_inner (id:Var.t) (elements:S.elt list) = 
+  let rec weak_search_target_tuple_by_id_inner id (elements:S.elt list) = 
     match elements with
     | [] -> raise WeakSearchByIdFailed
     | ((_, _, _, aliasset) as target)::t ->
-        if A.mem id aliasset then target else weak_search_target_tuple_by_id_inner id t in
-  weak_search_target_tuple_by_id_inner (Var.of_id id) elements
+        if A.mem (Var.of_id id, []) aliasset then target else weak_search_target_tuple_by_id_inner id t in
+  weak_search_target_tuple_by_id_inner id elements
 
 
 let search_target_tuples_by_id (id:Ident.t) (methname:Procname.t) (tupleset:S.t) =
@@ -71,10 +71,15 @@ let search_target_tuples_by_id (id:Ident.t) (methname:Procname.t) (tupleset:S.t)
     match elements with
     | [] -> acc
     | ((procname, _, _, aliasset) as target)::t ->
-        if Procname.equal procname methname && A.mem id aliasset
+        if Procname.equal procname methname && A.mem (Var.of_id id, []) aliasset
         then search_target_tuples_by_id_inner id methname t (target::acc)
         else search_target_tuples_by_id_inner id methname t acc in
-  search_target_tuples_by_id_inner (Var.of_id id) methname elements []
+  search_target_tuples_by_id_inner id methname elements []
+
+
+let is_return_ap (ap:A.elt) =
+  let var, _ = ap in
+  Var.is_return var
 
 
 let find_tuple_with_ret (tupleset:S.t) (methname:Procname.t) =
@@ -83,7 +88,7 @@ let find_tuple_with_ret (tupleset:S.t) (methname:Procname.t) =
     match tuplelist with
     | [] -> acc
     | (procname, _, _, aliasset) as target :: t ->
-        if Procname.equal procname methname && A.exists Var.is_return aliasset
+        if Procname.equal procname methname && A.exists is_return_ap aliasset
         then find_tuple_with_ret_inner t methname (target::acc)
         else find_tuple_with_ret_inner t methname acc in
   find_tuple_with_ret_inner elements methname []
@@ -157,7 +162,8 @@ let find_earliest_tuple_of_var_within (tuplelist:S.elt list) (var:Var.t) : S.elt
   find_earliest_tuple_within vartuples
 
 
-let is_program_var (var:Var.t) : bool =
+let is_program_var_ap (ap:A.elt) : bool =
+  let var, _ = ap in
   match var with
   | LogicalVar _ -> false
   | ProgramVar _ -> true
@@ -165,10 +171,10 @@ let is_program_var (var:Var.t) : bool =
 
 let find_var_being_returned (aliasset:A.t) : Var.t =
   let elements = A.elements aliasset in
-  let filtered = List.filter ~f:is_program_var elements
-                 |> List.filter ~f:(Var.is_return >> not) in
+  let filtered = List.filter ~f:is_program_var_ap elements
+                 |> List.filter ~f:(is_return_ap >> not) in
   match filtered with
-  | [var] -> var
+  | [(var, _)] -> var
   | _ -> raise TooManyReturns
 
 

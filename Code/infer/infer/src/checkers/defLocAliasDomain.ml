@@ -72,7 +72,7 @@ let placeholder_vardef (pid:Procname.t) : Var.t =
   let ph_vardef = Pvar.mk mangled pid in
   Var.of_pvar ph_vardef
 
-let bottuple = (Procname.empty_block, placeholder_vardef (Procname.empty_block), Location.dummy, SetofAliases.empty)
+let bottuple = (Procname.empty_block, (placeholder_vardef (Procname.empty_block), []), Location.dummy, SetofAliases.empty)
 
 (* Utility Functions *)
 let first_of (a,_,_,_) = a

@@ -68,7 +68,7 @@ let input_is_void_type (arg_ts:(Exp.t*Typ.t) list) (astate:S.t) : bool =
   | [] -> false
   | (Var var, _)::[] ->
       begin try
-        let (_, vardef, _, _) = weak_search_target_tuple_by_id var astate in
+          let (_, (vardef, _), _, _) = weak_search_target_tuple_by_id var astate in
         if Var.is_this vardef then true else false
       with _ -> (* it's a constructor or something abnormal: We give up soundness *)
             true end

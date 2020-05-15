@@ -86,7 +86,7 @@ let search_recent_vardef (methname:Procname.t) (pvar:Var.t) (astate:S.t) =
   let rec search_recent_vardef_inner methname id tuplelist =
     match tuplelist with
     | [] -> raise SearchRecentVardefFailed
-    | (proc, var, loc, aliasset) as targetTuple::t ->
+    | (proc, (var, _),  loc, aliasset) as targetTuple::t ->
         (* L.progress "methname: %a, searching: %a, loc: %a, proc: %a\n" Procname.pp methname Var.pp var Location.pp loc Procname.pp proc; *)
         let proc_cond = Procname.equal proc methname in
         let id_cond = A.mem (id, []) aliasset in
@@ -123,7 +123,7 @@ let search_recent_vardef (methname:Procname.t) (pvar:Var.t) (astate:S.t) =
             (* L.progress "Processing (%a, %a)\n" Var.pp actualvar Var.pp formalvar; *)
             (* L.progress "methname: %a, id: %a\n" Procname.pp methname Ident.pp vl; *)
             (* L.progress "Astate before death: @.%a@." S.pp (S.of_list actualtuples); *)
-            let actual_pvar = second_of @@ weak_search_target_tuple_by_id vl (S.of_list actualtuples) in
+            let actual_pvar, _ = second_of @@ weak_search_target_tuple_by_id vl (S.of_list actualtuples) in
             (* possibly various definitions of the pvar in question. *)
             let candTuples = 
             (* L.progress "methname: %a, var: %a\n" Procname.pp methname Var.pp actual_pvar;  *)
@@ -146,7 +146,7 @@ let search_recent_vardef (methname:Procname.t) (pvar:Var.t) (astate:S.t) =
     let rec enum_nodup (tuplelist:S.elt list) (current:(Procname.t*Var.t*Location.t) list) =
       match tuplelist with
       | [] -> current
-      | (a,b,c,_)::t ->
+      | (a,(b, _),c,_)::t ->
         if not (List.mem current (a,b,c) ~equal:triple_equal) && not (Var.equal b (placeholder_vardef a) || Var.is_this b)
           then enum_nodup t ((a,b,c)::current)
           else enum_nodup t current in
@@ -159,7 +159,7 @@ let search_recent_vardef (methname:Procname.t) (pvar:Var.t) (astate:S.t) =
     let rec get_tuple_by_key tuplelist key =
       match tuplelist with
       | [] -> []
-      | (proc,name,loc,_) as targetTuple::t ->
+      | (proc,(name, _), loc,_) as targetTuple::t ->
           if triple_equal key (proc, name, loc)
           then ((*L.progress "generating key: %a, targetTuple: %a\n" Var.pp name QuadrupleWithPP.pp targetTuple;*) targetTuple::get_tuple_by_key t key) 
           else get_tuple_by_key t key in
@@ -172,7 +172,7 @@ let search_recent_vardef (methname:Procname.t) (pvar:Var.t) (astate:S.t) =
     let rec duplicated_times_inner (var:Var.t) (current_line:int) (current_time:int) (lst:S.elt list) =
       match lst with
       | [] -> (*L.progress "dup time: %d\n" current_time;*) current_time
-      | (_, vardef, loc, _)::t ->
+      | (_, (vardef, _), loc, _)::t ->
           if Var.equal var vardef
           then (if Int.equal loc.line current_line
                 then duplicated_times_inner var current_line (current_time+1) t
@@ -189,7 +189,7 @@ let search_recent_vardef (methname:Procname.t) (pvar:Var.t) (astate:S.t) =
     | lst::t ->
         let sample_tuple = List.nth_exn lst 0 in
         (*L.progress "sample tuple: %a\n" QuadrupleWithPP.pp sample_tuple;*)
-        let current_var = second_of sample_tuple in
+        let current_var, _ = second_of sample_tuple in
         if not @@ is_placeholder_vardef current_var && not @@ Var.is_this current_var
         then (if duplicated_times current_var lst >= 2
               then lst::collect_duplicates t
@@ -203,10 +203,10 @@ let search_recent_vardef (methname:Procname.t) (pvar:Var.t) (astate:S.t) =
     (** 콜리 튜플 하나에 대해, 튜플 하나를 새로 만들어 alias set에 추가 *)
     let carryfunc tup =
       let ph = placeholder_vardef methname in
-      let callee_vardef = second_of tup in
+      let callee_vardef, _ = second_of tup in
       (* 여기서 returnv를 집어넣자 *)
       let aliasset = A.add (mk_returnv callee_methname, []) @@ doubleton (callee_vardef, []) (Var.of_id ret_id, []) in
-      (methname, ph, Location.dummy, aliasset) in
+      (methname, (ph, []),  Location.dummy, aliasset) in
     let carriedover = List.map calleeTuples ~f:carryfunc |> S.of_list in
     S.union astate carriedover
 
@@ -261,7 +261,7 @@ let search_recent_vardef (methname:Procname.t) (pvar:Var.t) (astate:S.t) =
             let pvar_var = Var.of_pvar pv in
             let loc = CFG.Node.loc node in
             let aliasset_new = A.add (pvar_var, []) aliasset in
-            let newstate = (methname, pvar_var, loc, aliasset_new) in
+            let newstate = (methname, (pvar_var, []),  loc, aliasset_new) in
             let astate_rmvd = S.remove targetTuple astate in
             add_to_history pvar_var loc;
             S.add newstate astate_rmvd
@@ -271,19 +271,19 @@ let search_recent_vardef (methname:Procname.t) (pvar:Var.t) (astate:S.t) =
         let pvar_var = Var.of_pvar pv in
         let loc = CFG.Node.loc node in
         let aliasset_new = A.singleton (pvar_var, []) in
-        let newstate = (methname, pvar_var, loc, aliasset_new) in
+        let newstate = (methname, (pvar_var, []), loc, aliasset_new) in
         add_to_history pvar_var loc; S.add newstate astate
     | Lvar pv, BinOp (_, Var id, Const _) | Lvar pv, BinOp (_, Const _, Var id) when is_mine id pv methname astate ->
-        let (procname, vardef, _, aliasset) as targetTuple = search_target_tuple_by_id id methname astate in
+        let (procname, (vardef, _),  _, aliasset) as targetTuple = search_target_tuple_by_id id methname astate in
         let pvar_var = Var.of_pvar pv in
         let loc = CFG.Node.loc node in
         let aliasset_new = A.add (pvar_var, []) aliasset in
           if not (is_placeholder_vardef vardef)
-          then let newstate = (procname, vardef, loc, aliasset_new) in
+          then let newstate = (procname, (vardef, []), loc, aliasset_new) in
                (* L.progress "astate before ++u1: @.%a@." S.pp astate; *)
                add_to_history pvar_var loc;
                S.add newstate astate
-          else let newstate = (procname, vardef, loc, aliasset_new) in
+          else let newstate = (procname, (vardef, []), loc, aliasset_new) in
                let astate_rmvd = S.remove targetTuple astate in
                add_to_history pvar_var loc;
                S.add newstate astate_rmvd
@@ -291,7 +291,7 @@ let search_recent_vardef (methname:Procname.t) (pvar:Var.t) (astate:S.t) =
         let pvar_var = Var.of_pvar pv in
         let loc = CFG.Node.loc node in
         let aliasset_new = A.singleton (pvar_var, []) in
-        let newstate = (methname, pvar_var, loc, aliasset_new) in
+        let newstate = (methname, (pvar_var, []), loc, aliasset_new) in
         add_to_history pvar_var loc;
         L.progress "added pvar_var: %a\n" Var.pp pvar_var;
         (* L.progress "current map: %a\n" (HistoryMap.pp ~pp_value:Location.pp) !history; *)
@@ -303,7 +303,7 @@ let search_recent_vardef (methname:Procname.t) (pvar:Var.t) (astate:S.t) =
         let pvar_var = Var.of_pvar pv in
         let loc = CFG.Node.loc node in
         let aliasset_new = A.singleton (pvar_var, []) in
-        let newstate = (methname, pvar_var, loc, aliasset_new) in
+        let newstate = (methname, (pvar_var, []), loc, aliasset_new) in
         add_to_history pvar_var loc;
         (* L.progress "added pvar_var: %a\n" Var.pp pvar_var; *)
         (* L.progress "current map: %a\n" (HistoryMap.pp ~pp_value:Location.pp) !history; *)
@@ -312,7 +312,7 @@ let search_recent_vardef (methname:Procname.t) (pvar:Var.t) (astate:S.t) =
         let pvar_var = Var.of_pvar pv in
         let loc = CFG.Node.loc node in
         let aliasset_new = A.singleton (pvar_var, []) in
-        let newstate = (methname, pvar_var, loc, aliasset_new) in
+        let newstate = (methname, (pvar_var, []), loc, aliasset_new) in
         add_to_history pvar_var loc;
         (* L.progress "added pvar_var: %a\n" Var.pp pvar_var; *)
         S.add newstate astate
@@ -328,7 +328,7 @@ let search_recent_vardef (methname:Procname.t) (pvar:Var.t) (astate:S.t) =
     | true -> (* All Arguments are Just Constants: just apply the summary, make a new tuple and end *)
         let astate_summary_applied = apply_summary astate caller_summary callee_methname ret_id methname in
         let aliasset = A.add (mk_returnv callee_methname, []) @@ A.singleton (Var.of_id ret_id, []) in
-        let newstate = (methname, placeholder_vardef methname, Location.dummy, aliasset) in
+        let newstate = (methname, (placeholder_vardef methname, []), Location.dummy, aliasset) in
         S.add newstate astate_summary_applied
     | false -> (* There is at least one argument which is a non-thisvar variable *)
         let astate_summary_applied = apply_summary astate caller_summary callee_methname ret_id methname in
@@ -368,10 +368,10 @@ let search_recent_vardef (methname:Procname.t) (pvar:Var.t) (astate:S.t) =
                   | [] -> (* 한 번도 def된 적 없음 *)
                         let double = doubleton (Var.of_id id, []) (Var.of_pvar pvar, []) in
                         let ph = placeholder_vardef methname in
-                        let newstate = (methname, ph, Location.dummy, double) in
+                        let newstate = (methname, (ph, []), Location.dummy, double) in
                         S.add newstate astate
                   | h::_ as tuples -> (* 이전에 def된 적 있음 *)
-                        let var = second_of h in
+                        let var, _ = second_of h in
                         (* L.progress "finding var:%a\n" Var.pp var; *)
                         let most_recent_loc = get_most_recent_loc var in
                         (* L.progress "most_recent_loc: %a\n" Location.pp most_recent_loc;
@@ -381,7 +381,7 @@ let search_recent_vardef (methname:Procname.t) (pvar:Var.t) (astate:S.t) =
                         let mrt_updated = (proc, vardef, loc, A.add (Var.of_id id, []) aliasset) in
                         let double = doubleton (Var.of_id id, []) (Var.of_pvar pvar, []) in
                         let ph = placeholder_vardef methname in
-                        let newstate = (methname, ph, Location.dummy, double) in
+                        let newstate = (methname, (ph, []), Location.dummy, double) in
                         S.add mrt_updated astate_rmvd |> S.add newstate
               end
         end
@@ -389,7 +389,7 @@ let search_recent_vardef (methname:Procname.t) (pvar:Var.t) (astate:S.t) =
       let access_path : A.elt = (Var.of_pvar var, [FieldAccess fld]) in
       let ph = placeholder_vardef methname in
       let double = doubleton access_path (Var.of_id id, []) in
-      let newstate = (methname, ph, Location.dummy, double) in
+      let newstate = (methname, (ph, []), Location.dummy, double) in
       S.add newstate astate
     | _ -> raise UndefinedSemantics3
 
@@ -404,7 +404,7 @@ let search_recent_vardef (methname:Procname.t) (pvar:Var.t) (astate:S.t) =
         let targetloc = Procdesc.Node.get_loc node in
         (* 파라미터 라인넘버 보정 *)
         let loc = {Location.line=targetloc.line-1; Location.col=targetloc.col; Location.file=targetloc.file} in
-        let bake_newtuple = fun (var:Var.t) -> (proc, var, loc, A.singleton (var, [])) in
+        let bake_newtuple = fun (var:Var.t) -> (proc, (var, []), loc, A.singleton (var, [])) in
         let tuplelist = List.map ~f:bake_newtuple formals in
         let tupleset = S.of_list tuplelist in
         batch_add_to_history formals loc ; S.union astate tupleset

@@ -99,7 +99,7 @@ let search_target_tuples_by_vardef (pv:Var.t) (methname:Procname.t) (tupleset:S.
   let rec search_target_tuples_by_vardef_inner pv (methname:Procname.t) elements acc = 
     match elements with
     | [] -> acc
-    | ((procname, vardef, _, _) as target)::t ->
+    | ((procname, (vardef, _), _, _) as target) :: t ->
         if Procname.equal procname methname && Var.equal vardef pv
         then search_target_tuples_by_vardef_inner pv methname t (target::acc)
         else search_target_tuples_by_vardef_inner pv methname t acc in

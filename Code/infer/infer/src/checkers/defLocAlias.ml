@@ -385,6 +385,12 @@ let search_recent_vardef (methname:Procname.t) (pvar:Var.t) (astate:S.t) =
                         S.add mrt_updated astate_rmvd |> S.add newstate
               end
         end
+    | Lfield (Lvar var, fld, _) -> (* id := var.fld:typ *)
+      let access_path : A.elt = (Var.of_pvar var, [FieldAccess fld]) in
+      let ph = placeholder_vardef methname in
+      let double = doubleton access_path (Var.of_id id, []) in
+      let newstate = (methname, ph, Location.dummy, double) in
+      S.add newstate astate
     | _ -> raise UndefinedSemantics3
 
 

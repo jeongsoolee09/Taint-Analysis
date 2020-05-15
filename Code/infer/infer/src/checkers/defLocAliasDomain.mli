@@ -9,8 +9,13 @@ module F = Format
 module Methname = Procname
 module type Methname = module type of Procname
 
+module MyAccessPath : sig
+  type t = Var.t * AccessPath.access list [@@deriving compare]
+  val pp: F.formatter -> t -> unit
+end
+
 (** The Set of Variable (either Logical or Program) Definitions. **)
-module type Vartype = module type of Var
+module type MAtype = module type of MyAccessPath
 
 (** The Set of Locations where pieces of data are defined. **)
 (* Should this be a source-code-level location or a Sil-level one? **)
@@ -23,14 +28,14 @@ module type SetofAliases = AbstractDomain.FiniteSetS with type elt = Var.t * Acc
 val doubleton : SetofAliases.elt -> SetofAliases.elt -> SetofAliases.t
 
 (** The Quadruple of the above three. **)
-module Quadruple (Domain1:Methname) (Domain2:Vartype) (Domain3:Loctype) (Domain4:SetofAliases) : sig
+module Quadruple (Domain1:Methname) (Domain2:MAtype) (Domain3:Loctype) (Domain4:SetofAliases) : sig
   type t = Domain1.t * Domain2.t * Domain3.t * Domain4.t [@@deriving compare]
 end
 
 (** An Abstract State is a set of triples of the above kind. **)
 
 module QuadrupleWithPP : (sig
-  include module type of Quadruple (Methname) (Var) (Location) (SetofAliases)
+  include module type of Quadruple (Methname) (MyAccessPath) (Location) (SetofAliases)
   val pp : F.formatter -> t -> unit 
 end)
 

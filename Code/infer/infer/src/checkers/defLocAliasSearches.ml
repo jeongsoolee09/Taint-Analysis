@@ -157,7 +157,7 @@ let find_earliest_tuple_within (tuplelist:S.elt list): S.elt =
   | None -> raise NoEarliestTupleInState
 
 
-let find_earliest_tuple_of_var_within (tuplelist:S.elt list) (var:Var.t) : S.elt =
+let find_earliest_tuple_of_var_within (tuplelist:S.elt list) : S.elt =
   let vartuples = (* List.filter ~f:(fun tup -> Var.equal var (second_of tup)) *) tuplelist in
   find_earliest_tuple_within vartuples
 

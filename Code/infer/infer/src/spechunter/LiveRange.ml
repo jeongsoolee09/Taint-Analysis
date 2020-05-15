@@ -263,7 +263,7 @@ let compute_chain (var:Var.t) : chain =
               let future_tuples = S.diff (remove_duplicates_from current_astate) @@ select_up_to current_tuple ~within:(remove_duplicates_from current_astate) in
               (* L.progress "current tuple: %a\n" QuadrupleWithPP.pp current_tuple;
                * L.progress "tuples_to_be_deleted: %a\n future_tuples: %a\n" S.pp tuples_to_be_deleted S.pp future_tuples; *)
-              let new_tuple = find_earliest_tuple_of_var_within (S.elements future_tuples) vardef in
+              let new_tuple = find_earliest_tuple_of_var_within (S.elements future_tuples) in
               let new_chain = (current_methname, Redefine vardef) :: current_chain in
               compute_chain_inner current_methname current_astate new_tuple new_chain
           | _ -> raise UnexpectedSituation1

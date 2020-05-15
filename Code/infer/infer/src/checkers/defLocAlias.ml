@@ -226,7 +226,7 @@ let search_recent_vardef (methname:Procname.t) (pvar:Var.t) (astate:S.t) =
     | _, _ -> raise ZipError
 
 
-  let get_formal_args (caller_procname:Procname.t) (caller_summary:Summary.t) (callee_pname:Procname.t) : Var.t list =
+  let get_formal_args (caller_summary:Summary.t) (callee_pname:Procname.t) : Var.t list =
     match Payload.read_full ~caller_summary:caller_summary ~callee_pname:callee_pname with
     | Some (procdesc, _) -> Procdesc.get_formals procdesc |> List.map ~f:(convert_from_mangled callee_pname)
     | None -> (* Oops, it's a native code outside our focus *) []
@@ -254,9 +254,10 @@ let search_recent_vardef (methname:Procname.t) (pvar:Var.t) (astate:S.t) =
             with _ -> (* search failed: the pvar_var is not redefined in the procedure. *)
               S.remove targetTuple astate end
         | false -> (* An ordinary variable assignment. *)
-            let (methname_old, vardef, _, aliasset) as targetTuple =
-              try weak_search_target_tuple_by_id id astate
-              with _ -> ((*L.progress "id: %a" Ident.pp id ; L.progress "=== Search Failed (2): Astate before search_target_tuple at %a := %a === @.:%a@." Exp.pp exp1 Exp.pp exp2 S.pp astate ;*) bottuple) in
+            let targetTuple =
+              begin try weak_search_target_tuple_by_id id astate
+              with _ -> ((*L.progress "id: %a" Ident.pp id ; L.progress "=== Search Failed (2): Astate before search_target_tuple at %a := %a === @.:%a@." Exp.pp exp1 Exp.pp exp2 S.pp astate ;*) bottuple) end in
+            let aliasset = fourth_of targetTuple in
             let pvar_var = Var.of_pvar pv in
             let loc = CFG.Node.loc node in
             let aliasset_new = A.add (pvar_var, []) aliasset in
@@ -331,7 +332,7 @@ let search_recent_vardef (methname:Procname.t) (pvar:Var.t) (astate:S.t) =
         S.add newstate astate_summary_applied
     | false -> (* There is at least one argument which is a non-thisvar variable *)
         let astate_summary_applied = apply_summary astate caller_summary callee_methname ret_id methname in
-        let formals = get_formal_args methname caller_summary callee_methname |> List.filter ~f:(fun x -> not @@ Var.is_this x) in
+        let formals = get_formal_args caller_summary callee_methname |> List.filter ~f:(fun x -> not @@ Var.is_this x) in
         (* L.progress "formals: "; List.iter ~f:(fun var -> L.progress "%a, " Var.pp var) formals; *)
         begin match formals with
           | [] -> (* Callee in Native Code! *)

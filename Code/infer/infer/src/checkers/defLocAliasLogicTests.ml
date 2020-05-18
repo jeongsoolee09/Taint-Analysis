@@ -63,6 +63,11 @@ let is_formal (rhs:Pvar.t) (current_meth:Procname.t) : bool =
   List.mem formallist rhs_var ~equal:Var.equal
 
 
+let is_this_ap (ap:A.elt) =
+  let var, _ = ap in
+  Var.is_this var
+
+
 let input_is_void_type (arg_ts:(Exp.t*Typ.t) list) (astate:S.t) : bool =
   match arg_ts with
   | [] -> false

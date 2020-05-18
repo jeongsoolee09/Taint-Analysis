@@ -58,20 +58,20 @@ module TransferFunctions = struct
   let mk_returnv procname = Pvar.mk (Mangled.from_string "returnv") procname |> Var.of_pvar
 
 
-  let is_this_ap (ap:A.elt) =
-    let var, _ = ap in
-    Var.is_this var
-
-
   let rec extract_nonthisvar_from_args methname (arg_ts:(Exp.t*Typ.t) list) (astate:S.t) : Exp.t list =
     match arg_ts with
     | [] -> []
     | (Var var as v, _)::t ->
-        let (_, _, _, aliasset) = search_target_tuple_by_id var methname astate in
-        if not (A.exists is_this_ap aliasset)
-        then v::extract_nonthisvar_from_args methname t astate
-        else extract_nonthisvar_from_args methname t astate
-    | (other, _)::t -> other::extract_nonthisvar_from_args methname t astate
+        begin try
+            let (_, _, _, aliasset) = search_target_tuple_by_id var methname astate in
+            if not @@ A.exists is_this_ap aliasset
+            then v::extract_nonthisvar_from_args methname t astate
+            else extract_nonthisvar_from_args methname t astate
+          with _ -> (* corner case: call to __fun_new or something *)
+            v::extract_nonthisvar_from_args methname t astate end
+    | (other, _)::t when Exp.is_null_literal other -> 
+        extract_nonthisvar_from_args methname t astate
+    | _ -> L.die InternalError "illegal input to extract_nonthisvar_from_args"
 
 
   let leave_only_var_tuples (ziplist:(Exp.t*Var.t) list) =
@@ -211,7 +211,7 @@ let search_recent_vardef (methname:Procname.t) (pvar:Var.t) (astate:S.t) =
     S.union astate carriedover
 
 
-  (** 변수가 리턴된다면 그걸 alias set에 넣는다 (variable carryover)*)
+  (** 변수가 리턴된다면 그걸 alias set에 넣는다 (variable carryover) *)
   let apply_summary astate caller_summary callee_methname ret_id caller_methname : S.t =
     match Payload.read_full ~caller_summary:caller_summary ~callee_pname:callee_methname with
     | Some (_, summ) -> (*L.progress "Applying summary of %a\n" Procname.pp (Procdesc.get_proc_name pdesc);*)
@@ -223,13 +223,31 @@ let search_recent_vardef (methname:Procname.t) (pvar:Var.t) (astate:S.t) =
     match l1, l2 with
     | [], [] -> []
     | h1::t1, h2::t2 -> (h1, h2)::zip t1 t2
-    | _, _ -> raise ZipError
+    | _, _ ->
+        L.progress "actuals_logical: "; List.iter ~f:(fun exp -> L.progress "%a:%a, " Exp.pp exp Bool.pp (Exp.is_null_literal exp)) l1;
+        L.progress "formals: "; List.iter ~f:(fun var -> L.progress "%a, " Var.pp var) l2;
+        L.die InternalError "what the fuck"
 
 
   let get_formal_args (caller_summary:Summary.t) (callee_pname:Procname.t) : Var.t list =
     match Payload.read_full ~caller_summary:caller_summary ~callee_pname:callee_pname with
     | Some (procdesc, _) -> Procdesc.get_formals procdesc |> List.map ~f:(convert_from_mangled callee_pname)
     | None -> (* Oops, it's a native code outside our focus *) []
+
+
+  let put_fieldname (fieldname:Fieldname.t) (aliastup:A.elt) =
+    let var, lst = aliastup in
+    (var, lst @ [AccessPath.FieldAccess fieldname])
+
+
+  let merge_ph_tuples (tup1:QuadrupleWithPP.t) (tup2:QuadrupleWithPP.t) (location:Location.t) : S.elt =
+    let proc1, _, _, alias1 = tup1 in
+    let proc2, _, _, alias2 = tup2 in
+    let single_elem2 = extract_from_singleton alias2 in
+    assert (let cond = Procname.equal proc1 proc2 in
+      if not cond then L.progress "merging tuples from different procedures"; cond);
+    let aliasset = A.add single_elem2 @@ A.union alias1 alias2 in
+    (proc1, single_elem2, location, aliasset)
 
 
   let exec_store (exp1:Exp.t) (exp2:Exp.t) (methname:Procname.t) (astate:S.t) (node:CFG.Node.t) : S.t =
@@ -316,6 +334,19 @@ let search_recent_vardef (methname:Procname.t) (pvar:Var.t) (astate:S.t) =
         add_to_history pvar_var loc;
         (* L.progress "added pvar_var: %a\n" Var.pp pvar_var; *)
         S.add newstate astate
+    | Lfield (Var id1, fld, _), Var id2 ->
+        (* finding the pvar tuple getting stored *)
+        let (proc1, var1, loc1, aliasset) as vartuple = search_target_tuple_by_id id1 methname astate in
+        let aliasset_filtered = leave_another_pvar_tuple aliasset in
+        let alias_pvar = extract_from_singleton aliasset_filtered in
+        let new_aliasset = A.singleton @@ put_fieldname fld alias_pvar in
+        let newtuple = (proc1, var1, loc1, new_aliasset) in
+        (* finding the var tuple holding the value being stored *)
+        let another_tuple = search_target_tuple_by_id id2 methname astate in
+        let loc = CFG.Node.loc node in
+        let merged_tuple = merge_ph_tuples another_tuple newtuple loc in
+        let astate_rmvd = S.remove another_tuple @@ S.remove vartuple astate in
+        S.add merged_tuple astate_rmvd
     | _, _ -> raise NotSupported
 
 
@@ -333,18 +364,17 @@ let search_recent_vardef (methname:Procname.t) (pvar:Var.t) (astate:S.t) =
     | false -> (* There is at least one argument which is a non-thisvar variable *)
         let astate_summary_applied = apply_summary astate caller_summary callee_methname ret_id methname in
         let formals = get_formal_args caller_summary callee_methname |> List.filter ~f:(fun x -> not @@ Var.is_this x) in
-        (* L.progress "formals: "; List.iter ~f:(fun var -> L.progress "%a, " Var.pp var) formals; *)
         begin match formals with
           | [] -> (* Callee in Native Code! *)
               astate_summary_applied
           | _ ->  (* Callee in User Code! *)
               let actuals_logical = extract_nonthisvar_from_args methname arg_ts astate_summary_applied in
-              (* L.progress "actuals_logical: "; List.iter ~f:(fun exp -> L.progress "%a, " Exp.pp exp) actuals_logical; *)
               let actuallog_formal_binding = leave_only_var_tuples @@ zip actuals_logical formals in
               (* pvar tuples transmitted as actual arguments *)
-              let actuals_pvar_tuples = actuals_logical |> List.filter ~f:is_logical_var_expr |> List.map ~f:(function
+              let actuals_pvar_tuples =
+                actuals_logical |> List.filter ~f:is_logical_var_expr |> List.map ~f:(function
                   | Exp.Var id ->
-                      (* L.progress "id: %a, processing: @.:%a@." Ident.pp id S.pp astate; *)
+                      L.progress "id: %a, processing: %a@." Ident.pp id S.pp astate;
                       let pvar = search_target_tuples_by_id id methname astate |> List.map ~f:fourth_of |> extract_another_pvar id in
                       search_recent_vardef methname pvar astate
                   | _ -> raise UndefinedSemantics2) in
@@ -388,13 +418,15 @@ let search_recent_vardef (methname:Procname.t) (pvar:Var.t) (astate:S.t) =
     | Lfield (Lvar var, fld, _) -> (* id := var.fld:typ *)
         let access_path : A.elt = (Var.of_pvar var, [FieldAccess fld]) in
         (* 이전에 정의된 적이 있는가 없는가로 경우 나눠야 함 (formal엔 못 옴) *)
+        L.progress "hihi";
         begin match search_target_tuples_by_vardef_ap (access_path) methname astate with
-          | [] -> 
+          | [] ->
               let ph = placeholder_vardef methname in
               let double = doubleton access_path (Var.of_id id, []) in
               let newstate = (methname, (ph, []), Location.dummy, double) in
               S.add newstate astate
-          | _ -> raise NotImplemented end
+          | _ -> raise NotImplemented
+        end
     | _ -> raise UndefinedSemantics3
 
 
@@ -445,7 +477,7 @@ let exec_metadata (md:Sil.instr_metadata) (astate:S.t) =
 
 
   let exec_instr : S.t -> extras ProcData.t -> CFG.Node.t -> Sil.instr -> S.t = fun prev' {summary} node instr ->
-    (* L.progress "Executing instr: %a\n" (Sil.pp_instr ~print_types:false Pp.text) instr; *)
+    L.progress "Executing instr: %a\n" (Sil.pp_instr ~print_types:false Pp.text) instr;
     let my_summary = summary in
     let methname = node |> CFG.Node.underlying_node |> Procdesc.Node.get_proc_name in
     let prev = register_formals prev' node methname in

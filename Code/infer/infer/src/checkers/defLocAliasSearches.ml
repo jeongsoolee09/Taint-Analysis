@@ -14,6 +14,8 @@ exception SearchByVardefFailed
 exception SearchByLocFailed
 exception NoEarliestTupleInState
 exception TooManyReturns
+exception SearchPvarTupleFailed
+exception NotASingleton
 
 
 let placeholder_vardef (pid:Procname.t) : Var.t =
@@ -46,6 +48,7 @@ let search_target_tuples_by_pvar (pvar:Var.t) (methname:Procname.t) (tupleset:S.
 
 
 let search_target_tuple_by_id (id:Ident.t) (methname:Procname.t) (tupleset:S.t) =
+  (* L.progress "id: %a, methname: %a, tupleset: %a@." Ident.pp id Procname.pp methname S.pp tupleset; *)
   let elements = S.elements tupleset in
   let rec search_target_tuple_by_id_inner id (methname:Procname.t) elements = 
     match elements with
@@ -60,7 +63,8 @@ let weak_search_target_tuple_by_id (id:Ident.t) (tupleset:S.t) =
   let rec weak_search_target_tuple_by_id_inner id (elements:S.elt list) = 
     match elements with
     | [] -> raise WeakSearchByIdFailed
-    | ((_, _, _, aliasset) as target)::t ->
+    | target::t ->
+        let aliasset = fourth_of target in
         if A.mem (Var.of_id id, []) aliasset then target else weak_search_target_tuple_by_id_inner id t in
   weak_search_target_tuple_by_id_inner id elements
 
@@ -118,11 +122,11 @@ let search_target_tuples_by_vardef_ap (pv_ap:MyAccessPath.t) (methname:Procname.
   search_target_tuples_by_vardef_ap_inner pv_ap methname elements []
 
 
-
 let rec search_tuple_by_loc (loc:Location.t) (tuplelist:S.elt list) =
   match tuplelist with
   | [] -> raise SearchByLocFailed
-  | ((_,_,l,_) as target)::t ->
+  | target::t ->
+      let l = third_of target in
       if Location.equal loc l
       then target
       else search_tuple_by_loc loc t
@@ -132,7 +136,8 @@ let rec search_tuple_by_loc (loc:Location.t) (tuplelist:S.elt list) =
 let rec search_tuples_by_loc (loc:Location.t) (tuplelist:S.elt list) =
   match tuplelist with
   | [] -> []
-  | ((_,_,l,_) as target)::t ->
+  | target::t ->
+      let l = third_of target in
       if Location.equal loc l
       then target::search_tuples_by_loc loc t
       else search_tuples_by_loc loc t
@@ -155,8 +160,8 @@ let find_least_linenumber (tuplelist:S.elt list) =
     match tuplelist with
     | [] -> current_least
     | targetTuple::t ->
-        let (_, _, snd_target, _) = targetTuple in
-        let (_, _, snd_current, _) = current_least in
+        let snd_target = third_of targetTuple in
+        let snd_current = third_of current_least in
         if snd_target ==> snd_current
         then find_least_linenumber_inner t targetTuple
         else find_least_linenumber_inner t current_least in
@@ -199,3 +204,20 @@ let batch_search_target_tuples_by_vardef (varlist:Var.t list) (current_methname:
       else (true, search_result)) ~init:(false, [])
     varlist
 
+
+let is_program_var (var:Var.t) : bool =
+  match var with
+  | LogicalVar _ -> false
+  | ProgramVar _ -> true
+
+
+(** Given a alias set, leaves only the tuple with a Pvar (not this) in it. *)
+let leave_another_pvar_tuple (varset:A.t) : A.t =
+  (* should be a doubleton *)
+  A.filter (fun tup -> is_program_var @@ fst tup) varset
+
+
+let extract_from_singleton (singleton:A.t) : A.elt =
+  match A.elements singleton with
+  | [x] -> x
+  | _ -> raise NotASingleton

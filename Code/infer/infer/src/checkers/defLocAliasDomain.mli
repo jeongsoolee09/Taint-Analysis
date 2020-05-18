@@ -12,6 +12,7 @@ module type Methname = module type of Procname
 module MyAccessPath : sig
   type t = Var.t * AccessPath.access list [@@deriving compare]
   val pp: F.formatter -> t -> unit
+  val equal: t -> t -> bool
 end
 
 (** The Set of Variable (either Logical or Program) Definitions. **)

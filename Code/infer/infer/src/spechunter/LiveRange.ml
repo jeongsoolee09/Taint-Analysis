@@ -115,7 +115,7 @@ let filter_callgraph_table hashtbl =
 (** 주어진 변수 var에 있어 가장 이른 정의 튜플을 찾는다. *)
 let find_first_occurrence_of (var:Var.t) : Procname.t * S.t * S.elt =
   let tupleset = BFS.fold (fun (_, astate) acc ->
-      match S.exists (fun tup -> Var.equal (second_of tup) var) astate with
+      match S.exists (fun tup -> Var.equal (fst @@ second_of tup) var) astate with
       | true -> (*L.progress "found it!\n";*) astate
       | false -> (*L.progress "nah..:(\n";*) acc) S.empty callgraph in
   let tupleset_nodup = remove_duplicates_from tupleset in
@@ -178,12 +178,12 @@ let rec have_been_before (tuple:S.elt) (acc:chain) : bool =
       let vardef = second_of tuple in
       begin match status with
         | Define (_, var) ->
-            if Procname.equal procname methname && Var.equal vardef var
+            if Procname.equal procname methname && Var.equal (fst vardef) var
             then true else have_been_before tuple t
         | Call (callee, var) -> (* 맞으려나? *)
-            if (Procname.equal callee procname || Procname.equal callee methname) && Var.equal vardef var then true else have_been_before tuple t
+            if (Procname.equal callee procname || Procname.equal callee methname) && Var.equal (fst vardef) var then true else have_been_before tuple t
         | Redefine var ->
-            if Procname.equal procname methname && Var.equal vardef var
+            if Procname.equal procname methname && Var.equal (fst vardef) var
             then true else have_been_before tuple t
         | Dead ->
             have_been_before tuple t end
@@ -214,8 +214,8 @@ let extract_variable_from_chain_slice (slice:(Procname.t*status) option) : Var.t
       | Define (_, var) -> var
       | Call (_, var) -> var
       | Redefine var -> var
-      | Dead -> (* L.progress "Extracting from Dead\n"; *) second_of bottuple end
-  | None -> (* L.progress "Extracting from empty chain\n"; *) second_of bottuple
+      | Dead -> (* L.progress "Extracting from Dead\n"; *) (fst @@ second_of bottuple) end
+  | None -> (* L.progress "Extracting from empty chain\n"; *) (fst @@ second_of bottuple)
 
 
 let remove_from_aliasset ~from:tuple ~remove:var =
@@ -251,10 +251,10 @@ let compute_chain (var:Var.t) : chain =
     (* L.progress "vardef: %a\n" Var.pp vardef;
     L.progress "current tuple: %a\n" QuadrupleWithPP.pp current_tuple; *)
     let just_before = extract_variable_from_chain_slice @@ pop current_chain in
-    match collect_program_vars_from aliasset vardef just_before with
+    match collect_program_vars_from aliasset (fst vardef) just_before with
     | [] -> (* either redefinition or dead end *)
         let tuples = S.elements (remove_duplicates_from current_astate) in
-        let redefined_tuples = List.fold_left tuples ~init:[] ~f:(fun acc tup -> if Var.equal vardef @@ second_of tup then tup::acc else acc) in
+        let redefined_tuples = List.fold_left tuples ~init:[] ~f:(fun acc tup -> if Var.equal (fst vardef) @@ (fst @@ second_of tup) then tup::acc else acc) in
         (* L.progress "redefined_tuples: "; List.iter ~f:(fun tup -> L.progress "%a, " QuadrupleWithPP.pp tup) redefined_tuples; L.progress "\n"; *)
         begin match redefined_tuples with
           | [_] -> (* Dead end *) (current_methname, Dead) :: current_chain
@@ -264,7 +264,7 @@ let compute_chain (var:Var.t) : chain =
               (* L.progress "current tuple: %a\n" QuadrupleWithPP.pp current_tuple;
                * L.progress "tuples_to_be_deleted: %a\n future_tuples: %a\n" S.pp tuples_to_be_deleted S.pp future_tuples; *)
               let new_tuple = find_earliest_tuple_of_var_within (S.elements future_tuples) in
-              let new_chain = (current_methname, Redefine vardef) :: current_chain in
+              let new_chain = (current_methname, Redefine (fst vardef)) :: current_chain in
               compute_chain_inner current_methname current_astate new_tuple new_chain
           | _ -> raise UnexpectedSituation1
         end
@@ -280,7 +280,7 @@ let compute_chain (var:Var.t) : chain =
           let have_been_before_filtered = filter_have_been_before tuples_with_return_var current_chain in
           (* L.progress "have_been_before_filtered: "; List.iter ~f:(fun tup -> L.progress "%a, " QuadrupleWithPP.pp tup) have_been_before_filtered; *)
           let new_tuple = remove_from_aliasset ~from:( find_earliest_tuple_within have_been_before_filtered) ~remove:(var_being_returned, []) in
-          let new_chain = (first_of new_tuple, Define (current_methname, second_of new_tuple)) :: current_chain in
+          let new_chain = (first_of new_tuple, Define (current_methname, (fst @@ second_of new_tuple))) :: current_chain in
           compute_chain_inner direct_caller caller_summary new_tuple new_chain
         else (* 동일 procedure 내에서의 define 혹은 call *)
           (* 다음 튜플을 현재 procedure 내에서 찾을 수 있는지를 기준으로 경우 나누기 *)
@@ -307,7 +307,7 @@ let collect_all_vars () =
   let setofallstates =  Hashtbl.fold (fun _ v acc -> S.union v acc) summary_table S.empty in
   let listofallstates = S.elements setofallstates in
   let listofallvars = List.map ~f:second_of listofallstates in
-  let listofallvar_aps = List.map ~f:(fun var -> (var, [])) listofallvars in
+  let listofallvar_aps = List.map ~f:(fun (var, _) -> (var, [])) listofallvars in
   A.of_list listofallvar_aps
 
 

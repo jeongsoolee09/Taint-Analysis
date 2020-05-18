@@ -19,6 +19,11 @@ module MyAccessPath = (struct
       F.fprintf fmt "(%a, [" Var.pp var;
       List.iter list ~f:(fun access -> F.fprintf fmt "%a, " AccessPath.pp_access access);
       F.fprintf fmt "])"
+
+    let equal (x:t) (y:t) =
+      let xvar, xlist = x in
+      let yvar, ylist = y in
+      Var.equal xvar yvar && List.equal AccessPath.equal_access xlist ylist
 end)
 
 (** The Set of Variable (either Logical or Program) Definitions. **)

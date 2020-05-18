@@ -106,6 +106,19 @@ let search_target_tuples_by_vardef (pv:Var.t) (methname:Procname.t) (tupleset:S.
   search_target_tuples_by_vardef_inner pv methname elements []
 
 
+let search_target_tuples_by_vardef_ap (pv_ap:MyAccessPath.t) (methname:Procname.t) (tupleset:S.t) =
+  let elements = S.elements tupleset in
+  let rec search_target_tuples_by_vardef_ap_inner pv_ap methname elements acc =
+    match elements with
+    | [] -> acc
+    | ((procname, var_ap, _, _) as target) :: t ->
+        if Procname.equal procname methname && MyAccessPath.equal pv_ap var_ap
+        then search_target_tuples_by_vardef_ap_inner pv_ap methname t (target::acc)
+        else search_target_tuples_by_vardef_ap_inner pv_ap methname t acc in
+  search_target_tuples_by_vardef_ap_inner pv_ap methname elements []
+
+
+
 let rec search_tuple_by_loc (loc:Location.t) (tuplelist:S.elt list) =
   match tuplelist with
   | [] -> raise SearchByLocFailed

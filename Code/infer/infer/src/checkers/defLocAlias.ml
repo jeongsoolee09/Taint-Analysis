@@ -386,11 +386,15 @@ let search_recent_vardef (methname:Procname.t) (pvar:Var.t) (astate:S.t) =
               end
         end
     | Lfield (Lvar var, fld, _) -> (* id := var.fld:typ *)
-      let access_path : A.elt = (Var.of_pvar var, [FieldAccess fld]) in
-      let ph = placeholder_vardef methname in
-      let double = doubleton access_path (Var.of_id id, []) in
-      let newstate = (methname, (ph, []), Location.dummy, double) in
-      S.add newstate astate
+        let access_path : A.elt = (Var.of_pvar var, [FieldAccess fld]) in
+        (* 이전에 정의된 적이 있는가 없는가로 경우 나눠야 함 (formal엔 못 옴) *)
+        begin match search_target_tuples_by_vardef_ap (access_path) methname astate with
+          | [] -> 
+              let ph = placeholder_vardef methname in
+              let double = doubleton access_path (Var.of_id id, []) in
+              let newstate = (methname, (ph, []), Location.dummy, double) in
+              S.add newstate astate
+          | _ -> raise NotImplemented end
     | _ -> raise UndefinedSemantics3
 
 

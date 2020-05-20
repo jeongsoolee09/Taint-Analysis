@@ -238,9 +238,9 @@ let search_recent_vardef (methname:Procname.t) (pvar:Var.t) (astate:S.t) =
               try weak_search_target_tuple_by_id id astate
               with _ ->
                   ((*L.progress "=== Search Failed (1): Astate before search_target_tuple at %a := %a === @.:%a@." Exp.pp exp1 Exp.pp exp2 S.pp astate ;*) bottuple) in
+            begin try
             let pvar_var, _ = A.find_first is_program_var_ap aliasset in
             let most_recent_loc = get_most_recent_loc pvar_var in
-            begin try
               let candTuples = search_target_tuples_by_vardef pvar_var methname astate in
               let (proc,var,loc,aliasset') as candTuple = search_tuple_by_loc most_recent_loc candTuples in
               let astate_rmvd = S.remove candTuple astate in
@@ -248,7 +248,7 @@ let search_recent_vardef (methname:Procname.t) (pvar:Var.t) (astate:S.t) =
               let programvar = Var.of_pvar pv in
               let newstate = (proc,var,loc,A.union aliasset' (doubleton (logicalvar, []) (programvar, []))) in
               S.add newstate astate_rmvd
-            with _ -> (* search failed: the pvar_var is not redefined in the procedure. *)
+            with _ -> (* the pvar_var is not redefined in the procedure. *)
               S.remove targetTuple astate end
         | false -> (* An ordinary variable assignment. *)
             let targetTuple =
@@ -379,7 +379,7 @@ let search_recent_vardef (methname:Procname.t) (pvar:Var.t) (astate:S.t) =
   let exec_load (id:Ident.t) (exp:Exp.t) (astate:S.t) (methname:Procname.t) =
     match exp with
     | Lvar pvar ->
-        begin match is_formal pvar methname with
+        begin match is_formal pvar methname && not @@ Var.is_this (Var.of_pvar pvar) with
           | true ->
               let targetTuples = search_target_tuples_by_vardef (Var.of_pvar pvar) methname astate in
               let (proc, var, loc, aliasset) as targetTuple = find_least_linenumber targetTuples in

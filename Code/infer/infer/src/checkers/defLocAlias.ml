@@ -5,20 +5,7 @@ open DefLocAliasLogicTests
 
 (** Interprocedural Liveness Checker with alias relations in mind. *)
 
-exception UndefinedSemantics1
-exception UndefinedSemantics2
-exception UndefinedSemantics3
-exception UndefinedSemantics4
-exception UndefinedSemantics5
-exception UndefinedSemantics6
-exception NoSummary
-exception NotSupported
-exception NoMethname
 exception NotImplemented
-exception ZipError
-exception SearchRecentVardefFailed
-exception CheckerFailed
-exception CatFailed
 exception IDontKnow
 
 module L = Logging
@@ -71,7 +58,7 @@ module TransferFunctions = struct
 
   let leave_only_var_tuples (ziplist:(Exp.t*Var.t) list) =
     let leave_logical = fun (x,_) -> is_logical_var_expr x in
-    let map_func = function (Exp.Var id, var) -> (Var.of_id id, var) | (_, _) -> raise UndefinedSemantics4 in
+    let map_func = function (Exp.Var id, var) -> (Var.of_id id, var) | (_, _) -> L.die InternalError "Exp not a Var" in
     List.filter ~f:leave_logical ziplist |> List.map ~f:map_func
 
 
@@ -80,7 +67,7 @@ let search_recent_vardef (methname:Procname.t) (pvar:Var.t) (astate:S.t) =
   let elements = S.elements astate in
   let rec search_recent_vardef_inner methname id tuplelist =
     match tuplelist with
-    | [] -> raise SearchRecentVardefFailed
+    | [] -> L.die InternalError "searching most recent vardef failed"
     | (proc, (var, _),  loc, aliasset) as targetTuple::t ->
         (* L.progress "methname: %a, searching: %a, loc: %a, proc: %a\n" Procname.pp methname Var.pp var Location.pp loc Procname.pp proc; *)
         let proc_cond = Procname.equal proc methname in
@@ -98,13 +85,13 @@ let search_recent_vardef (methname:Procname.t) (pvar:Var.t) (astate:S.t) =
   (** given a doubleton set of lv and pv, extract the pv. *)
   let rec extract_another_pvar (id:Ident.t) (varsetlist:A.t list) : Var.t =
     match varsetlist with
-    | [] -> raise UndefinedSemantics5
+    | [] -> L.die InternalError "extract_another_pvar failed"
     | set::t -> (* 익셉션을 다뤄줘야 함 *) 
         if Int.equal (A.cardinal set) 2 && A.mem (Var.of_id id, []) set
         then
           begin match set |> A.remove (Var.of_id id, []) |> A.elements with
             | [(x, _)] -> x
-            | _ -> raise UndefinedSemantics5 end
+            | _ -> L.die InternalError "extract_another_pvar failed" end
         else extract_another_pvar id t
 
 
@@ -128,7 +115,7 @@ let search_recent_vardef (methname:Procname.t) (pvar:Var.t) (astate:S.t) =
             let (proc,var,loc,aliasset') = search_tuple_by_loc most_recent_loc candTuples in
             let newTuple = (proc, var, loc, A.add (formalvar, []) aliasset') in
             newTuple::add_bindings_to_alias_of_tuples methname tl actualtuples
-        | Var.ProgramVar _ -> raise UndefinedSemantics1
+        | Var.ProgramVar _ -> L.die InternalError "add_bindings_to_alias_of_tuples failed"
         end
 
 
@@ -221,9 +208,9 @@ let search_recent_vardef (methname:Procname.t) (pvar:Var.t) (astate:S.t) =
     | _, _ -> L.die InternalError "Zip error"
 
 
-  let get_formal_args (caller_summary:Summary.t) (callee_pname:Procname.t) : Var.t list =
-    match Payload.read_full ~caller_summary:caller_summary ~callee_pname:callee_pname with
-    | Some (procdesc, _) -> Procdesc.get_formals procdesc |> List.map ~f:(convert_from_mangled callee_pname)
+  let get_formal_args (caller_summary:Summary.t) (callee_methname:Procname.t) : Var.t list =
+    match Payload.read_full ~caller_summary:caller_summary ~callee_pname:callee_methname with
+    | Some (procdesc, _) -> Procdesc.get_formals procdesc |> List.map ~f:(convert_from_mangled callee_methname)
     | None -> (* Oops, it's a native code outside our focus *) []
 
 
@@ -346,17 +333,17 @@ let search_recent_vardef (methname:Procname.t) (pvar:Var.t) (astate:S.t) =
         let merged_tuple =
             merge_ph_tuples another_tuple newtuple loc
         in
-        L.progress "merged: %a@." QuadrupleWithPP.pp merged_tuple;
+        (* L.progress "merged: %a@." QuadrupleWithPP.pp merged_tuple; *)
         let astate_rmvd = S.remove another_tuple @@ S.remove vartuple astate in
         S.add merged_tuple astate_rmvd
-    | _, _ -> raise NotSupported
+    | _, _ -> L.die InternalError "Unsupported Store instruction"
 
 
   let exec_call (ret_id:Ident.t) (e_fun:Exp.t) (arg_ts:(Exp.t*Typ.t) list) (caller_summary:Summary.t) (astate:S.t) (methname:Procname.t) =
     let callee_methname =
       match e_fun with
       | Const (Cfun fn) -> fn
-      | _ -> raise NoMethname in
+      | _ -> L.die InternalError "failed to find callee's methname" in
     match input_is_void_type arg_ts astate with
     | true -> (* All Arguments are Just Constants: just apply the summary, make a new tuple and end *)
         let astate_summary_applied = apply_summary astate caller_summary callee_methname ret_id methname in
@@ -377,10 +364,10 @@ let search_recent_vardef (methname:Procname.t) (pvar:Var.t) (astate:S.t) =
                   let actuals_pvar_tuples =
                     actuals_logical |> List.filter ~f:is_logical_var_expr |> List.map ~f:(function
                         | Exp.Var id ->
-                            L.progress "id: %a, processing: %a@." Ident.pp id S.pp astate;
+                            (* L.progress "id: %a, processing: %a@." Ident.pp id S.pp astate; *)
                             let pvar = search_target_tuples_by_id id methname astate |> List.map ~f:fourth_of |> extract_another_pvar id in (* 여기가 문제 *)
                             search_recent_vardef methname pvar astate
-                        | _ -> raise UndefinedSemantics2) in
+                        | _ -> L.die InternalError "actuals should be logical vars") in
                   let actualpvar_alias_added = add_bindings_to_alias_of_tuples methname actuallog_formal_binding actuals_pvar_tuples |> S.of_list in
                   let applied_state_rmvd = S.diff astate_summary_applied (S.of_list actuals_pvar_tuples) in
                   S.union applied_state_rmvd actualpvar_alias_added end
@@ -434,7 +421,7 @@ let search_recent_vardef (methname:Procname.t) (pvar:Var.t) (astate:S.t) =
         end
     | Var _ -> (* 아직은 버리는 케이스만 있으니 e.g. _=*n$9 *)
         astate
-    | _ -> raise UndefinedSemantics3
+    | _ -> L.die InternalError "Unsupported Load Instruction"
 
 
   (** register tuples for formal arguments before a procedure starts. *)
@@ -458,7 +445,7 @@ let rec catMaybes_tuplist (optlist:('a*'b option) list) : ('a*'b) list =
   match optlist with
   | [] -> []
   | (sth1, Some sth2) :: t -> (sth1, sth2)::catMaybes_tuplist t
-  | (_, None)::_ -> raise CatFailed
+  | (_, None)::_ -> L.die InternalError "catMaybes_tuplist failed"
   
 
 (** 디스크에서 써머리를 읽어와서 해시테이블에 정리 *)
@@ -484,7 +471,7 @@ let exec_metadata (md:Sil.instr_metadata) (astate:S.t) =
 
 
   let exec_instr : S.t -> extras ProcData.t -> CFG.Node.t -> Sil.instr -> S.t = fun prev' {summary} node instr ->
-    L.progress "Executing instr: %a\n" (Sil.pp_instr ~print_types:false Pp.text) instr;
+    (* L.progress "Executing instr: %a\n" (Sil.pp_instr ~print_types:true Pp.text) instr; *)
     let my_summary = summary in
     let methname = node |> CFG.Node.underlying_node |> Procdesc.Node.get_proc_name in
     let prev = register_formals prev' node methname in
@@ -522,4 +509,4 @@ let checker {Callbacks.summary=summary; exe_env} : Summary.t =
   match Analyzer.compute_post (ProcData.make_default summary tenv) ~initial:DefLocAliasDomain.initial with
   | Some post ->
       Payload.update_summary post summary
-  | None -> raise CheckerFailed
+  | None -> L.die InternalError "Checker Failed"

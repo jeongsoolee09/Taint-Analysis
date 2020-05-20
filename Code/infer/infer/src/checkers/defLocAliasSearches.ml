@@ -52,7 +52,7 @@ let search_target_tuple_by_id (id:Ident.t) (methname:Procname.t) (tupleset:S.t) 
   let elements = S.elements tupleset in
   let rec search_target_tuple_by_id_inner id (methname:Procname.t) elements = 
     match elements with
-    | [] -> raise SearchByIdFailed
+    | [] -> L.die InternalError "Search by id Failed"
     | ((procname, _, _, aliasset) as target)::t ->
         if Procname.equal procname methname && A.mem (Var.of_id id, []) aliasset then target else search_target_tuple_by_id_inner id methname t in
   search_target_tuple_by_id_inner id methname elements
@@ -211,10 +211,14 @@ let is_program_var (var:Var.t) : bool =
   | ProgramVar _ -> true
 
 
-(** Given a alias set, leaves only the tuple with a Pvar (not this) in it. *)
-let leave_another_pvar_tuple (varset:A.t) : A.t =
-  (* should be a doubleton *)
-  A.filter (fun tup -> is_program_var @@ fst tup) varset
+(** Given a alias set, finds the tuple with a Pvar in it. *)
+let find_another_pvar_vardef (varset:A.t) : A.elt =
+  let varlist = A.elements varset in
+  let rec find_another_pvar_vardef_inner (varlist:A.elt list) =
+    match varlist with
+    | [] -> L.die InternalError "Searching Pvar tuple failed"
+    | (var, _) as target::t -> if is_program_var var then target else find_another_pvar_vardef_inner t in
+  find_another_pvar_vardef_inner varlist
 
 
 let extract_from_singleton (singleton:A.t) : A.elt =

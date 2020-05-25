@@ -202,7 +202,8 @@ let search_recent_vardef (methname:Procname.t) (pvar:Var.t) (astate:S.t) =
   (** 변수가 리턴된다면 그걸 alias set에 넣는다 (variable carryover) *)
   let apply_summary astate caller_summary callee_methname ret_id caller_methname : S.t =
     match Payload.read_full ~caller_summary:caller_summary ~callee_pname:callee_methname with
-    | Some (_, summ) -> (*L.progress "Applying summary of %a\n" Procname.pp (Procdesc.get_proc_name pdesc);*)
+    | Some (_, summ) ->
+        (*L.progress "Applying summary of %a\n" Procname.pp (Procdesc.get_proc_name pdesc);*)
         variable_carryover astate callee_methname ret_id caller_methname summ
     | None -> 
         (* Nothing to carry over! -> just make a ph tuple and end *)
@@ -307,7 +308,7 @@ let search_recent_vardef (methname:Procname.t) (pvar:Var.t) (astate:S.t) =
         let aliasset_new = A.singleton (pvar_var, []) in
         let newstate = (methname, (pvar_var, []), loc, aliasset_new) in
         add_to_history (methname, (pvar_var, [])) loc;
-        L.progress "added pvar_var: %a\n" Var.pp pvar_var;
+        (* L.progress "added pvar_var: %a\n" Var.pp pvar_var; *)
         (* L.progress "current map: %a\n" (HistoryMap.pp ~pp_value:Location.pp) !history; *)
         S.add newstate astate
     | Lvar pv, BinOp (_, Var id1, Var id2) when not (is_mine id1 pv methname astate && is_mine id2 pv methname astate) ->
@@ -344,7 +345,7 @@ let search_recent_vardef (methname:Procname.t) (pvar:Var.t) (astate:S.t) =
         let newtuple = (proc1, var1, loc1, new_aliasset) in
         (* L.d_printfln "newtuple: %a@." QuadrupleWithPP.pp newtuple; *)
         (* finding the var tuple holding the value being stored *)
-        L.d_printfln "finding for: %a@." Ident.pp id2;
+        (* L.d_printfln "finding for: %a@." Ident.pp id2; *)
         let another_tuple = search_target_tuple_by_id id2 methname astate in
         (* L.d_printfln "another_tuple: %a@." QuadrupleWithPP.pp another_tuple; *)
         let loc = CFG.Node.loc node in
@@ -417,7 +418,7 @@ let search_recent_vardef (methname:Procname.t) (pvar:Var.t) (astate:S.t) =
         let aliasset_new = A.singleton pvar_ap in
         let newstate = (methname, pvar_ap, loc, aliasset_new) in
         add_to_history (methname, pvar_ap) loc;
-        S.add newstate astate 
+        S.add newstate astate
     | Lfield (Lvar pvar, fld, _), Var id ->
         let targetTuple =
           begin try weak_search_target_tuple_by_id id astate
@@ -452,7 +453,6 @@ let search_recent_vardef (methname:Procname.t) (pvar:Var.t) (astate:S.t) =
             let formals = get_formal_args caller_summary callee_methname |> List.filter ~f:(fun x -> not @@ Var.is_this x) in
             begin match formals with
               | [] -> (* Callee in Native Code! *)
-                  L.d_printfln "maybe cast?";
                   astate_summary_applied
               | _ ->  (* Callee in User Code! *)
                   let actuals_logical = extract_nonthisvar_from_args methname arg_ts astate_summary_applied in
@@ -484,7 +484,6 @@ let search_recent_vardef (methname:Procname.t) (pvar:Var.t) (astate:S.t) =
               let astate_rmvd = S.remove targetTuple astate in
               S.add newtuple astate_rmvd
           | false ->
-              if Pvar.is_global pvar then L.progress "it's a global!@.";
               begin match search_target_tuples_by_vardef (Var.of_pvar pvar) methname astate with
                   | [] -> (* 한 번도 def된 적 없음 *)
                         let double = doubleton (Var.of_id id, []) (Var.of_pvar pvar, []) in
@@ -497,6 +496,7 @@ let search_recent_vardef (methname:Procname.t) (pvar:Var.t) (astate:S.t) =
                           let most_recent_loc = get_most_recent_loc (methname, (var, [])) in
                         L.d_printfln "methname: %a, most_recent_loc: %a@." Procname.pp methname Location.pp most_recent_loc;
                         (* L.progress "astate: %a@." S.pp astate; *)
+                        begin try
                         let (proc, vardef, loc, aliasset) as most_recent_tuple = search_tuple_by_loc most_recent_loc tuples in
                         let astate_rmvd = S.remove most_recent_tuple astate in
                         let mrt_updated = (proc, vardef, loc, A.add (Var.of_id id, []) aliasset) in
@@ -504,6 +504,7 @@ let search_recent_vardef (methname:Procname.t) (pvar:Var.t) (astate:S.t) =
                         let ph = placeholder_vardef methname in
                         let newstate = (methname, (ph, []), Location.dummy, double) in
                         S.add mrt_updated astate_rmvd |> S.add newstate
+                        with _ -> astate end (* 임시로 일단은 이렇게 메꿔놓자 (211 문제) *)
               end
         end
     | Lfield (Var var, fld, _) -> 
@@ -607,20 +608,23 @@ let exec_metadata (md:Sil.instr_metadata) (astate:S.t) =
     let prev = register_formals prev' node methname in
     (* let prev = prev' in *)
       match instr with
-      | Sil.Load {id=id; e=exp} ->
+      | Load {id=id; e=exp} ->
           exec_load id exp prev methname
-      | Sil.Store {e1=exp1; e2=exp2} ->
+      | Store {e1=exp1; e2=exp2} ->
           exec_store exp1 exp2 methname prev node
-      | Sil.Prune _ -> prev
-      | Sil.Call ((ret_id, _), e_fun, arg_ts, _, _) ->
+      | Prune _ -> prev
+      | Call ((ret_id, _), e_fun, arg_ts, _, _) ->
           exec_call ret_id e_fun arg_ts my_summary prev methname
-      | Sil.Metadata md -> exec_metadata md prev
+      | Metadata md -> exec_metadata md prev
 
 
   let leq ~lhs:_ ~rhs:_ = S.subset
 
 
-  let join = S.union
+  let join = fun x y -> 
+    (* L.d_printfln "레프트: %a@. 라이트: %a@." S.pp x S.pp y; *)
+    L.d_printfln "JoinJoinJoin"; 
+    S.union x y
 
 
   let widen ~prev:prev ~next:next ~num_iters:_ = join prev next

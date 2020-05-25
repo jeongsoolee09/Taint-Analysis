@@ -48,7 +48,7 @@ let search_target_tuples_by_pvar (pvar:Var.t) (methname:Procname.t) (tupleset:S.
 
 
 let search_target_tuple_by_id (id:Ident.t) (methname:Procname.t) (tupleset:S.t) =
-  (* L.progress "id: %a, methname: %a, tupleset: %a@." Ident.pp id Procname.pp methname S.pp tupleset; *)
+  (* L.d_printfln "id: %a, methname: %a, tupleset: %a@." Ident.pp id Procname.pp methname S.pp tupleset; *)
   let elements = S.elements tupleset in
   let rec search_target_tuple_by_id_inner id (methname:Procname.t) elements = 
     match elements with
@@ -225,3 +225,17 @@ let extract_from_singleton (singleton:A.t) : A.elt =
   match A.elements singleton with
   | [x] -> x
   | _ -> raise NotASingleton
+
+
+let find_pvar_ap_in (aliasset:A.t) : A.elt =
+  let elements = A.elements aliasset in
+  let rec find_pvar_ap_in_inner (elements:A.elt list) (acc:A.elt list) =
+  match elements with
+  | [] -> acc
+  | (var, _) as target::t ->
+      if is_program_var var then target::acc else find_pvar_ap_in_inner t acc in
+      let result = find_pvar_ap_in_inner elements [] in
+      begin match result with
+      | [] -> L.die InternalError "Could not find pvar in given aliasset"
+      | [x] -> x
+      | _ -> L.die InternalError "Too many pvars in a given aliasset" end

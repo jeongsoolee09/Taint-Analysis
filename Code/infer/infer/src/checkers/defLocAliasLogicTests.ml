@@ -1,5 +1,6 @@
 open! IStd
 open DefLocAliasSearches
+open DefLocAliasDomain
 
 module L = Logging
 module A = DefLocAliasDomain.SetofAliases
@@ -53,6 +54,12 @@ let is_mine id pvar methname astate =
 
 let is_placeholder_vardef (var:Var.t) =
   match var with
+  | LogicalVar _ -> false
+  | ProgramVar pv -> String.equal (Pvar.to_string pv) "ph"
+
+
+let is_placeholder_vardef_ap (var_ap:MyAccessPath.t) =
+  match fst var_ap with
   | LogicalVar _ -> false
   | ProgramVar pv -> String.equal (Pvar.to_string pv) "ph"
 

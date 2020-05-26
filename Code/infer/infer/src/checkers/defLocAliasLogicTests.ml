@@ -44,9 +44,9 @@ let get_my_formal_args (methname:Procname.t) =
 
 
 (* There is an alias set which contains both id and pvar <-> id belongs to pvar, because ids never get reused *)
-let is_mine id pvar methname astate =
+let is_mine id pvar methname astate_set =
   try
-    let (_, _, _, aliasset) = search_target_tuple_by_id id methname astate in
+    let (_, _, _, aliasset) = search_target_tuple_by_id id methname astate_set in
     A.mem (Var.of_id id, []) aliasset && A.mem (Var.of_pvar pvar, []) aliasset
   with _ ->
     false
@@ -75,12 +75,12 @@ let is_this_ap (ap:A.elt) =
   Var.is_this var
 
 
-let input_is_void_type (arg_ts:(Exp.t*Typ.t) list) (astate:S.t) : bool =
+let input_is_void_type (arg_ts:(Exp.t*Typ.t) list) (astate_set:S.t) : bool =
   match arg_ts with
   | [] -> false
   | (Var var, _)::[] ->
       begin try
-          let (_, (vardef, _), _, _) = weak_search_target_tuple_by_id var astate in
+          let (_, (vardef, _), _, _) = weak_search_target_tuple_by_id var astate_set in
         if Var.is_this vardef then true else false
       with _ -> (* it's a constructor or something abnormal: We give up soundness *)
             true end

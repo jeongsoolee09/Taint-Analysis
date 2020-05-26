@@ -4,9 +4,9 @@
 
 module F = Format
 
-(** astate = Set of (defined variable, location of definition, Aliased Variables including both logical and program variables) *)
+(** astate_set = Set of (defined variable, location of definition, Aliased Variables including both logical and program variables) *)
 
-(** An tuple (element of an astate) represents a single data definition *)
+(** An tuple (element of an astate_set) represents a single data definition *)
 
 module Methname = Procname
 module type Methname = module type of Procname

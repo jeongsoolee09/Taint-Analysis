@@ -289,3 +289,14 @@ module DownwardIntDomain (MaxCount : MaxCount) : sig
   val decrement : t -> t
   (** decrease the count by one if it is greater than 0 *)
 end
+
+(** Added by Me *)
+module WeakMap (Key : PrettyPrintable.PrintableOrderedType) (Value : WithBottom) : sig
+  include module type of Map (Key) (Value)
+
+  val find : Key.t -> t -> Value.t
+
+  val weak_update : Key.t -> Value.t -> t -> t
+
+  val strong_update : Key.t -> Value.t -> t -> t
+end

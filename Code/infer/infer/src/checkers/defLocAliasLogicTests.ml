@@ -4,7 +4,7 @@ open DefLocAliasDomain
 
 module L = Logging
 module A = DefLocAliasDomain.SetofAliases
-module S = DefLocAliasDomain.AbstractState
+module S = DefLocAliasDomain.AbstractStateSet
 
 exception NotLogicalArg
 exception NoSummary

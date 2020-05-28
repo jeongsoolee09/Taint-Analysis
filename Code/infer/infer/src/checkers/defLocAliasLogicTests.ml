@@ -6,9 +6,8 @@ module L = Logging
 module A = DefLocAliasDomain.SetofAliases
 module S = DefLocAliasDomain.AbstractStateSet
 
-exception NotLogicalArg
-exception NoSummary
-
+exception NotImplemented
+exception IDontKnow
 
 let is_pvar_expr (exp:Exp.t) : bool =
   match exp with
@@ -40,7 +39,7 @@ let convert_from_mangled : Procname.t -> (Mangled.t*Typ.t) -> Var.t = fun methna
 let get_my_formal_args (methname:Procname.t) = 
   match Procdesc.load methname with
   | Some pdesc -> (*L.progress "found procdesc for %a\n" Procname.pp methname;*) List.map ~f:(convert_from_mangled methname) (Procdesc.get_formals pdesc)
-  | None -> raise NoSummary 
+  | None -> L.die InternalError "get_my_formal_args failed, methname: %a@." Procname.pp methname
 
 
 (* There is an alias set which contains both id and pvar <-> id belongs to pvar, because ids never get reused *)
@@ -85,7 +84,7 @@ let input_is_void_type (arg_ts:(Exp.t*Typ.t) list) (astate_set:S.t) : bool =
       with _ -> (* it's a constructor or something abnormal: We give up soundness *)
             true end
   | (Var _, _)::_ -> false
-  | (Lvar _, _)::_ -> raise NotLogicalArg (* shouldn't all non-constant actual args be pure logical vars? *)
+  | (Lvar _, _)::_ -> L.die InternalError "input_is_void_type failed, astate_set: %a@." S.pp astate_set (* shouldn't all non-constant actual args be pure logical vars? *)
   | (_, _)::_ -> false
 
 

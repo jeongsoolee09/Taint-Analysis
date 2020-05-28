@@ -67,7 +67,10 @@ module TransferFunctions = struct
 
   let leave_only_var_tuples (ziplist:(Exp.t*Var.t) list) =
     let leave_logical = fun (x,_) -> is_logical_var_expr x in
-    let map_func = function (Exp.Var id, var) -> (Var.of_id id, var) | (_, _) -> L.die InternalError "Exp not a Var" in
+    let map_func = fun (exp, var) ->
+      match exp, var with
+      | Exp.Var id, var -> (Var.of_id id, var)
+      | (_, _) -> L.die InternalError "leave_only_var_tuples/map_func failed, exp: %a, var: %a@." Exp.pp exp Var.pp var in
     List.filter ~f:leave_logical ziplist |> List.map ~f:map_func
 
 
@@ -76,7 +79,7 @@ let search_recent_vardef_astate (methname:Procname.t) (pvar:Var.t) (astate_set:S
   let elements = S.elements astate_set in
   let rec search_recent_vardef_astate_inner methname id astate_list =
     match astate_list with
-    | [] -> L.die InternalError "searching most recent vardef failed"
+    | [] -> L.die InternalError "search_recent_vardef_astate failed, methname: %a, pvar: %a, astate_set: %a@." Procname.pp methname Var.pp pvar S.pp astate_set
     | {T.tuple=targetTuple} as astate::t ->
         (* L.progress "methname: %a, searching: %a, loc: %a, proc: %a\n" Procname.pp methname Var.pp var Location.pp loc Procname.pp proc; *)
         let proc, (var, _), loc, aliasset = targetTuple in
@@ -92,17 +95,35 @@ let search_recent_vardef_astate (methname:Procname.t) (pvar:Var.t) (astate_set:S
   search_recent_vardef_astate_inner methname pvar elements
 
 
+  let pp_aliasset_list fmt (varsetlist:A.t list) =
+    F.fprintf fmt "[";
+    List.iter varsetlist ~f:(fun (aliasset:A.t) -> F.fprintf fmt "%a, " A.pp aliasset);
+    F.fprintf fmt "]"
+
+
   (** given a doubleton set of lv and pv, extract the pv. *)
   let rec extract_another_pvar (id:Ident.t) (varsetlist:A.t list) : Var.t =
     match varsetlist with
-    | [] -> L.die InternalError "extract_another_pvar failed"
+    | [] -> L.die InternalError "extract_another_pvar failed, id: %a, varsetlist: %a@." Ident.pp id pp_aliasset_list varsetlist
     | set::t ->
         if Int.equal (A.cardinal set) 2 && A.mem (Var.of_id id, []) set
         then
           begin match set |> A.remove (Var.of_id id, []) |> A.elements with
             | [(x, _)] -> x
-            | _ -> L.die InternalError "extract_another_pvar failed" end
+            | _ -> L.die InternalError "extract_another_pvar failed, id: %a, varsetlist: %a@." Ident.pp id pp_aliasset_list varsetlist end
         else extract_another_pvar id t
+
+
+  let pp_bindinglist fmt (bindinglist:(Var.t * Var.t) list) =
+    F.fprintf fmt "[";
+    List.iter bindinglist ~f:(fun (a, f) -> F.fprintf fmt "(%a, %a)" Var.pp a Var.pp f);
+    F.fprintf fmt "]"
+
+
+  let pp_astatelist fmt (astatelist:T.t list) =
+    F.fprintf fmt "[";
+    List.iter astatelist ~f:(fun astate -> F.fprintf fmt "%a, " T.pp astate);
+    F.fprintf fmt "]"
 
 
 (** Takes an actual(logical)-formal binding list and adds the formals to the respective pvar tuples of the actual arguments *)
@@ -127,7 +148,7 @@ let search_recent_vardef_astate (methname:Procname.t) (pvar:Var.t) (astate_set:S
             let newTuple = (proc, var, loc, A.add (formalvar, []) aliasset') in
             let newstate = {targetState with tuple=newTuple} in
             newstate::add_bindings_to_alias_of_tuples methname tl actual_astates
-        | Var.ProgramVar _ -> L.die InternalError "add_bindings_to_alias_of_tuples failed"
+        | Var.ProgramVar _ -> L.die InternalError "add_bindings_to_alias_of_tuples failed, methname: %a, bindinglist: %a, actual_astates: %a@." Procname.pp methname pp_bindinglist bindinglist pp_astatelist actual_astates
         end
 
 
@@ -180,11 +201,23 @@ let search_recent_vardef_astate (methname:Procname.t) (pvar:Var.t) (astate_set:S
         S.add newstate astate_set
 
 
-  let rec zip (l1:'a list) (l2:'b list) =
+  let pp_explist fmt (explist:Exp.t list) =
+    F.fprintf fmt "[";
+    List.iter explist ~f:(fun exp -> F.fprintf fmt "%a, " Exp.pp exp);
+    F.fprintf fmt "]"
+
+
+  let pp_varlist fmt (varlist:Var.t list) =
+    F.fprintf fmt "[";
+    List.iter varlist ~f:(fun var -> F.fprintf fmt "%a, " Var.pp var);
+    F.fprintf fmt "]"
+
+
+  let rec zip (l1:Exp.t list) (l2:Var.t list) =
     match l1, l2 with
     | [], [] -> []
     | h1::t1, h2::t2 -> (h1, h2)::zip t1 t2
-    | _, _ -> L.die InternalError "Zip error"
+    | _, _ -> L.die InternalError "zip failed, l1: %a, l2: %a" pp_explist l1 pp_varlist l2
 
 
   let get_formal_args (caller_summary:Summary.t) (callee_methname:Procname.t) : Var.t list =
@@ -203,13 +236,13 @@ let search_recent_vardef_astate (methname:Procname.t) (pvar:Var.t) (astate_set:S
     (var, lst @ [AccessPath.ArrayAccess (Typ.void_star, [])])
 
 
-  let merge_ph_tuples (tup1:QuadrupleWithPP.t) (tup2:QuadrupleWithPP.t) (location:LocationSet.t) : Q.t =
+  let merge_ph_tuples (tup1:QuadrupleWithPP.t) (tup2:QuadrupleWithPP.t) (lset:LocationSet.t) : Q.t =
     let proc1, _, _, alias1 = tup1 in
     let proc2, _, _, alias2 = tup2 in
     let pvar_vardef = find_another_pvar_vardef alias2 in
-    if not @@ Procname.equal proc1 proc2 then L.die InternalError "Merging two tuples from different procedures";
+    if not @@ Procname.equal proc1 proc2 then L.die InternalError "merge_ph_tuples failed, tup1: %a, tup2: %a, location: %a" Q.pp tup1 Q.pp tup2 LocationSet.pp lset;
     let aliasset = A.add pvar_vardef @@ A.union alias1 alias2 in
-    (proc1, pvar_vardef, location, aliasset)
+    (proc1, pvar_vardef, lset, aliasset)
 
 
   let exec_store (exp1:Exp.t) (exp2:Exp.t) (methname:Procname.t) (astate_set:S.t) (node:CFG.Node.t) : S.t =
@@ -420,7 +453,7 @@ let search_recent_vardef_astate (methname:Procname.t) (pvar:Var.t) (astate_set:S
     let callee_methname =
       match e_fun with
       | Const (Cfun fn) -> fn
-      | _ -> L.die InternalError "failed to find callee's methname" in
+      | _ -> L.die InternalError "exec_call failed, ret_id: %a, e_fun: %a astate_set: %a, methname: %a" Ident.pp ret_id Exp.pp e_fun S.pp astate_set Procname.pp methname in
     match input_is_void_type arg_ts astate_set with
     | true -> (* All Arguments are Just Constants: just apply the summary, make a new tuple and end *)
         let astate_set_summary_applied = apply_summary astate_set caller_summary callee_methname ret_id methname in
@@ -440,19 +473,21 @@ let search_recent_vardef_astate (methname:Procname.t) (pvar:Var.t) (astate_set:S
                   let actuals_logical = extract_nonthisvar_from_args methname arg_ts astate_set_summary_applied in
                   let actuallog_formal_binding = leave_only_var_tuples @@ zip actuals_logical formals in
                   (* pvar tuples transmitted as actual arguments *)
+                  let mapfunc = fun exp ->
+                    begin match exp with
+                      | Exp.Var id ->
+                          (* L.progress "id: %a, processing: %a@." Ident.pp id S.pp astate; *)
+                          let pvar = search_target_tuples_by_id id methname astate_set |> List.map ~f:fourth_of |> extract_another_pvar id in (* 여기가 문제 *)
+                          search_recent_vardef_astate methname pvar astate_set
+                      | _ ->
+                          L.die InternalError "exec_call/mapfunc failed, exp: %a" Exp.pp exp end in
                   let actuals_pvar_astates =
-                    actuals_logical |> List.filter ~f:is_logical_var_expr |> List.map ~f:(function
-                        | Exp.Var id ->
-                            (* L.progress "id: %a, processing: %a@." Ident.pp id S.pp astate; *)
-                            let pvar = search_target_tuples_by_id id methname astate_set |> List.map ~f:fourth_of |> extract_another_pvar id in (* 여기가 문제 *)
-                            search_recent_vardef_astate methname pvar astate_set
-                        | _ -> L.die InternalError "actuals should be logical vars") in
+                    actuals_logical |> List.filter ~f:is_logical_var_expr |> List.map ~f:mapfunc in
                   let actualpvar_alias_added = add_bindings_to_alias_of_tuples methname actuallog_formal_binding actuals_pvar_astates |> S.of_list in
                   let applied_state_rmvd = S.diff astate_set_summary_applied (S.of_list actuals_pvar_astates) in
                   S.union applied_state_rmvd actualpvar_alias_added end
           with _ -> (* corner case: maybe one of actuals contains literal null *)
             astate_set end
-
 
 
   let exec_load (id:Ident.t) (exp:Exp.t) (astate_set:S.t) (methname:Procname.t) =
@@ -469,26 +504,26 @@ let search_recent_vardef_astate (methname:Procname.t) (pvar:Var.t) (astate_set:S
               S.add newstate astate_rmvd
           | false ->
               begin match search_target_astates_by_vardef (Var.of_pvar pvar) methname astate_set with
-                  | [] -> (* 한 번도 def된 적 없음 *)
-                        let double = doubleton (Var.of_id id, []) (Var.of_pvar pvar, []) in
-                        let ph = placeholder_vardef methname in
-                        let newtuple = (methname, (ph, []), LocationSet.singleton @@ Location.dummy, double) in
-                        let newstate = {T.tuple=newtuple; history=newmap} in
-                        S.add newstate astate_set
-                  | h::_ as astates -> (* 이전에 def된 적 있음 *)
-                        let history = join_all_history_in astates in
-                        let var, _ = second_of h.tuple in
-                        (* L.d_printfln "finding var:%a\n" Var.pp var; *)
-                        let most_recent_locset = get_most_recent_loc (methname, (var, [])) history in
-                        (* L.d_printfln "methname: %a, most_recent_loc: %a@." Procname.pp methname Location.pp most_recent_loc; *)
-                        (* L.progress "astate: %a@." S.pp astate; *)
-                        let {T.tuple=(proc, vardef, loc, aliasset)} as most_recent_astate = search_astate_by_loc most_recent_locset astates in
-                        let astate_set_rmvd = S.remove most_recent_astate astate_set in
-                        let mra_updated = {most_recent_astate with tuple=(proc, vardef, loc, A.add (Var.of_id id, []) aliasset)} in
-                        let double = doubleton (Var.of_id id, []) (Var.of_pvar pvar, []) in
-                        let ph = placeholder_vardef methname in
-                        let newstate = {T.tuple=(methname, (ph, []), LocationSet.singleton Location.dummy, double); history=HistoryMap.empty} in
-                        S.add mra_updated astate_set_rmvd |> S.add newstate (* hopefully this fixes the 211 hashtbl issue *)
+                | [] -> (* 한 번도 def된 적 없음 *)
+                    let double = doubleton (Var.of_id id, []) (Var.of_pvar pvar, []) in
+                    let ph = placeholder_vardef methname in
+                    let newtuple = (methname, (ph, []), LocationSet.singleton @@ Location.dummy, double) in
+                    let newstate = {T.tuple=newtuple; history=newmap} in
+                    S.add newstate astate_set
+                | h::_ as astates -> (* 이전에 def된 적 있음 *)
+                    let history = join_all_history_in astates in
+                    let var, _ = second_of h.tuple in
+                    (* L.d_printfln "finding var:%a\n" Var.pp var; *)
+                    let most_recent_locset = get_most_recent_loc (methname, (var, [])) history in
+                    (* L.d_printfln "methname: %a, most_recent_loc: %a@." Procname.pp methname Location.pp most_recent_loc; *)
+                    (* L.progress "astate: %a@." S.pp astate; *)
+                    let {T.tuple=(proc, vardef, loc, aliasset)} as most_recent_astate = search_astate_by_loc most_recent_locset astates in
+                    let astate_set_rmvd = S.remove most_recent_astate astate_set in
+                    let mra_updated = {most_recent_astate with tuple=(proc, vardef, loc, A.add (Var.of_id id, []) aliasset)} in
+                    let double = doubleton (Var.of_id id, []) (Var.of_pvar pvar, []) in
+                    let ph = placeholder_vardef methname in
+                    let newstate = {T.tuple=(methname, (ph, []), LocationSet.singleton Location.dummy, double); history=HistoryMap.empty} in
+                    S.add mra_updated astate_set_rmvd |> S.add newstate (* hopefully this fixes the 211 hashtbl issue *)
               end
         end
     | Lfield (Var var, fld, _) -> 
@@ -500,7 +535,7 @@ let search_recent_vardef_astate (methname:Procname.t) (pvar:Var.t) (astate_set:S
               let double = doubleton access_path (Var.of_id id, []) in
               let newstate = {T.tuple=(methname, (ph, []), LocationSet.singleton Location.dummy, double); history=newmap} in
               S.add newstate astate_set
-          | _ -> L.die InternalError "Not Implemented 1"
+          | _ -> L.die InternalError "exec_load failed, id: %a, exp: %a, astate_set: %a, methname: %a" Ident.pp id Exp.pp exp S.pp astate_set Procname.pp methname
         end
     | Lfield (Lvar pvar, fld, _) when Pvar.is_global pvar ->
         let access_path : A.elt = (Var.of_pvar pvar, [FieldAccess fld]) in
@@ -521,8 +556,7 @@ let search_recent_vardef_astate (methname:Procname.t) (pvar:Var.t) (astate_set:S
               let double = doubleton (Var.of_id id, []) (Var.of_pvar pvar, fldlst) in
               let ph = placeholder_vardef methname in
               let newstate = {T.tuple=(methname, (ph, []), LocationSet.singleton Location.dummy, double); history=newmap} in
-              S.add mra_updated astate_set_rmvd |> S.add newstate
-          end
+              S.add mra_updated astate_set_rmvd |> S.add newstate end
     | Lindex (Var var, _) -> (* Var[const or Var] *)
         let access_path : A.elt = (Var.of_id var, [ArrayAccess (Typ.void_star, [])]) in
         (* 이전에 정의된 적이 있는가 없는가로 경우 나눠야 함 (formal엔 못 옴) *)
@@ -532,11 +566,11 @@ let search_recent_vardef_astate (methname:Procname.t) (pvar:Var.t) (astate_set:S
               let double = doubleton access_path (Var.of_id id, []) in
               let newstate = {T.tuple=(methname, (ph, []), LocationSet.singleton Location.dummy, double); history=newmap} in
               S.add newstate astate_set
-          | _ -> L.die InternalError "Not Implemented 3"
-        end
+          | _ -> L.die InternalError "exec_load failed, id: %a, exp: %a, astate_set: %a, methname: %a" Ident.pp id Exp.pp exp S.pp astate_set Procname.pp methname end
     | Var _ -> (* 아직은 버리는 케이스만 있으니 e.g. _=*n$9 *)
         astate_set
-    | _ -> L.progress "Unsupported Load Instruction %a := %a@." Ident.pp id Exp.pp exp; astate_set
+    | _ ->
+        L.progress "Unsupported Load Instruction %a := %a@." Ident.pp id Exp.pp exp; astate_set
 
 
   (** register tuples for formal arguments before a procedure starts. *)

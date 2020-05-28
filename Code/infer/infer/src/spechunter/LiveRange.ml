@@ -13,13 +13,7 @@ module L = Logging
 module F = Format
 
 exception NotImplemented
-exception NoEarliestTuple
-exception NoParent
-exception UnexpectedSituation1
-exception UnexpectedSituation2
 exception IDontKnow
-exception StripError
-exception ProcExtractFailed
 
 type status =
   | Define of (Procname.t * Var.t)
@@ -47,7 +41,20 @@ module PairOfMS = struct
   let hash = Hashtbl.hash
 end
 
+let pp_status fmt x =
+  match x with
+  | Define (proc, var) -> F.fprintf fmt "Define (%a using %a)" Var.pp var Procname.pp proc
+  | Call (proc, var) -> F.fprintf fmt "Call (%a with %a)" Procname.pp proc Var.pp var
+  | Redefine var -> F.fprintf fmt "Redefine (%a)" Var.pp var
+  | Dead -> F.fprintf fmt "Dead"
+ 
+
+let pp_pair fmt (proc, v) = F.fprintf fmt "(%a, %a) ->" Procname.pp proc pp_status v
+
+
+let pp_chain fmt x = Pp.seq pp_pair fmt x
 module G = Graph.Imperative.Digraph.ConcreteBidirectional (PairOfMS)
+
 
 module BFS = Graph.Traverse.Bfs (G)
 
@@ -200,7 +207,7 @@ let find_direct_caller (target_meth:Procname.t) (acc:chain) =
   let target_vertex = (target_meth, get_summary target_meth) in
   let rec find_direct_caller_inner (acc:chain) =
     match acc with
-    | [] -> raise NoParent
+    | [] -> L.die InternalError "find_direct_caller failed, target_meth: %a, acc: %a@." Procname.pp target_meth pp_chain acc
     | (cand_meth, _) :: t ->
         let is_pred = fun v -> List.mem (G.pred callgraph target_vertex) v ~equal:equal_btw_vertices in
         let cand_vertex = (cand_meth, get_summary cand_meth) in
@@ -272,8 +279,8 @@ let procname_of (ap:A.elt) : Procname.t =
   | ProgramVar pv ->
       begin match Pvar.get_declaring_function pv with
         | Some proc -> proc
-        | _ -> raise ProcExtractFailed end
-  | LogicalVar _ -> raise ProcExtractFailed
+        | _ -> L.die InternalError "procname_of failed, ap: %a@." MyAccessPath.pp ap end
+  | LogicalVar _ -> L.die InternalError "procname_of failed, ap: %a@." MyAccessPath.pp ap
 
 
 (** 콜 그래프와 분석 결과를 토대로 체인 (Define -> ... -> Dead)을 계산해 낸다 *)
@@ -308,7 +315,7 @@ let compute_chain (var:Var.t) : chain =
               let new_state = find_earliest_astate_of_var_within (S.elements future_states) in
               let new_chain = (current_methname, Redefine (fst vardef)) :: current_chain in
               compute_chain_inner current_methname current_astate_set new_state new_chain
-          | _ -> raise UnexpectedSituation1
+          | _ -> L.die InternalError "compute_chain_inner failed, current_methname: %a, current_astate_set: %a, current_astate: %a, current_chain: %a@." Procname.pp current_methname S.pp current_astate_set T.pp current_astate pp_chain current_chain
         end
     | [var] -> (* either definition or call *)
         (* L.progress "next var: %a\n" Var.pp var; *)
@@ -340,7 +347,7 @@ let compute_chain (var:Var.t) : chain =
               let new_state = find_earliest_astate_within @@ S.elements (remove_duplicates_from @@ S.of_list nonempty_list) in
               let new_chain = (current_methname, Define (current_methname, var)) :: current_chain in
               compute_chain_inner current_methname current_astate_set new_state new_chain end
-    | _ -> raise UnexpectedSituation2 in
+    | _ -> L.die InternalError "compute_chain_inner failed, current_methname: %a, current_astate_set: %a, current_astate: %a, current_chain: %a@." Procname.pp current_methname S.pp current_astate_set T.pp current_astate pp_chain current_chain in
   List.rev @@ compute_chain_inner first_methname first_astate_set first_astate [(first_methname, Define (source_meth, var))]
 
 
@@ -350,20 +357,6 @@ let collect_all_vars () =
   let listofallvars = List.map ~f:(fun (x:T.t) -> second_of x.tuple) listofallstates in
   let listofallvar_aps = List.map ~f:(fun (var, _) -> (var, [])) listofallvars in
   A.of_list listofallvar_aps
-
-
-let pp_status fmt x =
-  match x with
-  | Define (proc, var) -> F.fprintf fmt "Define (%a using %a)" Var.pp var Procname.pp proc
-  | Call (proc, var) -> F.fprintf fmt "Call (%a with %a)" Procname.pp proc Var.pp var
-  | Redefine var -> F.fprintf fmt "Redefine (%a)" Var.pp var
-  | Dead -> F.fprintf fmt "Dead"
- 
-
-let pp_pair fmt (proc, v) = F.fprintf fmt "(%a, %a) ->" Procname.pp proc pp_status v
-
-
-let pp_chain fmt x = Pp.seq pp_pair fmt x
 
 
 let to_string hashtbl =

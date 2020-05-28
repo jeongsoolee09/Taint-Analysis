@@ -252,9 +252,9 @@ module AbstractInterpreterCommon (TransferFunctions : TransferFunctions.SIL) = s
     CFG.fold_preds cfg node ~init:None ~f:(fun joined_post_opt pred ->
         match extract_post_ pred with
         | None ->
-            let und_node = Node.underlying_node node in
+            (* let und_node = Node.underlying_node node in
             let procname = Procdesc.Node.get_proc_name und_node in
-            L.progress "No post at %a! (%a)@." Procdesc.Node.pp und_node Procname.pp procname;
+            L.progress "No post at %a! (%a)@." Procdesc.Node.pp und_node Procname.pp procname; *)
             joined_post_opt
         | Some post as some_post -> (
           match joined_post_opt with
@@ -262,9 +262,9 @@ module AbstractInterpreterCommon (TransferFunctions : TransferFunctions.SIL) = s
               some_post
           | Some joined_post ->
               let res = Domain.join post joined_post in
-              let und_node = Node.underlying_node node in
+              (* let und_node = Node.underlying_node node in
               let procname = Procdesc.Node.get_proc_name und_node in
-              L.progress "Found post at %a! (%a)@." Procdesc.Node.pp und_node Procname.pp procname;
+              L.progress "Found post at %a! (%a)@." Procdesc.Node.pp und_node Procname.pp procname; *)
               if Config.write_html then debug_absint_operation (`Join (joined_post, post, res)) ;
               Some res ) )
 

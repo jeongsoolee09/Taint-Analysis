@@ -3,10 +3,10 @@ open DefLocAliasDomain
 
 module L = Logging
 module F = Format
+module P = DefLocAliasDomain.AbstractPair
+module S = DefLocAliasDomain.AbstractStateSetFinite
 module A = DefLocAliasDomain.SetofAliases
-module S = DefLocAliasDomain.AbstractStateSet
-module T = DefLocAliasDomain.AbstractState
-module Q = DefLocAliasDomain.QuadrupleWithPP
+module T = DefLocAliasDomain.AbstractState (* same as Q *)
 
 exception NotImplemented
 exception IDontKnow
@@ -19,19 +19,17 @@ let placeholder_vardef (pid:Procname.t) : Var.t =
 
 let search_target_tuple_by_pvar (pvar:Var.t) (methname:Procname.t) (astate_set:S.t) =
   let elements = S.elements astate_set in
-  let tuplelist = List.map ~f:(fun ({tuple}:T.t) -> tuple) elements in
   let rec search_target_tuple_by_pvar_inner pvar (methname:Procname.t) elements = 
     match elements with
     | [] -> L.die InternalError "search_target_tuple_by_pvar failed, pvar: %a, methname:%a, astate_set:%a@." Var.pp pvar Procname.pp methname S.pp astate_set
     | ((procname, _, _, aliasset) as target)::t ->
         if Procname.equal procname methname && A.mem (pvar, []) aliasset then target else search_target_tuple_by_pvar_inner pvar methname t in
-  search_target_tuple_by_pvar_inner pvar methname tuplelist
+  search_target_tuple_by_pvar_inner pvar methname elements
 
 
 (* list version of the above *)
 let search_target_tuples_by_pvar (pvar:Var.t) (methname:Procname.t) (tupleset:S.t) =
   let elements = S.elements tupleset in
-  let tuplelist = List.map ~f:(fun ({tuple}:T.t) -> tuple) elements in
   let rec search_target_tuples_by_pvar_inner pvar (methname:Procname.t) elements = 
     match elements with
     | [] -> []
@@ -39,7 +37,7 @@ let search_target_tuples_by_pvar (pvar:Var.t) (methname:Procname.t) (tupleset:S.
         if Procname.equal procname methname && A.mem (pvar, []) aliasset
         then target::search_target_tuples_by_pvar_inner pvar methname t
         else search_target_tuples_by_pvar_inner pvar methname t in
-  search_target_tuples_by_pvar_inner pvar methname tuplelist
+  search_target_tuples_by_pvar_inner pvar methname elements
 
 
 let search_target_astates_by_pvar (pvar:Var.t) (methname:Procname.t) (astate_set:S.t) =
@@ -47,7 +45,7 @@ let search_target_astates_by_pvar (pvar:Var.t) (methname:Procname.t) (astate_set
   let rec search_target_astates_by_pvar_inner pvar (methname:Procname.t) elements = 
     match elements with
     | [] -> []
-    | {T.tuple=(procname, _, _, aliasset)} as target::t ->
+    | (procname, _, _, aliasset) as target::t ->
         if Procname.equal procname methname && A.mem (pvar, []) aliasset
         then target::search_target_astates_by_pvar_inner pvar methname t
         else search_target_astates_by_pvar_inner pvar methname t in
@@ -57,29 +55,16 @@ let search_target_astates_by_pvar (pvar:Var.t) (methname:Procname.t) (astate_set
 let search_target_tuple_by_id (id:Ident.t) (methname:Procname.t) (astate_set:S.t) =
   (* L.d_printfln "id: %a, methname: %a, tupleset: %a@." Ident.pp id Procname.pp methname S.pp tupleset; *)
   let elements = S.elements astate_set in
-  let tuplelist = List.map ~f:(fun ({tuple}:T.t) -> tuple) elements in
   let rec search_target_tuple_by_id_inner id (methname:Procname.t) elements = 
     match elements with
     | [] -> L.die InternalError "search_target_tuple_by_id failed, id: %a, methname: %a, tupleset: %a@." Ident.pp id Procname.pp methname S.pp astate_set
     | ((procname, _, _, aliasset) as target)::t ->
-        if Procname.equal procname methname && A.mem (Var.of_id id, []) aliasset then target else search_target_tuple_by_id_inner id methname t in
-  search_target_tuple_by_id_inner id methname tuplelist
-
-
-let search_target_astate_by_id (id:Ident.t) (methname:Procname.t) (astate_set:S.t) =
-  (* L.d_printfln "id: %a, methname: %a, tupleset: %a@." Ident.pp id Procname.pp methname S.pp tupleset; *)
-  let elements = S.elements astate_set in
-  let rec search_target_tuple_by_id_inner id (methname:Procname.t) elements = 
-    match elements with
-    | [] -> L.die InternalError "search_target_astate_by_id failed, id: %a, methname: %a, tupleset: %a@." Ident.pp id Procname.pp methname S.pp astate_set
-    | {T.tuple=(procname, _, _, aliasset)} as target::t ->
         if Procname.equal procname methname && A.mem (Var.of_id id, []) aliasset then target else search_target_tuple_by_id_inner id methname t in
   search_target_tuple_by_id_inner id methname elements
 
 
 let search_target_tuples_by_id (id:Ident.t) (methname:Procname.t) (astate_set:S.t) =
   let elements = S.elements astate_set in
-  let tuplelist = List.map ~f:(fun (astate:T.t) -> astate.tuple) elements in
   let rec search_target_tuples_by_id_inner id (methname:Procname.t) elements acc = 
     match elements with
     | [] -> acc
@@ -87,19 +72,18 @@ let search_target_tuples_by_id (id:Ident.t) (methname:Procname.t) (astate_set:S.
         if Procname.equal procname methname && A.mem (Var.of_id id, []) aliasset
         then search_target_tuples_by_id_inner id methname t (target::acc)
         else search_target_tuples_by_id_inner id methname t acc in
-  search_target_tuples_by_id_inner id methname tuplelist []
+  search_target_tuples_by_id_inner id methname elements []
 
 
 let weak_search_target_tuple_by_id (id:Ident.t) (astate_set:S.t) =
   let elements = S.elements astate_set in
-  let tuplelist = List.map ~f:(fun ({tuple}:T.t) -> tuple) elements in
-  let rec weak_search_target_tuple_by_id_inner id (elements:Q.t list) = 
+  let rec weak_search_target_tuple_by_id_inner id (elements:S.elt list) = 
     match elements with
     | [] -> L.die InternalError "weak_search_target_tuple_by_id failed, id: %a, astate_set: %a@." Ident.pp id S.pp astate_set
     | target::t ->
         let aliasset = fourth_of target in
         if A.mem (Var.of_id id, []) aliasset then target else weak_search_target_tuple_by_id_inner id t in
-  weak_search_target_tuple_by_id_inner id tuplelist
+  weak_search_target_tuple_by_id_inner id elements
 
 
 let weak_search_target_astate_by_id (id:Ident.t) (astate_set:S.t) =
@@ -108,7 +92,7 @@ let weak_search_target_astate_by_id (id:Ident.t) (astate_set:S.t) =
     match elements with
     | [] -> L.die InternalError "weak_search_target_astate_by_id failed, id: %a, astate_Set: %a@." Ident.pp id S.pp astate_set
     | target::t ->
-        let aliasset = fourth_of target.tuple in
+        let aliasset = fourth_of target in
         if A.mem (Var.of_id id, []) aliasset then target else weak_search_target_astate_by_id_inner id t in
   weak_search_target_astate_by_id_inner id elements
 
@@ -120,20 +104,18 @@ let is_return_ap (ap:A.elt) =
 
 let find_tuple_with_ret (tupleset:S.t) (methname:Procname.t) =
   let elements = S.elements tupleset in
-  let tuplelist = List.map ~f:(fun ({tuple}:T.t) -> tuple) elements in
-  let rec find_tuple_with_ret_inner (tuplelist:Q.t list) (methname:Procname.t) (acc:Q.t list) =
+  let rec find_tuple_with_ret_inner (tuplelist:T.t list) (methname:Procname.t) (acc:T.t list) =
     match tuplelist with
     | [] -> acc
     | (procname, _, _, aliasset) as target :: t ->
         if Procname.equal procname methname && A.exists is_return_ap aliasset
         then find_tuple_with_ret_inner t methname (target::acc)
         else find_tuple_with_ret_inner t methname acc in
-  find_tuple_with_ret_inner tuplelist methname []
+  find_tuple_with_ret_inner elements methname []
 
 
 let search_target_tuples_by_vardef (pv:Var.t) (methname:Procname.t) (tupleset:S.t) =
   let elements = S.elements tupleset in
-  let tuplelist = List.map ~f:(fun ({tuple}:T.t) -> tuple) elements in
   let rec search_target_tuples_by_vardef_inner pv (methname:Procname.t) elements acc = 
     match elements with
     | [] -> acc
@@ -141,7 +123,7 @@ let search_target_tuples_by_vardef (pv:Var.t) (methname:Procname.t) (tupleset:S.
         if Procname.equal procname methname && Var.equal vardef pv
         then search_target_tuples_by_vardef_inner pv methname t (target::acc)
         else search_target_tuples_by_vardef_inner pv methname t acc in
-  search_target_tuples_by_vardef_inner pv methname tuplelist []
+  search_target_tuples_by_vardef_inner pv methname elements []
 
 
 let search_target_astates_by_vardef (pv:Var.t) (methname:Procname.t) (astate_set:S.t) =
@@ -149,7 +131,7 @@ let search_target_astates_by_vardef (pv:Var.t) (methname:Procname.t) (astate_set
   let rec search_target_astates_by_vardef_inner pv (methname:Procname.t) elements acc = 
     match elements with
     | [] -> acc
-    | {T.tuple=(procname, (vardef, _), _, _)} as target :: t ->
+    | (procname, (vardef, _), _, _) as target :: t ->
         if Procname.equal procname methname && Var.equal vardef pv
         then search_target_astates_by_vardef_inner pv methname t (target::acc)
         else search_target_astates_by_vardef_inner pv methname t acc in
@@ -158,7 +140,6 @@ let search_target_astates_by_vardef (pv:Var.t) (methname:Procname.t) (astate_set
 
 let search_target_tuples_by_vardef_ap (pv_ap:MyAccessPath.t) (methname:Procname.t) (tupleset:S.t) =
   let elements = S.elements tupleset in
-  let tuplelist = List.map ~f:(fun ({tuple}:T.t) -> tuple) elements in
   let rec search_target_tuples_by_vardef_ap_inner pv_ap methname elements acc =
     match elements with
     | [] -> acc
@@ -166,12 +147,11 @@ let search_target_tuples_by_vardef_ap (pv_ap:MyAccessPath.t) (methname:Procname.
         if Procname.equal procname methname && MyAccessPath.equal pv_ap var_ap
         then search_target_tuples_by_vardef_ap_inner pv_ap methname t (target::acc)
         else search_target_tuples_by_vardef_ap_inner pv_ap methname t acc in
-  search_target_tuples_by_vardef_ap_inner pv_ap methname tuplelist []
+  search_target_tuples_by_vardef_ap_inner pv_ap methname elements []
 
 
 let search_target_tuples_by_vardef_ap (pv_ap:MyAccessPath.t) (methname:Procname.t) (tupleset:S.t) =
   let elements = S.elements tupleset in
-  let tuplelist = List.map ~f:(fun ({tuple}:T.t) -> tuple) elements in
   let rec search_target_tuples_by_vardef_ap_inner pv_ap methname elements acc =
     match elements with
     | [] -> acc
@@ -179,7 +159,7 @@ let search_target_tuples_by_vardef_ap (pv_ap:MyAccessPath.t) (methname:Procname.
         if Procname.equal procname methname && MyAccessPath.equal pv_ap var_ap
         then search_target_tuples_by_vardef_ap_inner pv_ap methname t (target::acc)
         else search_target_tuples_by_vardef_ap_inner pv_ap methname t acc in
-  search_target_tuples_by_vardef_ap_inner pv_ap methname tuplelist []
+  search_target_tuples_by_vardef_ap_inner pv_ap methname elements []
 
 
 let search_target_astates_by_vardef_ap (pv_ap:MyAccessPath.t) (methname:Procname.t) (astate_set:S.t) : T.t list =
@@ -187,14 +167,14 @@ let search_target_astates_by_vardef_ap (pv_ap:MyAccessPath.t) (methname:Procname
   let rec search_target_astates_by_vardef_ap_inner pv_ap methname elements acc =
     match elements with
     | [] -> acc
-    | {T.tuple=(procname, var_ap, _, _)} as target :: t ->
+    | (procname, var_ap, _, _) as target :: t ->
         if Procname.equal procname methname && MyAccessPath.equal pv_ap var_ap
         then search_target_astates_by_vardef_ap_inner pv_ap methname t (target::acc)
         else search_target_astates_by_vardef_ap_inner pv_ap methname t acc in
   search_target_astates_by_vardef_ap_inner pv_ap methname elements []
 
 
-let rec search_tuple_by_loc (loc_set:LocationSet.t) (tuplelist:Q.t list) =
+let rec search_tuple_by_loc (loc_set:LocationSet.t) (tuplelist:T.t list) =
   match tuplelist with
   | [] -> L.die InternalError "search_tuple_by_loc failed, loc_set: %a@." LocationSet.pp loc_set
   | tuple::t ->
@@ -206,7 +186,7 @@ let rec search_astate_by_loc (loc_set:LocationSet.t) (tuplelist:T.t list) =
   match tuplelist with
   | [] -> L.die InternalError "search_astate_by_loc failed, loc_set %a@." LocationSet.pp loc_set
   | astate::t ->
-      let l = third_of astate.tuple in
+      let l = third_of astate in
       if LocationSet.equal loc_set l then astate else search_astate_by_loc loc_set t
 
 
@@ -214,7 +194,7 @@ let rec search_astate_by_loc (loc_set:LocationSet.t) (tuplelist:T.t list) =
 let rec search_tuples_by_loc (loc_set:LocationSet.t) (tuplelist:S.elt list) =
   match tuplelist with
   | [] -> []
-  | {tuple}::t ->
+  | tuple::t ->
       let l = third_of tuple in
       if LocationSet.equal loc_set l
       then tuple::search_tuples_by_loc loc_set t
@@ -242,8 +222,8 @@ let find_least_linenumber (statelist:T.t list) : T.t =
     match statelist with
     | [] -> current_least
     | targetState::t ->
-        let snd_target = third_of targetState.tuple in
-        let snd_current = third_of current_least.tuple in
+        let snd_target = third_of targetState in
+        let snd_current = third_of current_least in
         if snd_target ==> snd_current
         then find_least_linenumber_inner t targetState
         else find_least_linenumber_inner t current_least in
@@ -251,18 +231,16 @@ let find_least_linenumber (statelist:T.t list) : T.t =
 
 
 (** pick the earliest TUPLE within a list of astates *)
-let find_earliest_tuple_within (astatelist:S.elt list) : Q.t =
-  let tuplelist = List.map ~f:(fun ({tuple}:T.t) -> tuple) astatelist in
-  let locations = List.sort ~compare:LocationSet.compare (List.map ~f:third_of tuplelist) in
+let find_earliest_tuple_within (astatelist:S.elt list) : T.t =
+  let locations = List.sort ~compare:LocationSet.compare (List.map ~f:third_of astatelist) in
   match List.nth locations 0 with
-  | Some earliest_location -> search_tuple_by_loc earliest_location tuplelist
+  | Some earliest_location -> search_tuple_by_loc earliest_location astatelist
   | None -> L.die InternalError "find_earliest_tuple_within failed, astatelist: %a@." S.pp (S.of_list astatelist)
 
 
 (** pick the earliest ASTATE within a list of astates *)
 let find_earliest_astate_within (astatelist:S.elt list) : T.t =
-  let tuplelist = List.map ~f:(fun ({tuple}:T.t) -> tuple) astatelist in
-  let locations = List.sort ~compare:LocationSet.compare (List.map ~f:third_of tuplelist) in
+  let locations = List.sort ~compare:LocationSet.compare (List.map ~f:third_of astatelist) in
   match List.nth locations 0 with
   | Some earliest_location -> search_astate_by_loc earliest_location astatelist
   | None -> L.die InternalError "find_earliest_astate_within failed, astatelist: %a@." S.pp (S.of_list astatelist)

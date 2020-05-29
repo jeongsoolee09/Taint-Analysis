@@ -50,31 +50,23 @@ end
 
 module HistoryMap : module type of AbstractDomain.WeakMap (ProcAccess) (LocationSet)
 
-module AbstractState : sig
-  type t = {tuple: QuadrupleWithPP.t; history: HistoryMap.t [@compare.ignore]} [@@deriving compare]
-
-  val pp : F.formatter -> t -> unit
-end
+module AbstractState : module type of QuadrupleWithPP
 
 module AbstractStateSetFinite : AbstractDomain.FiniteSetS with type elt = AbstractState.t
 
-module AbstractStateSet : sig
-  include module type of AbstractStateSetFinite
-end
+module AbstractPair : module type of AbstractDomain.Pair (AbstractStateSetFinite) (HistoryMap)
 
-val pp : F.formatter -> AbstractStateSet.t -> unit
+val pp : F.formatter -> AbstractPair.t -> unit
 
-type t = AbstractStateSet.t
+type t = AbstractPair.t
 
 type summary = t (* used in Payloads.ml *)
 
-val initial : AbstractStateSet.t
+val initial : AbstractPair.t
 
 val placeholder_vardef : Procname.t -> Var.t
 
 val bottuple : QuadrupleWithPP.t
-
-val botstate : AbstractState.t
 
 (* Utility Functions *)
 

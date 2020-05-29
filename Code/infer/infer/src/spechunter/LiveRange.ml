@@ -5,7 +5,8 @@ open DefLocAliasLogicTests
 open DefLocAliasDomain
 
 module Hashtbl = Caml.Hashtbl
-module S = DefLocAliasDomain.AbstractStateSet
+module P = DefLocAliasDomain.AbstractPair
+module S = DefLocAliasDomain.AbstractStateSetFinite
 module A = DefLocAliasDomain.SetofAliases
 module T = DefLocAliasDomain.AbstractState
 module Q = DefLocAliasDomain.QuadrupleWithPP
@@ -99,13 +100,13 @@ let find_procpair_by_var (var:Var.t) =
     let rec duplicated_times_inner (var:Var.t) (current_line:LocationSet.t) (current_time:int) (lst:T.t list) =
       match lst with
       | [] -> (*L.progress "dup time: %d\n" current_time;*) current_time
-      | {T.tuple=(_, (vardef, _), loc, _)}::t ->
+      | (_, (vardef, _), loc, _)::t ->
           if Var.equal var vardef
           then (if LocationSet.equal loc current_line
                 then duplicated_times_inner var current_line (current_time+1) t
                 else duplicated_times_inner var current_line current_time t)
           else duplicated_times_inner var current_line current_time t in
-    let first_loc : LocationSet.t = third_of @@ (List.nth_exn lst 0).tuple in
+    let first_loc : LocationSet.t = third_of @@ (List.nth_exn lst 0) in
     duplicated_times_inner var first_loc 0 lst
 
 
@@ -115,7 +116,7 @@ let find_procpair_by_var (var:Var.t) =
     let rec get_tuple_by_key tuplelist key =
       match tuplelist with
       | [] -> []
-      | {T.tuple=(proc,(name, _), loc,_)} as targetTuple::t ->
+      | (proc,(name, _), loc,_) as targetTuple::t ->
           if triple_equal key (proc, name, loc)
           then ((*L.progress "generating key: %a, targetTuple: %a\n" Var.pp name QuadrupleWithPP.pp targetTuple;*) targetTuple::get_tuple_by_key t key) 
           else get_tuple_by_key t key in
@@ -129,7 +130,7 @@ let find_procpair_by_var (var:Var.t) =
     match listlist with
     | [] -> []
     | lst::t ->
-        let sample_tuple = (List.nth_exn lst 0).tuple in
+        let sample_tuple = (List.nth_exn lst 0) in
         (*L.progress "sample tuple: %a\n" Q.pp sample_tuple;*)
         let current_var, _ = second_of sample_tuple in
         if not @@ is_placeholder_vardef current_var && not @@ Var.is_this current_var
@@ -145,7 +146,7 @@ let find_procpair_by_var (var:Var.t) =
 let remove_duplicates_from (astate_set:S.t) : S.t =
   let grouped_by_duplicates = (group_by_duplicates >> collect_duplicates) astate_set in
   (* 위의 리스트 안의 각 리스트들 안에 들어 있는 튜플들 중 가장 alias set이 큰 놈을 남김 *)
-  let leave_biggest_aliasset = fun lst -> List.fold_left lst ~init:botstate ~f:(fun (acc:T.t) (elem:T.t) -> if (A.cardinal @@ fourth_of acc.tuple) < (A.cardinal @@ fourth_of elem.tuple) then elem else acc) in
+  let leave_biggest_aliasset = fun lst -> List.fold_left lst ~init:bottuple ~f:(fun (acc:T.t) (elem:T.t) -> if (A.cardinal @@ fourth_of acc) < (A.cardinal @@ fourth_of elem) then elem else acc) in
   S.of_list @@ List.map ~f:leave_biggest_aliasset grouped_by_duplicates
   
 
@@ -166,12 +167,12 @@ let filter_callgraph_table hashtbl =
 (** 주어진 변수 var에 있어 가장 이른 정의 state를 찾는다. *)
 let find_first_occurrence_of (var:Var.t) : Procname.t * S.t * S.elt =
   let astate_set = BFS.fold (fun (_, astate) acc ->
-      match S.exists (fun tup -> Var.equal (fst @@ second_of tup.tuple) var) astate with
+      match S.exists (fun tup -> Var.equal (fst @@ second_of tup) var) astate with
       | true -> (*L.progress "found it!\n";*) astate
       | false -> (*L.progress "nah..:(\n";*) acc) S.empty callgraph in
   let astate_set_nodup = remove_duplicates_from astate_set in
   let elements = S.elements astate_set_nodup in
-  let methname = first_of @@ (List.nth_exn elements 0).tuple in
+  let methname = first_of @@ (List.nth_exn elements 0) in
   let targetTuples = search_target_astates_by_vardef var methname astate_set_nodup in
   let earliest_state = find_earliest_astate_within targetTuples in
   (methname, astate_set, earliest_state)
@@ -194,7 +195,7 @@ let collect_program_vars_from (aliases:A.t) (self:Var.t) (just_before:Var.t) : V
 let select_up_to (state:S.elt) ~within:(astate_set:S.t) : S.t =
   let astates = S.elements astate_set in
   let select_up_to_inner (astate:S.elt) : S.t =
-    S.of_list @@ List.fold_left astates ~init:[] ~f:(fun (acc:T.t list) (elem:T.t) -> if third_of elem.tuple => third_of astate.tuple then elem::acc else acc) in
+    S.of_list @@ List.fold_left astates ~init:[] ~f:(fun (acc:T.t list) (elem:T.t) -> if third_of elem => third_of astate then elem::acc else acc) in
   select_up_to_inner state
 
 
@@ -223,8 +224,8 @@ let rec have_been_before (astate:S.elt) (acc:chain) : bool =
   match acc with
   | [] -> false
   | (methname, status) :: t ->
-      let procname = first_of astate.tuple in
-      let vardef = second_of astate.tuple in
+      let procname = first_of astate in
+      let vardef = second_of astate in
       begin match status with
         | Define (_, var) ->
             if Procname.equal procname methname && Var.equal (fst vardef) var
@@ -268,9 +269,9 @@ let extract_variable_from_chain_slice (slice:(Procname.t*status) option) : Var.t
 
 
 let remove_from_aliasset ~from:(astate:T.t) ~remove:var =
-  let {T.tuple=(a, b, c, aliasset)} = astate in
+  let (a, b, c, aliasset) = astate in
   let aliasset' = A.remove var aliasset in
-  {astate with tuple=(a, b, c, aliasset')}
+  (a, b, c, aliasset')
 
 
 let procname_of (ap:A.elt) : Procname.t =
@@ -291,19 +292,19 @@ let compute_chain (var:Var.t) : chain =
   (* L.progress "first_methname: %a\n" Procname.pp first_methname ;
   L.progress "first_astate: %a\n" S.pp first_astate ;
   L.progress "first_tuple: %a\n" Q.pp first_tuple ; *)
-  let first_aliasset = fourth_of first_astate.tuple in
+  let first_aliasset = fourth_of first_astate in
   let returnv = A.find_first is_returnv_ap first_aliasset in
   let source_meth = procname_of returnv in
   let rec compute_chain_inner  (current_methname:Procname.t) (current_astate_set:S.t) (current_astate:S.elt) (current_chain:chain) : chain =
-    let aliasset = A.filter (is_returnv_ap >> not) @@ fourth_of current_astate.tuple in
-    let vardef = second_of current_astate.tuple in
+    let aliasset = A.filter (is_returnv_ap >> not) @@ fourth_of current_astate in
+    let vardef = second_of current_astate in
     (* L.progress "vardef: %a\n" Var.pp vardef;
     L.progress "current tuple: %a\n" Q.pp current_astate; *)
     let just_before = extract_variable_from_chain_slice @@ pop current_chain in
     match collect_program_vars_from aliasset (fst vardef) just_before with
     | [] -> (* either redefinition or dead end *)
         let states = S.elements (remove_duplicates_from current_astate_set) in
-        let redefined_states = List.fold_left states ~init:[] ~f:(fun (acc:T.t list) (st:T.t) -> if Var.equal (fst vardef) @@ (fst @@ second_of st.tuple) then st::acc else acc) in
+        let redefined_states = List.fold_left states ~init:[] ~f:(fun (acc:T.t list) (st:T.t) -> if Var.equal (fst vardef) @@ (fst @@ second_of st) then st::acc else acc) in
         (* L.progress "redefined_states: "; List.iter ~f:(fun tup -> L.progress "%a, " Q.pp tup) redefined_states; L.progress "\n"; *)
         begin match redefined_states with
           | [_] -> (* Dead end *) (current_methname, Dead) :: current_chain
@@ -329,7 +330,7 @@ let compute_chain (var:Var.t) : chain =
           let have_been_before_filtered = filter_have_been_before states_with_return_var current_chain in
           (* L.progress "have_been_before_filtered: "; List.iter ~f:(fun tup -> L.progress "%a, " Q.pp tup) have_been_before_filtered; *)
           let new_state = remove_from_aliasset ~from:(find_earliest_astate_within have_been_before_filtered) ~remove:(var_being_returned, []) in
-          let new_chain = (first_of new_state.tuple, Define (current_methname, (fst @@ second_of new_state.tuple))) :: current_chain in
+          let new_chain = (first_of new_state, Define (current_methname, (fst @@ second_of new_state))) :: current_chain in
           compute_chain_inner direct_caller caller_summary new_state new_chain
         else (* 동일 procedure 내에서의 define 혹은 call *)
           (* 다음 튜플을 현재 procedure 내에서 찾을 수 있는지를 기준으로 경우 나누기 *)
@@ -354,7 +355,7 @@ let compute_chain (var:Var.t) : chain =
 let collect_all_vars () =
   let setofallstates =  Hashtbl.fold (fun _ v acc -> S.union v acc) summary_table S.empty in
   let listofallstates = S.elements setofallstates in
-  let listofallvars = List.map ~f:(fun (x:T.t) -> second_of x.tuple) listofallstates in
+  let listofallvars = List.map ~f:(fun (x:T.t) -> second_of x) listofallstates in
   let listofallvar_aps = List.map ~f:(fun (var, _) -> (var, [])) listofallvars in
   A.of_list listofallvar_aps
 

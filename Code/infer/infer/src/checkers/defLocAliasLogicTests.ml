@@ -3,8 +3,10 @@ open DefLocAliasSearches
 open DefLocAliasDomain
 
 module L = Logging
+module P = DefLocAliasDomain.AbstractPair
+module S = DefLocAliasDomain.AbstractStateSetFinite
 module A = DefLocAliasDomain.SetofAliases
-module S = DefLocAliasDomain.AbstractStateSet
+module T = DefLocAliasDomain.AbstractState
 
 exception NotImplemented
 exception IDontKnow
@@ -43,9 +45,9 @@ let get_my_formal_args (methname:Procname.t) =
 
 
 (* There is an alias set which contains both id and pvar <-> id belongs to pvar, because ids never get reused *)
-let is_mine id pvar methname astate_set =
+let is_mine id pvar methname (apair:P.t) =
   try
-    let (_, _, _, aliasset) = search_target_tuple_by_id id methname astate_set in
+    let (_, _, _, aliasset) = search_target_tuple_by_id id methname (fst apair) in
     A.mem (Var.of_id id, []) aliasset && A.mem (Var.of_pvar pvar, []) aliasset
   with _ ->
     false

@@ -64,33 +64,22 @@ end
 (** A map from ProcAccess.t to LocationSet.t. *)
 module HistoryMap = AbstractDomain.WeakMap (ProcAccess) (LocationSet)
 
-(* An Abtract State is a record comprising a quadruple and a history map. *)
-module AbstractState = struct
-  type t = {tuple: QuadrupleWithPP.t; history: HistoryMap.t [@compare.ignore]} [@@deriving compare]
-
-  let pp fmt {tuple; history} =
-    F.fprintf fmt "{";
-    F.fprintf fmt "%a" QuadrupleWithPP.pp tuple;
-    F.fprintf fmt "; ";
-    F.fprintf fmt "%a" HistoryMap.pp history;
-    F.fprintf fmt "}"
-end
+(* An Abtract State is just a quadruple. *)
+module AbstractState = QuadrupleWithPP
 
 (** A set of Abstract States. *)
 module AbstractStateSetFinite = AbstractDomain.FiniteSet (AbstractState)
 
-(* FiniteSet or TopLifted? *)
-module AbstractStateSet = struct
-  include AbstractStateSetFinite
-end
+(* The pair of 1) set of abstract states and 2) the history map *)
+module AbstractPair = AbstractDomain.Pair (AbstractStateSetFinite) (HistoryMap)
 
-let pp = AbstractStateSet.pp
+let pp = AbstractPair.pp
 
-type t = AbstractStateSet.t
+type t = AbstractPair.t
 
 type summary = t (* used in Payloads.ml *)
 
-let initial = AbstractStateSet.empty
+let initial = (AbstractStateSetFinite.empty, HistoryMap.empty)
 
 let placeholder_vardef (pid:Procname.t) : Var.t =
   let mangled = Mangled.from_string "ph" in
@@ -99,7 +88,6 @@ let placeholder_vardef (pid:Procname.t) : Var.t =
 
 let bottuple = (Procname.empty_block, (placeholder_vardef (Procname.empty_block), []), LocationSet.singleton Location.dummy, SetofAliases.empty)
 
-let botstate = {AbstractState.tuple=bottuple; history=HistoryMap.empty}
 
 (* Utility Functions *)
 let first_of (a,_,_,_) = a

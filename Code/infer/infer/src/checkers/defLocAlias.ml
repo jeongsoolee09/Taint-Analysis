@@ -48,6 +48,24 @@ module TransferFunctions = struct
   let join_all_history_in (statelist:T.t list) : HistoryMap.t =
     let historylist = List.map ~f:(fun ({history}:T.t) -> history) statelist in
     List.fold_left ~f:(fun acc hist -> HistoryMap.join acc hist) ~init:HistoryMap.empty historylist
+  
+
+  let choose_larger_location (locset1:LocationSet.t) (locset2:LocationSet.t) =
+    let elem1 = LocationSet.min_elt locset1 in
+    let elem2 = LocationSet.min_elt locset2 in
+    match Location.compare elem1 elem2 with
+    | (-1) -> locset1
+    | 0 -> if LocationSet.subset locset1 locset2 then locset1 else locset2
+    | 1 -> locset2
+    | _ -> L.die InternalError "choose_larger_location failed, locset1: %a, locset2: %a" LocationSet.pp locset1 LocationSet.pp locset2
+
+  
+  (* 중복키가 있다면, 더 나중의 location으로 업데이트 (따라서, map에는 최신의 location만 남게 됨) *)
+  let union_all_history_in (statelist:T.t list) : HistoryMap.t =
+    let historylist = List.map ~f:(fun ({history}:T.t) -> history) statelist in
+    List.fold_left ~f:(fun acc hist -> HistoryMap.union (fun key val1 val2 -> if LocationSet.equal val1 val2
+        then Some val1
+        else Some (choose_larger_location val1 val2)) acc hist) ~init:HistoryMap.empty historylist
 
 
   (** specially mangled variable to mark a value as returned from callee *)
@@ -142,7 +160,7 @@ let search_recent_vardef_astate (methname:Procname.t) (pvar:Var.t) (astate_set:S
             (* L.progress "methname: %a, var: %a\n" Procname.pp methname Var.pp actual_pvar;  *)
             search_target_astates_by_vardef actual_pvar methname (S.of_list actual_astates) in
             (* the most recent one among the definitions. *)
-            let history = join_all_history_in candStates in
+            let history = union_all_history_in candStates in
             let most_recent_loc = get_most_recent_loc (methname, (actual_pvar, [])) history in
             let {T.tuple=(proc,var,loc,aliasset')} as targetState = search_astate_by_loc most_recent_loc candStates in
             let newTuple = (proc, var, loc, A.add (formalvar, []) aliasset') in
@@ -481,8 +499,7 @@ let search_recent_vardef_astate (methname:Procname.t) (pvar:Var.t) (astate_set:S
                           search_recent_vardef_astate methname pvar astate_set
                       | _ ->
                           L.die InternalError "exec_call/mapfunc failed, exp: %a" Exp.pp exp end in
-                  let actuals_pvar_astates =
-                    actuals_logical |> List.filter ~f:is_logical_var_expr |> List.map ~f:mapfunc in
+                  let actuals_pvar_astates = actuals_logical |> List.filter ~f:is_logical_var_expr |> List.map ~f:mapfunc in
                   let actualpvar_alias_added = add_bindings_to_alias_of_tuples methname actuallog_formal_binding actuals_pvar_astates |> S.of_list in
                   let applied_state_rmvd = S.diff astate_set_summary_applied (S.of_list actuals_pvar_astates) in
                   S.union applied_state_rmvd actualpvar_alias_added end
@@ -511,7 +528,7 @@ let search_recent_vardef_astate (methname:Procname.t) (pvar:Var.t) (astate_set:S
                     let newstate = {T.tuple=newtuple; history=newmap} in
                     S.add newstate astate_set
                 | h::_ as astates -> (* 이전에 def된 적 있음 *)
-                    let history = join_all_history_in astates in
+                    let history = union_all_history_in astates in
                     let var, _ = second_of h.tuple in
                     (* L.d_printfln "finding var:%a\n" Var.pp var; *)
                     let most_recent_locset = get_most_recent_loc (methname, (var, [])) history in
@@ -569,8 +586,7 @@ let search_recent_vardef_astate (methname:Procname.t) (pvar:Var.t) (astate_set:S
           | _ -> L.die InternalError "exec_load failed, id: %a, exp: %a, astate_set: %a, methname: %a" Ident.pp id Exp.pp exp S.pp astate_set Procname.pp methname end
     | Var _ -> (* 아직은 버리는 케이스만 있으니 e.g. _=*n$9 *)
         astate_set
-    | _ ->
-        L.progress "Unsupported Load Instruction %a := %a@." Ident.pp id Exp.pp exp; astate_set
+    | _ -> L.progress "Unsupported Load Instruction %a := %a@." Ident.pp id Exp.pp exp; astate_set
 
 
   (** register tuples for formal arguments before a procedure starts. *)
@@ -644,8 +660,8 @@ let exec_metadata (md:Sil.instr_metadata) (astate_set:S.t) =
   let leq ~lhs:_ ~rhs:_ = S.subset
 
 
-  (* to be evolved... *)
-  let join = fun x y -> S.union x y
+  (* 중복키가 있다면, value를 합집합 *)
+  let join leftset rightset = S.union leftset rightset
 
 
   let widen ~prev:prev ~next:next ~num_iters:_ = join prev next

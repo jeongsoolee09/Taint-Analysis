@@ -174,12 +174,18 @@ let search_target_astates_by_vardef_ap (pv_ap:MyAccessPath.t) (methname:Procname
   search_target_astates_by_vardef_ap_inner pv_ap methname elements []
 
 
+let rec pp_tuplelist fmt (tuplelist:T.t list) : unit =
+  F.fprintf fmt "[";
+  List.iter ~f:(fun tup -> F.fprintf fmt "%a, " T.pp tup) tuplelist;
+  F.fprintf fmt "]"
+
+
 let rec search_tuple_by_loc (loc_set:LocationSet.t) (tuplelist:T.t list) =
   match tuplelist with
-  | [] -> L.die InternalError "search_tuple_by_loc failed, loc_set: %a@." LocationSet.pp loc_set
+  | [] -> L.die InternalError "search_tuple_by_loc failed, loc_set: %a, tuplelist: %a@." LocationSet.pp loc_set pp_tuplelist tuplelist
   | tuple::t ->
       let l = third_of tuple in
-      if LocationSet.equal loc_set l then tuple else search_tuple_by_loc loc_set t
+      if LocationSet.equal loc_set l || LocationSet.subset l loc_set then tuple else search_tuple_by_loc loc_set t
 
 
 let rec search_astate_by_loc (loc_set:LocationSet.t) (tuplelist:T.t list) =

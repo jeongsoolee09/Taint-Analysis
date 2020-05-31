@@ -14,7 +14,7 @@ module Hashtbl = Caml.Hashtbl
 module P = DefLocAliasDomain.AbstractPair
 module S = DefLocAliasDomain.AbstractStateSetFinite
 module A = DefLocAliasDomain.SetofAliases
-module T = DefLocAliasDomain.AbstractState (* same as Q *)
+module T = DefLocAliasDomain.AbstractState
 
 module Payload = SummaryPayload.Make (struct
     type t = DefLocAliasDomain.t
@@ -318,7 +318,7 @@ let search_recent_vardef_astate (methname:Procname.t) (pvar:Var.t) (apair:P.t) :
         let loc = LocationSet.singleton @@ CFG.Node.loc node in
         let aliasset_new = A.singleton (pvar_var, []) in
         let newtuple = (methname, (pvar_var, []), loc, aliasset_new) in
-        let newmap = add_to_history (methname, (pvar_var, [])) loc HistoryMap.empty in
+        let newmap = add_to_history (methname, (pvar_var, [])) loc (snd apair) in
         (* L.progress "added pvar_var: %a\n" Var.pp pvar_var; *)
         let newset = S.add newtuple (fst apair) in
         (newset, newmap)
@@ -330,7 +330,7 @@ let search_recent_vardef_astate (methname:Procname.t) (pvar:Var.t) (apair:P.t) :
         let loc = LocationSet.singleton @@ CFG.Node.loc node in
         let aliasset_new = A.singleton (pvar_var, []) in
         let newtuple = (methname, (pvar_var, []), loc, aliasset_new) in
-        let newmap = add_to_history (methname, (pvar_var, [])) loc HistoryMap.empty in 
+        let newmap = add_to_history (methname, (pvar_var, [])) loc (snd apair) in 
         (* L.progress "added pvar_var: %a\n" Var.pp pvar_var; *)
         (* L.progress "current map: %a\n" (HistoryMap.pp ~pp_value:Location.pp) !history; *)
         let newset = S.add newtuple astate_rmvd in
@@ -340,7 +340,7 @@ let search_recent_vardef_astate (methname:Procname.t) (pvar:Var.t) (apair:P.t) :
         let loc = LocationSet.singleton @@ CFG.Node.loc node in
         let aliasset_new = A.singleton (pvar_var, []) in
         let newtuple = (methname, (pvar_var, []), loc, aliasset_new) in
-        let newmap = add_to_history (methname, (pvar_var, [])) loc HistoryMap.empty in 
+        let newmap = add_to_history (methname, (pvar_var, [])) loc (snd apair) in 
         (* L.progress "added pvar_var: %a\n" Var.pp pvar_var; *)
         let newset = S.add newtuple (fst apair) in
         (newset, newmap)
@@ -372,7 +372,7 @@ let search_recent_vardef_astate (methname:Procname.t) (pvar:Var.t) (apair:P.t) :
           let newset = S.add merged_tuple astate_set_rmvd in
           (newset, new_history)
         else
-          let newset = S.add vartuple @@ S.add merged_tuple astate_set_rmvd in
+          let newset = S.add another_tuple @@  S.add vartuple @@ S.add merged_tuple astate_set_rmvd in
           (newset, new_history)
     | Lindex (Var id, _), Const _ -> (* covers both cases where offset is either const or id *)
         let (proc, _, _, aliasset) as targetTuple = search_target_tuple_by_id id methname (fst apair) in
@@ -430,7 +430,7 @@ let search_recent_vardef_astate (methname:Procname.t) (pvar:Var.t) (apair:P.t) :
           let newset = S.add merged_tuple astate_set_rmvd in
           (newset, new_history)
         else
-          let newset = S.add vartuple @@ S.add merged_tuple astate_set_rmvd in
+          let newset = S.add another_tuple @@ S.add vartuple @@ S.add merged_tuple astate_set_rmvd in
           (newset, new_history)
     | Lvar pvar, Exn _ when Var.is_return (Var.of_pvar pvar) -> 
         L.progress "Storing an Exception@."; apair
@@ -439,7 +439,7 @@ let search_recent_vardef_astate (methname:Procname.t) (pvar:Var.t) (apair:P.t) :
         let loc = LocationSet.singleton @@ CFG.Node.loc node in
         let aliasset_new = A.singleton pvar_ap in
         let newtuple = (methname, pvar_ap, loc, aliasset_new) in
-        let newmap = add_to_history (methname, pvar_ap) loc HistoryMap.empty in
+        let newmap = add_to_history (methname, pvar_ap) loc (snd apair) in
         let newset = S.add newtuple (fst apair) in
         (newset, newmap)
     | Lfield (Lvar pvar, fld, _), Var id ->
@@ -602,9 +602,10 @@ let search_recent_vardef_astate (methname:Procname.t) (pvar:Var.t) (apair:P.t) :
         let bake_newstate = fun (var_ap:MyAccessPath.t) -> (proc, var_ap, loc, A.singleton var_ap) in
         let tuplelist = List.map ~f:bake_newstate formal_aps in
         let tupleset = S.of_list tuplelist in
-        (* batch_add_to_history formal_aps loc ;*)
+        let formal_aps_with_methname = List.map ~f:(fun tup -> (methname, tup)) formal_aps in
+        let newmap = batch_add_to_history formal_aps_with_methname loc (snd apair) in
         let newset = S.union (fst apair) tupleset in
-        (newset, snd apair)
+        (newset, newmap)
     | _ -> apair
 
 

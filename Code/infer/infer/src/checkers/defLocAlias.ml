@@ -457,7 +457,7 @@ let search_recent_vardef_astate (methname:Procname.t) (pvar:Var.t) (apair:P.t) :
         let newset = S.add newtuple astate_set_rmvd in
         (newset, newmap)
     | _, _ ->
-        L.progress "Unsupported Store instruction %a := %a@." Exp.pp exp1 Exp.pp exp2; apair
+        L.progress "Unsupported Store instruction %a := %a at %a@." Exp.pp exp1 Exp.pp exp2 Procname.pp methname; apair
 
 
   let exec_call (ret_id:Ident.t) (e_fun:Exp.t) (arg_ts:(Exp.t*Typ.t) list) (caller_summary:Summary.t) (apair:P.t) (methname:Procname.t) : P.t =
@@ -585,7 +585,7 @@ let search_recent_vardef_astate (methname:Procname.t) (pvar:Var.t) (apair:P.t) :
           | _ -> L.die InternalError "exec_load failed, id: %a, exp: %a, astate_set: %a, methname: %a" Ident.pp id Exp.pp exp S.pp (fst apair) Procname.pp methname end
     | Var _ -> (* 아직은 버리는 케이스만 있으니 e.g. _=*n$9 *)
         apair
-    | _ -> L.progress "Unsupported Load Instruction %a := %a@." Ident.pp id Exp.pp exp; apair
+    | _ -> L.progress "Unsupported Load Instruction %a := %a at %a@." Ident.pp id Exp.pp exp Procname.pp methname; apair
 
 
   (** register tuples for formal arguments before a procedure starts. *)

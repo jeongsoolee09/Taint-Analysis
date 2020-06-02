@@ -173,7 +173,7 @@ let find_first_occurrence_of (var:Var.t) : Procname.t * S.t * S.elt =
   let astate_set_nodup = remove_duplicates_from astate_set in
   let elements = S.elements astate_set_nodup in
   let methname = first_of @@ (List.nth_exn elements 0) in
-  let targetTuples = search_target_astates_by_vardef var methname astate_set_nodup in
+  let targetTuples = search_target_tuples_by_vardef var methname astate_set_nodup in
   let earliest_state = find_earliest_astate_within targetTuples in
   (methname, astate_set, earliest_state)
 
@@ -325,7 +325,7 @@ let compute_chain (var:Var.t) : chain =
           let var_being_returned = find_var_being_returned aliasset in
           (* L.progress "var_being_returned: %a\n" Var.pp var_being_returned; *)
           let (direct_caller, caller_summary) = find_direct_caller current_methname current_chain in
-          let states_with_return_var = search_target_astates_by_pvar (mk_returnv current_methname) direct_caller (remove_duplicates_from caller_summary) in
+          let states_with_return_var = search_target_tuples_by_pvar (mk_returnv current_methname) direct_caller (remove_duplicates_from caller_summary) in
           (* L.progress "states_with_return_var: "; List.iter ~f:(fun tup -> L.progress "%a, " Q.pp tup) states_with_return_var ; *)
           let have_been_before_filtered = filter_have_been_before states_with_return_var current_chain in
           (* L.progress "have_been_before_filtered: "; List.iter ~f:(fun tup -> L.progress "%a, " Q.pp tup) have_been_before_filtered; *)
@@ -334,12 +334,12 @@ let compute_chain (var:Var.t) : chain =
           compute_chain_inner direct_caller caller_summary new_state new_chain
         else (* 동일 procedure 내에서의 define 혹은 call *)
           (* 다음 튜플을 현재 procedure 내에서 찾을 수 있는지를 기준으로 경우 나누기 *)
-          begin match search_target_astates_by_vardef var current_methname current_astate_set with
+          begin match search_target_tuples_by_vardef var current_methname current_astate_set with
           | [] -> (* Call *)
               (*L.progress "current_methname: %a, current_astate_set: %a\n" Procname.pp current_methname S.pp current_astate_set;*)
               let callee_methname = find_immediate_successor current_methname current_astate_set var in
               (*L.progress "callee_methname: %a" Procname.pp callee_methname;*)
-              let new_states = search_target_astates_by_vardef var callee_methname (remove_duplicates_from @@ get_summary callee_methname) in
+              let new_states = search_target_tuples_by_vardef var callee_methname (remove_duplicates_from @@ get_summary callee_methname) in
               (* List.iter ~f:(fun tup -> L.progress "new_states: "; L.progress "%a, " Q.pp tup; L.progress "\n") new_states; *)
               let new_state = find_earliest_astate_within new_states in
               let new_chain = (current_methname, Call (callee_methname, var))::current_chain in

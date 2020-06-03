@@ -385,8 +385,7 @@ let search_recent_vardef_astate (methname:Procname.t) (pvar:Var.t) (apair:P.t) :
           let loc = LocationSet.singleton Location.dummy in
           let aliasset = doubleton (Var.of_id id1, [AccessPath.FieldAccess fld]) (Var.of_id id2, []) in
           let newset = S.add (methname, (ph, []), loc, aliasset) (fst apair) in
-          (newset, snd apair)
-         end
+          (newset, snd apair) end
     | Lindex (Var id, _), Const _ -> (* covers both cases where offset is either const or id *)
         let (proc, _, _, aliasset) as targetTuple = search_target_tuple_by_id id methname (fst apair) in
         let (var, aplist) as ap_containing_pvar = find_pvar_ap_in aliasset in
@@ -471,7 +470,7 @@ let search_recent_vardef_astate (methname:Procname.t) (pvar:Var.t) (apair:P.t) :
         (newset, newmap)
     | lhs, Cast (_, exp) -> (* we ignore the cast *)
         exec_store lhs exp methname apair node
-    | Lvar pv, BinOp (_, _, _) -> (* nested arithmetic expressions *)
+    | Lvar pv, BinOp (_, _, _) -> (* nested arithmetic expressions, lhs is pvar *)
         let pvar_var = Var.of_pvar pv in
         let loc = LocationSet.singleton @@ CFG.Node.loc node in
         let aliasset_new = A.singleton (Var.of_pvar pv, []) in
@@ -479,7 +478,7 @@ let search_recent_vardef_astate (methname:Procname.t) (pvar:Var.t) (apair:P.t) :
         let newmap = add_to_history (methname, (pvar_var, [])) loc (snd apair) in
         let newset = S.add newtuple (fst apair) in
         (newset, newmap)
-    | Lfield (Lvar pv, fld, _), BinOp (_, _, _) (* nested arithmetic expressions *) ->
+    | Lfield (Lvar pv, fld, _), BinOp (_, _, _) (* nested arithmetic expressions, lhs is field access *) ->
         let pvar_ap = (Var.of_pvar pv, [AccessPath.FieldAccess fld]) in
         let loc = LocationSet.singleton @@ CFG.Node.loc node in
         let aliasset_new = A.singleton (Var.of_pvar pv, []) in
@@ -493,7 +492,7 @@ let search_recent_vardef_astate (methname:Procname.t) (pvar:Var.t) (apair:P.t) :
 
   let cdr (lst:'a list) =
     match lst with
-    | [] -> L.die InternalError "cdr failed"
+    | [] -> L.die InternalError "cdr of an empty list is undefined"
     | _::t -> t
 
 
@@ -572,9 +571,7 @@ let search_recent_vardef_astate (methname:Procname.t) (pvar:Var.t) (apair:P.t) :
                     let ph = placeholder_vardef methname in
                     let newstate = (methname, (ph, []), LocationSet.singleton Location.dummy, double) in
                     let newset = S.add mrt_updated astate_set_rmvd |> S.add newstate (* hopefully this fixes the 211 hashtbl issue *) in
-                    (newset, snd apair)
-              end
-        end
+                    (newset, snd apair) end end
     | Lfield (Var var, fld, _) ->
         let access_path : A.elt = (Var.of_id var, [FieldAccess fld]) in
         (* 이전에 정의된 적이 있는가 없는가로 경우 나눠야 함 (formal엔 못 옴) *)
@@ -585,8 +582,7 @@ let search_recent_vardef_astate (methname:Procname.t) (pvar:Var.t) (apair:P.t) :
               let newstate = (methname, (ph, []), LocationSet.singleton Location.dummy, double) in
               let newset = S.add newstate (fst apair) in
               (newset, snd apair)
-          | _ -> L.die InternalError "exec_load failed, id: %a, exp: %a, astate_set: %a, methname: %a" Ident.pp id Exp.pp exp S.pp (fst apair) Procname.pp methname
-        end
+          | _ -> L.die InternalError "exec_load failed, id: %a, exp: %a, astate_set: %a, methname: %a" Ident.pp id Exp.pp exp S.pp (fst apair) Procname.pp methname end
     | Lfield (Lvar pvar, fld, _) when Pvar.is_global pvar ->
         let access_path : A.elt = (Var.of_pvar pvar, [FieldAccess fld]) in
         (* 이전에 정의된 적이 있는가 없는가로 경우 나눠야 함 (formal엔 못 옴) *)
@@ -607,8 +603,7 @@ let search_recent_vardef_astate (methname:Procname.t) (pvar:Var.t) (apair:P.t) :
               let ph = placeholder_vardef methname in
               let newstate = (methname, (ph, []), LocationSet.singleton Location.dummy, double) in
               let newset = S.add mra_updated astate_set_rmvd |> S.add newstate in
-              (newset, snd apair)
-        end
+              (newset, snd apair) end
     | Lindex (Var var, _) -> (* Var[const or Var] *)
         let access_path : A.elt = (Var.of_id var, [ArrayAccess (Typ.void_star, [])]) in
         (* 이전에 정의된 적이 있는가 없는가로 경우 나눠야 함 (formal엔 못 옴) *)
@@ -697,8 +692,7 @@ let exec_metadata (md:Sil.instr_metadata) (apair:P.t) : P.t =
   let leq ~lhs:_ ~rhs:_ = S.subset
 
 
-  (* 중복키가 있다면, value를 합집합 *)
-  let join leftset rightset = S.union leftset rightset
+  let join = S.union
 
 
   let widen ~prev:prev ~next:next ~num_iters:_ = join prev next

@@ -180,9 +180,8 @@ let search_recent_vardef_astate (methname:Procname.t) (pvar:Var.t) (apair:P.t) :
       let callee_vardef, _ = second_of tup in
       (* 여기서 returnv를 집어넣자 *)
       let aliasset = A.add (mk_returnv callee_methname, []) @@ doubleton (callee_vardef, []) (Var.of_id ret_id, []) in
-      (* empty map이 맞을 지 모르겠네 *)
       (methname, (ph, []), LocationSet.singleton Location.dummy, aliasset) in
-    let carriedover = List.map calleeTuples ~f:carryfunc |> S.of_list in
+    let carriedover = S.of_list @@ List.map calleeTuples ~f:carryfunc in
     S.union astate_set carriedover
 
 
@@ -195,10 +194,10 @@ let search_recent_vardef_astate (methname:Procname.t) (pvar:Var.t) (apair:P.t) :
     | None -> 
         (* Nothing to carry over! -> just make a ph tuple and end *)
         let ph = (placeholder_vardef caller_methname, []) in
+        let returnv = mk_returnv callee_methname in
         let loc = LocationSet.singleton Location.dummy in
-        let alias = A.singleton (Var.of_id ret_id, []) in
-        (* empty map이 맞을지 모르겠네 *)
-        let newtuple = (caller_methname, ph, loc, alias) in
+        let aliasset = doubleton (Var.of_id ret_id, []) (returnv, []) in
+        let newtuple = (caller_methname, ph, loc, aliasset) in
         let newstate = newtuple in
         S.add newstate astate_set
 
@@ -250,7 +249,8 @@ let search_recent_vardef_astate (methname:Procname.t) (pvar:Var.t) (apair:P.t) :
   let rec exec_store (exp1:Exp.t) (exp2:Exp.t) (methname:Procname.t) (apair:P.t) (node:CFG.Node.t) : P.t =
     match exp1, exp2 with
     | Lvar pv, Var id ->
-        if Pvar.is_frontend_tmp pv then L.progress "temp pvar: %a@." Exp.pp exp1;
+        (* if Pvar.is_frontend_tmp pv then
+        if Pvar.is_ice pv then L.progress "ice pvar: %a@." Exp.pp exp1 else L.progress "temp pvar: %a@." Exp.pp exp1; *)
         begin match Var.is_return (Var.of_pvar pv) with
         | true -> (* A variable is being returned *)
             let (_, _, _, aliasset) as targetTuple =
@@ -494,6 +494,12 @@ let search_recent_vardef_astate (methname:Procname.t) (pvar:Var.t) (apair:P.t) :
         L.progress "Unsupported Store instruction %a := %a at %a@." Exp.pp exp1 Exp.pp exp2 Procname.pp methname; apair
 
 
+  let cdr (lst:'a list) =
+    match lst with
+    | [] -> L.die InternalError "cdr failed"
+    | _::t -> t
+
+
   let exec_call (ret_id:Ident.t) (e_fun:Exp.t) (arg_ts:(Exp.t*Typ.t) list) (caller_summary:Summary.t) (apair:P.t) (methname:Procname.t) : P.t =
     let callee_methname =
       match e_fun with
@@ -515,23 +521,23 @@ let search_recent_vardef_astate (methname:Procname.t) (pvar:Var.t) (apair:P.t) :
               | [] -> (* Callee in Native Code! *)
                   (astate_set_summary_applied, snd apair)
               | _ ->  (* Callee in User Code! *)
-                  let actuals_logical = extract_nonthisvar_from_args methname arg_ts astate_set_summary_applied in
+                  (* funcall to cdr for removing thisvar actualarg or object actualarg for virtual calls *)
+                  let actuals_logical = cdr @@ extract_nonthisvar_from_args methname arg_ts astate_set_summary_applied in
                   let actuallog_formal_binding = leave_only_var_tuples @@ zip actuals_logical formals in
-                  (* pvar tuples transmitted as actual arguments *)
-                  let mapfunc = fun exp ->
+                  (* mapfunc finds pvar tuples transmitted as actual arguments *)
+                  let mapfunc = fun (exp:Exp.t) ->
                     begin match exp with
-                      | Exp.Var id ->
-                          (* L.progress "id: %a, processing: %a@." Ident.pp id S.pp astate; *)
+                      | Var id ->
                           let pvar = search_target_tuples_by_id id methname (fst apair) |> List.map ~f:fourth_of |> extract_another_pvar id in (* 여기가 문제 *)
                           search_recent_vardef_astate methname pvar apair
                       | _ ->
                           L.die InternalError "exec_call/mapfunc failed, exp: %a" Exp.pp exp end in
-                  let actuals_pvar_astates = actuals_logical |> List.filter ~f:is_logical_var_expr |> List.map ~f:mapfunc in
-                  let actualpvar_alias_added = add_bindings_to_alias_of_tuples methname actuallog_formal_binding actuals_pvar_astates (snd apair) |> S.of_list in
-                  let applied_state_rmvd = S.diff astate_set_summary_applied (S.of_list actuals_pvar_astates) in
+                  let actuals_pvar_tuples = actuals_logical |> List.filter ~f:is_logical_var_expr |> List.map ~f:mapfunc in
+                  let actualpvar_alias_added = add_bindings_to_alias_of_tuples methname actuallog_formal_binding actuals_pvar_tuples (snd apair) |> S.of_list in
+                  let applied_state_rmvd = S.diff astate_set_summary_applied (S.of_list actuals_pvar_tuples) in
                   let newset = S.union applied_state_rmvd actualpvar_alias_added in
                   (newset, snd apair) end
-          with _ -> (* corner case: maybe one of actuals contains literal null *)
+          with _ -> (* corner case: maybe one of actuals contains literal null? *)
             apair end
 
 

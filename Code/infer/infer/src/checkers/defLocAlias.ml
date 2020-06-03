@@ -86,7 +86,6 @@ let search_recent_vardef_astate (methname:Procname.t) (pvar:Var.t) (apair:P.t) :
     match astate_list with
     | [] -> L.die InternalError "search_recent_vardef_astate failed, methname: %a, pvar: %a, astate_set: %a@." Procname.pp methname Var.pp pvar P.pp apair
     | targetTuple::t ->
-        (* L.progress "methname: %a, searching: %a, loc: %a, proc: %a\n" Procname.pp methname Var.pp var Location.pp loc Procname.pp proc; *)
         let proc, (var, _), loc, aliasset = targetTuple in
         let proc_cond = Procname.equal proc methname in
         let id_cond = A.mem (id, []) aliasset in
@@ -138,13 +137,9 @@ let search_recent_vardef_astate (methname:Procname.t) (pvar:Var.t) (apair:P.t) :
     | (actualvar, formalvar)::tl ->
         begin match actualvar with
         | Var.LogicalVar vl ->
-            (* L.progress "Processing (%a, %a)\n" Var.pp actualvar Var.pp formalvar; *)
-            (* L.progress "methname: %a, id: %a\n" Procname.pp methname Ident.pp vl; *)
-            (* L.progress "Astate_set before death: @.%a@." S.pp (S.of_list actualtuples); *)
             let actual_pvar, _ = second_of @@ weak_search_target_tuple_by_id vl (S.of_list actual_astates) in
             (* possibly various definitions of the pvar in question. *)
             let candTuples = 
-            (* L.progress "methname: %a, var: %a\n" Procname.pp methname Var.pp actual_pvar;  *)
             search_target_tuples_by_vardef actual_pvar methname (S.of_list actual_astates) in
             (* the most recent one among the definitions. *)
             let most_recent_loc = get_most_recent_loc (methname, (actual_pvar, [])) history in
@@ -173,13 +168,17 @@ let search_recent_vardef_astate (methname:Procname.t) (pvar:Var.t) (apair:P.t) :
 
   (** callee가 return c;꼴로 끝날 경우 새로 튜플을 만들고 alias set에 c를 추가 *)
   let variable_carryover astate_set callee_methname ret_id methname summ_read =
-    let calleeTuples = find_tuple_with_ret summ_read callee_methname in
+    let calleeTuples = find_tuples_with_ret summ_read callee_methname in
     (** 콜리 튜플 하나에 대해, 튜플 하나를 새로 만들어 alias set에 추가 *)
-    let carryfunc tup =
+    let carryfunc (tup:T.t) =
       let ph = placeholder_vardef methname in
       let callee_vardef, _ = second_of tup in
-      (* 여기서 returnv를 집어넣자 *)
-      let aliasset = A.add (mk_returnv callee_methname, []) @@ doubleton (callee_vardef, []) (Var.of_id ret_id, []) in
+      let aliasset = 
+        if Var.is_return callee_vardef
+        then (* 'return' itself should not be considered a pvar that is carrried over *)
+          A.add (mk_returnv callee_methname, []) @@ A.singleton (Var.of_id ret_id, [])
+        else
+          A.add (mk_returnv callee_methname, []) @@ doubleton (callee_vardef, []) (Var.of_id ret_id, []) in
       (methname, (ph, []), LocationSet.singleton Location.dummy, aliasset) in
     let carriedover = S.of_list @@ List.map calleeTuples ~f:carryfunc in
     S.union astate_set carriedover
@@ -189,7 +188,6 @@ let search_recent_vardef_astate (methname:Procname.t) (pvar:Var.t) (apair:P.t) :
   let apply_summary astate_set caller_summary callee_methname ret_id caller_methname : S.t =
     match Payload.read_full ~caller_summary:caller_summary ~callee_pname:callee_methname with
     | Some (_, summ) ->
-        (*L.progress "Applying summary of %a\n" Procname.pp (Procdesc.get_proc_name pdesc);*)
         variable_carryover astate_set callee_methname ret_id caller_methname (fst summ)
     | None -> 
         (* Nothing to carry over! -> just make a ph tuple and end *)
@@ -241,7 +239,8 @@ let search_recent_vardef_astate (methname:Procname.t) (pvar:Var.t) (apair:P.t) :
     let proc1, _, _, alias1 = tup1 in
     let proc2, _, _, alias2 = tup2 in
     let pvar_vardef = find_another_pvar_vardef alias2 in
-    if not @@ Procname.equal proc1 proc2 then L.die InternalError "merge_ph_tuples failed, tup1: %a, tup2: %a, location: %a" T.pp tup1 T.pp tup2 LocationSet.pp lset;
+    if not @@ Procname.equal proc1 proc2
+      then L.die InternalError "merge_ph_tuples failed, tup1: %a, tup2: %a, location: %a" T.pp tup1 T.pp tup2 LocationSet.pp lset;
     let aliasset = A.add pvar_vardef @@ A.union alias1 alias2 in
     (proc1, pvar_vardef, lset, aliasset)
 
@@ -249,14 +248,11 @@ let search_recent_vardef_astate (methname:Procname.t) (pvar:Var.t) (apair:P.t) :
   let rec exec_store (exp1:Exp.t) (exp2:Exp.t) (methname:Procname.t) (apair:P.t) (node:CFG.Node.t) : P.t =
     match exp1, exp2 with
     | Lvar pv, Var id ->
-        (* if Pvar.is_frontend_tmp pv then
-        if Pvar.is_ice pv then L.progress "ice pvar: %a@." Exp.pp exp1 else L.progress "temp pvar: %a@." Exp.pp exp1; *)
         begin match Var.is_return (Var.of_pvar pv) with
         | true -> (* A variable is being returned *)
             let (_, _, _, aliasset) as targetTuple =
               try weak_search_target_tuple_by_id id (fst apair)
-              with _ ->
-                  ((*L.progress "=== Search Failed (1): Astate before search_target_tuple at %a := %a === @.:%a@." Exp.pp exp1 Exp.pp exp2 S.pp astate ;*) bottuple) in
+              with _ -> bottuple in
             begin try
               let pvar_var, _ = A.find_first is_program_var_ap aliasset in
               let most_recent_loc = get_most_recent_loc (methname, (pvar_var, [])) (snd apair) in
@@ -273,8 +269,8 @@ let search_recent_vardef_astate (methname:Procname.t) (pvar:Var.t) (apair:P.t) :
               (newset, snd apair) end
         | false -> (* An ordinary variable assignment. *)
             let targetTuple =
-              begin try weak_search_target_tuple_by_id id (fst apair)
-              with _ -> ((* L.progress "id: %a" Ident.pp id ; L.progress "=== Search Failed (2): Astate before search_target_tuple at %a := %a === @.:%a@." Exp.pp exp1 Exp.pp exp2 S.pp astate ; *) bottuple) end in
+              try weak_search_target_tuple_by_id id (fst apair)
+              with _ -> bottuple in
             let aliasset = fourth_of targetTuple in
             let pvar_var = Var.of_pvar pv in
             let loc = LocationSet.singleton @@ CFG.Node.loc node in
@@ -321,7 +317,6 @@ let search_recent_vardef_astate (methname:Procname.t) (pvar:Var.t) (apair:P.t) :
         let aliasset_new = A.singleton (pvar_var, []) in
         let newtuple = (methname, (pvar_var, []), loc, aliasset_new) in
         let newmap = add_to_history (methname, (pvar_var, [])) loc (snd apair) in
-        (* L.progress "added pvar_var: %a\n" Var.pp pvar_var; *)
         let newset = S.add newtuple (fst apair) in
         (newset, newmap)
     | Lvar pv, BinOp (_, Var id1, Var id2) when not @@ is_mine id1 pv methname apair && is_mine id2 pv methname apair ->
@@ -333,7 +328,6 @@ let search_recent_vardef_astate (methname:Procname.t) (pvar:Var.t) (apair:P.t) :
         let aliasset_new = A.singleton (pvar_var, []) in
         let newtuple = (methname, (pvar_var, []), loc, aliasset_new) in
         let newmap = add_to_history (methname, (pvar_var, [])) loc (snd apair) in 
-        (* L.progress "added pvar_var: %a\n" Var.pp pvar_var; *)
         let newset = S.add newtuple astate_rmvd in
         (newset, newmap)
     | Lvar pv, BinOp (_, Const _, Const _) ->
@@ -427,13 +421,10 @@ let search_recent_vardef_astate (methname:Procname.t) (pvar:Var.t) (apair:P.t) :
         let pvar_tuple_updated = put_arrayaccess pvar_tuple in
         let new_aliasset = A.add pvar_tuple_updated @@ A.remove pvar_tuple aliasset in
         let newtuple = (proc1, var1, loc1, new_aliasset) in
-        (* L.d_printfln "newtuple: %a@." QuadrupleWithPP.pp newtuple; *)
         (* finding the var tuple holding the value being stored *)
         let another_tuple = search_target_tuple_by_id id2 methname (fst apair) in
-        (* L.d_printfln "another_tuple: %a@." QuadrupleWithPP.pp another_tuple; *)
         let loc = LocationSet.singleton @@ CFG.Node.loc node in
         let merged_tuple = merge_ph_tuples another_tuple newtuple loc in
-        (* L.progress "merged: %a@." QuadrupleWithPP.pp merged_tuple; *)
         let astate_set_rmvd = S.remove another_tuple @@ S.remove vartuple (fst apair) in
         let old_location = third_of newtuple in
         let new_history = add_to_history (methname, pvar_tuple_updated) loc (snd apair) in

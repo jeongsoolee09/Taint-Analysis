@@ -150,22 +150,6 @@ let search_recent_vardef_astate (methname:Procname.t) (pvar:Var.t) (apair:P.t) :
         end
 
 
-  let triple_equal = fun (proc1, var1, loc1) (proc2, var2, loc2) -> Procname.equal proc1 proc2 && Var.equal var1 var2 && LocationSet.equal loc1 loc2
-
-
-  (** astate로부터 (procname, vardef) 쌍을 중복 없이 만든다. *)
-  let get_keys astate_set =
-    let elements = S.elements astate_set in
-    let rec enum_nodup (tuplelist:T.t list) (current:(Procname.t*Var.t*LocationSet.t) list) =
-      match tuplelist with
-      | [] -> current
-      | (a,(b, _),c,_)::t ->
-        if not (List.mem current (a,b,c) ~equal:triple_equal) && not (Var.equal b (placeholder_vardef a) || Var.is_this b)
-          then enum_nodup t ((a,b,c)::current)
-          else enum_nodup t current in
-    enum_nodup elements []
-
-
   (** callee가 return c;꼴로 끝날 경우 새로 튜플을 만들고 alias set에 c를 추가 *)
   let variable_carryover astate_set callee_methname ret_id methname summ_read =
     let calleeTuples = find_tuples_with_ret summ_read callee_methname in
@@ -686,17 +670,7 @@ let exec_metadata (md:Sil.instr_metadata) (apair:P.t) : P.t =
       | Metadata md -> exec_metadata md prev
 
 
-  let leq ~lhs:_ ~rhs:_ = S.subset
-
-
-  let join = S.union
-
-
-  let widen ~prev:prev ~next:next ~num_iters:_ = join prev next
-
-
   let pp_session_name node fmt = F.fprintf fmt "def/loc/alias %a" CFG.Node.pp_id (CFG.Node.id node)
-
 end
 
 

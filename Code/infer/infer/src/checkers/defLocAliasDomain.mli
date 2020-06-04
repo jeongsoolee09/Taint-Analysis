@@ -54,7 +54,19 @@ module AbstractState : module type of QuadrupleWithPP
 
 module AbstractStateSetFinite : AbstractDomain.FiniteSetS with type elt = AbstractState.t
 
-module AbstractPair : module type of AbstractDomain.Pair (AbstractStateSetFinite) (HistoryMap)
+module AbstractPair : sig
+  include module type of AbstractDomain.Pair (AbstractStateSetFinite) (HistoryMap)
+
+  val leq : lhs:t -> rhs:t -> bool
+
+  val join : t -> t -> t
+
+  val widen : prev:t -> next:t -> num_iters:int -> t
+
+  val partition_tuples_modulo_123 : AbstractStateSetFinite.t -> AbstractState.t list list
+
+end
+
 
 val pp : F.formatter -> AbstractPair.t -> unit
 

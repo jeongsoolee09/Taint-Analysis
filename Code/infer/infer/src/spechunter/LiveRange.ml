@@ -110,21 +110,6 @@ let find_procpair_by_var (var:Var.t) =
     duplicated_times_inner var first_loc 0 lst
 
 
-  (** 실행이 끝난 astate_set에서 중복된 튜플들 (proc과 vardef가 같음)끼리 묶여 있는 list of list를 만든다. *)
-  let group_by_duplicates (astate_set:S.t) : T.t list list = 
-    let keys = get_keys astate_set in
-    let rec get_tuple_by_key tuplelist key =
-      match tuplelist with
-      | [] -> []
-      | (proc,(name, _), loc,_) as targetTuple::t ->
-          if triple_equal key (proc, name, loc)
-          then ((*L.progress "generating key: %a, targetTuple: %a\n" Var.pp name QuadrupleWithPP.pp targetTuple;*) targetTuple::get_tuple_by_key t key) 
-          else get_tuple_by_key t key in
-    let get_tuples_by_keys tuplelist keys = List.map ~f:(get_tuple_by_key tuplelist) keys in
-    let elements = S.elements astate_set in
-    get_tuples_by_keys elements keys
-
-
   (** group_by_duplicates가 만든 list of list를 받아서, duplicate된 변수 list를 반환하되, ph와 this는 무시한다. *)
   let rec collect_duplicates (listlist:T.t list list) : T.t list list =
     match listlist with
@@ -144,7 +129,7 @@ let find_procpair_by_var (var:Var.t) =
 (* NOTE: 완성품에는 이 함수가 필요 없어야 함 *)
 (* NOTE: 본 함수에는 ph와 this를 걸러 주는 기능도 있음 (collect_duplicates 사용). *)
 let remove_duplicates_from (astate_set:S.t) : S.t =
-  let grouped_by_duplicates = (group_by_duplicates >> collect_duplicates) astate_set in
+  let grouped_by_duplicates = (P.partition_tuples_modulo_123 >> collect_duplicates) astate_set in
   (* 위의 리스트 안의 각 리스트들 안에 들어 있는 튜플들 중 가장 alias set이 큰 놈을 남김 *)
   let leave_biggest_aliasset = fun lst -> List.fold_left lst ~init:bottuple ~f:(fun (acc:T.t) (elem:T.t) -> if (A.cardinal @@ fourth_of acc) < (A.cardinal @@ fourth_of elem) then elem else acc) in
   S.of_list @@ List.map ~f:leave_biggest_aliasset grouped_by_duplicates

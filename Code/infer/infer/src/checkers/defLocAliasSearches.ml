@@ -79,7 +79,7 @@ let is_return_ap (ap:A.elt) =
   Var.is_return var
 
 
-let find_tuple_with_ret (tupleset:S.t) (methname:Procname.t) =
+let find_tuples_with_ret (tupleset:S.t) (methname:Procname.t) =
   let elements = S.elements tupleset in
   let rec find_tuple_with_ret_inner (tuplelist:T.t list) (methname:Procname.t) (acc:T.t list) =
     match tuplelist with

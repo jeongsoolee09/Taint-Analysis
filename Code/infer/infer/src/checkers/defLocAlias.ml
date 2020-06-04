@@ -175,7 +175,7 @@ let search_recent_vardef_astate (methname:Procname.t) (pvar:Var.t) (apair:P.t) :
       let callee_vardef, _ = second_of tup in
       let aliasset = 
         if Var.is_return callee_vardef
-        then (* 'return' itself should not be considered a pvar that is carrried over *)
+        then (* 'returnv' itself should not be considered a pvar that is carrried over *)
           A.add (mk_returnv callee_methname, []) @@ A.singleton (Var.of_id ret_id, [])
         else
           A.add (mk_returnv callee_methname, []) @@ doubleton (callee_vardef, []) (Var.of_id ret_id, []) in
@@ -447,8 +447,8 @@ let search_recent_vardef_astate (methname:Procname.t) (pvar:Var.t) (apair:P.t) :
         (newset, newmap)
     | Lfield (Lvar pvar, fld, _), Var id ->
         let targetTuple =
-          begin try weak_search_target_tuple_by_id id (fst apair)
-          with _ -> bottuple end in
+          try weak_search_target_tuple_by_id id (fst apair)
+          with _ -> bottuple in
         let aliasset = fourth_of targetTuple in
         let pvar_var = Var.of_pvar pvar in
         let loc = LocationSet.singleton @@ CFG.Node.loc node in
@@ -469,12 +469,21 @@ let search_recent_vardef_astate (methname:Procname.t) (pvar:Var.t) (apair:P.t) :
         let newmap = add_to_history (methname, (pvar_var, [])) loc (snd apair) in
         let newset = S.add newtuple (fst apair) in
         (newset, newmap)
-    | Lfield (Lvar pv, fld, _), BinOp (_, _, _) (* nested arithmetic expressions, lhs is field access *) ->
+    | Lfield (Lvar pv, fld, _), BinOp (_, _, _) -> (* nested arithmetic expressions, lhs is field access with a pvar base *) 
         let pvar_ap = (Var.of_pvar pv, [AccessPath.FieldAccess fld]) in
         let loc = LocationSet.singleton @@ CFG.Node.loc node in
         let aliasset_new = A.singleton (Var.of_pvar pv, []) in
         let newtuple = (methname, pvar_ap, loc, aliasset_new) in
         let newmap = add_to_history (methname, pvar_ap) loc (snd apair) in
+        let newset = S.add newtuple (fst apair) in
+        (newset, newmap)
+    | Lfield (Var var, fld, _), BinOp (_, _, _) -> (* nested arithmetic expressions, lhs is field access with a var base *)
+        let pvar_var, _ = second_of @@ search_target_tuple_by_id var methname (fst apair) in
+        let pvar_ap = (pvar_var, [AccessPath.FieldAccess fld]) in
+        let loc = LocationSet.singleton @@ CFG.Node.loc node in
+        let aliasset_new = A.singleton (pvar_var, []) in
+        let newtuple : T.t = (methname, pvar_ap, loc, aliasset_new) in
+        let newmap = add_to_history (methname, pvar_ap) loc (snd apair) in 
         let newset = S.add newtuple (fst apair) in
         (newset, newmap)
     | _, _ ->
@@ -502,30 +511,30 @@ let search_recent_vardef_astate (methname:Procname.t) (pvar:Var.t) (apair:P.t) :
         (newset, (snd apair))
     | false -> (* There is at least one argument which is a non-thisvar variable *)
         begin try
-            let astate_set_summary_applied = apply_summary (fst apair) caller_summary callee_methname ret_id methname in
-            let formals = get_formal_args caller_summary callee_methname |> List.filter ~f:(fun x -> not @@ Var.is_this x) in
-            begin match formals with
-              | [] -> (* Callee in Native Code! *)
-                  (astate_set_summary_applied, snd apair)
-              | _ ->  (* Callee in User Code! *)
-                  (* funcall to cdr for removing thisvar actualarg or object actualarg for virtual calls *)
-                  let actuals_logical = cdr @@ extract_nonthisvar_from_args methname arg_ts astate_set_summary_applied in
-                  let actuallog_formal_binding = leave_only_var_tuples @@ zip actuals_logical formals in
-                  (* mapfunc finds pvar tuples transmitted as actual arguments *)
-                  let mapfunc = fun (exp:Exp.t) ->
-                    begin match exp with
-                      | Var id ->
-                          let pvar = search_target_tuples_by_id id methname (fst apair) |> List.map ~f:fourth_of |> extract_another_pvar id in (* 여기가 문제 *)
-                          search_recent_vardef_astate methname pvar apair
-                      | _ ->
-                          L.die InternalError "exec_call/mapfunc failed, exp: %a" Exp.pp exp end in
-                  let actuals_pvar_tuples = actuals_logical |> List.filter ~f:is_logical_var_expr |> List.map ~f:mapfunc in
-                  let actualpvar_alias_added = add_bindings_to_alias_of_tuples methname actuallog_formal_binding actuals_pvar_tuples (snd apair) |> S.of_list in
-                  let applied_state_rmvd = S.diff astate_set_summary_applied (S.of_list actuals_pvar_tuples) in
-                  let newset = S.union applied_state_rmvd actualpvar_alias_added in
-                  (newset, snd apair) end
-          with _ -> (* corner case: maybe one of actuals contains literal null? *)
-            apair end
+          let astate_set_summary_applied = apply_summary (fst apair) caller_summary callee_methname ret_id methname in
+          let formals = get_formal_args caller_summary callee_methname |> List.filter ~f:(fun x -> not @@ Var.is_this x) in
+          begin match formals with
+            | [] -> (* Callee in Native Code! *)
+                (astate_set_summary_applied, snd apair)
+            | _ ->  (* Callee in User Code! *)
+                (* funcall to cdr to remove thisvar actualarg or object actualarg for virtual calls *)
+                let actuals_logical = cdr @@ extract_nonthisvar_from_args methname arg_ts astate_set_summary_applied in
+                let actuallog_formal_binding = leave_only_var_tuples @@ zip actuals_logical formals in
+                (* mapfunc finds pvar tuples transmitted as actual arguments *)
+                let mapfunc = fun (exp:Exp.t) ->
+                  begin match exp with
+                    | Var id ->
+                        let pvar = search_target_tuples_by_id id methname (fst apair) |> List.map ~f:fourth_of |> extract_another_pvar id in (* 여기가 문제 *)
+                        search_recent_vardef_astate methname pvar apair
+                    | _ ->
+                        L.die InternalError "exec_call/mapfunc failed, exp: %a" Exp.pp exp end in
+                let actuals_pvar_tuples = actuals_logical |> List.filter ~f:is_logical_var_expr |> List.map ~f:mapfunc in
+                let actualpvar_alias_added = add_bindings_to_alias_of_tuples methname actuallog_formal_binding actuals_pvar_tuples (snd apair) |> S.of_list in
+                let applied_state_rmvd = S.diff astate_set_summary_applied (S.of_list actuals_pvar_tuples) in
+                let newset = S.union applied_state_rmvd actualpvar_alias_added in
+                (newset, snd apair) end
+        with _ -> (* corner case: maybe one of actuals contains literal null? *)
+          apair end
 
 
   let exec_load (id:Ident.t) (exp:Exp.t) (apair:P.t) (methname:Procname.t) : P.t =
@@ -551,10 +560,7 @@ let search_recent_vardef_astate (methname:Procname.t) (pvar:Var.t) (apair:P.t) :
                     (newset, snd apair)
                 | h::_ as tuples -> (* 이전에 def된 적 있음 *)
                     let var, _ = second_of h in
-                    (* L.d_printfln "finding var:%a\n" Var.pp var; *)
                     let most_recent_locset = get_most_recent_loc (methname, (var, [])) (snd apair) in
-                    (* L.d_printfln "methname: %a, most_recent_loc: %a@." Procname.pp methname Location.pp most_recent_loc; *)
-                    (* L.progress "astate: %a@." S.pp astate; *)
                     let (proc, vardef, loc, aliasset) as most_recent_tuple = search_tuple_by_loc most_recent_locset tuples in
                     let astate_set_rmvd = S.remove most_recent_tuple (fst apair) in
                     let mrt_updated = (proc, vardef, loc, A.add (Var.of_id id, []) aliasset) in
@@ -695,6 +701,7 @@ end
 
 
 module Analyzer = AbstractInterpreter.MakeRPO (TransferFunctions)
+
 
 let checker {Callbacks.summary=summary; exe_env} : Summary.t =
   let proc_name = Summary.get_proc_name summary in

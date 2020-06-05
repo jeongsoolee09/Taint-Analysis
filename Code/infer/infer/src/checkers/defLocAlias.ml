@@ -15,6 +15,7 @@ module P = DefLocAliasDomain.AbstractPair
 module S = DefLocAliasDomain.AbstractStateSetFinite
 module A = DefLocAliasDomain.SetofAliases
 module T = DefLocAliasDomain.AbstractState
+module H = DefLocAliasDomain.HistoryMap
 
 module Payload = SummaryPayload.Make (struct
     type t = DefLocAliasDomain.t
@@ -28,21 +29,6 @@ module TransferFunctions = struct
   module Domain = P
   type extras = ProcData.no_extras
   type instr = Sil.instr
-
-
-  let add_to_history (key:Procname.t * MyAccessPath.t) (value:LocationSet.t) (history:HistoryMap.t) : HistoryMap.t = HistoryMap.add key value history
-
-
-  let batch_add_to_history (keys:(Procname.t * MyAccessPath.t) list) (loc:LocationSet.t) (history:HistoryMap.t) : HistoryMap.t =
-    let rec batch_add_to_history_inner (keys:(Procname.t * MyAccessPath.t) list) (loc:LocationSet.t) (current_map:HistoryMap.t) : HistoryMap.t = 
-      match keys with
-      | [] -> current_map
-      | h::t -> batch_add_to_history_inner t loc (add_to_history h loc current_map) in
-    batch_add_to_history_inner keys loc history
-
-
-  (** find the most recent location of the given key in the map of a T.t *)
-  let get_most_recent_loc (key:Procname.t * MyAccessPath.t) (history:HistoryMap.t) : LocationSet.t = HistoryMap.find key history
 
 
   let choose_larger_location (locset1:LocationSet.t) (locset2:LocationSet.t) =
@@ -91,7 +77,7 @@ let search_recent_vardef_astate (methname:Procname.t) (pvar:Var.t) (apair:P.t) :
         let id_cond = A.mem (id, []) aliasset in
         let var_cond = not @@ Var.equal var (placeholder_vardef proc) in
         if var_cond then 
-        (let most_recent_loc = get_most_recent_loc (methname, (var, [])) (snd apair) in
+        (let most_recent_loc = H.get_most_recent_loc (methname, (var, [])) (snd apair) in
         let loc_cond = LocationSet.equal most_recent_loc loc in
         if proc_cond && id_cond && loc_cond then
         targetTuple else search_recent_vardef_astate_inner methname id t)
@@ -142,7 +128,7 @@ let search_recent_vardef_astate (methname:Procname.t) (pvar:Var.t) (apair:P.t) :
             let candTuples = 
             search_target_tuples_by_vardef actual_pvar methname (S.of_list actual_astates) in
             (* the most recent one among the definitions. *)
-            let most_recent_loc = get_most_recent_loc (methname, (actual_pvar, [])) history in
+            let most_recent_loc = H.get_most_recent_loc (methname, (actual_pvar, [])) history in
             let (proc,var,loc,aliasset') = search_astate_by_loc most_recent_loc candTuples in
             let newTuple = (proc, var, loc, A.add (formalvar, []) aliasset') in
             newTuple::add_bindings_to_alias_of_tuples methname tl actual_astates history
@@ -239,7 +225,7 @@ let search_recent_vardef_astate (methname:Procname.t) (pvar:Var.t) (apair:P.t) :
               with _ -> bottuple in
             begin try
               let pvar_var, _ = A.find_first is_program_var_ap aliasset in
-              let most_recent_loc = get_most_recent_loc (methname, (pvar_var, [])) (snd apair) in
+              let most_recent_loc = H.get_most_recent_loc (methname, (pvar_var, [])) (snd apair) in
                 let candStates = search_target_tuples_by_vardef pvar_var methname (fst apair) in
                 let (proc,var,loc,aliasset') as candState = search_astate_by_loc most_recent_loc candStates in
                 let astate_rmvd = S.remove candState (fst apair) in
@@ -261,7 +247,7 @@ let search_recent_vardef_astate (methname:Procname.t) (pvar:Var.t) (apair:P.t) :
             let aliasset_new = A.add (pvar_var, []) aliasset in
             let newtuple = (methname, (pvar_var, []), loc, aliasset_new) in
             let astate_set_rmvd = S.remove targetTuple (fst apair) in
-            let newmap = add_to_history (methname, (pvar_var, [])) loc (snd apair) in
+            let newmap = H.add_to_history (methname, (pvar_var, [])) loc (snd apair) in
             if is_placeholder_vardef_ap (second_of targetTuple)
             then 
               let newset = S.add newtuple astate_set_rmvd in
@@ -275,7 +261,7 @@ let search_recent_vardef_astate (methname:Procname.t) (pvar:Var.t) (apair:P.t) :
         let loc = LocationSet.singleton @@ CFG.Node.loc node in
         let aliasset_new = A.singleton (pvar_var, []) in
         let newtuple = (methname, (pvar_var, []), loc, aliasset_new) in
-        let newmap = add_to_history (methname, (pvar_var, [])) loc (snd apair) in
+        let newmap = H.add_to_history (methname, (pvar_var, [])) loc (snd apair) in
         let newset = S.add newtuple (fst apair) in
         (newset, newmap)
     | Lvar pv, BinOp (_, Var id, Const _) | Lvar pv, BinOp (_, Const _, Var id) when is_mine id pv methname apair -> (* e.g. a = a + 1 *)
@@ -286,13 +272,13 @@ let search_recent_vardef_astate (methname:Procname.t) (pvar:Var.t) (apair:P.t) :
           if not @@ is_placeholder_vardef vardef
           then
             let newtuple = (procname, (vardef, []), loc, aliasset_new) in
-            let newmap = add_to_history (methname, (pvar_var, [])) loc (snd apair) in
+            let newmap = H.add_to_history (methname, (pvar_var, [])) loc (snd apair) in
             let newset = S.add newtuple (fst apair) in
             (newset, newmap)
           else
             let newtuple = (procname, (vardef, []), loc, aliasset_new) in
             let astate_set_rmvd = S.remove targetTuple (fst apair) in
-            let newmap = add_to_history (methname, (pvar_var, [])) loc (snd apair) in
+            let newmap = H.add_to_history (methname, (pvar_var, [])) loc (snd apair) in
             let newset = S.add newtuple astate_set_rmvd in
             (newset, newmap)
     | Lvar pv, BinOp (_, Var _, Const _) | Lvar pv, BinOp (_, Const _, Var _) -> (* This id does not belong to pvar. *)
@@ -300,7 +286,7 @@ let search_recent_vardef_astate (methname:Procname.t) (pvar:Var.t) (apair:P.t) :
         let loc = LocationSet.singleton @@ CFG.Node.loc node in
         let aliasset_new = A.singleton (pvar_var, []) in
         let newtuple = (methname, (pvar_var, []), loc, aliasset_new) in
-        let newmap = add_to_history (methname, (pvar_var, [])) loc (snd apair) in
+        let newmap = H.add_to_history (methname, (pvar_var, [])) loc (snd apair) in
         let newset = S.add newtuple (fst apair) in
         (newset, newmap)
     | Lvar pv, BinOp (_, Var id1, Var id2) when not @@ is_mine id1 pv methname apair && is_mine id2 pv methname apair ->
@@ -311,7 +297,7 @@ let search_recent_vardef_astate (methname:Procname.t) (pvar:Var.t) (apair:P.t) :
         let loc = LocationSet.singleton @@ CFG.Node.loc node in
         let aliasset_new = A.singleton (pvar_var, []) in
         let newtuple = (methname, (pvar_var, []), loc, aliasset_new) in
-        let newmap = add_to_history (methname, (pvar_var, [])) loc (snd apair) in 
+        let newmap = H.add_to_history (methname, (pvar_var, [])) loc (snd apair) in 
         let newset = S.add newtuple astate_rmvd in
         (newset, newmap)
     | Lvar pv, BinOp (_, Const _, Const _) ->
@@ -319,7 +305,7 @@ let search_recent_vardef_astate (methname:Procname.t) (pvar:Var.t) (apair:P.t) :
         let loc = LocationSet.singleton @@ CFG.Node.loc node in
         let aliasset_new = A.singleton (pvar_var, []) in
         let newtuple = (methname, (pvar_var, []), loc, aliasset_new) in
-        let newmap = add_to_history (methname, (pvar_var, [])) loc (snd apair) in 
+        let newmap = H.add_to_history (methname, (pvar_var, [])) loc (snd apair) in 
         (* L.progress "added pvar_var: %a\n" Var.pp pvar_var; *)
         let newset = S.add newtuple (fst apair) in
         (newset, newmap)
@@ -349,7 +335,7 @@ let search_recent_vardef_astate (methname:Procname.t) (pvar:Var.t) (apair:P.t) :
           let merged_tuple = merge_ph_tuples another_tuple newtuple loc in
           let astate_set_rmvd = S.remove another_tuple @@ S.remove vartuple (fst apair) in
           let old_location = third_of newtuple in
-          let new_history = add_to_history (methname, pvar_tuple_updated) loc (snd apair) in
+          let new_history = H.add_to_history (methname, pvar_tuple_updated) loc (snd apair) in
           if LocationSet.equal old_location (LocationSet.singleton Location.dummy)
           then
             let newset = S.add merged_tuple astate_set_rmvd in
@@ -373,7 +359,7 @@ let search_recent_vardef_astate (methname:Procname.t) (pvar:Var.t) (apair:P.t) :
         let loc = LocationSet.singleton @@ CFG.Node.loc node in
         let newtuple = (proc, ap_containing_pvar_updated, loc, new_aliasset) in
         let astate_rmvd = S.remove targetTuple (fst apair) in
-        let newmap = add_to_history (methname, ap_containing_pvar_updated) loc (snd apair) in
+        let newmap = H.add_to_history (methname, ap_containing_pvar_updated) loc (snd apair) in
         let newset = S.add newtuple astate_rmvd in
         (newset, newmap)
     | Lfield (Var id, fld, _), Const _ ->
@@ -385,7 +371,7 @@ let search_recent_vardef_astate (methname:Procname.t) (pvar:Var.t) (apair:P.t) :
         let loc = LocationSet.singleton @@ CFG.Node.loc node in
         let newtuple = (proc, ap_containing_pvar_updated, loc, new_aliasset) in
         let astate_set_rmvd = S.remove targetState (fst apair) in
-        let newmap = add_to_history (methname, ap_containing_pvar_updated) loc (snd apair) in
+        let newmap = H.add_to_history (methname, ap_containing_pvar_updated) loc (snd apair) in
         if is_placeholder_vardef_ap var
         then
           let newset = S.add newtuple astate_set_rmvd in
@@ -411,7 +397,7 @@ let search_recent_vardef_astate (methname:Procname.t) (pvar:Var.t) (apair:P.t) :
         let merged_tuple = merge_ph_tuples another_tuple newtuple loc in
         let astate_set_rmvd = S.remove another_tuple @@ S.remove vartuple (fst apair) in
         let old_location = third_of newtuple in
-        let new_history = add_to_history (methname, pvar_tuple_updated) loc (snd apair) in
+        let new_history = H.add_to_history (methname, pvar_tuple_updated) loc (snd apair) in
         if LocationSet.equal old_location (LocationSet.singleton Location.dummy)
         then
           let newset = S.add merged_tuple astate_set_rmvd in
@@ -426,7 +412,7 @@ let search_recent_vardef_astate (methname:Procname.t) (pvar:Var.t) (apair:P.t) :
         let loc = LocationSet.singleton @@ CFG.Node.loc node in
         let aliasset_new = A.singleton pvar_ap in
         let newtuple = (methname, pvar_ap, loc, aliasset_new) in
-        let newmap = add_to_history (methname, pvar_ap) loc (snd apair) in
+        let newmap = H.add_to_history (methname, pvar_ap) loc (snd apair) in
         let newset = S.add newtuple (fst apair) in
         (newset, newmap)
     | Lfield (Lvar pvar, fld, _), Var id ->
@@ -440,7 +426,7 @@ let search_recent_vardef_astate (methname:Procname.t) (pvar:Var.t) (apair:P.t) :
         let aliasset_new = A.add new_pvar_ap aliasset in
         let newtuple = (methname, new_pvar_ap, loc, aliasset_new) in
         let astate_set_rmvd = S.remove targetTuple (fst apair) in
-        let newmap = add_to_history (methname, new_pvar_ap) loc (snd apair) in
+        let newmap = H.add_to_history (methname, new_pvar_ap) loc (snd apair) in
         let newset = S.add newtuple astate_set_rmvd in
         (newset, newmap)
     | lhs, Cast (_, exp) -> (* we ignore the cast *)
@@ -450,7 +436,7 @@ let search_recent_vardef_astate (methname:Procname.t) (pvar:Var.t) (apair:P.t) :
         let loc = LocationSet.singleton @@ CFG.Node.loc node in
         let aliasset_new = A.singleton (Var.of_pvar pv, []) in
         let newtuple = (methname, (pvar_var, []), loc, aliasset_new) in
-        let newmap = add_to_history (methname, (pvar_var, [])) loc (snd apair) in
+        let newmap = H.add_to_history (methname, (pvar_var, [])) loc (snd apair) in
         let newset = S.add newtuple (fst apair) in
         (newset, newmap)
     | Lfield (Lvar pv, fld, _), BinOp (_, _, _) -> (* nested arithmetic expressions, lhs is field access with a pvar base *) 
@@ -458,7 +444,7 @@ let search_recent_vardef_astate (methname:Procname.t) (pvar:Var.t) (apair:P.t) :
         let loc = LocationSet.singleton @@ CFG.Node.loc node in
         let aliasset_new = A.singleton (Var.of_pvar pv, []) in
         let newtuple = (methname, pvar_ap, loc, aliasset_new) in
-        let newmap = add_to_history (methname, pvar_ap) loc (snd apair) in
+        let newmap = H.add_to_history (methname, pvar_ap) loc (snd apair) in
         let newset = S.add newtuple (fst apair) in
         (newset, newmap)
     | Lfield (Var var, fld, _), BinOp (_, _, _) -> (* nested arithmetic expressions, lhs is field access with a var base *)
@@ -467,7 +453,7 @@ let search_recent_vardef_astate (methname:Procname.t) (pvar:Var.t) (apair:P.t) :
         let loc = LocationSet.singleton @@ CFG.Node.loc node in
         let aliasset_new = A.singleton (pvar_var, []) in
         let newtuple : T.t = (methname, pvar_ap, loc, aliasset_new) in
-        let newmap = add_to_history (methname, pvar_ap) loc (snd apair) in 
+        let newmap = H.add_to_history (methname, pvar_ap) loc (snd apair) in 
         let newset = S.add newtuple (fst apair) in
         (newset, newmap)
     | _, _ ->
@@ -544,7 +530,7 @@ let search_recent_vardef_astate (methname:Procname.t) (pvar:Var.t) (apair:P.t) :
                     (newset, snd apair)
                 | h::_ as tuples -> (* 이전에 def된 적 있음 *)
                     let var, _ = second_of h in
-                    let most_recent_locset = get_most_recent_loc (methname, (var, [])) (snd apair) in
+                    let most_recent_locset = H.get_most_recent_loc (methname, (var, [])) (snd apair) in
                     let (proc, vardef, loc, aliasset) as most_recent_tuple = search_tuple_by_loc most_recent_locset tuples in
                     let astate_set_rmvd = S.remove most_recent_tuple (fst apair) in
                     let mrt_updated = (proc, vardef, loc, A.add (Var.of_id id, []) aliasset) in
@@ -576,7 +562,7 @@ let search_recent_vardef_astate (methname:Procname.t) (pvar:Var.t) (apair:P.t) :
               (newset, snd apair)
           | h::_ as tuples ->
               let var, fldlst = second_of h in
-              let most_recent_loc = get_most_recent_loc (methname, (var, fldlst)) (snd apair) in
+              let most_recent_loc = H.get_most_recent_loc (methname, (var, fldlst)) (snd apair) in
               let (proc, vardef, loc, aliasset) as most_recent_tuple = search_astate_by_loc most_recent_loc tuples in
               let astate_set_rmvd = S.remove most_recent_tuple (fst apair) in
               let mra_updated = (proc, vardef, loc, A.add (Var.of_id id, []) aliasset) in
@@ -616,7 +602,7 @@ let search_recent_vardef_astate (methname:Procname.t) (pvar:Var.t) (apair:P.t) :
         let tuplelist = List.map ~f:bake_newstate formal_aps in
         let tupleset = S.of_list tuplelist in
         let formal_aps_with_methname = List.map ~f:(fun tup -> (methname, tup)) formal_aps in
-        let newmap = batch_add_to_history formal_aps_with_methname loc (snd apair) in
+        let newmap = H.batch_add_to_history formal_aps_with_methname loc (snd apair) in
         let newset = S.union (fst apair) tupleset in
         (newset, newmap)
     | _ -> apair

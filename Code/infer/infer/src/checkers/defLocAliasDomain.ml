@@ -3,6 +3,8 @@ open! IStd
 
 module F = Format
 
+exception NotImplemented
+
 (** astate_set = Set of (defined variable, location of definition, Aliased Variables including both logical and program variables) *)
 
 (** An tuple (element of an astate_set) represents a single data definition *)
@@ -61,18 +63,48 @@ module ProcAccess = struct
   let pp fmt (proc, ap) = F.fprintf fmt "(%a, %a)" Procname.pp proc MyAccessPath.pp ap
 end
 
+
 (** A map from ProcAccess.t to LocationSet.t. *)
-module HistoryMap = AbstractDomain.WeakMap (ProcAccess) (LocationSet)
+module HistoryMap = struct
+  include AbstractDomain.WeakMap (ProcAccess) (LocationSet)
+
+  let add_to_history (key:Procname.t * MyAccessPath.t) (value:LocationSet.t) (history:t) : t = add key value history
+
+
+  let batch_add_to_history (keys:(Procname.t * MyAccessPath.t) list) (loc:LocationSet.t) (history:t) : t =
+    let rec batch_add_to_history_inner (keys:(Procname.t * MyAccessPath.t) list) (loc:LocationSet.t) (current_map:t) : t = 
+      match keys with
+      | [] -> current_map
+      | h::t -> batch_add_to_history_inner t loc (add_to_history h loc current_map) in
+    batch_add_to_history_inner keys loc history
+
+
+  (** find the most recent location of the given key in the map of a T.t *)
+  let get_most_recent_loc (key:Procname.t * MyAccessPath.t) (history:t) : LocationSet.t = find key history
+
+
+  let batch_add_to_history2 (keys_and_loc:((Procname.t*MyAccessPath.t) * LocationSet.t) list) (history:t) : t =
+    let rec batch_add_to_history2_inner (keys_and_loc:((Procname.t*MyAccessPath.t) * LocationSet.t) list) (current_map:t) =
+      match keys_and_loc with
+      | [] -> current_map
+      | (keys, locset)::t -> batch_add_to_history2_inner t (add_to_history keys locset current_map) in
+    batch_add_to_history2_inner keys_and_loc history
+end
+
+
+module type HistoryMap = module type of HistoryMap
 
 (* An Abtract State is just a quadruple. *)
 module AbstractState = QuadrupleWithPP
 
+
 (** A set of Abstract States. *)
 module AbstractStateSetFinite = AbstractDomain.FiniteSet (AbstractState)
 
+
 module type AbstractStateSetFinite = module type of AbstractStateSetFinite
 
-module type HistoryMap = module type of HistoryMap
+
 
 (* The pair of 1) set of abstract states and 2) the history map *)
 module AbstractPair = struct
@@ -156,6 +188,7 @@ module AbstractPair = struct
     let partitioned_tuples = partition_tuples_modulo_123 dups in
     S.of_list @@ reduce_partitioned_tuples partitioned_tuples
 
+
   let join (lhs_pair:t) (rhs_pair:t) : t =
     let lhs, lhs_map = lhs_pair in
     let rhs, rhs_map = rhs_pair in
@@ -171,7 +204,9 @@ module AbstractPair = struct
       let lhs_minus_duplicate_keys = S.diff lhs duplicate_keys_in_lhs_minus_rhs in
       let rhs_minus_duplicate_keys = S.diff rhs duplicate_keys_in_rhs_minus_lhs in
       let newset = S.union joined_tuples @@ S.union lhs_minus_duplicate_keys rhs_minus_duplicate_keys in
-      (newset, HistoryMap.join lhs_map rhs_map)
+      let keys_and_loc = List.map ~f:(fun tup -> ((first_of tup, second_of tup), third_of tup)) (S.elements joined_tuples) in
+      let newmap = HistoryMap.batch_add_to_history2 keys_and_loc (HistoryMap.join lhs_map rhs_map) in
+      (newset, newmap)
     else 
       let newset = S.union lhs rhs in
       (newset, HistoryMap.join lhs_map rhs_map)

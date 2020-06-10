@@ -35,6 +35,11 @@ let is_program_var (var:Var.t) : bool =
   | ProgramVar _ -> true
 
 
+(* let is_this_var_expr (exp:Exp.t) : bool =
+  match exp with
+  |  *)
+
+
 let convert_from_mangled : Procname.t -> (Mangled.t*Typ.t) -> Var.t = fun methname (m,_) -> Pvar.mk m methname |> Var.of_pvar
 
 
@@ -101,3 +106,9 @@ let is_returnv_ap (ap:A.elt) : bool =
   match var with
   | LogicalVar _ -> false
   | ProgramVar pv -> String.equal (Pvar.to_string pv) "returnv"
+
+
+(* let there_is_thisvar (arg_ts:(Exp.t * Typ.t) list) : bool =
+  let actualarg_exp = List.map ~f:fst arg_ts in
+  if not @@ List.exists ~f:is_logical_var_expr actualarg_exp then L.die InternalError "there_is_thisvar failed: there is at least one non-logicalvar in arg_ts";
+  if List.exists ~f:is_this_ actualarg_exp then true else false *)

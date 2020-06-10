@@ -56,12 +56,12 @@ module TransferFunctions = struct
     | (other, _)::t -> other::extract_nonthisvar_from_args methname t astate_set
 
 
-  let leave_only_var_tuples (ziplist:(Exp.t*Var.t) list) =
-    let leave_logical = fun (x,_) -> is_logical_var_expr x in
-    let map_func = fun (exp, var) ->
-      match exp, var with
-      | Exp.Var id, var -> (Var.of_id id, var)
-      | (_, _) -> L.die InternalError "leave_only_var_tuples/map_func failed, exp: %a, var: %a@." Exp.pp exp Var.pp var in
+  let leave_only_var_tuples (ziplist:(Var.t*Var.t) list) =
+    let leave_logical = fun (x,_) -> is_logical_var x in
+    let map_func = fun (var1, var2) ->
+      match var1, var2 with
+      | Var.LogicalVar id, var -> (Var.of_id id, var)
+      | (_, _) -> L.die InternalError "leave_only_var_tuples/map_func failed, exp: %a, var: %a@." Var.pp var1 Var.pp var2 in
     List.filter ~f:leave_logical ziplist |> List.map ~f:map_func
 
 
@@ -182,11 +182,19 @@ let search_recent_vardef_astate (methname:Procname.t) (pvar:Var.t) (apair:P.t) :
     F.fprintf fmt "]"
 
 
-  let rec zip (l1:Exp.t list) (l2:Var.t list) =
+  let rec zip (l1:Var.t list) (l2:Var.t list) =
     match l1, l2 with
     | [], [] -> []
     | h1::t1, h2::t2 -> (h1, h2)::zip t1 t2
-    | _, _ -> L.die InternalError "zip failed, l1: %a, l2: %a" pp_explist l1 pp_varlist l2
+    | _, _ -> L.die InternalError "zip failed, l1: %a, l2: %a" pp_varlist l1 pp_varlist l2
+
+
+  (** (Var.t * Var.t) list에서 var이 들어 있는 튜플만을 삭제 *)
+  let delete_vartuples (ziplist:(Var.t * Var.t) list) =
+    List.fold ~f:(fun acc (v1, v2) ->
+      if Var.is_this v1 || Var.is_this v2
+      then acc
+      else (v1, v2)::acc) ~init:[] ziplist
 
 
   let get_formal_args (caller_summary:Summary.t) (callee_methname:Procname.t) : Var.t list =
@@ -406,7 +414,7 @@ let search_recent_vardef_astate (methname:Procname.t) (pvar:Var.t) (apair:P.t) :
           let newset = S.add another_tuple @@ S.add vartuple @@ S.add merged_tuple astate_set_rmvd in
           (newset, new_history)
     | Lvar pvar, Exn _ when Var.is_return (Var.of_pvar pvar) -> 
-        L.progress "Storing an Exception@."; apair
+        (*L.progress "Storing an Exception@.";*) apair
     | Lfield (Lvar pvar, fld, _), Const _ ->
         let pvar_ap = (Var.of_pvar pvar, [AccessPath.FieldAccess fld]) in
         let loc = LocationSet.singleton @@ CFG.Node.loc node in
@@ -466,6 +474,13 @@ let search_recent_vardef_astate (methname:Procname.t) (pvar:Var.t) (apair:P.t) :
     | _::t -> t
 
 
+  (** exp를 받아서 logical var로 변환한다. *)
+  let convert_exp_to_logical (exp:Exp.t) =
+    match exp with
+    | Var id -> Var.of_id id
+    | _ -> L.die InternalError "convert_exp_to_logical failed: %a@." Exp.pp exp
+
+
   let exec_call (ret_id:Ident.t) (e_fun:Exp.t) (arg_ts:(Exp.t*Typ.t) list) (caller_summary:Summary.t) (apair:P.t) (methname:Procname.t) : P.t =
     let callee_methname =
       match e_fun with
@@ -482,24 +497,33 @@ let search_recent_vardef_astate (methname:Procname.t) (pvar:Var.t) (apair:P.t) :
     | false -> (* There is at least one argument which is a non-thisvar variable *)
         begin try
           let astate_set_summary_applied = apply_summary (fst apair) caller_summary callee_methname ret_id methname in
-          let formals = get_formal_args caller_summary callee_methname |> List.filter ~f:(fun x -> not @@ Var.is_this x) in
+          let formals = get_formal_args caller_summary callee_methname (*|> List.filter ~f:(fun x -> not @@ Var.is_this x)*) in
+          L.d_printfln "methname: %a, formals: %a@." Procname.pp callee_methname pp_varlist formals;
           begin match formals with
             | [] -> (* Callee in Native Code! *)
                 (astate_set_summary_applied, snd apair)
             | _ ->  (* Callee in User Code! *)
                 (* funcall to cdr to remove thisvar actualarg or object actualarg for virtual calls *)
-                let actuals_logical = cdr @@ extract_nonthisvar_from_args methname arg_ts astate_set_summary_applied in
-                let actuallog_formal_binding = leave_only_var_tuples @@ zip actuals_logical formals in
+                let actuals_logical = List.map ~f:(fst >> convert_exp_to_logical) arg_ts in
+                (* L.progress "actuals_logical: %a, methname: %a@." pp_varlist actuals_logical Procname.pp methname; *)
+                let actuallog_formal_binding = (*delete_vartuples @@*) leave_only_var_tuples @@ zip actuals_logical formals in
                 (* mapfunc finds pvar tuples transmitted as actual arguments *)
-                let mapfunc = fun (exp:Exp.t) ->
-                  begin match exp with
-                    | Var id ->
+                let mapfunc = fun (var:Var.t) ->
+                  begin match var with
+                    | LogicalVar id ->
                         let pvar = search_target_tuples_by_id id methname (fst apair) |> List.map ~f:fourth_of |> extract_another_pvar id in (* 여기가 문제 *)
                         search_recent_vardef_astate methname pvar apair
                     | _ ->
-                        L.die InternalError "exec_call/mapfunc failed, exp: %a" Exp.pp exp end in
-                let actuals_pvar_tuples = actuals_logical |> List.filter ~f:is_logical_var_expr |> List.map ~f:mapfunc in
+                        L.die InternalError "exec_call/mapfunc failed, var: %a" Var.pp var end in
+                let actuals_pvar_tuples = actuals_logical |> List.filter ~f:is_logical_var |> List.map ~f:mapfunc in
+                L.d_printfln "actual_pvar_tuples: %a@." pp_tuplelist actuals_pvar_tuples;
+                L.d_printfln "actuallog_formal_binding length: %d@." (List.length actuallog_formal_binding);
                 let actualpvar_alias_added = add_bindings_to_alias_of_tuples methname actuallog_formal_binding actuals_pvar_tuples (snd apair) |> S.of_list in
+                L.d_printfln "actualpvar_alias_added: %a@." S.pp actualpvar_alias_added;
+                if Int.equal (S.cardinal actualpvar_alias_added) 0
+                then (* void function call! *)
+                  (astate_set_summary_applied, snd apair)
+                else
                 let applied_state_rmvd = S.diff astate_set_summary_applied (S.of_list actuals_pvar_tuples) in
                 let newset = S.union applied_state_rmvd actualpvar_alias_added in
                 (newset, snd apair) end
@@ -531,6 +555,7 @@ let search_recent_vardef_astate (methname:Procname.t) (pvar:Var.t) (apair:P.t) :
                 | h::_ as tuples -> (* 이전에 def된 적 있음 *)
                     let var, _ = second_of h in
                     let most_recent_locset = H.get_most_recent_loc (methname, (var, [])) (snd apair) in
+                    L.d_printfln "var: %a, methname: %a, most_recent_locset: %a@." Var.pp var Procname.pp methname LocationSet.pp most_recent_locset;
                     let (proc, vardef, loc, aliasset) as most_recent_tuple = search_tuple_by_loc most_recent_locset tuples in
                     let astate_set_rmvd = S.remove most_recent_tuple (fst apair) in
                     let mrt_updated = (proc, vardef, loc, A.add (Var.of_id id, []) aliasset) in

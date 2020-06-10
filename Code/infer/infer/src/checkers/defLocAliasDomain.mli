@@ -48,7 +48,15 @@ module ProcAccess : sig
   val pp : F.formatter -> t -> unit
 end
 
-module HistoryMap : module type of AbstractDomain.WeakMap (ProcAccess) (LocationSet)
+module HistoryMap : sig
+  include  module type of AbstractDomain.WeakMap (ProcAccess) (LocationSet)
+
+  val add_to_history : Procname.t * MyAccessPath.t -> LocationSet.t -> t -> t
+
+  val batch_add_to_history : (Procname.t * MyAccessPath.t) list -> LocationSet.t -> t -> t
+
+  val get_most_recent_loc : Procname.t * MyAccessPath.t -> t -> LocationSet.t
+end
 
 module AbstractState : module type of QuadrupleWithPP
 

@@ -115,18 +115,6 @@ let search_target_tuples_by_vardef_ap (pv_ap:MyAccessPath.t) (methname:Procname.
   search_target_tuples_by_vardef_ap_inner pv_ap methname elements []
 
 
-let search_target_tuples_by_vardef_ap (pv_ap:MyAccessPath.t) (methname:Procname.t) (tupleset:S.t) =
-  let elements = S.elements tupleset in
-  let rec search_target_tuples_by_vardef_ap_inner pv_ap methname elements acc =
-    match elements with
-    | [] -> acc
-    | ((procname, var_ap, _, _) as target) :: t ->
-        if Procname.equal procname methname && MyAccessPath.equal pv_ap var_ap
-        then search_target_tuples_by_vardef_ap_inner pv_ap methname t (target::acc)
-        else search_target_tuples_by_vardef_ap_inner pv_ap methname t acc in
-  search_target_tuples_by_vardef_ap_inner pv_ap methname elements []
-
-
 let pp_tuplelist fmt (tuplelist:T.t list) : unit =
   F.fprintf fmt "[";
   List.iter ~f:(fun tup -> F.fprintf fmt "%a, " T.pp tup) tuplelist;
@@ -281,7 +269,7 @@ let find_ap_with_field (aliasset:A.t) =
   find_ap_with_field_inner elements
 
 
-let search_target_tuple_by_ap (ap:MyAccessPath.t) (methname:Procname.t) (astate_set:S.t) =
+let search_target_tuple_by_vardef_ap (ap:MyAccessPath.t) (methname:Procname.t) (astate_set:S.t) =
   let elements = S.elements astate_set in
   let rec search_target_tuple_by_ap_inner (ap:MyAccessPath.t) (methname:Procname.t) (elements:S.elt list) = 
     match elements with
@@ -291,3 +279,4 @@ let search_target_tuple_by_ap (ap:MyAccessPath.t) (methname:Procname.t) (astate_
         then target
         else search_target_tuple_by_ap_inner ap methname t in
   search_target_tuple_by_ap_inner ap methname elements
+

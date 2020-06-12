@@ -189,11 +189,28 @@ module AbstractPair = struct
     S.of_list @@ reduce_partitioned_tuples partitioned_tuples
 
 
+  let triple_equal ((p1, v1, l1, _):T.t) ((p2, v2, l2, _):T.t) : bool =
+    Procname.equal p1 p2 &&
+    MyAccessPath.equal v1 v2 &&
+    LocationSet.equal l1 l2
+
+
+  (** S.diff의 커스텀 버전: (Procname.t * MyAccessPath.t * LocationSet.t) 이 같으면 제거 *)
+  let my_diff (s1:S.t) (s2:S.t) : S.t =
+    let s1_elements = S.elements s1 in
+    let s2_elements = S.elements s2 in
+    let s1_minus_s2_modulo_123 = List.fold ~f:(fun acc tup ->
+        if List.mem s2_elements tup ~equal:triple_equal
+        then acc
+        else tup::acc) ~init:[] s1_elements in
+    S.of_list s1_minus_s2_modulo_123
+
+
   let join (lhs_pair:t) (rhs_pair:t) : t =
     let lhs, lhs_map = lhs_pair in
     let rhs, rhs_map = rhs_pair in
-    let lhs_minus_rhs = S.diff lhs rhs in
-    let rhs_minus_lhs = S.diff rhs lhs in
+    let lhs_minus_rhs = my_diff lhs rhs in
+    let rhs_minus_lhs = my_diff rhs lhs in
     let tuples_with_dup_keys = find_duplicate_keys lhs_minus_rhs rhs_minus_lhs in
     let there_are_duplicate_keys = not @@ S.is_empty tuples_with_dup_keys in
     if there_are_duplicate_keys

@@ -364,6 +364,7 @@ let compute_chain_ (ap:MyAccessPath.t) : chain =
   let returnv = A.find_first is_returnv_ap first_aliasset in
   let source_meth = procname_of returnv in
   let rec compute_chain_inner (current_methname:Procname.t) (current_astate_set:S.t) (current_astate:S.elt) (current_chain:chain) : chain =
+    L.progress "current_chain: %a@." pp_chain current_chain;
     let current_aliasset_without_returnv = A.filter (is_returnv_ap >> not) @@ fourth_of current_astate in
     let current_vardef = second_of current_astate in
     (* 직전에 추론했던 chain 토막에서 끄집어낸 variable *)
@@ -372,7 +373,10 @@ let compute_chain_ (ap:MyAccessPath.t) : chain =
     match collect_program_var_aps_from current_aliasset_without_returnv current_vardef just_before with
     | [] -> (* either redefinition or dead end *)
         let states = S.elements (remove_duplicates_from current_astate_set) in
-        let redefined_states = List.fold_left states ~init:[] ~f:(fun (acc:T.t list) (st:T.t) -> if Var.equal (fst current_vardef) @@ (fst @@ second_of st) then st::acc else acc) in
+        let redefined_states = List.fold_left states ~init:[] ~f:(fun (acc:T.t list) (st:T.t) ->
+            if MyAccessPath.equal current_vardef (second_of st)
+            then st::acc
+            else acc) in
         begin match redefined_states with
           | [_] -> (* Dead end *)
               (current_methname, Dead) :: current_chain

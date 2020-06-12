@@ -633,35 +633,35 @@ let search_recent_vardef_astate (methname:Procname.t) (pvar:Var.t) (apair:P.t) :
     | _ -> apair
 
 
-let rec catMaybes_tuplist (optlist:('a*'b option) list) : ('a*'b) list =
-  match optlist with
-  | [] -> []
-  | (sth1, Some sth2) :: t -> (sth1, sth2)::catMaybes_tuplist t
-  | (_, None)::_ -> L.die InternalError "catMaybes_tuplist failed"
-  
-
-(** 디스크에서 써머리를 읽어와서 해시테이블에 정리 *)
-let load_summary_from_disk_to hashtbl =
-  let all_source_files = SourceFiles.get_all ~filter:(fun _ -> true) () in
-  let all_procnames_list = List.map ~f:SourceFiles.proc_names_of_source all_source_files in
-  (* 아직은 파일이 하나밖에 없으니까 *)
-  let all_procnames = List.concat all_procnames_list in
-  let all_summaries_optlist = List.map ~f:(fun proc -> (proc, Summary.OnDisk.get proc)) all_procnames in
-  let all_proc_and_summaries_opt = List.filter ~f:(fun (_, summ) -> match summ with Some _ -> true | None -> false) all_summaries_optlist in
-  let all_proc_and_summaries = catMaybes_tuplist all_proc_and_summaries_opt in
-  let all_proc_and_astate_sets_opt = List.map ~f:(fun (proc, summ) -> (proc, Payload.of_summary summ)) all_proc_and_summaries in
-  let all_proc_and_astates = catMaybes_tuplist all_proc_and_astate_sets_opt in
-  let all_proc_and_tuples = List.map ~f:(fun (x, (y, _)) -> (x, y)) all_proc_and_astates in
-  List.iter ~f:(fun (proc, astate) -> Hashtbl.add hashtbl proc astate) all_proc_and_tuples
+  let rec catMaybes_tuplist (optlist:('a*'b option) list) : ('a*'b) list =
+    match optlist with
+    | [] -> []
+    | (sth1, Some sth2) :: t -> (sth1, sth2)::catMaybes_tuplist t
+    | (_, None)::_ -> L.die InternalError "catMaybes_tuplist failed"
 
 
-let exec_metadata (md:Sil.instr_metadata) (apair:P.t) : P.t =
-  match md with
-  | ExitScope _ -> (* S.filter (fun tup ->
-       * not @@ Var.is_this @@ second_of tup &&
-       * not @@ is_placeholder_vardef @@ second_of tup) *)
-       apair
-  | _ -> apair
+  (** 디스크에서 써머리를 읽어와서 해시테이블에 정리 *)
+  let load_summary_from_disk_to hashtbl =
+    let all_source_files = SourceFiles.get_all ~filter:(fun _ -> true) () in
+    let all_procnames_list = List.map ~f:SourceFiles.proc_names_of_source all_source_files in
+    (* 아직은 파일이 하나밖에 없으니까 *)
+    let all_procnames = List.concat all_procnames_list in
+    let all_summaries_optlist = List.map ~f:(fun proc -> (proc, Summary.OnDisk.get proc)) all_procnames in
+    let all_proc_and_summaries_opt = List.filter ~f:(fun (_, summ) -> match summ with Some _ -> true | None -> false) all_summaries_optlist in
+    let all_proc_and_summaries = catMaybes_tuplist all_proc_and_summaries_opt in
+    let all_proc_and_astate_sets_opt = List.map ~f:(fun (proc, summ) -> (proc, Payload.of_summary summ)) all_proc_and_summaries in
+    let all_proc_and_astates = catMaybes_tuplist all_proc_and_astate_sets_opt in
+    let all_proc_and_tuples = List.map ~f:(fun (x, (y, _)) -> (x, y)) all_proc_and_astates in
+    List.iter ~f:(fun (proc, astate) -> Hashtbl.add hashtbl proc astate) all_proc_and_tuples
+
+
+  let exec_metadata (md:Sil.instr_metadata) (apair:P.t) : P.t =
+    match md with
+    | ExitScope _ -> (* S.filter (fun tup ->
+         * not @@ Var.is_this @@ second_of tup &&
+         * not @@ is_placeholder_vardef @@ second_of tup) *)
+         apair
+    | _ -> apair
 
 
   let exec_instr : P.t -> extras ProcData.t -> CFG.Node.t -> Sil.instr -> P.t = fun prev' {summary} node instr ->

@@ -338,7 +338,7 @@ let filter_carrriedover_ap (aliasset:A.t) : A.t =
       A.remove returnv_ap @@ A.diff aliasset aps_to_remove 
 
 
-(** pvar가 여러 개 있는 aliasset 내에서 다음으로 focus를 맞출 tuple이 무엇인지 찾아냄  *)
+(** pvar가 여러 개 있는 aliasset 내에서 관련 없는 pvar들을 (하나 남기고) 모두 없앰 *)
 let cleanup_aliasset (aliasset:A.t) (self:MyAccessPath.t) : A.t =
   let carried_over_ap_filtered = filter_carrriedover_ap aliasset in
   let self_filtered = A.remove self carried_over_ap_filtered in
@@ -381,8 +381,7 @@ let compute_chain_ (ap:MyAccessPath.t) : chain =
               let new_state = find_earliest_astate_of_var_within (S.elements future_states) in
               let new_chain = (current_methname, Redefine ( current_vardef)) :: current_chain in
               compute_chain_inner current_methname current_astate_set new_state new_chain
-          | _ -> L.die InternalError "compute_chain_inner failed, current_methname: %a, current_astate_set: %a, current_astate: %a, current_chain: %a@." Procname.pp current_methname S.pp current_astate_set T.pp current_astate pp_chain current_chain
-        end
+          | _ -> L.die InternalError "compute_chain_inner failed, current_methname: %a, current_astate_set: %a, current_astate: %a, current_chain: %a@." Procname.pp current_methname S.pp current_astate_set T.pp current_astate pp_chain current_chain end
     | [ap] -> (* either definition or call *)
         if Var.is_return (fst ap)
         then (* caller에서의 define *)
@@ -391,8 +390,12 @@ let compute_chain_ (ap:MyAccessPath.t) : chain =
           let states_with_return_var = search_target_tuples_by_pvar (mk_returnv current_methname) direct_caller (remove_duplicates_from caller_summary) in
           let have_been_before_filtered = filter_have_been_before states_with_return_var current_chain in
           let new_state = remove_from_aliasset ~from:(find_earliest_astate_within have_been_before_filtered) ~remove:(var_being_returned, []) in
-          let new_chain = (first_of new_state, Define (current_methname, second_of new_state)) :: current_chain in
-          compute_chain_inner direct_caller caller_summary new_state new_chain
+          let new_slice = (first_of new_state, Define (current_methname, second_of new_state)) in
+          if List.mem current_chain new_slice ~equal:double_equal
+          then (current_methname, Dead)::current_chain
+          else 
+            let new_chain = new_slice :: current_chain in
+            compute_chain_inner direct_caller caller_summary new_state new_chain
         else (* 동일 procedure 내에서의 define 혹은 call *)
           (* 다음 튜플을 현재 procedure 내에서 찾을 수 있는지를 기준으로 경우 나누기 *)
           begin match search_target_tuples_by_vardef_ap ap current_methname current_astate_set with
@@ -403,37 +406,41 @@ let compute_chain_ (ap:MyAccessPath.t) : chain =
               let new_chain = (current_methname, Call (callee_methname, ap))::current_chain in
               compute_chain_inner callee_methname (get_summary callee_methname) new_state new_chain
           | nonempty_list -> (* 동일 proc에서의 Define *)
-              L.progress "Define! var: %a, current_methname: %a@." MyAccessPath.pp ap Procname.pp current_methname;
+              (* L.progress "Define! var: %a, current_methname: %a@." MyAccessPath.pp ap Procname.pp current_methname; *)
               let new_state = find_earliest_astate_within @@ S.elements (remove_duplicates_from @@ S.of_list nonempty_list) in
-              let new_chain = (current_methname, Define (current_methname, ap)) :: current_chain in
-              compute_chain_inner current_methname current_astate_set new_state new_chain end
-
-       | _ -> (* 현재 astate의 aliasset을 청소해서 불필요한 pvar를 없애고 재시도 *)
-          try
-            let current_aliasset_cleaned_up = cleanup_aliasset
-            current_aliasset_without_returnv current_vardef in
-            let (a, b, c, _) = current_astate in
-            let current_astate_cleaned_up = (a, b, c, current_aliasset_cleaned_up) in
-            compute_chain_inner current_methname (current_astate_set) current_astate_cleaned_up current_chain
-          with _ ->
-            L.die InternalError "compute_chain_inner failed, current_methname: %a, current_astate_set: %a, current_astate: %a, current_chain: %a@." Procname.pp current_methname S.pp current_astate_set T.pp current_astate pp_chain current_chain in
+              let new_slice = (current_methname, Define (current_methname, ap)) in
+              if List.mem current_chain new_slice ~equal:double_equal
+              then (current_methname, Dead)::current_chain
+              else
+                let new_chain = new_slice :: current_chain in
+                compute_chain_inner current_methname current_astate_set new_state new_chain end
+    | _ -> (* 현재 astate의 aliasset을 청소해서 불필요한 pvar를 없애고 재시도 *)
+        try
+          let (a, b, c, aliasset) = current_astate in
+          let current_aliasset_cleaned_up = cleanup_aliasset aliasset current_vardef in
+          let current_astate_cleaned_up = (a, b, c, current_aliasset_cleaned_up) in
+          compute_chain_inner current_methname (current_astate_set) current_astate_cleaned_up current_chain
+        with _ ->
+          L.die InternalError "compute_chain_inner failed, current_methname: %a, current_astate_set: %a, current_astate: %a, current_chain: %a@." Procname.pp current_methname S.pp current_astate_set T.pp current_astate pp_chain current_chain in
   List.rev @@ compute_chain_inner first_methname first_astate_set first_astate [(first_methname, Define (source_meth, ap))]
 
 
 (** 본체인 compute_chain_을 포장하는 함수 *)
 let compute_chain (ap:MyAccessPath.t) : chain =
-  let (first_methname, _, first_astate) = find_first_occurrence_of ap in
-  let first_aliasset = fourth_of first_astate in
-  match A.exists is_returnv_ap first_aliasset with
-  | true -> (* 이미 어떤 chain의 subchain이라면 새로 계산할 필요 없음 *)
-      let initial_chain_slice = Define (first_methname, ap) in
-      begin match find_entry_containing_chainslice first_methname initial_chain_slice with
-      | None -> (* 이전에 계산해 놓은 게 없네 *)
-          compute_chain_ ap
-      | Some chain -> (* 이전에 계산해 놓은 게 있네! 거기서 단순 추출만 해야지 *)
-          L.progress "found a matching chain";
-          extract_subchain_from chain (first_methname, initial_chain_slice) end
-  | false -> [(first_methname, Define (first_methname, ap))]
+  try
+    let (first_methname, _, first_astate) = find_first_occurrence_of ap in
+    let first_aliasset = fourth_of first_astate in
+    match A.exists is_returnv_ap first_aliasset with
+    | true -> (* 이미 어떤 chain의 subchain이라면 새로 계산할 필요 없음 *)
+        let initial_chain_slice = Define (first_methname, ap) in
+        begin match find_entry_containing_chainslice first_methname initial_chain_slice with
+        | None -> (* 이전에 계산해 놓은 게 없네 *)
+            compute_chain_ ap
+        | Some chain -> (* 이전에 계산해 놓은 게 있네! 거기서 단순 추출만 해야지 *)
+            extract_subchain_from chain (first_methname, initial_chain_slice) end
+    | false -> [(first_methname, Define (first_methname, ap))]
+  with _ -> (* first_methname missing in the callgraph for some reason :( *)
+    []
 
 
 let collect_all_proc_and_ap () =
@@ -448,9 +455,41 @@ let to_string hashtbl =
   Hashtbl.fold (fun (proc, ap) v acc -> String.concat ~sep:"\n" [acc; (F.asprintf "(%a, %a): %a" Procname.pp proc MyAccessPath.pp ap pp_chain v)]) hashtbl ""
 
 
+(** 파일로 call graph를 출력 *)
 let save_callgraph () =
   let ch = Out_channel.create "Callgraph.txt" in
-  Hashtbl.iter (fun k v -> Out_channel.output_string ch @@ (Procname.to_string k)^" -> "^(Procname.to_string v^"\n") ) callgraph_table
+  Hashtbl.iter (fun k v -> Out_channel.output_string ch @@ (Procname.to_string k)^" -> "^(Procname.to_string v^"\n") ) callgraph_table;
+  Out_channel.flush ch;
+  Out_channel.close ch
+
+
+let extract_pvar_from_var (var:Var.t) : Pvar.t =
+  match var with
+  | LogicalVar _ -> L.die InternalError "extract_pvar_from_var failed, var: %a@." Var.pp var
+  | ProgramVar pv -> pv
+
+
+(** throwaway code for debugging infinite loop for GuideRenderer.render *)
+let find_ap_for_guiderenderer () =
+  (* render라는 method name을 가진 (Procname.t * Summary.t) 쌍 전부 *)
+  let ms_pairs_with_render = BFS.fold (fun ((proc, _) as target) acc ->
+    if String.equal (Procname.get_method proc) "render"
+    then target::acc
+    else acc) [] callgraph in
+  let is_'type' = fun var ->
+    match var with
+    | Var.LogicalVar _ -> false
+    | Var.ProgramVar pv -> String.equal (Pvar.to_string pv) "type" in
+  (* render라는 method를 가진 쌍들 중에서 ap가 (type, [])인 튜플을 가진 astate_set *)
+  let render_summary = List.fold ~f:(fun acc (_, astate_set) ->
+    if S.exists (fun astate -> is_'type' (fst @@ second_of astate)) astate_set
+    then astate_set
+    else acc) ~init:S.empty ms_pairs_with_render in
+  let target_tuple = S.fold (fun astate acc -> 
+    if is_'type' (fst @@ second_of astate)
+    then astate
+    else acc) render_summary bottuple in
+  target_tuple
 
 
 (** interface with the driver *)
@@ -462,15 +501,19 @@ let run_lrm () =
   (* batch_print_formal_args (); *)
   filter_callgraph_table callgraph_table;
   callg_hash2og ();
+  (* print_graph callgraph; *)
+  (* L.progress "found: %a@." T.pp @@ find_ap_for_guiderenderer ();
+  let type_ap = find_ap_for_guiderenderer () in
+  let chain = compute_chain (second_of type_ap) in
+  L.progress "chain: %a@." pp_chain chain; *)
   let setofallprocandap_with_garbage = collect_all_proc_and_ap () in
-  let setofallprocandap = List.filter ~f:(fun (_, (var, _)) -> not @@ Var.is_this var && not @@ is_placeholder_vardef var) setofallprocandap_with_garbage in
-  (*let xvar, _ = (List.nth_exn (A.elements setofallvars) 0) in
-  add_chain xvar (compute_chain xvar);*)
+  let setofallprocandap = List.filter ~f:(fun (_, (var, _)) ->
+    let pv = extract_pvar_from_var var in
+    not @@ Var.is_this var &&
+    not @@ is_placeholder_vardef var &&
+    not @@ Pvar.is_frontend_tmp pv) setofallprocandap_with_garbage in
   List.iter ~f:(fun (proc, ap) ->
-    L.progress "computing chain for: %a at %a@." MyAccessPath.pp ap Procname.pp proc;
     add_chain (proc, ap) (compute_chain ap)) setofallprocandap;
-  (* A.iter (fun var -> L.progress "Var: %a\n" Var.pp var) setofallvars; *)
-  (* A.iter (fun var -> L.progress "computing chain for %a\n" Var.pp var; add_chain var (compute_chain var)) setofallvars; *)
   let out_string = F.asprintf "%s\n" (to_string chains) in
   let ch = Out_channel.create "Chain.txt" in
   Out_channel.output_string ch out_string;

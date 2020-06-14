@@ -150,15 +150,17 @@ module AbstractPair = struct
 
   let double_equal = fun (proc1, ap1) (proc2, ap2) -> Procname.equal proc1 proc2 && MyAccessPath.equal ap1 ap2
 
+  let triple_equal = fun (proc1, ap1, locset1) (proc2, ap2, locset2) -> Procname.equal proc1 proc2 && MyAccessPath.equal ap1 ap2 && LocationSet.equal locset1 locset2
+
   (** astate로부터 (procname, vardef, location) 쌍을 중복 없이 만든다. *)
   let get_keys astate_set =
     let elements = S.elements astate_set in
-    let rec enum_nodup (tuplelist:T.t list) (current:(Procname.t*MyAccessPath.t) list) =
+    let rec enum_nodup (tuplelist:T.t list) (current:(Procname.t*MyAccessPath.t*LocationSet.t) list) =
       match tuplelist with
       | [] -> current
-      | (a,b,_,_)::t ->
-        if not (List.mem current (a,b) ~equal:double_equal)
-          then enum_nodup t ((a,b)::current)
+      | (a,b,c,_)::t ->
+        if not (List.mem current (a,b,c) ~equal:triple_equal)
+          then enum_nodup t ((a,b,c)::current)
           else enum_nodup t current in
     enum_nodup elements []
 
@@ -168,8 +170,8 @@ module AbstractPair = struct
     let rec get_tuple_by_key tuplelist key =
       match tuplelist with
       | [] -> []
-      | (proc, name, _, _) as targetTuple::t ->
-          if double_equal key (proc, name)
+      | (proc, name, loc, _) as targetTuple::t ->
+          if triple_equal key (proc, name, loc)
           then ((*L.progress "generating key: %a, targetTuple: %a\n" Var.pp name QuadrupleWithPP.pp targetTuple;*) targetTuple::get_tuple_by_key t key) 
           else get_tuple_by_key t key in
     let get_tuples_by_keys tuplelist keys = List.map ~f:(get_tuple_by_key tuplelist) keys in

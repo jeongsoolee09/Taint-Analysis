@@ -121,7 +121,7 @@ let pp_tuplelistlist fmt (lstlst:T.t list list) =
 (** 중복 튜플을 제거함 *)
 let remove_duplicates_from (astate_set:S.t) : S.t =
   let partitioned_by_duplicates = P.partition_tuples_modulo_123 astate_set in
-  (* L.progress "partitioned_by_duplicates: %a@." pp_tuplelistlist partitioned_by_duplicates; *)
+  L.progress "partitioned_by_duplicates: %a@." pp_tuplelistlist partitioned_by_duplicates;
   (* 위의 리스트 안의 각 리스트들 안에 들어 있는 튜플들 중 가장 alias set이 큰 놈을 남김 *)
   let leave_tuple_with_biggest_aliasset = fun lst ->
     if (List.length lst) > 1
@@ -410,7 +410,7 @@ let compute_chain_ (ap:MyAccessPath.t) : chain =
           begin match search_target_tuples_by_vardef_ap ap current_methname current_astate_set with
             | [] -> (* Call *)
                 let callee_methname = find_immediate_successor current_methname current_astate_set ap in
-                L.progress "last arg to sttbva: %a@." S.pp ((* remove_duplicates_from @@  *)get_summary callee_methname);
+                L.progress "last arg to sttbva: %a@." S.pp ((* remove_duplicates_from @@ *) get_summary callee_methname);
                 let new_states = search_target_tuples_by_vardef_ap ap callee_methname (remove_duplicates_from @@ get_summary callee_methname) in
                 let new_state = find_earliest_astate_within new_states in
                 let new_chain = (current_methname, Call (callee_methname, ap))::current_chain in
@@ -520,14 +520,14 @@ let run_lrm () =
     not @@ Pvar.is_frontend_tmp pv) setofallprocandap_with_garbage in
 
   (* temp code for debugging WhatIWantExample.java *)
-  let setofallap = List.map ~f:(fun (a, b) -> b) setofallprocandap in
-  let xvar = (List.nth_exn setofallap 0) in
-  let x_chain = compute_chain xvar in
-  L.progress "hihi";
+  (* let setofallap = List.map ~f:(fun (a, b) -> b) setofallprocandap in
+   * let xvar = (List.nth_exn setofallap 0) in
+   * let x_chain = compute_chain xvar in
+   * L.progress "hihi"; *)
   (* temp code end *)
 
-  (* List.iter ~f:(fun (proc, ap) ->
-   *   add_chain (proc, ap) (compute_chain ap)) setofallprocandap; *)
+  List.iter ~f:(fun (proc, ap) ->
+    add_chain (proc, ap) (compute_chain ap)) setofallprocandap;
   let out_string = F.asprintf "%s\n" (chains_to_string chains) in
   let ch = Out_channel.create "Chain.txt" in
   Out_channel.output_string ch out_string;

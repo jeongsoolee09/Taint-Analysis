@@ -71,6 +71,11 @@ let get_summary (key:Procname.t) : S.t =
     S.empty
 
 
+let pp_summary_table fmt hashtbl : unit =
+  Hashtbl.iter (fun k v ->
+      F.fprintf fmt "%a -> %a\n" Procname.pp k S.pp v) hashtbl
+
+
 (** map from procname to its formal args. *)
 let formal_args = Hashtbl.create 777
 
@@ -364,7 +369,7 @@ let compute_chain_ (ap:MyAccessPath.t) : chain =
   let returnv = A.find_first is_returnv_ap first_aliasset in
   let source_meth = procname_of returnv in
   let rec compute_chain_inner (current_methname:Procname.t) (current_astate_set:S.t) (current_astate:S.elt) (current_chain:chain) : chain =
-    L.progress "current_chain: %a@." pp_chain current_chain;
+    L.progress "current_astate: %a@." T.pp current_astate;
     let current_aliasset_without_returnv = A.filter (is_returnv_ap >> not) @@ fourth_of current_astate in
     let current_vardef = second_of current_astate in
     (* 직전에 추론했던 chain 토막에서 끄집어낸 variable *)
@@ -403,21 +408,22 @@ let compute_chain_ (ap:MyAccessPath.t) : chain =
         else (* 동일 procedure 내에서의 define 혹은 call *)
           (* 다음 튜플을 현재 procedure 내에서 찾을 수 있는지를 기준으로 경우 나누기 *)
           begin match search_target_tuples_by_vardef_ap ap current_methname current_astate_set with
-          | [] -> (* Call *)
-              let callee_methname = find_immediate_successor current_methname current_astate_set ap in
-              let new_states = search_target_tuples_by_vardef_ap ap callee_methname (remove_duplicates_from @@ get_summary callee_methname) in
-              let new_state = find_earliest_astate_within new_states in
-              let new_chain = (current_methname, Call (callee_methname, ap))::current_chain in
-              compute_chain_inner callee_methname (get_summary callee_methname) new_state new_chain
-          | nonempty_list -> (* 동일 proc에서의 Define *)
-              (* L.progress "Define! var: %a, current_methname: %a@." MyAccessPath.pp ap Procname.pp current_methname; *)
-              let new_state = find_earliest_astate_within @@ S.elements (remove_duplicates_from @@ S.of_list nonempty_list) in
-              let new_slice = (current_methname, Define (current_methname, ap)) in
-              if List.mem current_chain new_slice ~equal:double_equal
-              then (current_methname, Dead)::current_chain
-              else
-                let new_chain = new_slice :: current_chain in
-                compute_chain_inner current_methname current_astate_set new_state new_chain end
+            | [] -> (* Call *)
+                let callee_methname = find_immediate_successor current_methname current_astate_set ap in
+                L.progress "last arg to sttbva: %a@." S.pp ((* remove_duplicates_from @@  *)get_summary callee_methname);
+                let new_states = search_target_tuples_by_vardef_ap ap callee_methname (remove_duplicates_from @@ get_summary callee_methname) in
+                let new_state = find_earliest_astate_within new_states in
+                let new_chain = (current_methname, Call (callee_methname, ap))::current_chain in
+                compute_chain_inner callee_methname (get_summary callee_methname) new_state new_chain
+            | nonempty_list -> (* 동일 proc에서의 Define *)
+                (* L.progress "Define! var: %a, current_methname: %a@." MyAccessPath.pp ap Procname.pp current_methname; *)
+                let new_state = find_earliest_astate_within @@ S.elements (remove_duplicates_from @@ S.of_list nonempty_list) in
+                let new_slice = (current_methname, Define (current_methname, ap)) in
+                if List.mem current_chain new_slice ~equal:double_equal
+                then (current_methname, Dead)::current_chain
+                else
+                  let new_chain = new_slice :: current_chain in
+                  compute_chain_inner current_methname current_astate_set new_state new_chain end
     | _ -> (* 현재 astate의 aliasset을 청소해서 불필요한 pvar를 없애고 재시도 *)
         try
           let (a, b, c, aliasset) = current_astate in
@@ -454,8 +460,8 @@ let collect_all_proc_and_ap () =
   list_of_all_proc_and_ap
 
 
-(** Hashtblw 전체를 프린트한다 *)
-let to_string hashtbl =
+(** chains 해시 테이블 전체를 프린트한다 *)
+let chains_to_string hashtbl =
   Hashtbl.fold (fun (proc, ap) v acc -> String.concat ~sep:"\n" [acc; (F.asprintf "(%a, %a): %a" Procname.pp proc MyAccessPath.pp ap pp_chain v)]) hashtbl ""
 
 
@@ -505,20 +511,24 @@ let run_lrm () =
   (* batch_print_formal_args (); *)
   filter_callgraph_table callgraph_table;
   callg_hash2og ();
-  (* print_graph callgraph; *)
-  (* L.progress "found: %a@." T.pp @@ find_ap_for_guiderenderer ();
-  let type_ap = find_ap_for_guiderenderer () in
-  let chain = compute_chain (second_of type_ap) in
-  L.progress "chain: %a@." pp_chain chain; *)
+  (* pp_chains callgraph; *)
   let setofallprocandap_with_garbage = collect_all_proc_and_ap () in
   let setofallprocandap = List.filter ~f:(fun (_, (var, _)) ->
     let pv = extract_pvar_from_var var in
     not @@ Var.is_this var &&
     not @@ is_placeholder_vardef var &&
     not @@ Pvar.is_frontend_tmp pv) setofallprocandap_with_garbage in
-  List.iter ~f:(fun (proc, ap) ->
-    add_chain (proc, ap) (compute_chain ap)) setofallprocandap;
-  let out_string = F.asprintf "%s\n" (to_string chains) in
+
+  (* temp code for debugging WhatIWantExample.java *)
+  let setofallap = List.map ~f:(fun (a, b) -> b) setofallprocandap in
+  let xvar = (List.nth_exn setofallap 0) in
+  let x_chain = compute_chain xvar in
+  L.progress "hihi";
+  (* temp code end *)
+
+  (* List.iter ~f:(fun (proc, ap) ->
+   *   add_chain (proc, ap) (compute_chain ap)) setofallprocandap; *)
+  let out_string = F.asprintf "%s\n" (chains_to_string chains) in
   let ch = Out_channel.create "Chain.txt" in
   Out_channel.output_string ch out_string;
   Out_channel.flush ch;

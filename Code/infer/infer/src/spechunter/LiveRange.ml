@@ -44,6 +44,7 @@ module PairOfMS = struct
   let hash = Hashtbl.hash
 end
 
+
 let pp_status fmt x =
   match x with
   | Define (proc, ap) -> F.fprintf fmt "Define (%a using %a)" MyAccessPath.pp ap Procname.pp proc
@@ -454,7 +455,7 @@ let compute_chain (ap:MyAccessPath.t) : chain =
 
 
 let collect_all_proc_and_ap () =
-  let setofallstates =  Hashtbl.fold (fun _ v acc -> S.union v acc) summary_table S.empty in
+  let setofallstates = Hashtbl.fold (fun _ v acc -> S.union v acc) summary_table S.empty in
   let listofallstates = S.elements setofallstates in
   let list_of_all_proc_and_ap = List.map ~f:(fun (x:T.t) -> (first_of x, second_of x)) listofallstates in
   list_of_all_proc_and_ap
@@ -501,7 +502,6 @@ let find_ap_for_guiderenderer () =
     else acc) render_summary bottuple in
   target_tuple
 
-
 (** interface with the driver *)
 let run_lrm () =
   MyCallGraph.load_summary_from_disk_to callgraph_table;
@@ -512,20 +512,12 @@ let run_lrm () =
   filter_callgraph_table callgraph_table;
   callg_hash2og ();
   (* pp_chains callgraph; *)
-  let setofallprocandap_with_garbage = collect_all_proc_and_ap () in
+  let setofallprocandap_with_garbage = List.stable_dedup (collect_all_proc_and_ap ()) in
   let setofallprocandap = List.filter ~f:(fun (_, (var, _)) ->
     let pv = extract_pvar_from_var var in
     not @@ Var.is_this var &&
     not @@ is_placeholder_vardef var &&
     not @@ Pvar.is_frontend_tmp pv) setofallprocandap_with_garbage in
-
-  (* temp code for debugging WhatIWantExample.java *)
-  (* let setofallap = List.map ~f:(fun (a, b) -> b) setofallprocandap in
-   * let xvar = (List.nth_exn setofallap 0) in
-   * let x_chain = compute_chain xvar in
-   * L.progress "hihi"; *)
-  (* temp code end *)
-
   List.iter ~f:(fun (proc, ap) ->
     add_chain (proc, ap) (compute_chain ap)) setofallprocandap;
   let out_string = F.asprintf "%s\n" (chains_to_string chains) in

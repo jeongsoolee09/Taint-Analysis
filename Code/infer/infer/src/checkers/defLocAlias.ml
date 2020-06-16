@@ -447,7 +447,7 @@ let search_recent_vardef_astate (methname:Procname.t) (pvar:Var.t) (apair:P.t) :
         let newmap = H.add_to_history (methname, (pvar_var, [])) loc (snd apair) in
         let newset = S.add newtuple (fst apair) in
         (newset, newmap)
-    | Lfield (Lvar pv, fld, _), BinOp (_, _, _) -> (* nested arithmetic expressions, lhs is field access with a pvar base *) 
+    | Lfield (Lvar pv, fld, _), BinOp (_, _, _) -> (* arbitrarily nested (depth>=0) arithmetic expressions, lhs is field access with a pvar base *) 
         let pvar_ap = (Var.of_pvar pv, [AccessPath.FieldAccess fld]) in
         let loc = LocationSet.singleton @@ CFG.Node.loc node in
         let aliasset_new = A.singleton (Var.of_pvar pv, []) in
@@ -455,7 +455,7 @@ let search_recent_vardef_astate (methname:Procname.t) (pvar:Var.t) (apair:P.t) :
         let newmap = H.add_to_history (methname, pvar_ap) loc (snd apair) in
         let newset = S.add newtuple (fst apair) in
         (newset, newmap)
-    | Lfield (Var var, fld, _), BinOp (_, _, _) -> (* nested arithmetic expressions, lhs is field access with a var base *)
+    | Lfield (Var var, fld, _), BinOp (_, _, _) -> (* arbitrarily nested (depth>=0) arithmetic expressions, lhs is field access with a var base *)
         let pvar_var, _ = second_of @@ search_target_tuple_by_id var methname (fst apair) in
         let pvar_ap = (pvar_var, [AccessPath.FieldAccess fld]) in
         let loc = LocationSet.singleton @@ CFG.Node.loc node in
@@ -464,9 +464,17 @@ let search_recent_vardef_astate (methname:Procname.t) (pvar:Var.t) (apair:P.t) :
         let newmap = H.add_to_history (methname, pvar_ap) loc (snd apair) in 
         let newset = S.add newtuple (fst apair) in
         (newset, newmap)
+    | Lindex (Var var, _), BinOp (_, _, _) -> (* arbitrarily nested (depth>=0) arithmetic expressions, lhs is field access with a var base *)
+        let pvar_var, _ = second_of @@ search_target_tuple_by_id var methname (fst apair) in
+        let pvar_ap = (pvar_var, [AccessPath.ArrayAccess (Typ.void_star, [])]) in
+        let loc = LocationSet.singleton @@ CFG.Node.loc node in
+        let aliasset_new = A.singleton (pvar_var, []) in
+        let newtuple : T.t = (methname, pvar_ap, loc, aliasset_new) in
+        let newmap = H.add_to_history (methname, pvar_ap) loc (snd apair) in 
+        let newset = S.add newtuple (fst apair) in
+        (newset, newmap)
     | _, _ ->
         L.progress "Unsupported Store instruction %a := %a at %a@." Exp.pp exp1 Exp.pp exp2 Procname.pp methname; apair
-
 
   let cdr (lst:'a list) =
     match lst with

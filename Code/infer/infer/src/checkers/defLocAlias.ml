@@ -577,14 +577,14 @@ let search_recent_vardef_astate (methname:Procname.t) (pvar:Var.t) (apair:P.t) :
         let base_pvar = fst @@ second_of @@ search_target_tuple_by_id var methname (fst apair) in
         let access_path : A.elt = (base_pvar, [FieldAccess fld]) in
         (* 이전에 정의된 적이 있는가 없는가로 경우 나눠야 함 (formal엔 못 옴) *)
-        begin match search_target_tuples_by_vardef_ap (access_path) methname (fst apair) with
-          | [] ->
+        (* begin match search_target_tuples_by_vardef_ap (access_path) methname (fst apair) with
+         *   | [] -> *)
               let ph = placeholder_vardef methname in
               let double = doubleton access_path (Var.of_id id, []) in
               let newstate = (methname, (ph, []), LocationSet.singleton Location.dummy, double) in
               let newset = S.add newstate (fst apair) in
               (newset, snd apair)
-          | _ -> L.die InternalError "exec_load failed, id: %a, exp: %a, astate_set: %a, methname: %a" Ident.pp id Exp.pp exp S.pp (fst apair) Procname.pp methname end
+          (* | _ -> L.die InternalError "exec_load failed, id: %a, exp: %a, astate_set: %a, methname: %a" Ident.pp id Exp.pp exp S.pp (fst apair) Procname.pp methname end *)
     | Lfield (Lvar pvar, fld, _) when Pvar.is_global pvar ->
         let access_path : A.elt = (Var.of_pvar pvar, [FieldAccess fld]) in
         (* 이전에 정의된 적이 있는가 없는가로 경우 나눠야 함 (formal엔 못 옴) *)

@@ -574,7 +574,8 @@ let search_recent_vardef_astate (methname:Procname.t) (pvar:Var.t) (apair:P.t) :
                     let newset = S.add mrt_updated astate_set_rmvd |> S.add newstate (* hopefully this fixes the 211 hashtbl issue *) in
                     (newset, snd apair) end end
     | Lfield (Var var, fld, _) ->
-        let access_path : A.elt = (Var.of_id var, [FieldAccess fld]) in
+        let base_pvar = fst @@ second_of @@ search_target_tuple_by_id var methname (fst apair) in
+        let access_path : A.elt = (base_pvar, [FieldAccess fld]) in
         (* 이전에 정의된 적이 있는가 없는가로 경우 나눠야 함 (formal엔 못 옴) *)
         begin match search_target_tuples_by_vardef_ap (access_path) methname (fst apair) with
           | [] ->

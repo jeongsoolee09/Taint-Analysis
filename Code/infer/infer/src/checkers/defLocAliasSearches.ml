@@ -245,6 +245,7 @@ let extract_from_singleton (singleton:A.t) : A.elt =
   | _ -> L.die InternalError "extract_from_singleton failed, singleton: %a@." A.pp singleton
 
 
+(** A.t의 aliasset 안에서 pvar 튜플을 찾아낸다. *)
 let find_pvar_ap_in (aliasset:A.t) : A.elt =
   let elements = A.elements aliasset in
   let rec find_pvar_ap_in_inner (elements:A.elt list) (acc:A.elt list) =

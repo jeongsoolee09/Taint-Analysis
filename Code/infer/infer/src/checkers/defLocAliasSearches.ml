@@ -166,6 +166,7 @@ let rec search_tuples_by_loc (loc_set:LocationSet.t) (tuplelist:S.elt list) =
 
 let find_least_linenumber (statelist:T.t list) : T.t =
   let rec find_least_linenumber_inner (statelist:T.t list) (current_least:T.t) : T.t =
+    L.d_printfln "statelist: %a@." pp_tuplelist statelist;
     match statelist with
     | [] -> current_least
     | targetState::t ->

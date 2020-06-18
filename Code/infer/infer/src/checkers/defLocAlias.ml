@@ -234,14 +234,14 @@ let search_recent_vardef_astate (methname:Procname.t) (pvar:Var.t) (apair:P.t) :
             begin try
               let pvar_var, _ = A.find_first is_program_var_ap aliasset in
               let most_recent_loc = H.get_most_recent_loc (methname, (pvar_var, [])) (snd apair) in
-                let candStates = search_target_tuples_by_vardef pvar_var methname (fst apair) in
-                let (proc,var,loc,aliasset') as candState = search_astate_by_loc most_recent_loc candStates in
-                let astate_rmvd = S.remove candState (fst apair) in
-                let logicalvar = Var.of_id id in
-                let programvar = Var.of_pvar pv in
-                let newtuple = (proc,var,loc,A.union aliasset' (doubleton (logicalvar, []) (programvar, []))) in
-                let newset = S.add newtuple astate_rmvd in
-                (newset, snd apair)
+              let candStates = search_target_tuples_by_vardef pvar_var methname (fst apair) in
+              let (proc,var,loc,aliasset') as candState = search_astate_by_loc most_recent_loc candStates in
+              let astate_rmvd = S.remove candState (fst apair) in
+              let logicalvar = Var.of_id id in
+              let programvar = Var.of_pvar pv in
+              let newtuple = (proc,var,loc,A.union aliasset' (doubleton (logicalvar, []) (programvar, []))) in
+              let newset = S.add newtuple astate_rmvd in
+              (newset, snd apair)
             with _ -> (* the pvar_var is not redefined in the procedure. *)
               let newset = S.remove targetTuple (fst apair) in
               (newset, snd apair) end
@@ -525,10 +525,7 @@ let search_recent_vardef_astate (methname:Procname.t) (pvar:Var.t) (apair:P.t) :
                     | _ ->
                         L.die InternalError "exec_call/mapfunc failed, var: %a" Var.pp var end in
                 let actuals_pvar_tuples = actuals_logical |> List.filter ~f:is_logical_var |> List.map ~f:mapfunc in
-                L.d_printfln "actual_pvar_tuples: %a@." pp_tuplelist actuals_pvar_tuples;
-                L.d_printfln "actuallog_formal_binding length: %d@." (List.length actuallog_formal_binding);
                 let actualpvar_alias_added = add_bindings_to_alias_of_tuples methname actuallog_formal_binding actuals_pvar_tuples (snd apair) |> S.of_list in
-                L.d_printfln "actualpvar_alias_added: %a@." S.pp actualpvar_alias_added;
                 if Int.equal (S.cardinal actualpvar_alias_added) 0
                 then (* void function call! *)
                   (astate_set_summary_applied, snd apair)
@@ -540,10 +537,26 @@ let search_recent_vardef_astate (methname:Procname.t) (pvar:Var.t) (apair:P.t) :
           apair end
 
 
+  (** Procname.Java.t를 포장한 Procname.t에서 해당 Procname.Java.t를 추출한다. *)
+  let extract_java_procname (methname:Procname.t) : Procname.Java.t =
+  match methname with
+  | Java procname -> procname
+  | _ -> L.die InternalError "extract_java_procname failed, methname: %a (maybe you ran this analysis on a non-Java project?@." Procname.pp methname
+
+
   let exec_load (id:Ident.t) (exp:Exp.t) (apair:P.t) (methname:Procname.t) : P.t =
+    let java_procname = extract_java_procname methname in
     match exp with
     | Lvar pvar ->
         begin match is_formal pvar methname && not @@ Var.is_this (Var.of_pvar pvar) with
+          | true when Procname.Java.is_autogen_method java_procname ->
+              (* 그냥 ph 튜플 하나 만들고 말자 *)
+              let ph = (placeholder_vardef methname, []) in
+              let aliasset = doubleton ((Var.of_id id), []) ((Var.of_pvar pvar), []) in 
+              let loc = LocationSet.singleton Location.dummy in
+              let newtuple = (methname, ph, loc, aliasset) in
+              let newset = S.add newtuple (fst apair) in
+              (newset, snd apair)
           | true ->
               let targetTuples = search_target_tuples_by_vardef (Var.of_pvar pvar) methname (fst apair) in
               let (proc, var, loc, aliasset) as targetTuple = find_least_linenumber targetTuples in
@@ -564,8 +577,13 @@ let search_recent_vardef_astate (methname:Procname.t) (pvar:Var.t) (apair:P.t) :
                 | h::_ as tuples -> (* 이전에 def된 적 있음 *)
                     let var, _ = second_of h in
                     let most_recent_locset = H.get_most_recent_loc (methname, (var, [])) (snd apair) in
-                    L.d_printfln "var: %a, methname: %a, most_recent_locset: %a@." Var.pp var Procname.pp methname LocationSet.pp most_recent_locset;
-                    let (proc, vardef, loc, aliasset) as most_recent_tuple = search_tuple_by_loc most_recent_locset tuples in
+                    (*L.progress "var: %a, methname: %a, most_recent_locset: %a, fst_apair: %a@." Var.pp var Procname.pp methname LocationSet.pp most_recent_locset S.pp (fst apair);*)
+                    (*L.progress "fst_apair: %a@." S.pp (fst apair);*)
+                    let (proc, vardef, loc, aliasset) as most_recent_tuple =
+                            begin try
+                                    search_tuple_by_loc most_recent_locset tuples
+                            with _ -> (* to handle very weird corner cases where Infer is analyzing a SKIP_FUNCTION *)
+                                    search_tuple_by_loc most_recent_locset (S.elements (fst apair)) end in
                     let astate_set_rmvd = S.remove most_recent_tuple (fst apair) in
                     let mrt_updated = (proc, vardef, loc, A.add (Var.of_id id, []) aliasset) in
                     let double = doubleton (Var.of_id id, []) (Var.of_pvar pvar, []) in

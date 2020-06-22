@@ -196,19 +196,23 @@ let equal_btw_vertices : PairOfMS.t -> PairOfMS.t -> bool =
   fun (m1, s1) (m2, s2) -> Procname.equal m1 m2 && S.equal s1 s2
 
 
-(** accumulator를 따라가면서 최초의 parent (즉, 직전의 caller)를 찾아낸다. *)
-let find_direct_caller (target_meth:Procname.t) (acc:chain) =
+(** callgraph 상에서, 혹은 accumulator를 따라가면서 최초의 parent (즉, 직전의 caller)와 그 astate_set을 찾아낸다. *)
+let find_direct_caller (target_meth:Procname.t) (acc:chain) : Procname.t * S.t =
   let target_vertex = (target_meth, get_summary target_meth) in
+  let parents = G.pred callgraph target_vertex in
   let rec find_direct_caller_inner (acc:chain) =
     match acc with
     | [] -> L.die InternalError "find_direct_caller failed, target_meth: %a, acc: %a@." Procname.pp target_meth pp_chain acc
     | (cand_meth, _) :: t ->
-        let is_pred = fun v -> List.mem (G.pred callgraph target_vertex) v ~equal:equal_btw_vertices in
+        let is_pred = fun v -> List.mem parents v ~equal:equal_btw_vertices in
         let cand_vertex = (cand_meth, get_summary cand_meth) in
         if is_pred cand_vertex
         then cand_vertex
         else find_direct_caller_inner t in
-  find_direct_caller_inner acc
+  match parents with
+  | [] -> L.die InternalError "find_direct_caller failed, target_meth: %a, acc: %a@." Procname.pp target_meth pp_chain acc
+  | [parent_and_astateset] -> parent_and_astateset
+  | _ -> find_direct_caller_inner acc
 
 
 (** 가 본 적이 있는지를 검사하는 술어. *)
@@ -368,7 +372,7 @@ let rec compute_chain_inner (current_methname:Procname.t) (current_astate_set:S.
   let current_vardef = second_of current_astate in
   (* 직전에 추론했던 chain 토막에서 끄집어낸 variable *)
   let just_before = extract_ap_from_chain_slice @@ pop current_chain in
-  (* 직전의 variable과 현재의 variable을 모두 제거하고 나서 남은 pvar를 봤더니 *)
+  (* 직전의 variable과 현재의 variable과 returnv를 모두 제거하고 나서 남은 pvar를 봤더니 *)
   match collect_program_var_aps_from current_aliasset_without_returnv current_vardef just_before with
   | [] -> (* either redefinition or dead end *)
       let states = S.elements (remove_duplicates_from current_astate_set) in
@@ -450,10 +454,12 @@ let compute_chain (ap:MyAccessPath.t) : chain =
         let initial_chain_slice = Define (first_methname, ap) in
         begin match find_entry_containing_chainslice first_methname initial_chain_slice with
         | None -> (* 이전에 계산해 놓은 게 없네 *)
+            L.progress "not extracting chain for %a@." MyAccessPath.pp ap;
             compute_chain_ ap
         | Some chain -> (* 이전에 계산해 놓은 게 있네! 거기서 단순 추출만 해야지 *)
             extract_subchain_from chain (first_methname, initial_chain_slice) end
     | false ->
+        L.progress "false for %a@." MyAccessPath.pp ap;
         compute_chain_ ap
   with _ -> (* first_methname missing in the callgraph for some reason :( *)
     []

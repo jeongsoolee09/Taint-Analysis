@@ -54,3 +54,10 @@ npm-debug.log
 
 # infer
 infer-out/
+
+# misc
+*.properties
+*.bin
+*.lock
+*.log
+.project

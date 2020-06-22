@@ -54,6 +54,9 @@ npm-debug.log
 
 # infer
 infer-out/
+Callgraph.txt
+Chain.txt
+Methods.txt
 
 # misc
 *.properties
@@ -61,3 +64,4 @@ infer-out/
 *.lock
 *.log
 .project
+run/

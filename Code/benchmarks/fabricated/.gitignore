@@ -1,3 +1,4 @@
 *.class
 infer-out/
 example/
+*.txt

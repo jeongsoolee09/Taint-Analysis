@@ -190,3 +190,6 @@ infer/src/.project
 /infer/src/deadcode/*.mli
 _opam
 _coverage
+
+# misc
+examples/

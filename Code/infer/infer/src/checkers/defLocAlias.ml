@@ -42,7 +42,12 @@ module TransferFunctions = struct
 
   
   (** specially mangled variable to mark a value as returned from callee *)
-  let mk_returnv procname = Pvar.mk (Mangled.from_string "returnv") procname |> Var.of_pvar
+  let mk_returnv procname =
+    Pvar.mk (Mangled.from_string "returnv") procname |> Var.of_pvar
+
+  
+  (** specially mangled variable to mark an AP as passed to a callee *)
+  let mk_callv procname = Pvar.mk (Mangled.from_string "callv") procname |> Var.of_pvar
 
 
   let rec extract_nonthisvar_from_args methname (arg_ts:(Exp.t*Typ.t) list) (astate_set:S.t) : Exp.t list =
@@ -510,7 +515,23 @@ let search_recent_vardef_astate (methname:Procname.t) (pvar:Var.t) (apair:P.t) :
           L.d_printfln "methname: %a, formals: %a@." Procname.pp callee_methname pp_varlist formals;
           begin match formals with
             | [] -> (* Callee in Native Code! *)
-                (astate_set_summary_applied, snd apair)
+                let actuals_logical = List.map ~f:(fst >> convert_exp_to_logical) arg_ts in
+                let mapfunc = fun (var:Var.t) ->
+                  begin match var with
+                    | LogicalVar id ->
+                        let pvar = search_target_tuples_by_id id methname (fst apair) |> List.map ~f:fourth_of |> extract_another_pvar id in (* 여기가 문제 *)
+                        search_recent_vardef_astate methname pvar apair
+                    | _ ->
+                        L.die InternalError "exec_call/mapfunc failed, var: %a" Var.pp var end in
+                let actuals_pvar_tuples = actuals_logical |> List.filter ~f:is_logical_var |> List.map ~f:mapfunc in
+                let mangled_callv = (mk_callv callee_methname, []) in
+                let astate_set_callv_added = 
+                    S.map (fun (p, v, l, a) -> 
+                      let aliasset_callv_added = A.add mangled_callv a in
+                      (p, v, l, aliasset_callv_added)) (S.of_list actuals_pvar_tuples) in
+                let astate_set_rmvd = S.diff astate_set_summary_applied (S.of_list actuals_pvar_tuples) in
+                let astate_set_callv_added = S.union astate_set_rmvd astate_set_callv_added in
+                (astate_set_callv_added, snd apair)
             | _ ->  (* Callee in User Code! *)
                 (* funcall to cdr to remove thisvar actualarg or object actualarg for virtual calls *)
                 let actuals_logical = List.map ~f:(fst >> convert_exp_to_logical) arg_ts in
@@ -526,12 +547,17 @@ let search_recent_vardef_astate (methname:Procname.t) (pvar:Var.t) (apair:P.t) :
                         L.die InternalError "exec_call/mapfunc failed, var: %a" Var.pp var end in
                 let actuals_pvar_tuples = actuals_logical |> List.filter ~f:is_logical_var |> List.map ~f:mapfunc in
                 let actualpvar_alias_added = add_bindings_to_alias_of_tuples methname actuallog_formal_binding actuals_pvar_tuples (snd apair) |> S.of_list in
-                if Int.equal (S.cardinal actualpvar_alias_added) 0
+                let mangled_callv = (mk_callv callee_methname, []) in
+                let actualpvar_callv_added = 
+                    S.map (fun (p, v, l, a) -> 
+                      let aliasset_callv_added = A.add mangled_callv a in
+                      (p, v, l, aliasset_callv_added)) actualpvar_alias_added in
+                if Int.equal (S.cardinal actualpvar_callv_added) 0
                 then (* void function call! *)
                   (astate_set_summary_applied, snd apair)
                 else
                 let applied_state_rmvd = S.diff astate_set_summary_applied (S.of_list actuals_pvar_tuples) in
-                let newset = S.union applied_state_rmvd actualpvar_alias_added in
+                let newset = S.union applied_state_rmvd actualpvar_callv_added in
                 (newset, snd apair) end
         with _ -> (* corner case: maybe one of actuals contains literal null? *)
           apair end
@@ -541,7 +567,7 @@ let search_recent_vardef_astate (methname:Procname.t) (pvar:Var.t) (apair:P.t) :
   let extract_java_procname (methname:Procname.t) : Procname.Java.t =
   match methname with
   | Java procname -> procname
-  | _ -> L.die InternalError "extract_java_procname failed, methname: %a (maybe you ran this analysis on a non-Java project?@." Procname.pp methname
+  | _ -> L.die InternalError "extract_java_procname failed, methname: %a (maybe you ran this analysis on a non-Java project?)@." Procname.pp methname
 
 
   let exec_load (id:Ident.t) (exp:Exp.t) (apair:P.t) (methname:Procname.t) : P.t =

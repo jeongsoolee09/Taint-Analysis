@@ -190,7 +190,9 @@ let find_earliest_tuple_within (astatelist:S.elt list) : T.t =
 let find_earliest_astate_within (astatelist:S.elt list) : T.t =
   let locations = List.sort ~compare:LocationSet.compare (List.map ~f:third_of astatelist) in
   match List.nth locations 0 with
-  | Some earliest_location -> search_astate_by_loc earliest_location astatelist
+  | Some earliest_location ->
+    (* L.progress "looking for %a in %a@." LocationSet.pp earliest_location pp_tuplelist astatelist; *)
+    search_astate_by_loc earliest_location astatelist
   | None -> L.die InternalError "find_earliest_astate_within failed, astatelist: %a@." S.pp (S.of_list astatelist)
 
 

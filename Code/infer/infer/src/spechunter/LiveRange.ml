@@ -162,14 +162,15 @@ let find_first_occurrence_of (ap:MyAccessPath.t) : Procname.t * S.t * S.elt =
       match S.exists (fun tup -> MyAccessPath.equal (second_of tup) ap) astate with
       | true -> (*L.progress "found it!\n";*) astate
       | false -> (*L.progress "nah..:(\n";*) acc) S.empty callgraph in
-  (* L.progress "astate_set with dup: %a@." S.pp astate_set; *)
-  let astate_set_nodup = remove_duplicates_from astate_set in
-  (* L.progress "astate_set without dup: %a@." S.pp astate_set_nodup; *)
-  let elements = S.elements astate_set_nodup in
-  let methname = first_of @@ (List.nth_exn elements 0) in
-  let targetTuples = search_target_tuples_by_vardef_ap ap methname astate_set_nodup in
-  let earliest_state = find_earliest_astate_within targetTuples in
-  (methname, astate_set, earliest_state)
+  match S.elements astate_set with
+  | [] -> (Procname.empty_block, S.empty, bottuple) (* probably clinit *)
+  | _ ->
+    let astate_set_nodup = remove_duplicates_from astate_set in
+    let elements = S.elements astate_set_nodup in
+    let methname = first_of @@ (List.nth_exn elements 0) in
+    let targetTuples = search_target_tuples_by_vardef_ap ap methname astate_set_nodup in
+    let earliest_state = find_earliest_astate_within targetTuples in
+    (methname, astate_set, earliest_state)
 
 
 (** 디버깅 용도로 BFS 사용해서 그래프 출력하기 *)
@@ -242,14 +243,32 @@ let filter_have_been_before (tuplelist:S.elt list) (current_chain:chain) =
   List.fold_left tuplelist ~init:[] ~f:(fun acc tup -> if not @@ have_been_before tup current_chain then tup::acc else acc)
 
 
+let pp_pairofms fmt (proc, summ) =
+  F.fprintf fmt "(";
+  F.fprintf fmt "%a, %a" Procname.pp proc S.pp summ;
+  F.fprintf fmt ")"
+
+
+let progress_pairofms_list list =
+  List.iter ~f:(fun x -> L.progress "%a@." pp_pairofms x) list
+
+
+(** get_formal_args는 skip_function에 대해 실패한다는 점을 이용한 predicate *)
+let is_skip_function (methname:Procname.t) =
+  try
+    let _ = get_formal_args methname in
+    false
+  with _ ->
+    true
+
+
 (** 바로 다음의 successor들 중에서 파라미터를 들고 있는 함수를 찾아 낸다. 못 찾을 경우, Procname.empty_block을 내뱉는다. *)
 let find_immediate_successor (current_methname:Procname.t) (current_astate:S.t) (param:MyAccessPath.t) =
   let succs = G.succ callgraph (current_methname, current_astate) in
-  let succ_meths_and_formals = List.map ~f:(fun (meth, _) -> (meth, get_formal_args meth)) succs in
+  (* let not_skip_succs = List.filter ~f:(fun (proc, _) -> not @@ is_skip_function proc) succs in *)
+  let succ_meths_and_formals = List.map ~f:(fun (meth, _) -> (meth, get_formal_args meth)) succs (*not_skip_succs*) in
   List.fold_left ~init:Procname.empty_block ~f:(fun acc (m, p) ->
-    if List.mem p (fst param) ~equal:Var.equal
-    then m
-    else acc) succ_meths_and_formals
+    if List.mem p (fst param) ~equal:Var.equal then m else acc) succ_meths_and_formals
 
 
 let pop (lst:'a list) : 'a option =
@@ -366,8 +385,35 @@ let find_entry_containing_chainslice (methname:Procname.t) (status:status) : cha
   List.nth result_chains 0
 
 
+let mk_noparam (procname:Procname.t) : A.elt =
+  let noparam = Var.of_pvar @@ Pvar.mk (Mangled.from_string "noparam") procname in
+  (noparam, [])
+
+
+(** callee가 astate_set이 없는 skip_function일 때, caller의 returnv 중 skip_function의 methname이 있는 것이 있는지 확인하고, 그에 맞게 다음 chain 조각을 만듦 *)
+let handle_empty_astateset (caller_methname:Procname.t) (caller_astate_set:S.t) (skip_function:Procname.t) : chain =
+  (* 일단 이 안에 있는 returnv를 전부 골라내야 함 *)
+  let collect_all_returnv (astate_set:S.t) : A.elt list =
+    let astate_list = S.elements astate_set in
+    let aliasset_list = List.map ~f:fourth_of astate_list in
+    let filtered_aliasset_list = List.map ~f:(A.filter (fun (var, _) -> is_returnv var)) aliasset_list in
+    List.fold ~f:(fun acc set -> if Int.equal (A.cardinal set) 1 then (extract_from_singleton set)::acc else acc) ~init:[] filtered_aliasset_list in
+  let returnv_list = collect_all_returnv caller_astate_set in
+  (* 경우에 따라 returnv를 가진 튜플이 여러 개일 수 있음 *)
+  let target_returnv_list = List.fold ~f:(fun acc returnv -> if Procname.equal (extract_callee_from_returnv returnv) skip_function then returnv::acc else acc) ~init:[] returnv_list in
+  let returnv = List.nth target_returnv_list 0 in
+  match returnv with
+  (* 가정된 invariant: caller 내에서 callee는 한 번만 불렸다 *)
+  | None -> (* Data flow가 다시 caller에게로 돌아오지 않음: unsound하게 판단 *)
+    List.rev [(caller_methname, Call (skip_function, mk_noparam skip_function)); (skip_function, Dead)]
+  | Some rv ->
+    let var_defined_in_caller = second_of @@ search_target_tuple_by_vardef_ap rv caller_methname caller_astate_set in
+    List.rev [(caller_methname, Call (skip_function, mk_noparam skip_function)); (caller_methname, Define (skip_function, var_defined_in_caller))]
+
+
 let rec compute_chain_inner (current_methname:Procname.t) (current_astate_set:S.t) (current_astate:S.elt) (current_chain:chain) : chain =
   (* L.progress "current_astate: %a@." T.pp current_astate; *)
+  L.progress "current_chain: %a@." pp_chain current_chain;
   let current_aliasset_without_returnv = A.filter (is_returnv_ap >> not) @@ fourth_of current_astate in
   let current_vardef = second_of current_astate in
   (* 직전에 추론했던 chain 토막에서 끄집어낸 variable *)
@@ -377,13 +423,11 @@ let rec compute_chain_inner (current_methname:Procname.t) (current_astate_set:S.
   | [] -> (* either redefinition or dead end *)
       let states = S.elements (remove_duplicates_from current_astate_set) in
       let redefined_states = List.fold_left states ~init:[] ~f:(fun (acc:T.t list) (st:T.t) ->
-          if MyAccessPath.equal current_vardef (second_of st)
-          then st::acc
-          else acc) in
+          if MyAccessPath.equal current_vardef (second_of st) then st::acc else acc) in
       begin match redefined_states with
-        | [_] -> (* Dead end *)
+        | [_] -> (* 나 하나밖에 없네: Dead end *)
             (current_methname, Dead) :: current_chain
-        | _::_ -> (* Redefinition *) (* 현재에서 가장 가까운 future state 중에서 vardef가 같은 state 찾기 *)
+        | _::_ -> (* 나 말고 다른 애들도 있네: Redefinition *) (* 현재에서 가장 가까운 future state 중에서 vardef가 같은 state 찾기 *)
             let future_states = S.diff (remove_duplicates_from current_astate_set) @@ select_up_to current_astate ~within:(remove_duplicates_from current_astate_set) in
             let new_state = find_earliest_astate_of_var_within (S.elements future_states) in
             let new_chain = (current_methname, Redefine (current_vardef)) :: current_chain in
@@ -409,7 +453,10 @@ let rec compute_chain_inner (current_methname:Procname.t) (current_astate_set:S.
         begin match search_target_tuples_by_vardef_ap ap current_methname current_astate_set with
           | [] -> (* Call *)
               let callee_methname = find_immediate_successor current_methname current_astate_set ap in
+              (* 파라미터 (ap) 튜플들 *)
               let new_states = search_target_tuples_by_vardef_ap ap callee_methname (remove_duplicates_from @@ get_summary callee_methname) in
+              (* 여기서 skip_function이라 new_states가 비었을 가능성에 대비해야 함 *)
+              if List.is_empty new_states then handle_empty_astateset current_methname current_astate_set callee_methname else
               let new_state = find_earliest_astate_within new_states in
               let new_chain = (current_methname, Call (callee_methname, ap))::current_chain in
               compute_chain_inner callee_methname (get_summary callee_methname) new_state new_chain
@@ -435,6 +482,7 @@ let rec compute_chain_inner (current_methname:Procname.t) (current_astate_set:S.
 
 (** 콜 그래프와 분석 결과를 토대로 체인 (Define -> ... -> Dead)을 계산해 낸다 *)
 let compute_chain_ (ap:MyAccessPath.t) : chain =
+  L.progress "computing chain for %a@." MyAccessPath.pp ap;
   let (first_methname, first_astate_set, first_astate) = find_first_occurrence_of ap in
   let first_aliasset = fourth_of first_astate in
   let returnv_opt = A.find_first_opt is_returnv_ap first_aliasset in
@@ -446,23 +494,21 @@ let compute_chain_ (ap:MyAccessPath.t) : chain =
 
 (** 본체인 compute_chain_을 포장하는 함수 *)
 let compute_chain (ap:MyAccessPath.t) : chain =
-  try
-    let (first_methname, _, first_astate) = find_first_occurrence_of ap in
-    let first_aliasset = fourth_of first_astate in
-    match A.exists is_returnv_ap first_aliasset with
-    | true -> (* 이미 어떤 chain의 subchain이라면 새로 계산할 필요 없음 *)
-        let initial_chain_slice = Define (first_methname, ap) in
-        begin match find_entry_containing_chainslice first_methname initial_chain_slice with
-        | None -> (* 이전에 계산해 놓은 게 없네 *)
-            L.progress "not extracting chain for %a@." MyAccessPath.pp ap;
-            compute_chain_ ap
-        | Some chain -> (* 이전에 계산해 놓은 게 있네! 거기서 단순 추출만 해야지 *)
-            extract_subchain_from chain (first_methname, initial_chain_slice) end
-    | false ->
-        L.progress "false for %a@." MyAccessPath.pp ap;
-        compute_chain_ ap
-  with _ -> (* first_methname missing in the callgraph for some reason :( *)
-    []
+  let (first_methname, _, first_astate) = find_first_occurrence_of ap in
+  if Procname.equal first_methname Procname.empty_block then [] else
+  let first_aliasset = fourth_of first_astate in
+  match A.exists is_returnv_ap first_aliasset with
+  | true -> (* 이미 어떤 chain의 subchain이라면 새로 계산할 필요 없음 *)
+      let initial_chain_slice = Define (first_methname, ap) in
+      begin match find_entry_containing_chainslice first_methname initial_chain_slice with
+      | None -> (* 이전에 계산해 놓은 게 없네 *)
+          (* L.progress "not extracting chain for %a@." MyAccessPath.pp ap; *)
+          compute_chain_ ap
+      | Some chain -> (* 이전에 계산해 놓은 게 있네! 거기서 단순 추출만 해야지 *)
+          extract_subchain_from chain (first_methname, initial_chain_slice) end
+  | false ->
+      (* L.progress "false for %a@." MyAccessPath.pp ap; *)
+      compute_chain_ ap
 
 
 let collect_all_proc_and_ap () =
@@ -480,7 +526,7 @@ let chains_to_string hashtbl =
 (** 파일로 call graph를 출력 *)
 let save_callgraph () =
   let ch = Out_channel.create "Callgraph.txt" in
-  Hashtbl.iter (fun k v -> Out_channel.output_string ch @@ (Procname.to_string k)^" -> "^(Procname.to_string v^"\n") ) callgraph_table;
+  Hashtbl.iter (fun k v -> Out_channel.output_string ch @@ (Procname.to_string k)^" -> "^(Procname.to_string v^"\n")) callgraph_table;
   Out_channel.flush ch;
   Out_channel.close ch
 

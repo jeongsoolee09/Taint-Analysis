@@ -113,6 +113,13 @@ let is_return_ap (ap:A.elt) : bool =
   Var.is_return var
 
 
+let is_callv_ap (ap:A.elt) : bool =
+  let var, _ = ap in
+  match var with
+  | LogicalVar _ -> false
+  | ProgramVar pv -> String.equal (Pvar.to_string pv) "callv"
+
+
 (* let there_is_thisvar (arg_ts:(Exp.t * Typ.t) list) : bool =
   let actualarg_exp = List.map ~f:fst arg_ts in
   if not @@ List.exists ~f:is_logical_var_expr actualarg_exp then L.die InternalError "there_is_thisvar failed: there is at least one non-logicalvar in arg_ts";

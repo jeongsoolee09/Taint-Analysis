@@ -262,9 +262,20 @@ let is_skip_function (methname:Procname.t) =
     true
 
 
+(** returnv 혹은 callv 안에 들어 있는 callee method name을 뽑아 낸다. *)
+let extract_callee_from (ap:MyAccessPath.t) =
+  let special, _ = ap in
+  match special with
+  | LogicalVar _ -> L.die InternalError "extract_callee_from_returnv failed"
+  | ProgramVar pv ->
+      begin match Pvar.get_declaring_function pv with
+      | Some procname -> procname
+      | None -> L.die InternalError "extract_callee_from_returnv failed" end
+
+
 (** 바로 다음의 successor들 중에서 파라미터를 들고 있는 함수를 찾아 낸다. 못 찾을 경우, Procname.empty_block을 내뱉는다. *)
-let find_immediate_successor (current_methname:Procname.t) (current_astate:S.t) (param:MyAccessPath.t) =
-  let succs = G.succ callgraph (current_methname, current_astate) in
+let find_immediate_successor (current_methname:Procname.t) (current_astate_set:S.t) (param:MyAccessPath.t) =
+  let succs = G.succ callgraph (current_methname, current_astate_set) in
   (* let not_skip_succs = List.filter ~f:(fun (proc, _) -> not @@ is_skip_function proc) succs in *)
   let succ_meths_and_formals = List.map ~f:(fun (meth, _) -> (meth, get_formal_args meth)) succs (*not_skip_succs*) in
   List.fold_left ~init:Procname.empty_block ~f:(fun acc (m, p) ->
@@ -336,21 +347,10 @@ let extract_subchain_from (chain:chain) (chain_slice:Procname.t * status) : chai
     List.sub chain ~pos:index ~len:subchain_length
 
 
-(** returnv 안에 들어 있는 callee method name을 뽑아 낸다. *)
-let extract_callee_from_returnv (returnv_ap:MyAccessPath.t) =
-  let returnv, _ = returnv_ap in
-  match returnv with
-  | LogicalVar _ -> L.die InternalError "extract_callee_from_returnv failed"
-  | ProgramVar pv ->
-      begin match Pvar.get_declaring_function pv with
-      | Some procname -> procname
-      | None -> L.die InternalError "extract_callee_from_returnv failed" end
-
-
 (** returnv가 들어 있는 aliasset을 받아서, 그 안에 callee로부터 carry over된 var가 있다면 날린다. returnv는 무조건 날린다. *)
 let filter_carrriedover_ap (aliasset:A.t) : A.t =
   let returnv_ap = A.find_first is_returnv_ap aliasset in
-  let callee_methname = extract_callee_from_returnv returnv_ap in
+  let callee_methname = extract_callee_from returnv_ap in
   let callee_astate_set = get_summary callee_methname in
   (* astate_set 안에서 aliasset 안에 returnv가 들어 있는 astate 찾기 *)
   let astate_with_return = S.fold (fun astate acc -> 
@@ -400,26 +400,43 @@ let handle_empty_astateset (caller_methname:Procname.t) (caller_astate_set:S.t) 
     List.fold ~f:(fun acc set -> if Int.equal (A.cardinal set) 1 then (extract_from_singleton set)::acc else acc) ~init:[] filtered_aliasset_list in
   let returnv_list = collect_all_returnv caller_astate_set in
   (* 경우에 따라 returnv를 가진 튜플이 여러 개일 수 있음 *)
-  let target_returnv_list = List.fold ~f:(fun acc returnv -> if Procname.equal (extract_callee_from_returnv returnv) skip_function then returnv::acc else acc) ~init:[] returnv_list in
+  let target_returnv_list = List.fold ~f:(fun acc returnv -> if Procname.equal (extract_callee_from returnv) skip_function then returnv::acc else acc) ~init:[] returnv_list in
   let returnv = List.nth target_returnv_list 0 in
   match returnv with
   (* 가정된 invariant: caller 내에서 callee는 한 번만 불렸다 *)
   | None -> (* Data flow가 다시 caller에게로 돌아오지 않음: unsound하게 판단 *)
-    List.rev [(caller_methname, Call (skip_function, mk_noparam skip_function)); (skip_function, Dead)]
+      List.rev [(caller_methname, Call (skip_function, mk_noparam skip_function)); (skip_function, Dead)]
   | Some rv ->
-    let var_defined_in_caller = second_of @@ search_target_tuple_by_vardef_ap rv caller_methname caller_astate_set in
-    List.rev [(caller_methname, Call (skip_function, mk_noparam skip_function)); (caller_methname, Define (skip_function, var_defined_in_caller))]
+      let var_defined_in_caller = second_of @@ search_target_tuple_by_vardef_ap rv caller_methname caller_astate_set in
+      List.rev [(caller_methname, Call (skip_function, mk_noparam skip_function)); (caller_methname, Define (skip_function, var_defined_in_caller))]
+
+
+let is_carriedover_ap (ap:A.elt) (current_methname:Procname.t) (current_astate_set:S.t) : bool =
+  let callee_nodes = G.succ callgraph (current_methname, current_astate_set) in
+  (* 주어진 ap가 callee의 astate_set 중에서 return이랑 alias가 있는 튜플이 있는지 확인 *)
+  List.fold ~f:(fun acc (proc, astate_set) ->
+      match search_target_tuples_by_vardef_ap ap proc astate_set with
+      | [] -> acc
+      | tuples -> List.fold ~f:(fun _ elem ->
+          let aliasset = fourth_of elem in
+          A.exists is_returnv_ap aliasset) ~init:false tuples)
+        ~init:false callee_nodes
 
 
 let rec compute_chain_inner (current_methname:Procname.t) (current_astate_set:S.t) (current_astate:S.elt) (current_chain:chain) : chain =
   (* L.progress "current_astate: %a@." T.pp current_astate; *)
-  L.progress "current_chain: %a@." pp_chain current_chain;
-  let current_aliasset_without_returnv = A.filter (is_returnv_ap >> not) @@ fourth_of current_astate in
+  (* L.progress "current_chain: %a@." pp_chain current_chain; *)
+  let current_aliasset_cleanedup = A.filter (fun tup ->
+      not @@ is_returnv_ap tup &&
+      not @@ is_carriedover_ap tup current_methname current_astate_set &&
+      not @@ is_callv_ap tup) @@ fourth_of current_astate in
+  L.progress "current_aliasset_cleanedup: %a@." A.pp current_aliasset_cleanedup;
   let current_vardef = second_of current_astate in
   (* 직전에 추론했던 chain 토막에서 끄집어낸 variable *)
   let just_before = extract_ap_from_chain_slice @@ pop current_chain in
+  L.progress "current_chain: %a@." pp_chain current_chain;
   (* 직전의 variable과 현재의 variable과 returnv를 모두 제거하고 나서 남은 pvar를 봤더니 *)
-  match collect_program_var_aps_from current_aliasset_without_returnv current_vardef just_before with
+  match collect_program_var_aps_from current_aliasset_cleanedup current_vardef just_before with
   | [] -> (* either redefinition or dead end *)
       let states = S.elements (remove_duplicates_from current_astate_set) in
       let redefined_states = List.fold_left states ~init:[] ~f:(fun (acc:T.t list) (st:T.t) ->
@@ -436,7 +453,7 @@ let rec compute_chain_inner (current_methname:Procname.t) (current_astate_set:S.
   | [ap] -> (* either definition or call *)
       if Var.is_return (fst ap)
       then (* caller에서의 define *)
-        let var_being_returned = find_var_being_returned current_aliasset_without_returnv in
+        let var_being_returned = find_var_being_returned current_aliasset_cleanedup in
         let (direct_caller, caller_summary) = find_direct_caller current_methname current_chain in
         let states_with_return_var = search_target_tuples_by_pvar (mk_returnv current_methname) direct_caller (remove_duplicates_from caller_summary) in
         let have_been_before_filtered = filter_have_been_before states_with_return_var current_chain in
@@ -452,7 +469,11 @@ let rec compute_chain_inner (current_methname:Procname.t) (current_astate_set:S.
         (* 다음 튜플을 현재 procedure 내에서 찾을 수 있는지를 기준으로 경우 나누기 *)
         begin match search_target_tuples_by_vardef_ap ap current_methname current_astate_set with
           | [] -> (* Call *)
-              let callee_methname = find_immediate_successor current_methname current_astate_set ap in
+              let current_aliasset = fourth_of current_astate in
+              let callv = A.fold (fun ap acc -> if is_callv_ap ap then ap else acc) current_aliasset (second_of bottuple) in
+              (* L.progress "callv: %a@." MyAccessPath.pp callv; *)
+              let callee_methname = (* find_immediate_successor current_methname current_astate_set ap *) extract_callee_from callv in
+              (* L.progress "extracted methname: %a@." Procname.pp callee_methname; *)
               (* 파라미터 (ap) 튜플들 *)
               let new_states = search_target_tuples_by_vardef_ap ap callee_methname (remove_duplicates_from @@ get_summary callee_methname) in
               (* 여기서 skip_function이라 new_states가 비었을 가능성에 대비해야 함 *)

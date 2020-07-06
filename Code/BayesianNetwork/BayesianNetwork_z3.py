@@ -1,37 +1,9 @@
-from z3 import ForAll, And, Implies, IntSort, EmptySet, Int, Solver, Sum, Select, Array, ArraySort, Store
+from z3 import ForAll, And, Implies, IntSort, EmptySet, Int, Solver, Sum, Select, Array, ArraySort, Store, StringSort, String, StringVal
 from functools import reduce
 
 MAGNITUDE = ["YG", "Y", "G", "W"]
 LABELDICT = {1: "src", 2: "sin", 3: "san", 4: "non"}
-
-
-# Unused for now
-class Cell:
-    def __init__(self, N, i, j):
-        self.row = i
-        self.column = j
-        self.labels = self.label_of(N) # to be added...
-        self.mag = None  # to be added...
-        self.prob = Int("prob_{0}_{1}".format(i, j)) # to be added...
-
-
-    def label_of(self, N):
-        """set the label of all parents and child a cell represents, given the cell's index and the total number of parents"""
-        out = []
-        for parent_count in range(1, N+1):
-            parent_label = ((self.row//(4**(N-parent_count))) % 4) + 1
-            out.append((parent_count, parent_label))
-        child_label = self.column+1
-        out.append((N+1, child_label))  # the last pair refers to the child
-        return out
-
-
-    def label_identical(self):
-        """Returns True if the cell's parents and child have identical labels, False otherwise"""
-        node_with_labels = self.labels
-        labels = list(map(lambda tup: tup[1], node_with_labels))
-        identical = reduce(lambda acc, elem: elem == acc, labels, True)
-        return identical
+MAGDICT = {1: "YG", 2: "Y", 3: "G", 4: "W"}
 
 
 class CellSet:
@@ -56,8 +28,7 @@ class CellSet:
                 Sum(Select(self.cell_set[0], Int('i')),
                     Select(self.cell_set[1], Int('i')),
                     Select(self.cell_set[2], Int('i')),
-                    Select(self.cell_set[3], Int('i')))==1))
-
+                    Select(self.cell_set[3], Int('i')))==100))
 
         # Interpret {0..99} to probs {0.00..0.99}
         self.prob_CONSTRAINT =\
@@ -65,65 +36,68 @@ class CellSet:
                     And(0 <= Select(Select(self.cell_set, Int('i')), Int('j')), 
                         Select(Select(self.cell_set, Int('i')), Int('j')) <= 100))
 
-        # # If the labels of parents and the child are all identical, color it Yellow or else White
-        # self.call_sim_CONSTRAINT =\
-        #     [And(Implies(cell.label_identical(), cell.mag == "Y"),
-        #                             (Implies(not(cell.label_identical()), cell.mag == "W")))
-        #                             for cell_list in self.cell_set for cell in cell_list]
+        # If the labels of parents and the child are all identical, color it Yellow or else White
+        self.call_sim_CONSTRAINT =\
+            None  # TODO
 
-        # self.MAG_P1 =\
-        #     [Implies(cell1.mag == "YG",
-        #                        Implies(cell2.mag != "YG",
-        #                                cell2.prob < cell1.prob))
-        #                for cell_list1 in self.cell_set for cell1 in cell_list1
-        #                for cell_list2 in self.cell_set for cell2 in cell_list2]
+        self.MAG_P1 =\
+            ForAll([Int('i'), Int('j')],
+                   Implies(Select(Select(self.mag_set, Int('i')), Int('j')) == StringVal("YG"),
+                                                 ForAll([Int('a'), Int('b')], Implies(Select(Select(self.mag_set, Int('a')), Int('b')) != StringVal("YG"),
+                                                                                      (Select(Select(self.cell_set, Int('a')), Int('b')) <\
+                                                                                       Select(Select(self.cell_set, Int('i')), Int('j')))))))
 
-        # self.MAG_P2 =\
-        #     [Implies(cell1.mag == "Y",
-        #                        Implies(And(cell2.mag != "YG", cell2.mag != "Y"),
-        #                                cell2.prob < cell1.prob))
-        #                for cell_list1 in self.cell_set for cell1 in cell_list1
-        #                for cell_list2 in self.cell_set for cell2 in cell_list2]
+        self.MAG_P2 =\
+            ForAll([Int('i'), Int('j')],
+                   Implies(Select(Select(self.mag_set, Int('i')), Int('j')) == StringVal("Y"),
+                           ForAll([Int('a'), Int('b')], Implies(And(Select(Select(self.mag_set, Int('a')), Int('b')) != StringVal("YG"),
+                                                                    Select(Select(self.mag_set, Int('a')), Int('b')) != StringVal("U")),
+                                                                Select(Select(self.cell_set, Int('a')), Int('b')) <\
+                                                                Select(Select(self.cell_set, Int('i')), Int('j'))))))
 
-        # self.MAG_P3 =\
-        #     [Implies(cell1.mag == "G",
-        #                        And(Implies(cell2.mag == "W",
-        #                                    cell2.prob < cell1.prob),
-        #                            Implies(cell2.prob < cell1.prob,
-        #                                    cell2.mag == "W")))
-        #                for cell_list1 in self.cell_set for cell1 in cell_list1
-        #                for cell_list2 in self.cell_set for cell2 in cell_list2]
+        self.MAG_P3 =\
+            ForAll([Int('i'), Int('j')],
+                   Implies(Select(Select(self.mag_set, Int('i')), Int('j')) == StringVal("G"),
+                                         ForAll([Int('a'), Int('b')], And(Implies(Select(Select(self.mag_set, Int('a')), Int('b')) == StringVal("W"),
+                                                                                  Select(Select(self.cell_set, Int('a')), Int('b')) <\
+                                                                                  Select(Select(self.cell_set, Int('i')), Int('j'))),
+                                                                          Implies(Select(Select(self.cell_set, Int('a')), Int('b')) <\
+                                                                                  Select(Select(self.cell_set, Int('i')), Int('j')),
+                                                                                  Select(Select(self.mag_set, Int('a')), Int('b')) == StringVal("W"))))))
 
-        # self.MAG_P4 =\
-        #     [Implies(cell1.mag == "W",
-        #                        Implies(cell2.mag != "W", cell1.prob < cell2.prob))
-        #                for cell_list1 in self.cell_set for cell1 in cell_list1
-        #                for cell_list2 in self.cell_set for cell2 in cell_list2]
+        self.MAG_P4 =\
+            ForAll([Int('i'), Int('j')],
+                   Implies(Select(Select(self.mag_set, Int('i')), Int('j')) == StringVal("W"),
+                           ForAll([Int('a'), Int('b')],
+                                  Implies(Select(Select(self.mag_set, Int('a')), Int('b')) != StringVal("W"),
+                                          Select(Select(self.cell_set, Int('i')), Int('j')) <\
+                                          Select(Select(self.cell_set, Int('a')), Int('b'))))))
 
-        # self.MAG_CONSTRAINT = And(self.MAG_P1, self.MAG_P2, self.MAG_P3, self.MAG_P4)
+        self.MAG_CONSTRAINT = And(self.MAG_P1, self.MAG_P2, self.MAG_P3, self.MAG_P4)
         
 
     def create_CELL(self, N):
         """create a 2D Array of all cells represented by a 4 * 4**N 2D array."""
-        # CELL = [[Cell(N, i, j) for j in range(4**N)] for i in range(4)]
         CELL = Array('CELL', IntSort(), ArraySort(IntSort(), IntSort()))
         for i in range(4):
             row = Array('ROW_%d' % i, IntSort(), IntSort())
             for j in range(4**N):
-                row = Store(row, j, 3)
+                cell = Int('cell_%d_%d' % (i, j))
+                row = Store(row, j, cell)
             Store(CELL, i, row)
         return CELL
 
 
     def create_MAG(self, N):
         """create a 2D Array of all cells represented by a 4 * 4**N 2D array."""
-        CELL = Array('CELL', IntSort(), ArraySort(IntSort(), IntSort()))
+        MAG = Array('MAG', IntSort(), ArraySort(IntSort(), StringSort()))
         for i in range(4):
-            row = Array('ROW_%d' % i, IntSort(), IntSort())
+            row = Array('ROW_%d' % i, IntSort(), StringSort())
             for j in range(4**N):
-                row = Store(row, j, 3)
-            Store(CELL, i, row)
-        return CELL
+                mag = String('mag_%d_%d' % (i, j))
+                row = Store(row, j, mag)
+            Store(MAG, i, row)
+        return MAG
 
 
     def summarize_edges(self):
@@ -144,6 +118,26 @@ class CellSet:
         else:
             return tmplst[0]
 
+# Class CellSet end
+# Utility Predicates/Functions
+
+def label_of(self, N):
+    """set the label of all parents and child a cell represents, given the cell's index and the total number of parents"""
+    out = []
+    for parent_count in range(1, N+1):
+        parent_label = ((self.row//(4**(N-parent_count))) % 4) + 1
+        out.append((parent_count, parent_label))
+    child_label = self.column+1
+    out.append((N+1, child_label))  # the last pair refers to the child
+    return out
+
+
+def label_identical(self):
+    """Returns True if the cell's parents and child have identical labels, False otherwise"""
+    node_with_labels = self.labels
+    labels = list(map(lambda tup: tup[1], node_with_labels))
+    identical = reduce(lambda acc, elem: elem == acc, labels, True)
+    return identical
 
 solver = Solver()
 solver.add()  # 이 이하는 TODO

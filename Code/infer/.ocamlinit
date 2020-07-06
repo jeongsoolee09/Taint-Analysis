@@ -5,3 +5,6 @@ open InferModules
 open InferStdlib
 (* open Logging *)
 open Format
+open InferAnalyze
+open Core__
+open Base__

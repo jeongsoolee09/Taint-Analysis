@@ -22,7 +22,8 @@ def labels_of(row, column, N):
     return out
 
 # https://stackoverflow.com/questions/3844801/check-if-all-elements-in-a-list-are-identical
-def check_if_unique(iterator):
+def elements_are_identical(iterator):
+    """check if all elements in are identical with one another"""
     iterator = iter(iterator)
     try:
         first = next(iterator)
@@ -35,7 +36,7 @@ def label_identical(row, column, N):
     """Returns True if the cell's parents and child have identical labels, False otherwise"""
     node_with_labels = labels_of(row, column, N)
     labels = list(map(lambda tup: tup[1], node_with_labels))
-    return check_if_unique(labels)
+    return elements_are_identical(labels)
 
 
 # Core functions
@@ -70,9 +71,18 @@ def make_df_CPT(N):
     return arr
 
 
-def cell_to_be_mutated(labels, call_sim_parents):
+def to_be_mutated(labels, call_sim_parents):
     """어떤 셀을 G 혹은 YG로 칠할 것인지 정하기 위해, call_sim_parents의 레이블이 모두 같고, 이 레이블과 child의 레이블이 같은지를 판단한다."""
-    pass
+    child_label_tup = labels.pop()
+    labels = list(filter(lambda tup: tup[0] in call_sim_parents, labels))
+    labels = list(map(lambda tup: tup[1], labels))  # leave labels only
+    if elements_are_identical(labels):
+        if child_label_tup[1] == labels[0]:  # child's label is also same
+            return True
+        else:  # child's label does not agree
+            return False
+    else:
+        return False
 
 
 
@@ -80,14 +90,14 @@ def make_call_df_CPT(N, edges):
     """df랑 call/sim이 섞여 있기 때문에 어떤 parent와 어떤 edge가 연관되어 있는가의 정보가 주어져야 함"""
     df_CPT = make_df_CPT(N)  # 먼저 df_CPT를 만들어 둔 다음
     parents_and_edges = list(zip(range(1, N+2), edges))  # n번째 parent와 그 엣지의 쌍들
-    call_sim_parents = list(filter(lambda tup: tup[1] == "call" or\
+    call_sim_parents = list(filter(lambda tup: tup[1] == "call" or
                                    tup[1] == "sim", parents_and_edges))
     call_sim_parents = list(map(lambda tup: tup[0], call_sim_parents))
     print(parents_and_edges)
     print(call_sim_parents)
     for (i,j), value in np.ndenumerate(df_CPT):
         cell_labels = labels_of(i, j, N)
-        if cell_to_be_mutated(cell_labels, call_sim_parents):
+        if to_be_mutated(cell_labels, call_sim_parents):
             if df_CPT[i,j] == 4:  # White였다면, Green으로 바꿔 줌
                 df_CPT[i,j] = 3
             else:  # Yellow였다면, Yellow-Green으로 바꿔 줌

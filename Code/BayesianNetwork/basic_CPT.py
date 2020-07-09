@@ -86,8 +86,9 @@ def to_be_mutated(labels, call_sim_parents):
 
 
 
-def make_call_df_CPT(N, edges):
+def make_call_df_CPT(edges):
     """df랑 call/sim이 섞여 있기 때문에 어떤 parent와 어떤 edge가 연관되어 있는가의 정보가 주어져야 함"""
+    N = len(edges)
     df_CPT = make_df_CPT(N)  # 먼저 df_CPT를 만들어 둔 다음
     parents_and_edges = list(zip(range(1, N+2), edges))  # n번째 parent와 그 엣지의 쌍들
     call_sim_parents = list(filter(lambda tup: tup[1] == "call" or

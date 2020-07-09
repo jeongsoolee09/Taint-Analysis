@@ -316,7 +316,7 @@ let procname_of (ap:A.elt) : Procname.t =
 
 
 (** chain_slice 끼리의 equal *)
-let double_equal ((methname1, status1):(Procname.t*status)) ((methname2, status2):(Procname.t*status)) : bool =
+let double_equal ((methname1, status1):(Procname.t * status)) ((methname2, status2):(Procname.t*status)) : bool =
   Procname.equal methname1 methname2 && Status.equal status1 status2
 
 
@@ -407,7 +407,8 @@ let handle_empty_astateset (caller_methname:Procname.t) (caller_astate_set:S.t) 
   | None -> (* Data flow가 다시 caller에게로 돌아오지 않음: unsound하게 판단 *)
       List.rev [(caller_methname, Call (skip_function, mk_noparam skip_function)); (skip_function, Dead)]
   | Some rv ->
-      let var_defined_in_caller = second_of @@ search_target_tuple_by_vardef_ap rv caller_methname caller_astate_set in
+      (* returnv를 가진 튜플이 우리가 원하는 것 외에도 많을 수 있지만, MyAccessPath.equal을 사용하므로 상관없음 *)
+      let var_defined_in_caller = second_of @@ search_target_tuple_by_pvar_ap rv caller_methname caller_astate_set in
       List.rev [(caller_methname, Call (skip_function, mk_noparam skip_function)); (caller_methname, Define (skip_function, var_defined_in_caller))]
 
 
@@ -430,11 +431,9 @@ let rec compute_chain_inner (current_methname:Procname.t) (current_astate_set:S.
       not @@ is_returnv_ap tup &&
       not @@ is_carriedover_ap tup current_methname current_astate_set &&
       not @@ is_callv_ap tup) @@ fourth_of current_astate in
-  L.progress "current_aliasset_cleanedup: %a@." A.pp current_aliasset_cleanedup;
   let current_vardef = second_of current_astate in
   (* 직전에 추론했던 chain 토막에서 끄집어낸 variable *)
   let just_before = extract_ap_from_chain_slice @@ pop current_chain in
-  L.progress "current_chain: %a@." pp_chain current_chain;
   (* 직전의 variable과 현재의 variable과 returnv를 모두 제거하고 나서 남은 pvar를 봤더니 *)
   match collect_program_var_aps_from current_aliasset_cleanedup current_vardef just_before with
   | [] -> (* either redefinition or dead end *)
@@ -470,8 +469,9 @@ let rec compute_chain_inner (current_methname:Procname.t) (current_astate_set:S.
         begin match search_target_tuples_by_vardef_ap ap current_methname current_astate_set with
           | [] -> (* Call *)
               let current_aliasset = fourth_of current_astate in
+              L.progress "current_astate: %a@." T.pp current_astate;
               let callv = A.fold (fun ap acc -> if is_callv_ap ap then ap else acc) current_aliasset (second_of bottuple) in
-              (* L.progress "callv: %a@." MyAccessPath.pp callv; *)
+              L.progress "callv: %a, contents: %a@." MyAccessPath.pp callv Procname.pp (extract_callee_from callv);
               let callee_methname = (* find_immediate_successor current_methname current_astate_set ap *) extract_callee_from callv in
               (* L.progress "extracted methname: %a@." Procname.pp callee_methname; *)
               (* 파라미터 (ap) 튜플들 *)

@@ -51,7 +51,17 @@ let search_target_tuple_by_id (id:Ident.t) (methname:Procname.t) (astate_set:S.t
   search_target_tuple_by_id_inner id methname elements
 
 
-let search_target_tuples_by_id (id:Ident.t) (methname:Procname.t) (astate_set:S.t) =
+let search_target_tuple_by_pvar_ap (ap:MyAccessPath.t) (methname:Procname.t) (astate_set:S.t) =
+  let elements = S.elements astate_set in
+  let rec search_target_tuple_by_pvar_inner pvar (methname:Procname.t) elements = 
+    match elements with
+    | [] -> L.die InternalError "search_target_tuple_by_pvar_ap failed, ap: %a, methname:%a, astate_set:%a@." MyAccessPath.pp pvar Procname.pp methname S.pp astate_set
+    | ((procname, _, _, aliasset) as target)::t ->
+        if Procname.equal procname methname && A.mem ap aliasset then target else search_target_tuple_by_pvar_inner pvar methname t in
+  search_target_tuple_by_pvar_inner ap methname elements
+
+
+let search_target_tuples_by_id (id:Ident.t) (methname:Procname.t) (astate_set:S.t) : T.t list =
   let elements = S.elements astate_set in
   let rec search_target_tuples_by_id_inner id (methname:Procname.t) elements acc = 
     match elements with
@@ -277,10 +287,9 @@ let search_target_tuple_by_vardef_ap (ap:MyAccessPath.t) (methname:Procname.t) (
   let elements = S.elements astate_set in
   let rec search_target_tuple_by_ap_inner (ap:MyAccessPath.t) (methname:Procname.t) (elements:S.elt list) = 
     match elements with
-    | [] -> L.die InternalError "search_target_tuple_by_ap failed, methname: %a, elements: %a" Procname.pp methname pp_tuplelist elements
+    | [] -> L.die InternalError "search_target_tuple_by_vardef_ap failed, methname: %a, elements: %a" Procname.pp methname pp_tuplelist elements
     | ((procname, vardef, _, _) as target)::t ->
         if Procname.equal procname methname && MyAccessPath.equal ap vardef
         then target
         else search_target_tuple_by_ap_inner ap methname t in
   search_target_tuple_by_ap_inner ap methname elements
-

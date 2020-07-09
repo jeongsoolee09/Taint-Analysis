@@ -47,7 +47,12 @@ module TransferFunctions = struct
 
   
   (** specially mangled variable to mark an AP as passed to a callee *)
-  let mk_callv procname = Pvar.mk (Mangled.from_string "callv") procname |> Var.of_pvar
+  let mk_callv procname =
+    Pvar.mk (Mangled.from_string "callv") procname |> Var.of_pvar
+
+
+  let mk_dummy procname =
+    Pvar.mk (Mangled.from_string "dummy") procname |> Var.of_pvar
 
 
   let rec extract_nonthisvar_from_args methname (arg_ts:(Exp.t*Typ.t) list) (astate_set:S.t) : Exp.t list =
@@ -101,6 +106,7 @@ let search_recent_vardef_astate (methname:Procname.t) (pvar:Var.t) (apair:P.t) :
     match varsetlist with
     | [] -> L.die InternalError "extract_another_pvar failed, id: %a, varsetlist: %a@." Ident.pp id pp_aliasset_list varsetlist
     | set::t ->
+        L.progress "sweeping set: %a@." A.pp set;
         if Int.equal (A.cardinal set) 2 && A.mem (Var.of_id id, []) set
         then
           begin match set |> A.remove (Var.of_id id, []) |> A.elements with
@@ -492,7 +498,7 @@ let search_recent_vardef_astate (methname:Procname.t) (pvar:Var.t) (apair:P.t) :
   let convert_exp_to_logical (exp:Exp.t) =
     match exp with
     | Var id -> Var.of_id id
-    | _ -> L.die InternalError "convert_exp_to_logical failed: %a@." Exp.pp exp
+    | _ -> mk_dummy Procname.empty_block
 
 
   let exec_call (ret_id:Ident.t) (e_fun:Exp.t) (arg_ts:(Exp.t*Typ.t) list) (caller_summary:Summary.t) (apair:P.t) (methname:Procname.t) : P.t =
@@ -510,33 +516,40 @@ let search_recent_vardef_astate (methname:Procname.t) (pvar:Var.t) (apair:P.t) :
         (newset, (snd apair))
     | false -> (* There is at least one argument which is a non-thisvar variable *)
         begin try
+          L.progress "initial fst_apair: %a@." S.pp (fst apair);
           let astate_set_summary_applied = apply_summary (fst apair) caller_summary callee_methname ret_id methname in
           let formals = get_formal_args caller_summary callee_methname (*|> List.filter ~f:(fun x -> not @@ Var.is_this x)*) in
           L.d_printfln "methname: %a, formals: %a@." Procname.pp callee_methname pp_varlist formals;
           begin match formals with
             | [] -> (* Callee in Native Code! *)
                 let actuals_logical = List.map ~f:(fst >> convert_exp_to_logical) arg_ts in
+                L.progress "actuals_logical: %a, methname: %a, fst_apair: %a@." pp_varlist actuals_logical Procname.pp methname S.pp (fst apair);
                 let mapfunc = fun (var:Var.t) ->
                   begin match var with
                     | LogicalVar id ->
-                        let pvar = search_target_tuples_by_id id methname (fst apair) |> List.map ~f:fourth_of |> extract_another_pvar id in (* 여기가 문제 *)
+                        (* let pvar = search_target_tuples_by_id id methname (fst apair) |> List.map ~f:fourth_of |> extract_another_pvar id in *)
+                        let pvar1 = search_target_tuples_by_id id methname (fst apair) in
+                        L.progress "pvar1: %a, fst_apair: %a@." pp_tuplelist pvar1 S.pp (fst apair);
+                        let pvar2 = List.map ~f:fourth_of pvar1 in
+                        L.progress "pvar2: %a@." pp_aliasset_list pvar2;
+                        let pvar = extract_another_pvar id pvar2 in
+                        L.progress "pvar: %a@." Var.pp pvar;
                         search_recent_vardef_astate methname pvar apair
                     | _ ->
                         L.die InternalError "exec_call/mapfunc failed, var: %a" Var.pp var end in
                 let actuals_pvar_tuples = actuals_logical |> List.filter ~f:is_logical_var |> List.map ~f:mapfunc in
+                L.progress "callee: %a, actuals_pvar_tuples: %a@." Procname.pp callee_methname pp_tuplelist actuals_pvar_tuples;
                 let mangled_callv = (mk_callv callee_methname, []) in
                 let astate_set_callv_added = 
-                    S.map (fun (p, v, l, a) -> 
+                  S.map (fun (p, v, l, a) -> 
                       let aliasset_callv_added = A.add mangled_callv a in
                       (p, v, l, aliasset_callv_added)) (S.of_list actuals_pvar_tuples) in
                 let astate_set_rmvd = S.diff astate_set_summary_applied (S.of_list actuals_pvar_tuples) in
                 let astate_set_callv_added = S.union astate_set_rmvd astate_set_callv_added in
                 (astate_set_callv_added, snd apair)
             | _ ->  (* Callee in User Code! *)
-                (* funcall to cdr to remove thisvar actualarg or object actualarg for virtual calls *)
                 let actuals_logical = List.map ~f:(fst >> convert_exp_to_logical) arg_ts in
-                (* L.progress "actuals_logical: %a, methname: %a@." pp_varlist actuals_logical Procname.pp methname; *)
-                let actuallog_formal_binding = (*delete_vartuples @@*) leave_only_var_tuples @@ zip actuals_logical formals in
+                let actuallog_formal_binding =  leave_only_var_tuples @@ zip actuals_logical formals in
                 (* mapfunc finds pvar tuples transmitted as actual arguments *)
                 let mapfunc = fun (var:Var.t) ->
                   begin match var with
@@ -546,6 +559,7 @@ let search_recent_vardef_astate (methname:Procname.t) (pvar:Var.t) (apair:P.t) :
                     | _ ->
                         L.die InternalError "exec_call/mapfunc failed, var: %a" Var.pp var end in
                 let actuals_pvar_tuples = actuals_logical |> List.filter ~f:is_logical_var |> List.map ~f:mapfunc in
+                L.progress "callee: %a, actuals_pvar_tuples: %a@." Procname.pp callee_methname pp_tuplelist actuals_pvar_tuples;
                 let actualpvar_alias_added = add_bindings_to_alias_of_tuples methname actuallog_formal_binding actuals_pvar_tuples (snd apair) |> S.of_list in
                 let mangled_callv = (mk_callv callee_methname, []) in
                 let actualpvar_callv_added = 

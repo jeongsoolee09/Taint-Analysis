@@ -25,10 +25,16 @@ data_reader = csv.reader(raw_data)
 edges_data = open("edges.csv", "r+")
 edges_reader = csv.reader(edges_data)
 
+# for debugging
+# tmp = create_var_and_chain()[0]
+# tmp1 = parse_chain(tmp)[0] #
+# tuplestring_to_tuple(tmp1)
 
-# TODO: Dead 스트링의 끝에 )가 하나 남음
-def tuple_string_to_tuple(tuple_string):
+
+def tuplestring_to_tuple(tuple_string):
     string_list = tuple_string.split(", ")
+    if len(string_list) == 3:
+        string_list = [string_list[0], string_list[1]+", "+string_list[2]]
     string_list[0] = string_list[0].lstrip('(')
     string_list[1] = string_list[1].rstrip(')')
     string_list[1] = string_list[1]+')'
@@ -41,14 +47,14 @@ def parse_chain(var_and_chain):
     chain = chain.split(" -> ")
     chain = list(filter(lambda string: string != "", chain))
     chain = list(map(lambda item: item.lstrip(), chain))
-    chain = list(map(lambda string: tuple_string_to_tuple(string), chain))
+    chain = list(map(lambda string: tuplestring_to_tuple(string), chain))
     return [var, chain]
 
 
 def create_var_and_chain():
+    """access path와 그 chain을 만든다. 이 때, ->로 연결되어 있던 chain은 모두 서브스트링으로 따로따로 분리된 상태이다."""
     current_path = os.path.abspath("..")
-    chainfile = os.path.join(current_path, "benchmarks", "fabricated",
-                             "Chain.txt")
+    chainfile = os.path.join(current_path, "benchmarks", "fabricated", "Chain.txt")
     with open(chainfile, "r+") as chain:
         lines = chain.readlines()
         var_to_chain = list(filter(lambda line: line != "\n", lines))
@@ -205,143 +211,6 @@ def create_roots_for_BN(G, BN):
         counter += 1
 
 
-def take_first_four(lst):
-    return lst[0:4]
-
-
-def take_second_four(lst):
-    return lst[4:8]
-
-
-def take_third_four(lst):
-    return lst[8:12]
-
-
-def take_fourth_four(lst):
-    return lst[12:16]
-
-
-def take_first_16(lst):
-    return lst[0:16]
-
-
-def take_second_16(lst):
-    return lst[16:32]
-
-
-def take_third_16(lst):
-    return lst[32:48]
-
-
-def take_fourth_16(lst):
-    return lst[48:64]
-
-
-default_df_probs_16 = [  # only df
-    0.1, 0.3, 0.3, 0.3,
-    0.2, 0.2, 0.2, 0.4,
-    0.2, 0.3, 0.2, 0.3,
-    0.2, 0.2, 0.2, 0.4
-]
-
-
-default_call_probs_64 = [  # two dfs
-    0.7, 0.1, 0.1, 0.1,
-    0.1, 0.7, 0.1, 0.1,
-    0.1, 0.1, 0.7, 0.1,
-    0.1, 0.1, 0.1, 0.7
-]
-
-
-default_call_df_probs_64 = [  # df and call
-    0.4, 0.2, 0.2, 0.2,
-    0.4, 0.2, 0.2, 0.2,
-    0.4, 0.2, 0.2, 0.2,
-    0.4, 0.2, 0.2, 0.2,
-
-    0.2, 0.4, 0.2, 0.2,
-    0.2, 0.4, 0.2, 0.2,
-    0.2, 0.4, 0.2, 0.2,
-    0.2, 0.4, 0.2, 0.2,
-
-    0.2, 0.2, 0.4, 0.2,
-    0.2, 0.2, 0.4, 0.2,
-    0.2, 0.2, 0.4, 0.2,
-    0.2, 0.2, 0.4, 0.2,
-
-    0.2, 0.2, 0.2, 0.4,
-    0.2, 0.2, 0.2, 0.4,
-    0.2, 0.2, 0.2, 0.4,
-    0.2, 0.2, 0.2, 0.4
-]
-
-
-labelmap = {"src": 1, "sin": 2, "san": 3, "non": 4}
-
-
-def adapt_call_probs_to_current():
-    """Call 엣지에 한정해서, CPT의 끝에 매달기 위한 확률들을 만들어 낸다."""
-    pass
-
-
-def adapt_df_probs_to_current(parent_label, child_label, ndarray):
-    """DF 엣지에 한정해서, CPT의 끝에 매달기 위한 확률들을 만들어 낸다."""
-    parent_label_num = labelmap[parent_label]
-    child_label_num = labelmap[child_label]
-    result = list(zip(*np.where(ndarray == parent_label_num)))
-    result = list(filter(lambda tup: tup[1] == 0, result))
-    indices = list(map(lambda tup: tup[0], result))
-    if len(ndarray) == 16:
-        previous_probs_16 = default_df_probs_16[:]
-        highest = indices[child_label_num-1]
-        indices.remove(highest)
-        lowest = indices
-        # highest에는 0.7을, lowest에는 0.1을 할당하면 된다.
-        previous_probs_16[highest] = 0.7
-        for i in lowest:
-            previous_probs_16[i] = 0.1
-
-
-def adapt_calldf_edges_to_current(parent_label, parent_label2, child_label, ndarray):
-    """call/df엣지에 한정해, parent_label과 parent_label2에 맞추어 ndarray를 수정한다."""
-    if parent_label == "src":
-        slice_ndarray = take_first_16(ndarray)
-    elif parent_label == "sin":
-        slice_ndarray = take_second_16(ndarray)
-    elif parent_label == "san":
-        slice_ndarray = take_third_16(ndarray)
-    elif parent_label == "non":
-        slice_ndarray = take_fourth_16(ndarray)
-    if parent_label2 == "src":
-        target = take_first_four(slice_ndarray)
-    elif parent_label2 == "sin":
-        target = take_second_four(slice_ndarray)
-    elif parent_label2 == "san":
-        target = take_third_four(slice_ndarray)
-    elif parent_label2 == "non":
-        target = take_fourth_four(slice_ndarray)
-    if child_label == "src":
-        target[0] = 0.7
-        target[1] = 0.1
-        target[2] = 0.1
-        target[3] = 0.1
-    elif child_label == "sin":
-        target[0] = 0.1
-        target[1] = 0.7
-        target[2] = 0.1
-        target[3] = 0.1
-    elif child_label == "san":
-        target[0] = 0.1
-        target[1] = 0.1
-        target[2] = 0.7
-        target[3] = 0.1
-    elif child_label == "non":
-        target[0] = 0.1
-        target[1] = 0.1
-        target[2] = 0.1
-        target[3] = 0.7
-
-
 def create_raw_CPTs_for_BN(G, BN):
     """internal node를 파악하고, 그에 대한 CPT를 만들어 준다."""
     root = set(findRoot(G))
@@ -349,9 +218,7 @@ def create_raw_CPTs_for_BN(G, BN):
     labels = [1, 2, 3, 4]       # src, sin, san, non
     raw_cpts = []
     for node in internal_leaves:
-        print(node)
         edgekinds = decide_edgekind(node)
-        print(edgekinds)
         cond_prob_table_width = len(list(G.predecessors(node)))
         cond_prob_table_gen = it.repeat(labels, cond_prob_table_width+1)
         cond_prob_table = list(cond_prob_table_gen)
@@ -364,16 +231,12 @@ def create_raw_CPTs_for_BN(G, BN):
     return raw_cpts
 
 
-def add_edge_to_BN(BN):
-    pass
-
-
 def init_BN():
     global graph_for_reference
     BN = BayesianNetwork("Automatic Inference of Taint Method Specifications")
-    create_roots_for_BN(graph_for_reference, BN)
-    # create_internal_leaves_for_BN(graph_for_reference, BN)
-    # add_edge_to_BN(BN)
+    create_roots_for_BN(graph_for_reference, BN) 
+    # create_internal_leaves_for_BN(graph_for_reference, BN)  # TODO
+    # add_edge_to_BN(BN)  # TODO
     return BN
 
 
@@ -384,19 +247,30 @@ BN_for_inference = init_BN()
 
 # should be called AFTER graph_for_reference is constructed
 def create_tactics(chain_without_var):
-    """consuming a chain in tuple list form,
-    plans ahead how to question the oracle"""
+    """consuming a chain in tuple list form, plans ahead how to question the oracle"""
     setofallmethods = graph_for_reference.nodes()
     src_suspects = collect_src(chain_without_var)  # priority 4
     san_suspects = collect_san(chain_without_var)  # priority 3
     sin_suspects = collect_sin(chain_without_var)  # priority 2
-    non_suspects = collect_non(chain_without_var, src_suspects, san_suspects,
-                               sin_suspects, setofallmethods)  # priority 1
+    non_suspects = collect_non(chain_without_var, src_suspects, san_suspects, sin_suspects, setofallmethods)  # priority 1
     return {"src": src_suspects, "san": san_suspects,
             "sin": sin_suspects, "non": non_suspects}
 
 
 var_and_chain = create_var_and_chain()
+
+# tuple list. Example element:
+# ('(void WhatIWantExample.h(int), (w, []))',
+#   {'src': ['void WhatIWantExample.h(int)'],
+#    'san': [],
+#    'sin': ['void WhatIWantExample.m3(int)'],
+#    'non': ['void PrintStream.println(int)',
+#     'int WhatIWantExample.m1()',
+#     'void WhatIWantExample.main()',
+#     'void WhatIWantExample.g(int)',
+#     'int WhatIWantExample.m2(int)',
+#     'void WhatIWantExample.f()']})
+# 각 variable의 관점에서 본 src/sin/san/non
 tactics_per_var = list(map(lambda x: (x[0], create_tactics(x[1])),
                            var_and_chain))
 
@@ -409,5 +283,6 @@ nx.draw(graph_for_reference, font_size=8, with_labels=True,
 
 raw_data.close()
 edges_data.close()
+# plt.show()
 
 print("elapsed time :", time.time() - start)

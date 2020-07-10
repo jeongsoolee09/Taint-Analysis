@@ -113,9 +113,17 @@ def get_row_of_lookup_table(tup):
     return np.where(np.all(broadcasted, axis=1))[0][0]
 
 
-def make_call_df_CPT(edges):
-    """edge 중 call과 df가 섞여 있을 때, magnitude table로부터 CPT를 만들어 낸다."""
-    mag_table = make_call_df_mag_table(edges)
+def make_CPT(cpt_kind, edges):
+    """CPT의 종류와, 엣지들의 종류 목록에 따라 CPT를 만든다. 가능한 CPT의 종류:
+       1. call_df (혹은 df_call)
+       2. df
+       3. call_sim"""
+    if cpt_kind == "call_df" or cpt_kind == "df_call":
+        mag_table = make_call_df_mag_table(edges)
+    elif cpt_kind == "df":
+        mag_table = make_df_mag_table(len(edges))
+    elif cpt_kind == "call_sim":
+        mag_table = make_call_sim_mag_table(len(edges))
     _, cols = mag_table.shape
     out = []
     for col in range(cols):
@@ -123,16 +131,5 @@ def make_call_df_CPT(edges):
         lookup_table_row = cpt_lookup_table[get_row_of_lookup_table(col_tuple)]
         lookup_table_row = lookup_table_row[4:8]
         out.append(lookup_table_row)
-    out = np.asarray(out)
+    out = np.asarray(out).transpose()
     return out
-        
-        
-
-def make_call_sim_CPT(N):
-    """edge에 call/sim만이 있을 때, magnitude table로부터 CPT를 만들어 낸다."""
-    pass
-
-
-def make_df_CPT(N):
-    """edge에 df만이 있을 때, magnitude table로부터 CPT를 만들어 낸다."""
-    pass

@@ -1,5 +1,4 @@
-from pomegranate import DiscreteDistribution, BayesianNetwork,\
-     Node, ConditionalProbabilityTable
+from pomegranate import *
 import time
 import numpy as np
 import matplotlib.pyplot as plt
@@ -9,6 +8,7 @@ import networkx as nx
 import itertools as it
 import os
 import re
+from basic_CPT import make_df_CPT, make_call_df_CPT, make_call_sim_CPT
 
 print("starting..")
 start = time.time()
@@ -224,8 +224,7 @@ def create_raw_CPTs_for_BN(G, BN):
         cond_prob_table = list(cond_prob_table_gen)
         cond_prob_table = it.product(*cond_prob_table)
         cond_prob_table = it.chain.from_iterable(cond_prob_table)
-        temp = np.fromiter(cond_prob_table,
-                           int).reshape(-1, cond_prob_table_width+1)
+        temp = np.fromiter(cond_prob_table, int).reshape(-1, cond_prob_table_width+1)
         raw_cpts.append(temp)
     # cond_prob_table = ConditionalProbabilityTable(cond_prob_table, G.predecessors(node))
     return raw_cpts
@@ -235,7 +234,7 @@ def init_BN():
     global graph_for_reference
     BN = BayesianNetwork("Automatic Inference of Taint Method Specifications")
     create_roots_for_BN(graph_for_reference, BN) 
-    # create_internal_leaves_for_BN(graph_for_reference, BN)  # TODO
+    create_raw_CPTs_for_BN(graph_for_reference, BN)  # TODO
     # add_edge_to_BN(BN)  # TODO
     return BN
 
@@ -256,20 +255,8 @@ def create_tactics(chain_without_var):
     return {"src": src_suspects, "san": san_suspects,
             "sin": sin_suspects, "non": non_suspects}
 
-
 var_and_chain = create_var_and_chain()
 
-# tuple list. Example element:
-# ('(void WhatIWantExample.h(int), (w, []))',
-#   {'src': ['void WhatIWantExample.h(int)'],
-#    'san': [],
-#    'sin': ['void WhatIWantExample.m3(int)'],
-#    'non': ['void PrintStream.println(int)',
-#     'int WhatIWantExample.m1()',
-#     'void WhatIWantExample.main()',
-#     'void WhatIWantExample.g(int)',
-#     'int WhatIWantExample.m2(int)',
-#     'void WhatIWantExample.f()']})
 # 각 variable의 관점에서 본 src/sin/san/non
 tactics_per_var = list(map(lambda x: (x[0], create_tactics(x[1])),
                            var_and_chain))

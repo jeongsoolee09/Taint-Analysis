@@ -101,8 +101,7 @@ def collect_non(chain_without_var, src_s, san_s, sin_s, setofallmethods):
     return non_suspects
 
 
-flatPrior = DiscreteDistribution({1: 0.25, 2: 0.25,
-                                  3: 0.25, 4: 0.25})
+flatPrior = DiscreteDistribution({1: 0.25, 2: 0.25, 3: 0.25, 4: 0.25})
 
 
 def df_reader():
@@ -247,6 +246,7 @@ def init_BN():
 
 
 # ====================================================
+
 graph_for_reference = init_graph()
 BN_for_inference = init_BN()
 
@@ -265,8 +265,7 @@ def create_tactics(chain_without_var):
 var_and_chain = create_var_and_chain()
 
 # 각 variable의 관점에서 본 src/sin/san/non
-tactics_per_var = list(map(lambda x: (x[0], create_tactics(x[1])),
-                           var_and_chain))
+tactics_per_var = list(map(lambda x: (x[0], create_tactics(x[1])), var_and_chain))
 
 print("# of nodes: ", len(list(graph_for_reference.nodes())))
 print("# of edges: ", len(list(graph_for_reference.edges())))

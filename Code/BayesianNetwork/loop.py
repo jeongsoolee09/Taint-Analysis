@@ -101,8 +101,8 @@ def collect_non(chain_without_var, src_s, san_s, sin_s, setofallmethods):
     return non_suspects
 
 
-flatPrior = DiscreteDistribution({'src': 0.25, 'sin': 0.25,
-                                  'san': 0.25, 'non': 0.25})
+flatPrior = DiscreteDistribution({1: 0.25, 2: 0.25,
+                                  3: 0.25, 4: 0.25})
 
 
 def df_reader():
@@ -134,8 +134,7 @@ def add_node_to_graph(G):
     """creates a graph for identifying root nodes"""
     next(data_reader)  # Headers don't taste good
     for data in data_reader:
-        code = "G.add_node('"+data[6]+"')"
-        exec(code, globals(), locals())
+        G.add_node(data[6])
 
 
 def findRoot(G):
@@ -180,11 +179,11 @@ def find_edge_labels(node):
     out = []
     for edge in edges:
         if edge in df_edges:
-            out.append("df")
+            out.append((edge[0], "df"))
         elif edge in call_edges:
-            out.append("call")
+            out.append((edge[0], "call"))
         else:
-            out.append("sim")
+            out.append((edge[0], "sim"))
     return out
 
 
@@ -202,25 +201,22 @@ def init_graph():
 
 def create_roots_for_BN(G, BN):
     """identifies roots nodes from G and adds them to BN"""
-    counter = 0
     for root in findRoot(G):
-        code1 = "s"+str(counter)+" = Node(flatPrior, name=\""+root+"\")"
-        exec(code1, globals(), locals())
-        code2 = "BN.add_state("+"s"+str(counter)+")"
-        exec(code2, globals(), locals())
-        counter += 1
+        new_root = State(flatPrior, name=root)
+        BN.add_state(new_root)
     return BN
 
 
 def create_internal_nodes_for_BN(G, BN):
-    """internal node를 파악하고, 그에 대한 CPT들이 들어 있는 리스트를 내놓는다."""
+    """BN에 internal node를 만들어 추가한다."""
     root = set(findRoot(G))
     internal_leaves = set(G.nodes)-root
     labels = [1, 2, 3, 4]       # src, sin, san, non
-    raw_cpts = []
-    counter = 0
     for node in internal_leaves:
-        edges = find_edge_labels(node)
+        parents_and_edges = find_edge_labels(node)
+        parents = list(map(lambda tup: tup[0], parents_and_edges)) 
+        print(parents)
+        edges = list(map(lambda tup: tup[1], parents_and_edges))
         probs = create_CPT(edges).transpose().flatten()
         cond_prob_table_width = len(list(G.predecessors(node)))
         cond_prob_table_gen = it.repeat(labels, cond_prob_table_width+1)
@@ -229,13 +225,9 @@ def create_internal_nodes_for_BN(G, BN):
         cond_prob_table = it.chain.from_iterable(cond_prob_table)
         cond_prob_table = np.fromiter(cond_prob_table, int).reshape(-1, cond_prob_table_width+1)
         cond_prob_table = np.c_[cond_prob_table, probs]
-        cond_prob_table = ConditionalProbabilityTable(cond_prob_table, list(G.predecessors(node)))
-        code1 = "i"+str(counter)+" = Node(cond_prob_table, name=\""+node+"\")"
-        exec(code1, globals(), locals())
-        code2 = "BN.add_state("+"i"+str(counter)+")"
-        exec(code2, globals(), locals())
-        raw_cpts.append(cond_prob_table)
-        counter += 1
+        cond_prob_table = ConditionalProbabilityTable(cond_prob_table, parents)
+        new_internal_node = State(cond_prob_table, name=node)
+        BN.add_state(new_internal_node)
     return BN
 
 
@@ -247,7 +239,7 @@ def add_edge_to_BN(BN):
 
 
 def init_BN():
-    BN = BayesianNetwork("Automatic Inference of Taint Method Specifications")
+    BN = BayesianNetwork("Interactive Inference of Taint Method Specifications")
     BN = create_roots_for_BN(graph_for_reference, BN) 
     BN = create_internal_nodes_for_BN(graph_for_reference, BN)
     BN = add_edge_to_BN(BN)

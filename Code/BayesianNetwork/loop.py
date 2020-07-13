@@ -8,7 +8,7 @@ import networkx as nx
 import itertools as it
 import os
 import re
-from basic_CPT import make_df_CPT, make_call_df_CPT, make_call_sim_CPT
+from make_CPT import *
 
 print("starting..")
 start = time.time()
@@ -27,7 +27,7 @@ edges_reader = csv.reader(edges_data)
 
 # for debugging
 # tmp = create_var_and_chain()[0]
-# tmp1 = parse_chain(tmp)[0] #
+# tmp1 = parse_chain(tmp)[0]
 # tuplestring_to_tuple(tmp1)
 
 
@@ -174,17 +174,17 @@ def find_edges_of(node):
     return out
 
 
-def decide_edgekind(node):
+def find_edge_labels(node):
     """하나의 node를 받아 그 node가 속한 모든 엣지의 각 종류(df, call, sim)를 판별한다."""
     edges = find_edges_of(node)
     out = []
     for edge in edges:
         if edge in df_edges:
-            out.append((edge, "df"))
+            out.append("df")
         elif edge in call_edges:
-            out.append((edge, "call"))
+            out.append("call")
         else:
-            out.append((edge, "sim"))
+            out.append("sim")
     return out
 
 
@@ -209,33 +209,48 @@ def create_roots_for_BN(G, BN):
         code2 = "BN.add_state("+"s"+str(counter)+")"
         exec(code2, globals(), locals())
         counter += 1
+    return BN
 
 
-def create_raw_CPTs_for_BN(G, BN):
-    """internal node를 파악하고, 그에 대한 CPT를 만들어 준다."""
+def create_internal_nodes_for_BN(G, BN):
+    """internal node를 파악하고, 그에 대한 CPT들이 들어 있는 리스트를 내놓는다."""
     root = set(findRoot(G))
     internal_leaves = set(G.nodes)-root
     labels = [1, 2, 3, 4]       # src, sin, san, non
     raw_cpts = []
+    counter = 0
     for node in internal_leaves:
-        edgekinds = decide_edgekind(node)
+        edges = find_edge_labels(node)
+        probs = create_CPT(edges).transpose().flatten()
         cond_prob_table_width = len(list(G.predecessors(node)))
         cond_prob_table_gen = it.repeat(labels, cond_prob_table_width+1)
         cond_prob_table = list(cond_prob_table_gen)
         cond_prob_table = it.product(*cond_prob_table)
         cond_prob_table = it.chain.from_iterable(cond_prob_table)
-        temp = np.fromiter(cond_prob_table, int).reshape(-1, cond_prob_table_width+1)
-        raw_cpts.append(temp)
-    # cond_prob_table = ConditionalProbabilityTable(cond_prob_table, G.predecessors(node))
-    return raw_cpts
+        cond_prob_table = np.fromiter(cond_prob_table, int).reshape(-1, cond_prob_table_width+1)
+        cond_prob_table = np.c_[cond_prob_table, probs]
+        cond_prob_table = ConditionalProbabilityTable(cond_prob_table, list(G.predecessors(node)))
+        code1 = "i"+str(counter)+" = Node(cond_prob_table, name=\""+node+"\")"
+        exec(code1, globals(), locals())
+        code2 = "BN.add_state("+"i"+str(counter)+")"
+        exec(code2, globals(), locals())
+        raw_cpts.append(cond_prob_table)
+        counter += 1
+    return BN
+
+
+def add_edge_to_BN(BN):
+    """adds edges to BN"""
+    for edge in graph_for_reference.edges:
+        BN.add_edge(*edge)
+    return BN
 
 
 def init_BN():
-    global graph_for_reference
     BN = BayesianNetwork("Automatic Inference of Taint Method Specifications")
-    create_roots_for_BN(graph_for_reference, BN) 
-    create_raw_CPTs_for_BN(graph_for_reference, BN)  # TODO
-    # add_edge_to_BN(BN)  # TODO
+    BN = create_roots_for_BN(graph_for_reference, BN) 
+    BN = create_internal_nodes_for_BN(graph_for_reference, BN)
+    BN = add_edge_to_BN(BN)
     return BN
 
 

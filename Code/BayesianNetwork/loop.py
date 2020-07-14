@@ -251,26 +251,26 @@ def undefined_parents_of(graph, node):
 def create_internal_nodes_for_BN(BN, node):
     """Recursively resolve the dependencies."""
     print(node)
-    if graph_for_reference.nodes[node]['defined']:  # 현 노드가 정의되어 있다
-        if len(list(graph_for_reference.successors(node))) > 0:  # successor가 있다
+    if graph_for_reference.nodes[node]['defined']:
+        if len(list(graph_for_reference.successors(node))) > 0:
             for succ in graph_for_reference.successors(node):
                 if graph_for_reference.nodes[succ]['under_construction']:
                     return
                 else:
                     create_internal_nodes_for_BN(BN, succ)
-        else:  # successor가 없다
+        else:
             return
-    else:  # 현 노드가 정의되어 있지 않다
+    else:
         if forall(lambda pred: graph_for_reference.nodes[pred]['defined'], graph_for_reference.predecessors(node)):
             create_internal_node_for_BN(node, BN, list(graph_for_reference.predecessors(node)))
             graph_for_reference.nodes[node]['defined'] = True
-            if len(list(graph_for_reference.successors(node))) > 0:  # successor가 있다
+            if len(list(graph_for_reference.successors(node))) > 0:
                 for succ in graph_for_reference.successors(node):
                     if graph_for_reference.nodes[succ]['under_construction']:
                         return
                     else:
                         create_internal_nodes_for_BN(BN, succ)
-            else:  # successor가 없다
+            else:
                 return
         else:
             graph_for_reference.nodes[node]['under_construction'] = True
@@ -279,13 +279,13 @@ def create_internal_nodes_for_BN(BN, node):
             graph_for_reference.nodes[node]['under_construction'] = False
             create_internal_node_for_BN(node, BN, list(graph_for_reference.predecessors(node)))
             graph_for_reference.nodes[node]['defined'] = True
-            if len(list(graph_for_reference.successors(node))) > 0:  # successor가 있다
+            if len(list(graph_for_reference.successors(node))) > 0:
                 for succ in graph_for_reference.successors(node):
                     if graph_for_reference.nodes[succ]['under_construction']:
                         return
                     else:
                         create_internal_nodes_for_BN(BN, succ)
-            else:  # successor가 없다
+            else:
                 return
 
 

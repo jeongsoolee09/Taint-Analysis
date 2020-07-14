@@ -212,17 +212,31 @@ def init_graph():
 
 def create_roots_for_BN(G, BN):
     """identifies roots nodes from G and adds them to BN"""
+    out = []
     for root in find_root(G):
         new_node = State(flatPrior, name=root)
         BN.add_state(new_node)
+        out.append(new_node)
+    return out
 
 
-def create_internal_node_for_BN(node, BN, parents):
+def find_parent_nodes(states, names):
+    """state들 중에서 이름이 names와 매칭되는 state를 names의 index대로 리턴한다."""
+    out = []
+    for name in names:
+        for state in states:
+            if state.name == name:
+                out.append(state)
+    return out
+
+
+def create_internal_node_for_BN(node, BN, prev_states):
     """BN에 internal node를 만들어 추가한다."""
     labels = [1, 2, 3, 4]       # src, sin, san, non
     parents_and_edges = find_edge_labels(node)
     parents = list(map(lambda tup: tup[0], parents_and_edges)) 
     edges = list(map(lambda tup: tup[1], parents_and_edges))
+    parent_nodes = find_parent_nodes(prev_states, parents)
     probs = create_CPT(edges).transpose().flatten()
     cond_prob_table_width = len(list(graph_for_reference.predecessors(node)))
     cond_prob_table_gen = it.repeat(labels, cond_prob_table_width+1)
@@ -231,9 +245,10 @@ def create_internal_node_for_BN(node, BN, parents):
     cond_prob_table = it.chain.from_iterable(cond_prob_table)
     cond_prob_table = np.fromiter(cond_prob_table, int).reshape(-1, cond_prob_table_width+1)
     cond_prob_table = np.c_[cond_prob_table, probs]
-    cond_prob_table = ConditionalProbabilityTable(cond_prob_table, parents)
+    cond_prob_table = ConditionalProbabilityTable(cond_prob_table, parent_nodes)
     new_node = State(cond_prob_table, name=node)
     BN.add_state(new_node)
+    return new_node
 
 
 def forall(unary_pred, collection):
@@ -248,43 +263,42 @@ def undefined_parents_of(graph, node):
     return out
 
 
-def create_internal_nodes_for_BN(BN, node):
+def create_internal_nodes_for_BN(BN, node, states):
     """Recursively resolve the dependencies."""
-    print(node)
     if graph_for_reference.nodes[node]['defined']:
         if len(list(graph_for_reference.successors(node))) > 0:
             for succ in graph_for_reference.successors(node):
                 if graph_for_reference.nodes[succ]['under_construction']:
                     return
                 else:
-                    create_internal_nodes_for_BN(BN, succ)
+                    create_internal_nodes_for_BN(BN, succ, states)
         else:
             return
     else:
         if forall(lambda pred: graph_for_reference.nodes[pred]['defined'], graph_for_reference.predecessors(node)):
-            create_internal_node_for_BN(node, BN, list(graph_for_reference.predecessors(node)))
+            new_state = create_internal_node_for_BN(node, BN, states)
             graph_for_reference.nodes[node]['defined'] = True
             if len(list(graph_for_reference.successors(node))) > 0:
                 for succ in graph_for_reference.successors(node):
                     if graph_for_reference.nodes[succ]['under_construction']:
                         return
                     else:
-                        create_internal_nodes_for_BN(BN, succ)
+                        create_internal_nodes_for_BN(BN, succ, states+[new_state])
             else:
                 return
         else:
             graph_for_reference.nodes[node]['under_construction'] = True
             for parent in undefined_parents_of(graph_for_reference, node):
-                create_internal_nodes_for_BN(BN, parent)
+                create_internal_nodes_for_BN(BN, parent, states)
             graph_for_reference.nodes[node]['under_construction'] = False
-            create_internal_node_for_BN(node, BN, list(graph_for_reference.predecessors(node)))
+            new_state = create_internal_node_for_BN(node, BN, states)
             graph_for_reference.nodes[node]['defined'] = True
             if len(list(graph_for_reference.successors(node))) > 0:
                 for succ in graph_for_reference.successors(node):
                     if graph_for_reference.nodes[succ]['under_construction']:
                         return
                     else:
-                        create_internal_nodes_for_BN(BN, succ)
+                        create_internal_nodes_for_BN(BN, succ, states+[new_state])
             else:
                 return
 
@@ -297,10 +311,11 @@ def add_edge_to_BN(BN):
 
 def init_BN():
     BN = BayesianNetwork("Interactive Inference of Taint Method Specifications")
-    create_roots_for_BN(graph_for_reference, BN) 
+    root_states = create_roots_for_BN(graph_for_reference, BN) 
     sample_root = find_root(graph_for_reference)[0]
-    create_internal_nodes_for_BN(BN, sample_root)
+    create_internal_nodes_for_BN(BN, sample_root, root_states)
     add_edge_to_BN(BN)
+    BN.bake()
     return BN
 
 

@@ -113,16 +113,26 @@ def get_row_of_lookup_table(tup):
     return np.where(np.all(broadcasted, axis=1))[0][0]
 
 
-def make_CPT(cpt_kind, edges):
+def summarize_edge(edges):
+    if "df" in edges and ("call" in edges or "sim" in edges):
+        return "df_call"
+    elif "df" in edges:
+        return "df"
+    elif "call" in edges or "sim" in edges:
+        return "call_sim"
+
+
+def create_CPT(edges):
     """CPT의 종류와, 엣지들의 종류 목록에 따라 CPT를 만든다. 가능한 CPT의 종류:
-       1. call_df (혹은 df_call)
+       1. df_call
        2. df
        3. call_sim"""
-    if cpt_kind == "call_df" or cpt_kind == "df_call":
+    summarized_edge = summarize_edge(edges)
+    if summarized_edge == "df_call":
         mag_table = make_call_df_mag_table(edges)
-    elif cpt_kind == "df":
+    elif summarized_edge == "df":
         mag_table = make_df_mag_table(len(edges))
-    elif cpt_kind == "call_sim":
+    elif summarized_edge == "call_sim":
         mag_table = make_call_sim_mag_table(len(edges))
     _, cols = mag_table.shape
     out = []

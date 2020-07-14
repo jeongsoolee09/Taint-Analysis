@@ -214,7 +214,6 @@ def create_internal_nodes_for_BN(G, BN):
     for node in internal_leaves:
         parents_and_edges = find_edge_labels(node)
         parents = list(map(lambda tup: tup[0], parents_and_edges)) 
-        print(parents)
         edges = list(map(lambda tup: tup[1], parents_and_edges))
         probs = create_CPT(edges).transpose().flatten()
         cond_prob_table_width = len(list(G.predecessors(node)))
@@ -228,6 +227,58 @@ def create_internal_nodes_for_BN(G, BN):
         new_internal_node = State(cond_prob_table, name=node)
         BN.add_state(new_internal_node)
     return BN
+
+
+
+def forall(unary_pred, collection):
+    return reduce(lambda acc, elem: unary_pred(elem) and acc, collection, True)
+
+
+def undefined_parents_of(graph, node):
+    out = []
+    for parent in graph.predecessors(node):  # parent는 int type
+        if not graph.nodes[parent]['defined']:
+            out.append(parent)
+    return out
+
+
+def toyprocedure(graph, node):
+    """Recursively resolve the dependencies."""
+    print(node)
+    if graph.nodes[node]['defined']:  # 현 노드가 정의되어 있다
+        if len(list(graph.successors(node))) > 0:  # successor가 있다
+            for succ in graph.successors(node):
+                if graph.nodes[succ]['under_construction']:
+                    return
+                else:
+                    toyprocedure(graph, succ)
+        else:  # successor가 없다
+            return
+    else:  # 현 노드가 정의되어 있지 않다
+        if forall(lambda pred: graph.nodes[pred]['defined'], graph.predecessors(node)):
+            graph.nodes[node]['defined'] = True
+            if len(list(graph.successors(node))) > 0:  # successor가 있다
+                for succ in graph.successors(node):
+                    if graph.nodes[succ]['under_construction']:
+                        return
+                    else:
+                        toyprocedure(graph, succ)
+            else:  # successor가 없다
+                return
+        else:
+            graph.nodes[node]['under_construction'] = True
+            for parent in undefined_parents_of(graph, node):
+                toyprocedure(graph, parent)
+            graph.nodes[node]['under_construction'] = False
+            graph.nodes[node]['defined'] = True
+            if len(list(graph.successors(node))) > 0:  # successor가 있다
+                for succ in graph.successors(node):
+                    if graph.nodes[succ]['under_construction']:
+                        return
+                    else:
+                        toyprocedure(graph, succ)
+            else:  # successor가 없다
+                return
 
 
 def add_edge_to_BN(BN):

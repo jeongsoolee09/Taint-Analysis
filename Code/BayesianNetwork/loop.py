@@ -126,6 +126,7 @@ df_edges = df_reader()
 call_edges = call_reader()
 
 
+# ===================================================
 # Methods for Graphs ================================
 
 
@@ -136,7 +137,17 @@ def add_node_to_graph(G):
         G.add_node(data[6])
 
 
-def findRoot(G):
+def add_data_to_node(G):
+    """adds data to each node needed for dependency solving algorithm"""
+    for node in G.nodes():
+        G.nodes[node]["under_construction"] = False
+        if G.in_degree(node) == 0:
+            G.nodes[node]["defined"] = True
+        else:
+            G.nodes[node]["defined"] = False
+
+
+def find_root(G):
     roots = []
     for node in G.nodes:
         if G.in_degree(node) == 0:
@@ -191,6 +202,7 @@ def init_graph():
     G = nx.DiGraph()
     add_node_to_graph(G)
     add_edge_to_graph(G)
+    add_data_to_node(G)
     return G
 
 
@@ -200,34 +212,28 @@ def init_graph():
 
 def create_roots_for_BN(G, BN):
     """identifies roots nodes from G and adds them to BN"""
-    for root in findRoot(G):
-        new_root = State(flatPrior, name=root)
-        BN.add_state(new_root)
-    return BN
+    for root in find_root(G):
+        new_node = State(flatPrior, name=root)
+        BN.add_state(new_node)
 
 
-def create_internal_nodes_for_BN(G, BN):
+def create_internal_node_for_BN(node, BN, parents):
     """BN에 internal node를 만들어 추가한다."""
-    root = set(findRoot(G))
-    internal_leaves = set(G.nodes)-root
     labels = [1, 2, 3, 4]       # src, sin, san, non
-    for node in internal_leaves:
-        parents_and_edges = find_edge_labels(node)
-        parents = list(map(lambda tup: tup[0], parents_and_edges)) 
-        edges = list(map(lambda tup: tup[1], parents_and_edges))
-        probs = create_CPT(edges).transpose().flatten()
-        cond_prob_table_width = len(list(G.predecessors(node)))
-        cond_prob_table_gen = it.repeat(labels, cond_prob_table_width+1)
-        cond_prob_table = list(cond_prob_table_gen)
-        cond_prob_table = it.product(*cond_prob_table)
-        cond_prob_table = it.chain.from_iterable(cond_prob_table)
-        cond_prob_table = np.fromiter(cond_prob_table, int).reshape(-1, cond_prob_table_width+1)
-        cond_prob_table = np.c_[cond_prob_table, probs]
-        cond_prob_table = ConditionalProbabilityTable(cond_prob_table, parents)
-        new_internal_node = State(cond_prob_table, name=node)
-        BN.add_state(new_internal_node)
-    return BN
-
+    parents_and_edges = find_edge_labels(node)
+    parents = list(map(lambda tup: tup[0], parents_and_edges)) 
+    edges = list(map(lambda tup: tup[1], parents_and_edges))
+    probs = create_CPT(edges).transpose().flatten()
+    cond_prob_table_width = len(list(graph_for_reference.predecessors(node)))
+    cond_prob_table_gen = it.repeat(labels, cond_prob_table_width+1)
+    cond_prob_table = list(cond_prob_table_gen)
+    cond_prob_table = it.product(*cond_prob_table)
+    cond_prob_table = it.chain.from_iterable(cond_prob_table)
+    cond_prob_table = np.fromiter(cond_prob_table, int).reshape(-1, cond_prob_table_width+1)
+    cond_prob_table = np.c_[cond_prob_table, probs]
+    cond_prob_table = ConditionalProbabilityTable(cond_prob_table, parents)
+    new_node = State(cond_prob_table, name=node)
+    BN.add_state(new_node)
 
 
 def forall(unary_pred, collection):
@@ -236,47 +242,49 @@ def forall(unary_pred, collection):
 
 def undefined_parents_of(graph, node):
     out = []
-    for parent in graph.predecessors(node):  # parent는 int type
+    for parent in graph.predecessors(node):
         if not graph.nodes[parent]['defined']:
             out.append(parent)
     return out
 
 
-def toyprocedure(graph, node):
+def create_internal_nodes_for_BN(BN, node):
     """Recursively resolve the dependencies."""
     print(node)
-    if graph.nodes[node]['defined']:  # 현 노드가 정의되어 있다
-        if len(list(graph.successors(node))) > 0:  # successor가 있다
-            for succ in graph.successors(node):
-                if graph.nodes[succ]['under_construction']:
+    if graph_for_reference.nodes[node]['defined']:  # 현 노드가 정의되어 있다
+        if len(list(graph_for_reference.successors(node))) > 0:  # successor가 있다
+            for succ in graph_for_reference.successors(node):
+                if graph_for_reference.nodes[succ]['under_construction']:
                     return
                 else:
-                    toyprocedure(graph, succ)
+                    create_internal_nodes_for_BN(BN, succ)
         else:  # successor가 없다
             return
     else:  # 현 노드가 정의되어 있지 않다
-        if forall(lambda pred: graph.nodes[pred]['defined'], graph.predecessors(node)):
-            graph.nodes[node]['defined'] = True
-            if len(list(graph.successors(node))) > 0:  # successor가 있다
-                for succ in graph.successors(node):
-                    if graph.nodes[succ]['under_construction']:
+        if forall(lambda pred: graph_for_reference.nodes[pred]['defined'], graph_for_reference.predecessors(node)):
+            create_internal_node_for_BN(node, BN, list(graph_for_reference.predecessors(node)))
+            graph_for_reference.nodes[node]['defined'] = True
+            if len(list(graph_for_reference.successors(node))) > 0:  # successor가 있다
+                for succ in graph_for_reference.successors(node):
+                    if graph_for_reference.nodes[succ]['under_construction']:
                         return
                     else:
-                        toyprocedure(graph, succ)
+                        create_internal_nodes_for_BN(BN, succ)
             else:  # successor가 없다
                 return
         else:
-            graph.nodes[node]['under_construction'] = True
-            for parent in undefined_parents_of(graph, node):
-                toyprocedure(graph, parent)
-            graph.nodes[node]['under_construction'] = False
-            graph.nodes[node]['defined'] = True
-            if len(list(graph.successors(node))) > 0:  # successor가 있다
-                for succ in graph.successors(node):
-                    if graph.nodes[succ]['under_construction']:
+            graph_for_reference.nodes[node]['under_construction'] = True
+            for parent in undefined_parents_of(graph_for_reference, node):
+                create_internal_nodes_for_BN(BN, parent)
+            graph_for_reference.nodes[node]['under_construction'] = False
+            create_internal_node_for_BN(node, BN, list(graph_for_reference.predecessors(node)))
+            graph_for_reference.nodes[node]['defined'] = True
+            if len(list(graph_for_reference.successors(node))) > 0:  # successor가 있다
+                for succ in graph_for_reference.successors(node):
+                    if graph_for_reference.nodes[succ]['under_construction']:
                         return
                     else:
-                        toyprocedure(graph, succ)
+                        create_internal_nodes_for_BN(BN, succ)
             else:  # successor가 없다
                 return
 
@@ -285,14 +293,14 @@ def add_edge_to_BN(BN):
     """adds edges to BN"""
     for edge in graph_for_reference.edges:
         BN.add_edge(*edge)
-    return BN
 
 
 def init_BN():
     BN = BayesianNetwork("Interactive Inference of Taint Method Specifications")
-    BN = create_roots_for_BN(graph_for_reference, BN) 
-    BN = create_internal_nodes_for_BN(graph_for_reference, BN)
-    BN = add_edge_to_BN(BN)
+    create_roots_for_BN(graph_for_reference, BN) 
+    sample_root = find_root(graph_for_reference)[0]
+    create_internal_nodes_for_BN(BN, sample_root)
+    add_edge_to_BN(BN)
     return BN
 
 

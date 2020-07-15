@@ -27,76 +27,6 @@ edges_reader = csv.reader(edges_data)
 # tuplestring_to_tuple(tmp1)
 
 
-def tuplestring_to_tuple(tuple_string):
-    string_list = tuple_string.split(", ")
-    if len(string_list) == 3:
-        string_list = [string_list[0], string_list[1]+", "+string_list[2]]
-    string_list[0] = string_list[0].lstrip('(')
-    string_list[1] = string_list[1].rstrip(')')
-    string_list[1] = string_list[1]+')'
-    return (string_list[0], string_list[1])
-
-
-def parse_chain(var_and_chain):
-    var = var_and_chain[0]
-    chain = var_and_chain[1]
-    chain = chain.split(" -> ")
-    chain = list(filter(lambda string: string != "", chain))
-    chain = list(map(lambda item: item.lstrip(), chain))
-    chain = list(map(lambda string: tuplestring_to_tuple(string), chain))
-    return [var, chain]
-
-
-def create_var_and_chain():
-    """access path와 그 chain을 만든다. 이 때, ->로 연결되어 있던 chain은 모두 서브스트링으로 따로따로 분리된 상태이다."""
-    current_path = os.path.abspath("..")
-    chainfile = os.path.join(current_path, "benchmarks", "fabricated", "Chain.txt")
-    with open(chainfile, "r+") as chain:
-        lines = chain.readlines()
-        var_to_chain = list(filter(lambda line: line != "\n", lines))
-        var_to_chain = list(map(lambda line: line.rstrip(), var_to_chain))
-        var_and_chain = list(map(lambda line: line.split(": "), var_to_chain))
-        var_and_chain = list(map(lambda lst: parse_chain(lst), var_and_chain))
-    return var_and_chain
-
-
-def collect_src(chain_without_var):  # priority 4
-    out = []
-    chain_head = chain_without_var[0]
-    if "Define" in chain_head[1]:  # sanity check
-        activity = chain_head[1]
-        callee_methname = activity.split("using")[1]
-        callee_methname = callee_methname.lstrip(" ")
-        out.append(callee_methname)
-    return out
-
-
-def collect_san(chain_without_var):  # priority 3
-    out = []
-    for (meth, activity) in chain_without_var:
-        if "Redefine" in activity:
-            out.append(meth)
-    return out
-
-
-def collect_sin(chain_without_var):  # priority 2
-    out = []
-    chain_end = chain_without_var[len(chain_without_var)-1]
-    if "Dead" in chain_end[1]:
-        out.append(chain_end[0])
-    return out
-
-
-def collect_non(chain_without_var, src_s, san_s, sin_s, setofallmethods):
-    # priority 1
-    src_s = set(src_s)
-    san_s = set(san_s)
-    sin_s = set(sin_s)
-    setofallmethods = set(setofallmethods)
-    non_suspects = list(setofallmethods - src_s - san_s - sin_s)
-    return non_suspects
-
-
 flatPrior = DiscreteDistribution({1.0: 0.25, 2.0: 0.25, 3.0: 0.25, 4.0: 0.25})
 
 
@@ -263,7 +193,6 @@ def undefined_parents_of(graph, node):
 
 # state objects in BN_for_inference.
 BN_states = []
-BN_edges = []
 
 
 def create_internal_nodes_for_BN(BN, node, states):
@@ -322,7 +251,6 @@ def add_edge_to_BN(BN):
         state1 = state_lookup(node1)
         state2 = state_lookup(node2)
         BN.add_edge(state1, state2)
-        BN_edges.append((state1, state2))
 
 
 def init_BN():
@@ -342,6 +270,76 @@ graph_for_reference = init_graph()
 BN_for_inference = init_BN()
 
 
+def tuplestring_to_tuple(tuple_string):
+    string_list = tuple_string.split(", ")
+    if len(string_list) == 3:
+        string_list = [string_list[0], string_list[1]+", "+string_list[2]]
+    string_list[0] = string_list[0].lstrip('(')
+    string_list[1] = string_list[1].rstrip(')')
+    string_list[1] = string_list[1]+')'
+    return (string_list[0], string_list[1])
+
+
+def parse_chain(var_and_chain):
+    var = var_and_chain[0]
+    chain = var_and_chain[1]
+    chain = chain.split(" -> ")
+    chain = list(filter(lambda string: string != "", chain))
+    chain = list(map(lambda item: item.lstrip(), chain))
+    chain = list(map(lambda string: tuplestring_to_tuple(string), chain))
+    return [var, chain]
+
+
+def create_var_and_chain():
+    """access path와 그 chain을 만든다. 이 때, ->로 연결되어 있던 chain은 모두 서브스트링으로 따로따로 분리된 상태이다."""
+    current_path = os.path.abspath("..")
+    chainfile = os.path.join(current_path, "benchmarks", "fabricated", "Chain.txt")
+    with open(chainfile, "r+") as chain:
+        lines = chain.readlines()
+        var_to_chain = list(filter(lambda line: line != "\n", lines))
+        var_to_chain = list(map(lambda line: line.rstrip(), var_to_chain))
+        var_and_chain = list(map(lambda line: line.split(": "), var_to_chain))
+        var_and_chain = list(map(lambda lst: parse_chain(lst), var_and_chain))
+    return var_and_chain
+
+
+def collect_src(chain_without_var):  # priority 4
+    out = []
+    chain_head = chain_without_var[0]
+    if "Define" in chain_head[1]:  # sanity check
+        activity = chain_head[1]
+        callee_methname = activity.split("using")[1]
+        callee_methname = callee_methname.lstrip(" ")
+        out.append(callee_methname)
+    return out
+
+
+def collect_san(chain_without_var):  # priority 3
+    out = []
+    for (meth, activity) in chain_without_var:
+        if "Redefine" in activity:
+            out.append(meth)
+    return out
+
+
+def collect_sin(chain_without_var):  # priority 2
+    out = []
+    chain_end = chain_without_var[len(chain_without_var)-1]
+    if "Dead" in chain_end[1]:
+        out.append(chain_end[0])
+    return out
+
+
+def collect_non(chain_without_var, src_s, san_s, sin_s, setofallmethods):
+    # priority 1
+    src_s = set(src_s)
+    san_s = set(san_s)
+    sin_s = set(sin_s)
+    setofallmethods = set(setofallmethods)
+    non_suspects = list(setofallmethods - src_s - san_s - sin_s)
+    return non_suspects
+
+
 # should be called AFTER graph_for_reference is constructed
 def create_tactics(chain_without_var):
     """consuming a chain in tuple list form, plans ahead how to question the oracle"""
@@ -349,7 +347,8 @@ def create_tactics(chain_without_var):
     src_suspects = collect_src(chain_without_var)  # priority 4
     san_suspects = collect_san(chain_without_var)  # priority 3
     sin_suspects = collect_sin(chain_without_var)  # priority 2
-    non_suspects = collect_non(chain_without_var, src_suspects, san_suspects, sin_suspects, setofallmethods)  # priority 1
+    non_suspects = collect_non(chain_without_var, src_suspects,
+                               san_suspects, sin_suspects, setofallmethods)  # priority 1
     return {"src": src_suspects, "san": san_suspects,
             "sin": sin_suspects, "non": non_suspects}
 

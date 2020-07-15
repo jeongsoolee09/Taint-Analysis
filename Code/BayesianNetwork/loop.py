@@ -237,16 +237,17 @@ def create_internal_node_for_BN(node, BN, prev_states):
     parents = list(map(lambda tup: tup[0], parents_and_edges)) 
     edges = list(map(lambda tup: tup[1], parents_and_edges))
     parent_nodes = find_parent_nodes(prev_states, parents)
+    parent_dist = list(map(lambda node: node.distribution, parent_nodes))
     probs = create_CPT(edges).transpose().flatten()
     cond_prob_table_width = len(list(graph_for_reference.predecessors(node)))
     cond_prob_table_gen = it.repeat(labels, cond_prob_table_width+1)
     cond_prob_table = list(cond_prob_table_gen)
     cond_prob_table = it.product(*cond_prob_table)
     cond_prob_table = it.chain.from_iterable(cond_prob_table)
-    cond_prob_table = np.fromiter(cond_prob_table, int).reshape(-1, cond_prob_table_width+1)
+    cond_prob_table = np.fromiter(cond_prob_table, float).reshape(-1, cond_prob_table_width+1)
     cond_prob_table = np.c_[cond_prob_table, probs]
     cond_prob_table = cond_prob_table.tolist()
-    cond_prob_table = ConditionalProbabilityTable(cond_prob_table, parent_nodes)
+    cond_prob_table = ConditionalProbabilityTable(cond_prob_table, parent_dist)
     new_node = State(cond_prob_table, name=node)
     BN.add_state(new_node)
     return new_node
@@ -266,6 +267,7 @@ def undefined_parents_of(graph, node):
 
 # state objects in BN_for_inference.
 BN_states = []
+BN_edges = []
 
 
 def create_internal_nodes_for_BN(BN, node, states):
@@ -324,6 +326,7 @@ def add_edge_to_BN(BN):
         state1 = state_lookup(node1)
         state2 = state_lookup(node2)
         BN.add_edge(state1, state2)
+        BN_edges.append((state1, state2))
 
 
 def init_BN():

@@ -7,7 +7,6 @@ import csv
 import networkx as nx
 import itertools as it
 import os
-import re
 from make_CPT import *
 
 print("starting..")
@@ -15,9 +14,6 @@ start = time.time()
 
 edges = pd.read_csv("edges.csv", index_col=0, header=[0, 1])
 edge_targets = edges.iloc[:, edges.columns.get_level_values(1) == "name"]
-
-regex = r'\((.*)\)'
-regex = re.compile(regex)
 
 raw_data = open("raw_data.csv", "r+")
 data_reader = csv.reader(raw_data)

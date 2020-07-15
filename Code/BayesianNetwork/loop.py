@@ -21,11 +21,6 @@ data_reader = csv.reader(raw_data)
 edges_data = open("edges.csv", "r+")
 edges_reader = csv.reader(edges_data)
 
-# for debugging
-# tmp = create_var_and_chain()[0]
-# tmp1 = parse_chain(tmp)[0]
-# tuplestring_to_tuple(tmp1)
-
 
 def df_reader():
     with open("df.txt", "r+") as df:

@@ -27,9 +27,6 @@ edges_reader = csv.reader(edges_data)
 # tuplestring_to_tuple(tmp1)
 
 
-flatPrior = DiscreteDistribution({1.0: 0.25, 2.0: 0.25, 3.0: 0.25, 4.0: 0.25})
-
-
 def df_reader():
     with open("df.txt", "r+") as df:
         lines = df.readlines()
@@ -140,7 +137,7 @@ def create_roots_for_BN(G, BN):
     """identifies roots nodes from G and adds them to BN"""
     out = []
     for root in find_root(G):
-        new_node = State(flatPrior, name=root)
+        new_node = State(DiscreteDistribution({1.0: 0.25, 2.0: 0.25, 3.0: 0.25, 4.0: 0.25}), name=root)
         BN.add_state(new_node)
         out.append(new_node)
     return out

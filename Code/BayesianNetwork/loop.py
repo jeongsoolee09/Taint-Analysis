@@ -101,7 +101,7 @@ def collect_non(chain_without_var, src_s, san_s, sin_s, setofallmethods):
     return non_suspects
 
 
-flatPrior = DiscreteDistribution({1: 0.25, 2: 0.25, 3: 0.25, 4: 0.25})
+flatPrior = DiscreteDistribution({1.0: 0.25, 2.0: 0.25, 3.0: 0.25, 4.0: 0.25})
 
 
 def df_reader():
@@ -245,6 +245,7 @@ def create_internal_node_for_BN(node, BN, prev_states):
     cond_prob_table = it.chain.from_iterable(cond_prob_table)
     cond_prob_table = np.fromiter(cond_prob_table, int).reshape(-1, cond_prob_table_width+1)
     cond_prob_table = np.c_[cond_prob_table, probs]
+    cond_prob_table = cond_prob_table.tolist()
     cond_prob_table = ConditionalProbabilityTable(cond_prob_table, parent_nodes)
     new_node = State(cond_prob_table, name=node)
     BN.add_state(new_node)
@@ -263,8 +264,13 @@ def undefined_parents_of(graph, node):
     return out
 
 
+# state objects in BN_for_inference.
+BN_states = []
+
+
 def create_internal_nodes_for_BN(BN, node, states):
     """Recursively resolve the dependencies."""
+    global BN_states
     if graph_for_reference.nodes[node]['defined']:
         if len(list(graph_for_reference.successors(node))) > 0:
             for succ in graph_for_reference.successors(node):
@@ -278,6 +284,7 @@ def create_internal_nodes_for_BN(BN, node, states):
         if forall(lambda pred: graph_for_reference.nodes[pred]['defined'], graph_for_reference.predecessors(node)):
             new_state = create_internal_node_for_BN(node, BN, states)
             graph_for_reference.nodes[node]['defined'] = True
+            BN_states.append(new_state)
             if len(list(graph_for_reference.successors(node))) > 0:
                 for succ in graph_for_reference.successors(node):
                     if graph_for_reference.nodes[succ]['under_construction']:
@@ -293,6 +300,7 @@ def create_internal_nodes_for_BN(BN, node, states):
             graph_for_reference.nodes[node]['under_construction'] = False
             new_state = create_internal_node_for_BN(node, BN, states)
             graph_for_reference.nodes[node]['defined'] = True
+            BN_states.append(new_state)
             if len(list(graph_for_reference.successors(node))) > 0:
                 for succ in graph_for_reference.successors(node):
                     if graph_for_reference.nodes[succ]['under_construction']:
@@ -303,21 +311,31 @@ def create_internal_nodes_for_BN(BN, node, states):
                 return
 
 
+def state_lookup(node_name):
+    for state in BN_states:
+        if state.name == node_name:
+            return state
+
+
 def add_edge_to_BN(BN):
     """adds edges to BN"""
     for edge in graph_for_reference.edges:
-        BN.add_edge(*edge)
+        node1, node2 = edge
+        state1 = state_lookup(node1)
+        state2 = state_lookup(node2)
+        BN.add_edge(state1, state2)
 
 
 def init_BN():
+    global BN_states
     BN = BayesianNetwork("Interactive Inference of Taint Method Specifications")
     root_states = create_roots_for_BN(graph_for_reference, BN) 
+    BN_states = BN_states + root_states
     sample_root = find_root(graph_for_reference)[0]
     create_internal_nodes_for_BN(BN, sample_root, root_states)
     add_edge_to_BN(BN)
     BN.bake()
     return BN
-
 
 # ====================================================
 

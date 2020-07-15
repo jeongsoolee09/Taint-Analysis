@@ -7,9 +7,9 @@ import csv
 import networkx as nx
 import itertools as it
 import os
+import random
 from make_CPT import *
 
-print("starting..")
 start = time.time()
 
 edges = pd.read_csv("edges.csv", index_col=0, header=[0, 1])
@@ -346,18 +346,42 @@ def create_tactics(chain_without_var):
 
 var_and_chain = create_var_and_chain()
 
+# 이미 물어본 적 있는 노드의 *이름들의* 리스트
+asked = []
+
+def loop_main():
+    """the main interaction functionality"""
+    global asked
+    i = random.randint(0, len(BN_for_inference.states)-1)
+    query = BN_for_inference.states[i].name
+    oracle_response = input("What label does <" + query + "> bear? [src/sin/san/non]: ")
+    if oracle_response == 'src':
+        pass
+    elif oracle_response == 'sin':
+        pass
+    elif oracle_response == 'san':
+        pass
+    elif oracle_response == 'non':
+        pass
+
+
 # 각 variable의 관점에서 본 src/sin/san/non
 tactics_per_var = list(map(lambda x: (x[0], create_tactics(x[1])), var_and_chain))
 
-print("# of nodes: ", len(list(graph_for_reference.nodes())))
-print("# of edges: ", len(list(graph_for_reference.edges())))
+def report_statistics():
+    """meta-functionality for debugging"""
+    print("# of nodes: ", len(list(BN_for_inference.states)))
+    print("# of edges: ", len(list(BN_for_inference.edges)))
+    print("elapsed time :", time.time() - start)
 
-plt.clf()
-nx.draw(graph_for_reference, font_size=8, with_labels=True,
-        pos=nx.circular_layout(graph_for_reference))
+
+def plot_graph():
+    plt.clf()
+    nx.draw(graph_for_reference, font_size=8, with_labels=True,
+            pos=nx.circular_layout(graph_for_reference))
+    plt.show()
+
 
 raw_data.close()
 edges_data.close()
-# plt.show()
 
-print("elapsed time :", time.time() - start)

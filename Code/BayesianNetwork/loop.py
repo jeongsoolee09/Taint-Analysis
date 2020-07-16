@@ -408,7 +408,9 @@ def find_max_val(stats):
     elif max_key == 4.0:
         return "non"
 
+
 colordict = {"src": "red", "sin": "orange", "san": "yellow", "non": "green"}
+
 
 def create_colormap(names_and_labels):
     """BN을 기준으로 계산된 names_and_labels를 받아서 graph_for_reference를 기준으로 한 colormap을 만든다."""

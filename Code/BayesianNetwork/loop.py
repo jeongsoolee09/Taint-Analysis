@@ -344,29 +344,42 @@ def create_tactics(chain_without_var):
     return {"src": src_suspects, "san": san_suspects,
             "sin": sin_suspects, "non": non_suspects}
 
+
 var_and_chain = create_var_and_chain()
-
-# 이미 물어본 적 있는 노드의 *이름들의* 리스트
-asked = []
-
-def loop_main():
-    """the main interaction functionality"""
-    global asked
-    i = random.randint(0, len(BN_for_inference.states)-1)
-    query = BN_for_inference.states[i].name
-    oracle_response = input("What label does <" + query + "> bear? [src/sin/san/non]: ")
-    if oracle_response == 'src':
-        pass
-    elif oracle_response == 'sin':
-        pass
-    elif oracle_response == 'san':
-        pass
-    elif oracle_response == 'non':
-        pass
-
-
 # 각 variable의 관점에서 본 src/sin/san/non
 tactics_per_var = list(map(lambda x: (x[0], create_tactics(x[1])), var_and_chain))
+
+
+def loop_main(current_asked, current_evidence):
+    """the main interaction functionality"""
+    print(current_asked)
+    print(current_evidence)
+    i = random.randint(0, len(BN_for_inference.states)-1)
+    state_names = list(map(lambda node: node.name, BN_for_inference.states))
+    query = state_names[i]
+    if set(current_asked) == set(state_names):  # 물어볼 만큼 물어봤다!
+        return "nothing more to ask!"
+    while query in current_asked:  # 다시 뽑아!
+        i = random.randint(0, len(BN_for_inference.states)-1)
+        query = BN_for_inference.states[i].name
+    oracle_response = input("What label does <" + query + "> bear? [src/sin/san/non]: ")
+    if oracle_response == 'src':
+        current_evidence[query] = 1
+        BN_for_inference.predict_proba(current_evidence)
+        loop_main(current_asked+[query], current_evidence)
+    elif oracle_response == 'sin':
+        current_evidence[query] = 2
+        BN_for_inference.predict_proba(current_evidence)
+        loop_main(current_asked+[query], current_evidence)
+    elif oracle_response == 'san':
+        current_evidence[query] = 3
+        BN_for_inference.predict_proba(current_evidence)
+        loop_main(current_asked+[query], current_evidence)
+    elif oracle_response == 'non':
+        current_evidence[query] = 4
+        BN_for_inference.predict_proba(current_evidence)
+        loop_main(current_asked+[query], current_evidence)
+
 
 def report_statistics():
     """meta-functionality for debugging"""

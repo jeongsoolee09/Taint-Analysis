@@ -443,7 +443,7 @@ def report_statistics():
     """meta-functionality for debugging"""
     print("# of nodes: ", len(list(BN_for_inference.states)))
     print("# of edges: ", len(list(BN_for_inference.edges)))
-    print("elapsed time :", time.time() - start)
+    print("elapsed time: ", time.time() - start)
 
 
 def plot_graph():
@@ -456,3 +456,6 @@ def plot_graph():
 raw_data.close()
 edges_data.close()
 
+
+if __name__ == "__main__":
+    loop_main(list(), dict())

@@ -346,19 +346,19 @@ def create_tactics(chain_without_var):
 
 
 var_and_chain = create_var_and_chain()
+
 # 각 variable의 관점에서 본 src/sin/san/non
 tactics_per_var = list(map(lambda x: (x[0], create_tactics(x[1])), var_and_chain))
 
 
-def loop_main(current_asked, current_evidence):
-    """the main interaction functionality"""
-    print(current_asked)
-    print(current_evidence)
+def random_loop(current_asked, current_evidence):
+    """the main interaction functionality, asking randomly"""
     i = random.randint(0, len(BN_for_inference.states)-1)
     state_names = list(map(lambda node: node.name, BN_for_inference.states))
     query = state_names[i]
     if set(current_asked) == set(state_names):
-        return "nothing more to ask!"
+        print("nothing more to ask!")
+        return
     while query in current_asked:
         i = random.randint(0, len(BN_for_inference.states)-1)
         query = BN_for_inference.states[i].name
@@ -367,22 +367,62 @@ def loop_main(current_asked, current_evidence):
         current_evidence[query] = 1
         snapshot = BN_for_inference.predict_proba(current_evidence)
         visualize_snapshot(state_names, snapshot)
-        loop_main(current_asked+[query], current_evidence)
+        random_loop(current_asked+[query], current_evidence)
     elif oracle_response == 'sin':
         current_evidence[query] = 2
         snapshot = BN_for_inference.predict_proba(current_evidence)
         visualize_snapshot(state_names, snapshot)
-        loop_main(current_asked+[query], current_evidence)
+        random_loop(current_asked+[query], current_evidence)
     elif oracle_response == 'san':
         current_evidence[query] = 3
         snapshot = BN_for_inference.predict_proba(current_evidence)
         visualize_snapshot(state_names, snapshot)
-        loop_main(current_asked+[query], current_evidence)
+        random_loop(current_asked+[query], current_evidence)
     elif oracle_response == 'non':
         current_evidence[query] = 4
         snapshot = BN_for_inference.predict_proba(current_evidence)
         visualize_snapshot(state_names, snapshot)
-        loop_main(current_asked+[query], current_evidence)
+        random_loop(current_asked+[query], current_evidence)
+
+
+def d_separation(node, givens):
+    """givens에 있는 노드들에 대한, node와 조건부 독립인 노드들을 찾아낸다. Complexity: O(n^2)."""
+    pass
+
+
+
+def tactical_loop(current_asked, current_evidence):
+    """the main interaction functionality, asking tactically using d-separation"""
+    i = random.randint(0, len(BN_for_inference.states)-1)
+    state_names = list(map(lambda node: node.name, BN_for_inference.states))
+    query = state_names[i]
+    if set(current_asked) == set(state_names):
+        print("nothing more to ask!")
+        return
+    while query in current_asked:
+        i = random.randint(0, len(BN_for_inference.states)-1)
+        query = BN_for_inference.states[i].name
+    oracle_response = input("What label does <" + query + "> bear? [src/sin/san/non]: ")
+    if oracle_response == 'src':
+        current_evidence[query] = 1
+        snapshot = BN_for_inference.predict_proba(current_evidence)
+        visualize_snapshot(state_names, snapshot)
+        tactical_loop(current_asked+[query], current_evidence)
+    elif oracle_response == 'sin':
+        current_evidence[query] = 2
+        snapshot = BN_for_inference.predict_proba(current_evidence)
+        visualize_snapshot(state_names, snapshot)
+        tactical_loop(current_asked+[query], current_evidence)
+    elif oracle_response == 'san':
+        current_evidence[query] = 3
+        snapshot = BN_for_inference.predict_proba(current_evidence)
+        visualize_snapshot(state_names, snapshot)
+        tactical_loop(current_asked+[query], current_evidence)
+    elif oracle_response == 'non':
+        current_evidence[query] = 4
+        snapshot = BN_for_inference.predict_proba(current_evidence)
+        visualize_snapshot(state_names, snapshot)
+        tactical_loop(current_asked+[query], current_evidence)
 
 
 def normalize_dist(oracle_response):
@@ -447,6 +487,7 @@ def report_statistics():
 
 
 def plot_graph():
+    """단순하게 underlying graph만 출력한다."""
     plt.clf()
     nx.draw(graph_for_reference, font_size=8, with_labels=True,
             pos=nx.circular_layout(graph_for_reference))
@@ -458,4 +499,4 @@ edges_data.close()
 
 
 if __name__ == "__main__":
-    loop_main(list(), dict())
+    random_loop(list(), dict())

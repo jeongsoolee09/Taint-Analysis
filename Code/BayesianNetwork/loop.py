@@ -357,28 +357,84 @@ def loop_main(current_asked, current_evidence):
     i = random.randint(0, len(BN_for_inference.states)-1)
     state_names = list(map(lambda node: node.name, BN_for_inference.states))
     query = state_names[i]
-    if set(current_asked) == set(state_names):  # 물어볼 만큼 물어봤다!
+    if set(current_asked) == set(state_names):
         return "nothing more to ask!"
-    while query in current_asked:  # 다시 뽑아!
+    while query in current_asked:
         i = random.randint(0, len(BN_for_inference.states)-1)
         query = BN_for_inference.states[i].name
     oracle_response = input("What label does <" + query + "> bear? [src/sin/san/non]: ")
     if oracle_response == 'src':
         current_evidence[query] = 1
-        BN_for_inference.predict_proba(current_evidence)
+        snapshot = BN_for_inference.predict_proba(current_evidence)
+        visualize_snapshot(state_names, snapshot)
         loop_main(current_asked+[query], current_evidence)
     elif oracle_response == 'sin':
         current_evidence[query] = 2
-        BN_for_inference.predict_proba(current_evidence)
+        snapshot = BN_for_inference.predict_proba(current_evidence)
+        visualize_snapshot(state_names, snapshot)
         loop_main(current_asked+[query], current_evidence)
     elif oracle_response == 'san':
         current_evidence[query] = 3
-        BN_for_inference.predict_proba(current_evidence)
+        snapshot = BN_for_inference.predict_proba(current_evidence)
+        visualize_snapshot(state_names, snapshot)
         loop_main(current_asked+[query], current_evidence)
     elif oracle_response == 'non':
         current_evidence[query] = 4
-        BN_for_inference.predict_proba(current_evidence)
+        snapshot = BN_for_inference.predict_proba(current_evidence)
+        visualize_snapshot(state_names, snapshot)
         loop_main(current_asked+[query], current_evidence)
+
+
+def normalize_dist(oracle_response):
+    """*int로 주어진* oracle_response에 따라 4-nomial distribution을 만든다."""
+    if oracle_response == 1:
+        return {1.0: 1, 2.0: 0, 3.0: 0, 4.0: 0}
+    elif oracle_response == 2:
+        return {1.0: 0, 2.0: 1, 3.0: 0, 4.0: 0}
+    elif oracle_response == 3:
+        return {1.0: 0, 2.0: 0, 3.0: 1, 4.0: 0}
+    elif oracle_response == 4:
+        return {1.0: 0, 2.0: 0, 3.0: 0, 4.0: 1}
+
+
+def find_max_val(stats):
+    max_key = max(stats, key=lambda key: stats[key])
+    if max_key == 1.0:
+        return "src"
+    elif max_key == 2.0:
+        return "sin"
+    elif max_key == 3.0:
+        return "san"
+    elif max_key == 4.0:
+        return "non"
+
+colordict = {"src": "red", "sin": "orange", "san": "yellow", "non": "green"}
+
+def create_colormap(names_and_labels):
+    """BN을 기준으로 계산된 names_and_labels를 받아서 graph_for_reference를 기준으로 한 colormap을 만든다."""
+    out = list(graph_for_reference.nodes)[:]
+    for name, label in names_and_labels:
+        index = out.index(name)
+        out[index] = colordict[label]
+    return out
+        
+
+def visualize_snapshot(node_name_list, snapshot):
+    """한번 iteration 돌 때마다, 전체 BN의 snapshot을 가시화한다."""
+    plt.clf()
+    dists = []
+    for dist in snapshot:
+        if type(dist) == int:  # oracle에 의해 고정된 경우!
+            dists.append(normalize_dist(dist))
+        else:
+            dists.append(dist.parameters[0])
+    names_and_dists = list(zip(node_name_list, dists))
+    names_and_labels = list(map(lambda tup: (tup[0], find_max_val(tup[1])), names_and_dists))
+    colormap = create_colormap(names_and_labels)
+    nx.draw(graph_for_reference, node_color=colormap,
+            pos=nx.circular_layout(graph_for_reference),
+            with_labels=True, node_size=100)
+    plt.show()
 
 
 def report_statistics():

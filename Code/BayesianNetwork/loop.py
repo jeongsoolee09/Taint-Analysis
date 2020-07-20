@@ -386,8 +386,10 @@ def random_loop(current_asked, current_evidence):
 
 
 def d_separation(node, givens):
-    """givens에 있는 노드들에 대한, node와 조건부 독립인 노드들을 찾아낸다. Complexity: O(n^2)."""
-    pass
+    """givens에 있는 노드들에 대한, node와 조건부 독립인 노드들을 찾아낸다. Complexity: O(n)."""
+    out = []
+    for other_node in graph_for_reference.nodes:
+        ancestral_graph = undefined
 
 
 

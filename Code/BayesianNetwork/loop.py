@@ -481,7 +481,6 @@ def make_names_and_dists(snapshot):
     dists = []
     node_name_list = list(map(lambda node: node.name, BN_for_inference.states))
     for dist in snapshot:
-        print(dist)
         if type(dist) == int:  # oracle에 의해 고정된 경우!
             dists.append(normalize_dist(dist))
         else:

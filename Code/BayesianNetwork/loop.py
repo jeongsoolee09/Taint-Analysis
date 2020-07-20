@@ -415,7 +415,7 @@ def tactical_loop(current_asked, current_evidence, updated_nodes, prev_snapshot)
     query = find_max_d_con(current_asked, updated_nodes)
     if query == "terminate!":
         print("nothing more to ask!")
-        return make_names_and_dists(prev_snapshot)
+        return prev_snapshot
     oracle_response = input("What label does <" + query + "> bear? [src/sin/san/non]: ")
     updated_nodes = updated_nodes + list(d_connected(query, current_asked))
     current_asked = current_asked + [query]
@@ -481,6 +481,7 @@ def make_names_and_dists(snapshot):
     dists = []
     node_name_list = list(map(lambda node: node.name, BN_for_inference.states))
     for dist in snapshot:
+        print(dist)
         if type(dist) == int:  # oracle에 의해 고정된 경우!
             dists.append(normalize_dist(dist))
         else:
@@ -502,14 +503,22 @@ def visualize_snapshot(snapshot):
 
 
 def get_initial_snapshot():
-    return list(map(lambda state: (state.name, state.distribution), BN_for_inference.states))
+    return list(map(lambda state: state.distribution, BN_for_inference.states))
 
 
 def report_results(final_snapshot):
-    initial_snapshot = get_initial_snapshot()
+    initial_snapshot = BN_for_inference.predict_proba({})
     names_and_dists_initial = make_names_and_dists(initial_snapshot)
+    names_and_labels_initial = list(map(lambda tup: (tup[0], find_max_val(tup[1])), names_and_dists_initial))
+
     names_and_dists_final = make_names_and_dists(final_snapshot)
+    names_and_labels_final = list(map(lambda tup: (tup[0], find_max_val(tup[1])), names_and_dists_final))
     
+    changed_mesg = []
+    for tup1, tup2 in zip(names_and_labels_initial, names_and_labels_final):
+        # if the label has changed after interaction
+        if tup1[1] != tup2[1]:
+            print(tup1[0]+" is updated from "+tup1[1]+" to "+tup2[1])
 
 
 def report_meta_statistics():
@@ -531,6 +540,6 @@ raw_data.close()
 edges_data.close()
 
 
-initial_snapshot = get_initial_snapshot()
+initial_snapshot = BN_for_inference.predict_proba({})
 final_snapshot = tactical_loop(list(), dict(), list(), initial_snapshot)
-# report_results(final_snapshot)
+report_results(final_snapshot)

@@ -409,37 +409,36 @@ def find_max_d_con(current_asked, updated_nodes):
     
 
 
-def tactical_loop(current_asked, current_evidence, updated_nodes):
+def tactical_loop(current_asked, current_evidence, updated_nodes, prev_snapshot):
     """the main interaction functionality, asking tactically using d-separation"""
-    state_names = list(map(lambda node: node.name, BN_for_inference.states))
     # node들 중에서, 가장 d_connected node가 많은 노드를 구한다.
     query = find_max_d_con(current_asked, updated_nodes)
     if query == "terminate!":
         print("nothing more to ask!")
-        return
+        return prev_snapshot
     oracle_response = input("What label does <" + query + "> bear? [src/sin/san/non]: ")
     updated_nodes = updated_nodes + list(d_connected(query, current_asked))
     current_asked = current_asked + [query]
     if oracle_response == 'src':
         current_evidence[query] = 1
-        snapshot = BN_for_inference.predict_proba(current_evidence)
-        visualize_snapshot(state_names, snapshot)
-        tactical_loop(current_asked, current_evidence, updated_nodes)
+        new_snapshot = BN_for_inference.predict_proba(current_evidence)
+        visualize_snapshot(new_snapshot)
+        tactical_loop(current_asked, current_evidence, updated_nodes, new_snapshot)
     elif oracle_response == 'sin':
         current_evidence[query] = 2
-        snapshot = BN_for_inference.predict_proba(current_evidence)
-        visualize_snapshot(state_names, snapshot)
-        tactical_loop(current_asked, current_evidence, updated_nodes)
+        new_snapshot = BN_for_inference.predict_proba(current_evidence)
+        visualize_snapshot(new_snapshot)
+        tactical_loop(current_asked, current_evidence, updated_nodes, new_snapshot)
     elif oracle_response == 'san':
         current_evidence[query] = 3
-        snapshot = BN_for_inference.predict_proba(current_evidence)
-        visualize_snapshot(state_names, snapshot)
-        tactical_loop(current_asked, current_evidence, updated_nodes)
+        new_snapshot = BN_for_inference.predict_proba(current_evidence)
+        visualize_snapshot(new_snapshot)
+        tactical_loop(current_asked, current_evidence, updated_nodes, new_snapshot)
     elif oracle_response == 'non':
         current_evidence[query] = 4
-        snapshot = BN_for_inference.predict_proba(current_evidence)
-        visualize_snapshot(state_names, snapshot)
-        tactical_loop(current_asked, current_evidence, updated_nodes)
+        new_snapshot = BN_for_inference.predict_proba(current_evidence)
+        visualize_snapshot(new_snapshot)
+        tactical_loop(current_asked, current_evidence, updated_nodes, new_snapshot)
 
 
 def normalize_dist(oracle_response):
@@ -478,16 +477,23 @@ def create_colormap(names_and_labels):
     return out
         
 
-def visualize_snapshot(node_name_list, snapshot):
-    """한번 iteration 돌 때마다, 전체 BN의 snapshot을 가시화한다."""
-    plt.clf()
+def make_names_and_dists(snapshot):
     dists = []
+    node_name_list = list(map(lambda node: node.name, BN_for_inference.states))
     for dist in snapshot:
         if type(dist) == int:  # oracle에 의해 고정된 경우!
             dists.append(normalize_dist(dist))
         else:
             dists.append(dist.parameters[0])
     names_and_dists = list(zip(node_name_list, dists))
+    return names_and_dists
+
+
+def visualize_snapshot(snapshot):
+    """한번 iteration 돌 때마다, 전체 BN의 snapshot을 가시화한다."""
+    plt.clf()
+    node_name_list = list(map(lambda node: node.name, BN_for_inference.states))
+    names_and_dists = make_names_and_dists(snapshot)
     names_and_labels = list(map(lambda tup: (tup[0], find_max_val(tup[1])), names_and_dists))
     colormap = create_colormap(names_and_labels)
     nx.draw(graph_for_reference, node_color=colormap,
@@ -496,8 +502,15 @@ def visualize_snapshot(node_name_list, snapshot):
     plt.show()
 
 
-def report_results():
-    pass
+def get_initial_snapshot():
+    return list(map(lambda state: (state.name, state.distribution), BN_for_inference.states))
+
+
+def report_results(final_snapshot):
+    initial_snapshot = get_initial_snapshot()
+    names_and_dists_initial = make_names_and_dists(initial_snapshot)
+    names_and_dists_final = make_names_and_dists(final_snapshot)
+    
 
 
 def report_meta_statistics():
@@ -520,5 +533,6 @@ edges_data.close()
 
 
 if __name__ == "__main__":
-    tactical_loop(list(), dict(), list())
-    report_results()
+    initial_snapshot = get_initial_snapshot()
+    final_snapshot = tactical_loop(list(), dict(), list(), initial_snapshot)
+    # report_results(final_snapshot)

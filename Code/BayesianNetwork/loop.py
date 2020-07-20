@@ -406,7 +406,6 @@ def find_max_d_con(current_asked, updated_nodes):
     tmpdict = valmap(lambda set_: len(set_), tmpdict)
     max_key = max(tmpdict, key=lambda key: tmpdict[key])
     return max_key
-    
 
 
 def tactical_loop(current_asked, current_evidence, updated_nodes, prev_snapshot):
@@ -520,7 +519,7 @@ def report_results(final_snapshot):
             print(tup1[0]+" is updated from "+tup1[1]+" to "+tup2[1])
 
 
-def save_data(final_snapshot):
+def save_data_as_csv(final_snapshot):
     """inference가 다 끝난 label들을 csv로 저장한다."""
     names_and_dists_final = make_names_and_dists(final_snapshot)
     names_and_labels_final = list(map(lambda tup: (tup[0], find_max_val(tup[1])), names_and_dists_final))
@@ -551,4 +550,4 @@ if __name__ == "__main__":
     initial_snapshot = BN_for_inference.predict_proba({})
     final_snapshot = tactical_loop(list(), dict(), list(), initial_snapshot)
     report_results(final_snapshot)
-    save_data(final_snapshot)
+    save_data_as_csv(final_snapshot)

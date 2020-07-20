@@ -8,6 +8,7 @@ import networkx as nx
 import itertools as it
 import os
 import random
+from toolz import valmap
 from make_CPT import *
 
 start = time.time()
@@ -385,46 +386,60 @@ def random_loop(current_asked, current_evidence):
         random_loop(current_asked+[query], current_evidence)
 
 
-def d_separation(node, givens):
-    """givens에 있는 노드들에 대한, node와 조건부 독립인 노드들을 찾아낸다. Complexity: O(n)."""
-    out = []
+def d_connected(node, current_asked):
+    """현재까지 물어본 노드들이 주어졌을 때, node와 조건부 독립인 노드들의 set을 찾아낸다. Complexity: O(n)."""
+    out = set()
     for other_node in graph_for_reference.nodes:
-        ancestral_graph = undefined
+        if nx.d_separated(graph_for_reference, {node}, {other_node}, set(current_asked)):
+            out.add(other_node)
+    return set(graph_for_reference.nodes) - out
 
 
+def find_max_d_con(current_asked, updated_nodes):
+    """graph_for_reference의 node들 중에서 가장 d_connected node가 가장 많은 노드를 찾아낸다."""
+    tmpdict = dict()
+    for node in graph_for_reference.nodes:
+        tmpdict[node] = d_connected(node, current_asked)
+    tmpdict = valmap(lambda set_: set_-set(current_asked)-set(updated_nodes), tmpdict)
+    if forall(lambda set_: set_ == set(), tmpdict.values()):  # no more to ask
+        return "terminate!"
+    tmpdict = valmap(lambda set_: len(set_), tmpdict)
+    max_key = max(tmpdict, key=lambda key: tmpdict[key])
+    return max_key
+    
 
-def tactical_loop(current_asked, current_evidence):
+
+def tactical_loop(current_asked, current_evidence, updated_nodes):
     """the main interaction functionality, asking tactically using d-separation"""
-    i = random.randint(0, len(BN_for_inference.states)-1)
     state_names = list(map(lambda node: node.name, BN_for_inference.states))
-    query = state_names[i]
-    if set(current_asked) == set(state_names):
+    # node들 중에서, 가장 d_connected node가 많은 노드를 구한다.
+    query = find_max_d_con(current_asked, updated_nodes)
+    if query == "terminate!":
         print("nothing more to ask!")
         return
-    while query in current_asked:
-        i = random.randint(0, len(BN_for_inference.states)-1)
-        query = BN_for_inference.states[i].name
     oracle_response = input("What label does <" + query + "> bear? [src/sin/san/non]: ")
+    updated_nodes = updated_nodes + list(d_connected(query, current_asked))
+    current_asked = current_asked + [query]
     if oracle_response == 'src':
         current_evidence[query] = 1
         snapshot = BN_for_inference.predict_proba(current_evidence)
         visualize_snapshot(state_names, snapshot)
-        tactical_loop(current_asked+[query], current_evidence)
+        tactical_loop(current_asked, current_evidence, updated_nodes)
     elif oracle_response == 'sin':
         current_evidence[query] = 2
         snapshot = BN_for_inference.predict_proba(current_evidence)
         visualize_snapshot(state_names, snapshot)
-        tactical_loop(current_asked+[query], current_evidence)
+        tactical_loop(current_asked, current_evidence, updated_nodes)
     elif oracle_response == 'san':
         current_evidence[query] = 3
         snapshot = BN_for_inference.predict_proba(current_evidence)
         visualize_snapshot(state_names, snapshot)
-        tactical_loop(current_asked+[query], current_evidence)
+        tactical_loop(current_asked, current_evidence, updated_nodes)
     elif oracle_response == 'non':
         current_evidence[query] = 4
         snapshot = BN_for_inference.predict_proba(current_evidence)
         visualize_snapshot(state_names, snapshot)
-        tactical_loop(current_asked+[query], current_evidence)
+        tactical_loop(current_asked, current_evidence, updated_nodes)
 
 
 def normalize_dist(oracle_response):
@@ -481,7 +496,11 @@ def visualize_snapshot(node_name_list, snapshot):
     plt.show()
 
 
-def report_statistics():
+def report_results():
+    pass
+
+
+def report_meta_statistics():
     """meta-functionality for debugging"""
     print("# of nodes: ", len(list(BN_for_inference.states)))
     print("# of edges: ", len(list(BN_for_inference.edges)))
@@ -501,4 +520,5 @@ edges_data.close()
 
 
 if __name__ == "__main__":
-    random_loop(list(), dict())
+    tactical_loop(list(), dict(), list())
+    report_results()

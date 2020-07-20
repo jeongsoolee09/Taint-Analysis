@@ -415,7 +415,7 @@ def tactical_loop(current_asked, current_evidence, updated_nodes, prev_snapshot)
     query = find_max_d_con(current_asked, updated_nodes)
     if query == "terminate!":
         print("nothing more to ask!")
-        return prev_snapshot
+        return make_names_and_dists(prev_snapshot)
     oracle_response = input("What label does <" + query + "> bear? [src/sin/san/non]: ")
     updated_nodes = updated_nodes + list(d_connected(query, current_asked))
     current_asked = current_asked + [query]
@@ -423,22 +423,22 @@ def tactical_loop(current_asked, current_evidence, updated_nodes, prev_snapshot)
         current_evidence[query] = 1
         new_snapshot = BN_for_inference.predict_proba(current_evidence)
         visualize_snapshot(new_snapshot)
-        tactical_loop(current_asked, current_evidence, updated_nodes, new_snapshot)
+        return tactical_loop(current_asked, current_evidence, updated_nodes, new_snapshot)
     elif oracle_response == 'sin':
         current_evidence[query] = 2
         new_snapshot = BN_for_inference.predict_proba(current_evidence)
         visualize_snapshot(new_snapshot)
-        tactical_loop(current_asked, current_evidence, updated_nodes, new_snapshot)
+        return tactical_loop(current_asked, current_evidence, updated_nodes, new_snapshot)
     elif oracle_response == 'san':
         current_evidence[query] = 3
         new_snapshot = BN_for_inference.predict_proba(current_evidence)
         visualize_snapshot(new_snapshot)
-        tactical_loop(current_asked, current_evidence, updated_nodes, new_snapshot)
+        return tactical_loop(current_asked, current_evidence, updated_nodes, new_snapshot)
     elif oracle_response == 'non':
         current_evidence[query] = 4
         new_snapshot = BN_for_inference.predict_proba(current_evidence)
         visualize_snapshot(new_snapshot)
-        tactical_loop(current_asked, current_evidence, updated_nodes, new_snapshot)
+        return tactical_loop(current_asked, current_evidence, updated_nodes, new_snapshot)
 
 
 def normalize_dist(oracle_response):
@@ -492,7 +492,6 @@ def make_names_and_dists(snapshot):
 def visualize_snapshot(snapshot):
     """한번 iteration 돌 때마다, 전체 BN의 snapshot을 가시화한다."""
     plt.clf()
-    node_name_list = list(map(lambda node: node.name, BN_for_inference.states))
     names_and_dists = make_names_and_dists(snapshot)
     names_and_labels = list(map(lambda tup: (tup[0], find_max_val(tup[1])), names_and_dists))
     colormap = create_colormap(names_and_labels)
@@ -532,7 +531,6 @@ raw_data.close()
 edges_data.close()
 
 
-if __name__ == "__main__":
-    initial_snapshot = get_initial_snapshot()
-    final_snapshot = tactical_loop(list(), dict(), list(), initial_snapshot)
-    # report_results(final_snapshot)
+initial_snapshot = get_initial_snapshot()
+final_snapshot = tactical_loop(list(), dict(), list(), initial_snapshot)
+# report_results(final_snapshot)

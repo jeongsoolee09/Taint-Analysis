@@ -520,6 +520,14 @@ def report_results(final_snapshot):
             print(tup1[0]+" is updated from "+tup1[1]+" to "+tup2[1])
 
 
+def save_data(final_snapshot):
+    """inference가 다 끝난 label들을 csv로 저장한다."""
+    names_and_dists_final = make_names_and_dists(final_snapshot)
+    names_and_labels_final = list(map(lambda tup: (tup[0], find_max_val(tup[1])), names_and_dists_final))
+    out_df = pd.DataFrame(names_and_labels_final, columns=["name", "label"])
+    out_df.to_csv("inferred.csv", mode='w')
+        
+
 def report_meta_statistics():
     """meta-functionality for debugging"""
     print("# of nodes: ", len(list(BN_for_inference.states)))
@@ -543,3 +551,4 @@ if __name__ == "__main__":
     initial_snapshot = BN_for_inference.predict_proba({})
     final_snapshot = tactical_loop(list(), dict(), list(), initial_snapshot)
     report_results(final_snapshot)
+    save_data(final_snapshot)

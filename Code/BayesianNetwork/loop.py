@@ -540,6 +540,7 @@ raw_data.close()
 edges_data.close()
 
 
-initial_snapshot = BN_for_inference.predict_proba({})
-final_snapshot = tactical_loop(list(), dict(), list(), initial_snapshot)
-report_results(final_snapshot)
+if __name__ == "__main__":
+    initial_snapshot = BN_for_inference.predict_proba({})
+    final_snapshot = tactical_loop(list(), dict(), list(), initial_snapshot)
+    report_results(final_snapshot)

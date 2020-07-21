@@ -13,6 +13,8 @@ methodInfo2 = methodInfo2.drop('id', axis=1)
 # TODO: Dead 스트링의 끝에 )가 하나 남음
 def tuple_string_to_tuple(tuple_string):
     string_list = tuple_string.split(", ")
+    if len(string_list) == 3:
+        string_list = [string_list[0], string_list[1]+", "+string_list[2]]
     string_list[0] = string_list[0].lstrip('(')
     string_list[1] = string_list[1].rstrip(')')
     string_list[1] = string_list[1]+')'

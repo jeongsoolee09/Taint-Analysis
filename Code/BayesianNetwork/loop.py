@@ -139,7 +139,7 @@ def create_roots_for_BN(G, BN):
     return out
 
 
-def find_parent_nodes(states, names):
+def find_nodes_matching_names(states, names):
     """state들 중에서 이름이 names와 매칭되는 state를 names의 index대로 리턴한다."""
     out = []
     for name in names:
@@ -155,8 +155,7 @@ def create_internal_node_for_BN(node, BN, prev_states):
     parents_and_edges = find_edge_labels(node)
     parents = list(map(lambda tup: tup[0], parents_and_edges)) 
     edges = list(map(lambda tup: tup[1], parents_and_edges))
-    parent_nodes = find_parent_nodes(prev_states, parents)
-    parent_dist = list(map(lambda node: node.distribution, parent_nodes))
+    parent_dist = list(map(lambda state: state.distribution, prev_states))
     probs = create_CPT(edges).transpose().flatten()
     cond_prob_table_width = len(list(graph_for_reference.predecessors(node)))
     cond_prob_table_gen = it.repeat(labels, cond_prob_table_width+1)
@@ -172,88 +171,47 @@ def create_internal_node_for_BN(node, BN, prev_states):
     return new_node
 
 
-def forall(unary_pred, collection):
-    return reduce(lambda acc, elem: unary_pred(elem) and acc, collection, True)
-
-
-def undefined_parents_of(graph, node):
-    out = []
-    for parent in graph.predecessors(node):
-        if not graph.nodes[parent]['defined']:
-            out.append(parent)
-    return out
-
-
-# state objects in BN_for_inference.
-BN_states = []
-
-
-def create_internal_nodes_for_BN(BN, node, states):
-    """Recursively resolve the dependencies."""
-    global BN_states
-    if graph_for_reference.nodes[node]['defined']:
-        if len(list(graph_for_reference.successors(node))) > 0:
-            for succ in graph_for_reference.successors(node):
-                if graph_for_reference.nodes[succ]['under_construction']:
-                    return
-                else:
-                    create_internal_nodes_for_BN(BN, succ, states)
-        else:
-            return
-    else:
-        if forall(lambda pred: graph_for_reference.nodes[pred]['defined'], graph_for_reference.predecessors(node)):
-            new_state = create_internal_node_for_BN(node, BN, states)
-            graph_for_reference.nodes[node]['defined'] = True
-            BN_states.append(new_state)
-            if len(list(graph_for_reference.successors(node))) > 0:
-                for succ in graph_for_reference.successors(node):
-                    if graph_for_reference.nodes[succ]['under_construction']:
-                        return
-                    else:
-                        create_internal_nodes_for_BN(BN, succ, states+[new_state])
-            else:
-                return
-        else:
-            graph_for_reference.nodes[node]['under_construction'] = True
-            for parent in undefined_parents_of(graph_for_reference, node):
-                create_internal_nodes_for_BN(BN, parent, states)
-            graph_for_reference.nodes[node]['under_construction'] = False
-            new_state = create_internal_node_for_BN(node, BN, states)
-            graph_for_reference.nodes[node]['defined'] = True
-            BN_states.append(new_state)
-            if len(list(graph_for_reference.successors(node))) > 0:
-                for succ in graph_for_reference.successors(node):
-                    if graph_for_reference.nodes[succ]['under_construction']:
-                        return
-                    else:
-                        create_internal_nodes_for_BN(BN, succ, states+[new_state])
-            else:
-                return
-
-
-def state_lookup(node_name):
-    for state in BN_states:
+def find_BN_state(node_name, currently_defined_states):
+    """node_name이 주어졌을 때, 지금까지 정의된 BN의 state들 중에서 이름이 node_name이랑 같은 노드를 내놓는다."""
+    for state in currently_defined_states:
         if state.name == node_name:
             return state
 
 
-def add_edge_to_BN(BN):
+def create_internal_nodes_for_BN(BN, currently_defined_states):
+    """initialize the internal nodes using topological sort on graph_for_reference"""
+    for node_name in list(nx.topological_sort(graph_for_reference)):
+        if node_name in find_root(graph_for_reference):
+            continue
+        else:
+            predecessor_names = list(graph_for_reference.predecessors(node_name))
+            predecessor_nodes = list(map(lambda pred_name: find_BN_state(pred_name, currently_defined_states), predecessor_names))
+            # print(list(map(lambda node: node.name, predecessor_nodes)))
+            new_state = create_internal_node_for_BN(node_name, BN, predecessor_nodes)
+            currently_defined_states.append(new_state)
+    return currently_defined_states
+
+
+def state_lookup(node_name, currently_defined_states):
+    for state in currently_defined_states:
+        if state.name == node_name:
+            return state
+
+
+def add_edge_to_BN(BN, currently_defined_states):
     """adds edges to BN"""
     for edge in graph_for_reference.edges:
         node1, node2 = edge
-        state1 = state_lookup(node1)
-        state2 = state_lookup(node2)
+        state1 = state_lookup(node1, currently_defined_states)
+        state2 = state_lookup(node2, currently_defined_states)
         BN.add_edge(state1, state2)
 
 
 def init_BN():
-    global BN_states
     BN = BayesianNetwork("Interactive Inference of Taint Method Specifications")
     root_states = create_roots_for_BN(graph_for_reference, BN) 
-    BN_states = BN_states + root_states
-    sample_root = find_root(graph_for_reference)[0]
-    create_internal_nodes_for_BN(BN, sample_root, root_states)
-    add_edge_to_BN(BN)
+    states = create_internal_nodes_for_BN(BN, root_states)
+    add_edge_to_BN(BN, states)
     BN.bake()
     return BN
 

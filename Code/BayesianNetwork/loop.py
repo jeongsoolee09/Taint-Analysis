@@ -310,38 +310,46 @@ var_and_chain = create_var_and_chain()
 tactics_per_var = list(map(lambda x: (x[0], create_tactics(x[1])), var_and_chain))
 
 
-def random_loop(current_asked, current_evidence):
+def random_loop(current_asked, current_evidence, prev_snapshot, precision_list, stability_list):
     """the main interaction functionality, asking randomly"""
     i = random.randint(0, len(BN_for_inference.states)-1)
     state_names = list(map(lambda node: node.name, BN_for_inference.states))
     query = state_names[i]
     if set(current_asked) == set(state_names):
         print("nothing more to ask!")
-        return
+        return prev_snapshot, precision_list, stability_list
     while query in current_asked:
         i = random.randint(0, len(BN_for_inference.states)-1)
         query = BN_for_inference.states[i].name
     oracle_response = input("What label does <" + query + "> bear? [src/sin/san/non]: ")
     if oracle_response == 'src':
         current_evidence[query] = 1
-        snapshot = BN_for_inference.predict_proba(current_evidence)
-        visualize_snapshot(state_names, snapshot)
-        random_loop(current_asked+[query], current_evidence)
+        new_snapshot = BN_for_inference.predict_proba(current_evidence)
+        visualize_snapshot(state_names, new_snapshot)
+        current_precision_list = calculate_precision(new_snapshot)
+        current_stability_list = calculate_stability(prev_snapshot, new_snapshot)
+        return random_loop(current_asked+[query], current_evidence, new_snapshot,  precision_list+[current_precision_list], stability_list+[current_stability_list])
     elif oracle_response == 'sin':
         current_evidence[query] = 2
-        snapshot = BN_for_inference.predict_proba(current_evidence)
-        visualize_snapshot(state_names, snapshot)
-        random_loop(current_asked+[query], current_evidence)
+        new_snapshot = BN_for_inference.predict_proba(current_evidence)
+        visualize_snapshot(state_names, new_snapshot)
+        current_precision_list = calculate_precision(new_snapshot)
+        current_stability_list = calculate_stability(prev_snapshot, new_snapshot)
+        return random_loop(current_asked+[query], current_evidence, new_snapshot,  precision_list+[current_precision_list], stability_list+[current_stability_list])
     elif oracle_response == 'san':
         current_evidence[query] = 3
-        snapshot = BN_for_inference.predict_proba(current_evidence)
-        visualize_snapshot(state_names, snapshot)
-        random_loop(current_asked+[query], current_evidence)
+        new_snapshot = BN_for_inference.predict_proba(current_evidence)
+        visualize_snapshot(state_names, new_snapshot)
+        current_precision_list = calculate_precision(new_snapshot)
+        current_stability_list = calculate_stability(prev_snapshot, new_snapshot)
+        return random_loop(current_asked+[query], current_evidence, new_snapshot,  precision_list+[current_precision_list], stability_list+[current_stability_list])
     elif oracle_response == 'non':
         current_evidence[query] = 4
-        snapshot = BN_for_inference.predict_proba(current_evidence)
-        visualize_snapshot(state_names, snapshot)
-        random_loop(current_asked+[query], current_evidence)
+        new_snapshot = BN_for_inference.predict_proba(current_evidence)
+        visualize_snapshot(state_names, new_snapshot)
+        current_precision_list = calculate_precision(new_snapshot)
+        current_stability_list = calculate_stability(prev_snapshot, new_snapshot)
+        return random_loop(current_asked+[query], current_evidence, new_snapshot,  precision_list+[current_precision_list], stability_list+[current_stability_list])
 
 
 def d_connected(node, current_asked):
@@ -366,13 +374,13 @@ def find_max_d_con(current_asked, updated_nodes):
     return max_key
 
 
-def tactical_loop(current_asked, current_evidence, updated_nodes, prev_snapshot):
+def tactical_loop(current_asked, current_evidence, updated_nodes, prev_snapshot, precision_list, stability_list):
     """the main interaction functionality, asking tactically using d-separation"""
     # node들 중에서, 가장 d_connected node가 많은 노드를 구한다.
     query = find_max_d_con(current_asked, updated_nodes)
     if query == "terminate!":
         print("nothing more to ask!")
-        return prev_snapshot
+        return prev_snapshot, precision_list, stability_list
     oracle_response = input("What label does <" + query + "> bear? [src/sin/san/non]: ")
     updated_nodes = updated_nodes + list(d_connected(query, current_asked))
     current_asked = current_asked + [query]
@@ -380,22 +388,30 @@ def tactical_loop(current_asked, current_evidence, updated_nodes, prev_snapshot)
         current_evidence[query] = 1
         new_snapshot = BN_for_inference.predict_proba(current_evidence)
         visualize_snapshot(new_snapshot)
-        return tactical_loop(current_asked, current_evidence, updated_nodes, new_snapshot)
+        current_precision_list = calculate_precision(snapshot)
+        current_stability_list = calculate_stability(prev_snapshot, new_snapshot)
+        return tactical_loop(current_asked, current_evidence, updated_nodes, new_snapshot, precision_list+[current_precision_list], stability_list+[current_stability_list])
     elif oracle_response == 'sin':
         current_evidence[query] = 2
         new_snapshot = BN_for_inference.predict_proba(current_evidence)
         visualize_snapshot(new_snapshot)
-        return tactical_loop(current_asked, current_evidence, updated_nodes, new_snapshot)
+        current_precision_list = calculate_precision(snapshot)
+        current_stability_list = calculate_stability(prev_snapshot, new_snapshot)
+        return tactical_loop(current_asked, current_evidence, updated_nodes, new_snapshot, precision_list+[current_precision_list], stability_list+[current_stability_list])
     elif oracle_response == 'san':
         current_evidence[query] = 3
         new_snapshot = BN_for_inference.predict_proba(current_evidence)
         visualize_snapshot(new_snapshot)
-        return tactical_loop(current_asked, current_evidence, updated_nodes, new_snapshot)
+        current_precision_list = calculate_precision(snapshot)
+        current_stability_list = calculate_stability(prev_snapshot, new_snapshot)
+        return tactical_loop(current_asked, current_evidence, updated_nodes, new_snapshot, precision_list+[current_precision_list], stability_list+[current_stability_list])
     elif oracle_response == 'non':
         current_evidence[query] = 4
         new_snapshot = BN_for_inference.predict_proba(current_evidence)
         visualize_snapshot(new_snapshot)
-        return tactical_loop(current_asked, current_evidence, updated_nodes, new_snapshot)
+        current_precision_list = calculate_precision(snapshot)
+        current_stability_list = calculate_stability(prev_snapshot, new_snapshot)
+        return tactical_loop(current_asked, current_evidence, updated_nodes, new_snapshot, precision_list+[current_precision_list], stability_list+[current_stability_list])
 
 
 def normalize_dist(oracle_response):
@@ -519,7 +535,7 @@ def calculate_precision(current_snapshot):
         if names_and_dists[node_name] != correct_solution[node_name]:
             wrong_nodes.append(node_name)
     return wrong_nodes
-    
+
 
 # time t에서의 stability: time (t-1)에서의 스냅샷과 비교했을 때 time t에서의 스냅샷에서 레이블이 달라진 노드의 개수
 def calculate_stability(prev_snapshot, current_snapshot):
@@ -542,7 +558,6 @@ def build_precision_graph(result_report):
         y.append(number_of_wrong_nodes)
     return x, y
 
-        
 
 def build_stability_graph(results_report):
     """stability_graph의 x축 값의 list와 y축 값의 list를 만든다."""
@@ -571,6 +586,7 @@ edges_data.close()
 
 if __name__ == "__main__":
     initial_snapshot = BN_for_inference.predict_proba({})
-    final_snapshot = tactical_loop(list(), dict(), list(), initial_snapshot)
+    # final_snapshot = tactical_loop(list(), dict(), list(), initial_snapshot, list())
+    final_snapshot = random_loop(list(), dict(), list(), initial_snapshot, list())
     report_results(final_snapshot)
     save_data_as_csv(final_snapshot)

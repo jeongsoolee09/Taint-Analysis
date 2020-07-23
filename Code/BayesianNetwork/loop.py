@@ -325,28 +325,28 @@ def random_loop(current_asked, current_evidence, prev_snapshot, precision_list, 
     if oracle_response == 'src':
         current_evidence[query] = 1
         new_snapshot = BN_for_inference.predict_proba(current_evidence)
-        visualize_snapshot(state_names, new_snapshot)
+        visualize_snapshot(new_snapshot)
         current_precision_list = calculate_precision(new_snapshot)
         current_stability_list = calculate_stability(prev_snapshot, new_snapshot)
         return random_loop(current_asked+[query], current_evidence, new_snapshot,  precision_list+[current_precision_list], stability_list+[current_stability_list])
     elif oracle_response == 'sin':
         current_evidence[query] = 2
         new_snapshot = BN_for_inference.predict_proba(current_evidence)
-        visualize_snapshot(state_names, new_snapshot)
+        visualize_snapshot(new_snapshot)
         current_precision_list = calculate_precision(new_snapshot)
         current_stability_list = calculate_stability(prev_snapshot, new_snapshot)
         return random_loop(current_asked+[query], current_evidence, new_snapshot,  precision_list+[current_precision_list], stability_list+[current_stability_list])
     elif oracle_response == 'san':
         current_evidence[query] = 3
         new_snapshot = BN_for_inference.predict_proba(current_evidence)
-        visualize_snapshot(state_names, new_snapshot)
+        visualize_snapshot(new_snapshot)
         current_precision_list = calculate_precision(new_snapshot)
         current_stability_list = calculate_stability(prev_snapshot, new_snapshot)
         return random_loop(current_asked+[query], current_evidence, new_snapshot,  precision_list+[current_precision_list], stability_list+[current_stability_list])
     elif oracle_response == 'non':
         current_evidence[query] = 4
         new_snapshot = BN_for_inference.predict_proba(current_evidence)
-        visualize_snapshot(state_names, new_snapshot)
+        visualize_snapshot(new_snapshot)
         current_precision_list = calculate_precision(new_snapshot)
         current_stability_list = calculate_stability(prev_snapshot, new_snapshot)
         return random_loop(current_asked+[query], current_evidence, new_snapshot,  precision_list+[current_precision_list], stability_list+[current_stability_list])
@@ -422,7 +422,7 @@ def normalize_dist(oracle_response):
         return {1.0: 0, 2.0: 1, 3.0: 0, 4.0: 0}
     elif oracle_response == 3:
         return {1.0: 0, 2.0: 0, 3.0: 1, 4.0: 0}
-    
+    elif oracle_response == 4:
         return {1.0: 0, 2.0: 0, 3.0: 0, 4.0: 1}
 
 
@@ -532,7 +532,7 @@ def calculate_precision(current_snapshot):
     names_and_labels = dict(map(lambda tup: (tup[0], find_max_val(tup[1])), names_and_dists))
     wrong_nodes = []
     for node_name in graph_for_reference.nodes:
-        if names_and_dists[node_name] != correct_solution[node_name]:
+        if names_and_labels[node_name] != correct_solution[node_name]:
             wrong_nodes.append(node_name)
     return wrong_nodes
 
@@ -541,10 +541,12 @@ def calculate_precision(current_snapshot):
 def calculate_stability(prev_snapshot, current_snapshot):
     """직전 확률분포 스냅샷에 대한 현재 확률분포 스냅샷의 stability를 측정한다."""
     names_and_dists_prev = make_names_and_dists(prev_snapshot)
+    names_and_labels_prev = dict(map(lambda tup: (tup[0], find_max_val(tup[1])), names_and_dists_prev))
     names_and_dists_current = make_names_and_dists(current_snapshot)
+    names_and_labels_current = dict(map(lambda tup: (tup[0], find_max_val(tup[1])), names_and_dists_current))
     changed_nodes = []
     for node_name in graph_for_reference.nodes:
-        if names_and_dists_prev[node_name] != names_and_dists_current[node_name]:
+        if names_and_labels_prev[node_name] != names_and_labels_current[node_name]:
             changed_nodes.append(node_name)
     return changed_nodes
 
@@ -586,7 +588,7 @@ edges_data.close()
 
 if __name__ == "__main__":
     initial_snapshot = BN_for_inference.predict_proba({})
-    # final_snapshot = tactical_loop(list(), dict(), list(), initial_snapshot, list())
-    final_snapshot = random_loop(list(), dict(), list(), initial_snapshot, list())
+    # final_snapshot = tactical_loop(list(), dict(), initial_snapshot, list())
+    final_snapshot = random_loop(list(), dict(), initial_snapshot, list(), list())
     report_results(final_snapshot)
     save_data_as_csv(final_snapshot)

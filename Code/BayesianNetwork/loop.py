@@ -406,7 +406,7 @@ def normalize_dist(oracle_response):
         return {1.0: 0, 2.0: 1, 3.0: 0, 4.0: 0}
     elif oracle_response == 3:
         return {1.0: 0, 2.0: 0, 3.0: 1, 4.0: 0}
-    elif oracle_response == 4:
+    
         return {1.0: 0, 2.0: 0, 3.0: 0, 4.0: 1}
 
 
@@ -458,10 +458,6 @@ def visualize_snapshot(snapshot):
     plt.show()
 
 
-def get_initial_snapshot():
-    return list(map(lambda state: state.distribution, BN_for_inference.states))
-
-
 def report_results(final_snapshot):
     initial_snapshot = BN_for_inference.predict_proba({})
     names_and_dists_initial = make_names_and_dists(initial_snapshot)
@@ -498,6 +494,75 @@ def plot_graph():
     nx.draw(graph_for_reference, font_size=8, with_labels=True,
             pos=nx.circular_layout(graph_for_reference))
     plt.show()
+
+
+# Methods for Scoring ====================================
+# ========================================================
+
+correct_solution = dict([('void PrintStream.println(int)', 'sin'),
+                         ('void WhatIWantExample.g(int)', 'san'),
+                         ('void WhatIWantExample.m3(int)', 'sin'),
+                         ('void WhatIWantExample.h(int)', 'non'),
+                         ('void WhatIWantExample.main()', 'non'),
+                         ('int WhatIWantExample.m2(int)', 'san'),
+                         ('void WhatIWantExample.f()', 'src'),
+                         ('int WhatIWantExample.m1()', 'src')])
+
+
+def calculate_precision(current_snapshot):
+    """현재 확률분포 스냅샷의 정확도를 측정한다."""
+    # current_snapshot의 타입은? np.ndarray of Distribution.
+    names_and_dists = make_names_and_dists(current_snapshot)
+    names_and_labels = dict(map(lambda tup: (tup[0], find_max_val(tup[1])), names_and_dists))
+    wrong_nodes = []
+    for node_name in graph_for_reference.nodes:
+        if names_and_dists[node_name] != correct_solution[node_name]:
+            wrong_nodes.append(node_name)
+    return wrong_nodes
+    
+
+# time t에서의 stability: time (t-1)에서의 스냅샷과 비교했을 때 time t에서의 스냅샷에서 레이블이 달라진 노드의 개수
+def calculate_stability(prev_snapshot, current_snapshot):
+    """직전 확률분포 스냅샷에 대한 현재 확률분포 스냅샷의 stability를 측정한다."""
+    names_and_dists_prev = make_names_and_dists(prev_snapshot)
+    names_and_dists_current = make_names_and_dists(current_snapshot)
+    changed_nodes = []
+    for node_name in graph_for_reference.nodes:
+        if names_and_dists_prev[node_name] != names_and_dists_current[node_name]:
+            changed_nodes.append(node_name)
+    return changed_nodes
+
+
+def build_precision_graph(result_report):
+    """precision_graph의 x축 값의 list와 y축 값의 list를 만든다."""
+    x = list(range(1, len(graph_for_reference.nodes)+1))
+    y = []
+    for wrong_list in result_report:
+        number_of_wrong_nodes = len(wrong_list)
+        y.append(number_of_wrong_nodes)
+    return x, y
+
+        
+
+def build_stability_graph(results_report):
+    """stability_graph의 x축 값의 list와 y축 값의 list를 만든다."""
+    x = list(range(2, len(graph_for_reference.nodes)+1))  # 첫 번째 iteration에 대해서는 undefined이므로
+    y = []
+    for changed_list in result_report:
+        number_of_changed_nodes = len(changed_list)
+        y.append(number_of_changed_nodes)
+    return x, y
+
+
+def draw_report_graph(x, y):
+    """precision graph, stability graph를 모두 그릴 수 있는 다재다능한 함수."""
+    plt.clf()
+    plt.plot(x, y, 'b-')
+    plt.axis([0, 8, 0, 8])
+    plt.show()
+
+
+# ========================================================
 
 
 raw_data.close()

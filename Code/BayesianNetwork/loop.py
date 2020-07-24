@@ -360,6 +360,12 @@ def d_connected(node, current_asked):
             out.add(other_node)
     return set(graph_for_reference.nodes) - out
 
+# max d_connected nodes for WhatIWantExample: println, g, m3, h
+
+
+def forall(unary_pred, collection):
+    return reduce(lambda acc, elem: unary_pred(elem) and acc, collection, True)
+
 
 def find_max_d_con(current_asked, updated_nodes):
     """graph_for_reference의 node들 중에서 가장 d_connected node가 가장 많은 노드를 찾아낸다."""
@@ -388,30 +394,51 @@ def tactical_loop(current_asked, current_evidence, updated_nodes, prev_snapshot,
         current_evidence[query] = 1
         new_snapshot = BN_for_inference.predict_proba(current_evidence)
         visualize_snapshot(new_snapshot)
-        current_precision_list = calculate_precision(snapshot)
+        current_precision_list = calculate_precision(new_snapshot)
         current_stability_list = calculate_stability(prev_snapshot, new_snapshot)
         return tactical_loop(current_asked, current_evidence, updated_nodes, new_snapshot, precision_list+[current_precision_list], stability_list+[current_stability_list])
     elif oracle_response == 'sin':
         current_evidence[query] = 2
         new_snapshot = BN_for_inference.predict_proba(current_evidence)
         visualize_snapshot(new_snapshot)
-        current_precision_list = calculate_precision(snapshot)
+        current_precision_list = calculate_precision(new_snapshot)
         current_stability_list = calculate_stability(prev_snapshot, new_snapshot)
         return tactical_loop(current_asked, current_evidence, updated_nodes, new_snapshot, precision_list+[current_precision_list], stability_list+[current_stability_list])
     elif oracle_response == 'san':
         current_evidence[query] = 3
         new_snapshot = BN_for_inference.predict_proba(current_evidence)
         visualize_snapshot(new_snapshot)
-        current_precision_list = calculate_precision(snapshot)
+        current_precision_list = calculate_precision(new_snapshot)
         current_stability_list = calculate_stability(prev_snapshot, new_snapshot)
         return tactical_loop(current_asked, current_evidence, updated_nodes, new_snapshot, precision_list+[current_precision_list], stability_list+[current_stability_list])
     elif oracle_response == 'non':
         current_evidence[query] = 4
         new_snapshot = BN_for_inference.predict_proba(current_evidence)
         visualize_snapshot(new_snapshot)
-        current_precision_list = calculate_precision(snapshot)
+        current_precision_list = calculate_precision(new_snapshot)
         current_stability_list = calculate_stability(prev_snapshot, new_snapshot)
         return tactical_loop(current_asked, current_evidence, updated_nodes, new_snapshot, precision_list+[current_precision_list], stability_list+[current_stability_list])
+
+
+def single_loop(query):
+    oracle_response = input("What label does <" + query + "> bear? [src/sin/san/non]: ")
+    current_evidence = {}
+    if oracle_response == 'src':
+        current_evidence[query] = 1
+        new_snapshot = BN_for_inference.predict_proba(current_evidence)
+        visualize_snapshot(new_snapshot)
+    elif oracle_response == 'sin':
+        current_evidence[query] = 2
+        new_snapshot = BN_for_inference.predict_proba(current_evidence)
+        visualize_snapshot(new_snapshot)
+    elif oracle_response == 'san':
+        current_evidence[query] = 3
+        new_snapshot = BN_for_inference.predict_proba(current_evidence)
+        visualize_snapshot(new_snapshot)
+    elif oracle_response == 'non':
+        current_evidence[query] = 4
+        new_snapshot = BN_for_inference.predict_proba(current_evidence)
+        visualize_snapshot(new_snapshot)
 
 
 def normalize_dist(oracle_response):
@@ -532,7 +559,7 @@ def calculate_precision(current_snapshot):
     names_and_labels = dict(map(lambda tup: (tup[0], find_max_val(tup[1])), names_and_dists))
     wrong_nodes = []
     for node_name in graph_for_reference.nodes:
-        if names_and_labels[node_name] != correct_solution[node_name]:
+        if names_and_labels[node_name] == correct_solution[node_name]:
             wrong_nodes.append(node_name)
     return wrong_nodes
 
@@ -576,10 +603,20 @@ def draw_report_graph(x, y):
     plt.clf()
     plt.plot(x, y, 'b-')
     plt.axis([0, 8, 0, 8])
-    plt.show()
+    plt.ion()
+    plt.show(block=False)
 
 
 # ========================================================
+
+
+def main():
+    initial_snapshot = BN_for_inference.predict_proba({})
+    final_snapshot = tactical_loop(list(), dict(), list(), initial_snapshot, list(), list())
+    # final_snapshot, precision_list, stability_list = random_loop(list(), dict(), initial_snapshot, list(), list())
+    report_results(final_snapshot)
+    save_data_as_csv(final_snapshot)
+    draw_report_graph(*build_precision_graph(precision_list))
 
 
 raw_data.close()
@@ -587,8 +624,4 @@ edges_data.close()
 
 
 if __name__ == "__main__":
-    initial_snapshot = BN_for_inference.predict_proba({})
-    # final_snapshot = tactical_loop(list(), dict(), initial_snapshot, list())
-    final_snapshot = random_loop(list(), dict(), initial_snapshot, list(), list())
-    report_results(final_snapshot)
-    save_data_as_csv(final_snapshot)
+    main()

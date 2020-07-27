@@ -374,17 +374,37 @@ def find_max_d_con(current_asked, updated_nodes):
         tmpdict[node] = d_connected(node, current_asked)
     tmpdict = valmap(lambda set_: set_-set(current_asked)-set(updated_nodes), tmpdict)
     if forall(lambda set_: set_ == set(), tmpdict.values()):  # no more to ask
-        return "terminate!"
+        return None
     tmpdict = valmap(lambda set_: len(set_), tmpdict)
     max_key = max(tmpdict, key=lambda key: tmpdict[key])
     return max_key
+
+
+def first_rank_is_way_higher(parameters):
+    first_rank = max(parameters)
+    parameters_ = parameters[:]
+    parameters_.remove(first_rank)
+    second_rank = max(parameters_)
+    if first_rank - second_rank < 0.1:
+        return False
+    else:
+        return True
+
+
+def time_to_terminate(BN, current_evidence):
+    # the distribution across random variables' values
+    dist_dicts = list(map(lambda dist: dist.parameters[0], BN_for_inference.predict_proba({})))
+    # list of lists of the probabilities across random variables' values, extracted from dist_dicts
+    dist_probs = list(map(lambda dist: list(dist.values()), dist_dicts))
+    # Do all the nodes' probability lists satisfy first_rank_is_way_higher()?
+    return reduce(lambda acc, lst: first_rank_is_way_higher(lst) and acc, dist_probs, True)
 
 
 def tactical_loop(current_asked, current_evidence, updated_nodes, prev_snapshot, precision_list, stability_list):
     """the main interaction functionality, asking tactically using d-separation"""
     # node들 중에서, 가장 d_connected node가 많은 노드를 구한다.
     query = find_max_d_con(current_asked, updated_nodes)
-    if query == "terminate!":
+    if not query:  # query가 비었음: 더 이상 물어볼 것이 없음
         print("nothing more to ask!")
         return prev_snapshot, precision_list, stability_list
     oracle_response = input("What label does <" + query + "> bear? [src/sin/san/non]: ")
@@ -578,31 +598,28 @@ def calculate_stability(prev_snapshot, current_snapshot):
     return changed_nodes
 
 
-def build_precision_graph(result_report):
+def build_graph(result_report):
     """precision_graph의 x축 값의 list와 y축 값의 list를 만든다."""
     x = list(range(1, len(graph_for_reference.nodes)+1))
     y = []
-    for wrong_list in result_report:
-        number_of_wrong_nodes = len(wrong_list)
-        y.append(number_of_wrong_nodes)
+    for elem_list in result_report:
+        number_of_elem_nodes = len(elem_list)
+        y.append(number_of_elem_nodes)
     return x, y
 
 
-def build_stability_graph(results_report):
-    """stability_graph의 x축 값의 list와 y축 값의 list를 만든다."""
-    x = list(range(2, len(graph_for_reference.nodes)+1))  # 첫 번째 iteration에 대해서는 undefined이므로
-    y = []
-    for changed_list in result_report:
-        number_of_changed_nodes = len(changed_list)
-        y.append(number_of_changed_nodes)
-    return x, y
+precision_figure_number = 1
+stability_figure_number = 1
 
 
 def draw_report_graph(x, y):
-    """precision graph, stability graph를 모두 그릴 수 있는 다재다능한 함수."""
+    """precision graph, stability graph를 모두 그릴 수 있는 다재다능한 함수. NOTE: x와 y의 input 길이를 맞춰줘야 함."""
+    global precision_figure_number
     plt.clf()
+    plt.figure(precision_figure_number)
+    precision_figure_number += 1
     plt.plot(x, y, 'b-')
-    plt.axis([0, 8, 0, 8])
+    plt.axis([1, 8, 0, 8])
     plt.ion()
     plt.show(block=False)
 
@@ -612,11 +629,12 @@ def draw_report_graph(x, y):
 
 def main():
     initial_snapshot = BN_for_inference.predict_proba({})
-    final_snapshot = tactical_loop(list(), dict(), list(), initial_snapshot, list(), list())
-    # final_snapshot, precision_list, stability_list = random_loop(list(), dict(), initial_snapshot, list(), list())
+    # final_snapshot, precision_list, stability_list = tactical_loop(list(), dict(), list(), initial_snapshot, list(), list())
+    final_snapshot, precision_list, stability_list = random_loop(list(), dict(), initial_snapshot, list(), list())
     report_results(final_snapshot)
     save_data_as_csv(final_snapshot)
-    draw_report_graph(*build_precision_graph(precision_list))
+    draw_report_graph(*build_graph(precision_list))
+    draw_report_graph(*build_graph(stability_list))
 
 
 raw_data.close()

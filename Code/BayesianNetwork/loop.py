@@ -377,7 +377,7 @@ def remove_sublist(lst, sublst):
     out = []
     for elem in lst:
         if elem not in sublst:
-            out.append(i)
+            out.append(elem)
     return out
 
 
@@ -403,7 +403,7 @@ def first_rank_is_way_higher(parameters):
     parameters_ = parameters[:]
     parameters_.remove(first_rank)
     second_rank = max(parameters_)
-    if first_rank - second_rank < 0.1:
+    if first_rank - second_rank < 0.05:
         return False
     else:
         return True
@@ -418,6 +418,12 @@ def time_to_terminate(BN, current_evidence):
     return reduce(lambda acc, lst: first_rank_is_way_higher(lst) and acc, dist_probs, True)
 
 
+def print_distrib(snapshot):
+    names_and_dists = make_names_and_dists(snapshot)
+    for i in names_and_dists:
+        print(i)
+
+
 def tactical_loop(current_asked, current_evidence, updated_nodes, prev_snapshot, precision_list, stability_list):
     """the main interaction functionality, asking tactically using d-separation"""
     # some variables to make our code resemble the English language
@@ -425,16 +431,12 @@ def tactical_loop(current_asked, current_evidence, updated_nodes, prev_snapshot,
     there_are_no_nodes_left = not there_are_nodes_left
     its_time_to_terminate = time_to_terminate(BN_for_inference, current_evidence)
     not_yet_time_to_terminate = not its_time_to_terminate
-
     query = find_max_d_con(current_asked, updated_nodes, graph_for_reference.nodes)
-
     if there_are_no_nodes_left and not_yet_time_to_terminate:
-        last_asked = current_asked[len(current_asked)-1]  # popping without side-effect!
-        previously_affected_nodes = d_connected(last_asked, remove_elem(current_asked, last_asked))
-        rollback_asked_nodes = remove_elem(current_asked, last_asked)
-        rollback_affected_nodes = remove_sublist(updated_nodes, previously_affected_nodes)
-        all_nodes_without_last = remove_elem(list(graph_for_reference.nodes), last_asked)
-        query = find_max_d_con(rollback_asked_nodes, rollback_affected_nodes, all_nodes_without_last)
+        if set(graph_for_reference.nodes) == set(current_asked):
+            return prev_snapshot, precision_list, stability_list
+        else:
+            query = find_max_d_con([], [], remove_sublist(graph_for_reference.nodes, current_asked))
     elif there_are_no_nodes_left and its_time_to_terminate:
         return prev_snapshot, precision_list, stability_list
     elif there_are_nodes_left and not_yet_time_to_terminate:
@@ -447,6 +449,7 @@ def tactical_loop(current_asked, current_evidence, updated_nodes, prev_snapshot,
     if oracle_response == 'src':
         current_evidence[query] = 1
         new_snapshot = BN_for_inference.predict_proba(current_evidence)
+        print_distrib(new_snapshot)
         visualize_snapshot(new_snapshot)
         current_precision_list = calculate_precision(new_snapshot)
         current_stability_list = calculate_stability(prev_snapshot, new_snapshot)
@@ -454,6 +457,7 @@ def tactical_loop(current_asked, current_evidence, updated_nodes, prev_snapshot,
     elif oracle_response == 'sin':
         current_evidence[query] = 2
         new_snapshot = BN_for_inference.predict_proba(current_evidence)
+        print_distrib(new_snapshot)
         visualize_snapshot(new_snapshot)
         current_precision_list = calculate_precision(new_snapshot)
         current_stability_list = calculate_stability(prev_snapshot, new_snapshot)
@@ -461,6 +465,7 @@ def tactical_loop(current_asked, current_evidence, updated_nodes, prev_snapshot,
     elif oracle_response == 'san':
         current_evidence[query] = 3
         new_snapshot = BN_for_inference.predict_proba(current_evidence)
+        print_distrib(new_snapshot)
         visualize_snapshot(new_snapshot)
         current_precision_list = calculate_precision(new_snapshot)
         current_stability_list = calculate_stability(prev_snapshot, new_snapshot)
@@ -468,6 +473,7 @@ def tactical_loop(current_asked, current_evidence, updated_nodes, prev_snapshot,
     elif oracle_response == 'non':
         current_evidence[query] = 4
         new_snapshot = BN_for_inference.predict_proba(current_evidence)
+        print_distrib(new_snapshot)
         visualize_snapshot(new_snapshot)
         current_precision_list = calculate_precision(new_snapshot)
         current_stability_list = calculate_stability(prev_snapshot, new_snapshot)
@@ -546,13 +552,14 @@ def make_names_and_dists(snapshot):
 def visualize_snapshot(snapshot):
     """한번 iteration 돌 때마다, 전체 BN의 snapshot을 가시화한다."""
     plt.clf()
+    plt.ion()
     names_and_dists = make_names_and_dists(snapshot)
     names_and_labels = list(map(lambda tup: (tup[0], find_max_val(tup[1])), names_and_dists))
     colormap = create_colormap(names_and_labels)
     nx.draw(graph_for_reference, node_color=colormap,
             pos=nx.circular_layout(graph_for_reference),
             with_labels=True, node_size=100)
-    plt.show()
+    plt.show(block=False)
 
 
 def report_results(final_snapshot):
@@ -650,12 +657,12 @@ stability_figure_number = 1
 def draw_report_graph(x, y):
     """precision graph, stability graph를 모두 그릴 수 있는 다재다능한 함수. NOTE: x와 y의 input 길이를 맞춰줘야 함."""
     global precision_figure_number
+    plt.ioff()
     plt.clf()
     plt.figure(precision_figure_number)
     precision_figure_number += 1
     plt.plot(x, y, 'b-')
     plt.axis([1, 8, 0, 8])
-    plt.ion()
     plt.show(block=False)
 
 

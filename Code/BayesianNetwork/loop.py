@@ -597,7 +597,7 @@ def plot_graph():
     plt.clf()
     nx.draw(graph_for_reference, font_size=8, with_labels=True,
             pos=nx.circular_layout(graph_for_reference))
-    plt.show()
+    plt.show(block=False)
 
 
 # Methods for Scoring ====================================
@@ -675,8 +675,8 @@ def main():
     # final_snapshot, precision_list, stability_list = random_loop(list(), dict(), initial_snapshot, list(), list())
     report_results(final_snapshot)
     save_data_as_csv(final_snapshot)
-    # draw_report_graph(*build_graph(precision_list))
-    # draw_report_graph(*build_graph(stability_list))
+    draw_report_graph(*build_graph(precision_list))
+    draw_report_graph(*build_graph(stability_list))
 
 
 raw_data.close()

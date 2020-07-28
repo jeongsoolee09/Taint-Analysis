@@ -23,6 +23,10 @@ edges_data = open("edges.csv", "r+")
 edges_reader = csv.reader(edges_data)
 
 
+class ThisIsImpossible(exception):
+    pass
+
+
 def df_reader():
     with open("df.txt", "r+") as df:
         lines = df.readlines()
@@ -360,17 +364,54 @@ def d_connected(node, current_asked):
             out.add(other_node)
     return set(graph_for_reference.nodes) - out
 
-# max d_connected nodes for WhatIWantExample: println, g, m3, h
+
+def remove_nth_item(lst, index):
+    """remove the nth element from list without any side-effect."""
+    return lst[:index] + lst[index+1:]
+
+
+def remove_sublist(lst, sublst):
+    """remove the sublst from lst without any side-effect."""
+    out = []
+    for elem in lst:
+        if elem not in sublst:
+            out.append(i)
+    return out
+
+
+  # tactical_loop의 각 branch 맨 마지막마다 존재하는 return tactical_loop(...) 대용으로 쓸 control structure
+def what_to_do_next(current_asked, updated_nodes, current_evidence, new_snapshot, precision_list, stability_list, current_precision_list, current_stability_list):
+    """여러 변수를 종합적으로 고려해 봤을 때, 다음에 무엇을 해야 하는지를 알려준다."""
+    # some variables to make our code resemble the English language
+    there_are_nodes_left = find_max_d_con(current_asked, updated_nodes)
+    there_are_no_nodes_left = not find_max_d_con(current_asked, updated_nodes)
+    its_time_to_terminate = time_to_terminate(BN_for_inference, current_evidence)
+    not_yet_time_to_terminate = not time_to_terminate(BN_for_inference, current_evidence)
+    if there_are_no_nodes_left and not_yet_time_to_terminate:
+        # backtracking mechanism: 가장 마지막에 물어봤던 노드의 영향을 없애고, find_max_d_con의 전체 스페이스에서 그 노드를 날린다. 다만 find_max_
+        last_asked = current_asked[len(x)-1]  # popping without side-effect!
+        previously_affected_nodes = d_connected(node, remove_nth_item(current_asked, len(x)-1))
+        rollback_asked_nodes = remove_nth_item(graph_for_reference.nodes, len(x)-1)
+        rollback_affected_nodes = remove_sublist(graph_for_reference.nodes, previously_affected_nodes)
+        all_nodes_without_last = remove_nth_item(graph_for_reference.nodes, len(x)-1)
+        query = find_max_d_con(rollback_asked_nodes, rollback_affected_nodes, all_nodes_without_last)
+        return tactical_loop(current_asked, current_evidence, rollback_affected_nodes, new_snapshot, precision_list+[current_precision_list], stability_list+[current_stability_list])
+    elif there_are_no_nodes_left and its_time_to_terminate:
+        raise ThisIsImpossible
+    elif there_are_nodes_left and not_yet_time_to_terminate:
+        return tactical_loop(current_asked, current_evidence, updated_nodes, new_snapshot, precision_list+[current_precision_list], stability_list+[current_stability_list])
+    elif there_are_nodes_left and its_time_to_terminate:
+        return prev_snapshot, precision_list, stability_list
 
 
 def forall(unary_pred, collection):
     return reduce(lambda acc, elem: unary_pred(elem) and acc, collection, True)
 
 
-def find_max_d_con(current_asked, updated_nodes):
+def find_max_d_con(current_asked, updated_nodes, list_of_all_node):  # 전체 node pool을 제한할 수 있음
     """graph_for_reference의 node들 중에서 가장 d_connected node가 가장 많은 노드를 찾아낸다."""
     tmpdict = dict()
-    for node in graph_for_reference.nodes:
+    for node in list_of_all_node:
         tmpdict[node] = d_connected(node, current_asked)
     tmpdict = valmap(lambda set_: set_-set(current_asked)-set(updated_nodes), tmpdict)
     if forall(lambda set_: set_ == set(), tmpdict.values()):  # no more to ask
@@ -398,6 +439,10 @@ def time_to_terminate(BN, current_evidence):
     dist_probs = list(map(lambda dist: list(dist.values()), dist_dicts))
     # Do all the nodes' probability lists satisfy first_rank_is_way_higher()?
     return reduce(lambda acc, lst: first_rank_is_way_higher(lst) and acc, dist_probs, True)
+
+
+def tactical_loop_entry():
+    pass
 
 
 def tactical_loop(current_asked, current_evidence, updated_nodes, prev_snapshot, precision_list, stability_list):
@@ -608,6 +653,7 @@ def build_graph(result_report):
     return x, y
 
 
+# for generating fresh variables
 precision_figure_number = 1
 stability_figure_number = 1
 

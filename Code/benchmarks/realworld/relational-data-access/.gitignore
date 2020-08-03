@@ -1,4 +1,6 @@
 *.txt
 .gradle/
+.mvn/
+build/
 classes/
 infer-out/

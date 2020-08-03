@@ -1,1 +1,4 @@
 *.txt
+.gradle/
+classes/
+infer-out/

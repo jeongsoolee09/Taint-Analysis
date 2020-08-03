@@ -242,20 +242,25 @@ let search_recent_vardef_astate (methname:Procname.t) (pvar:Var.t) (apair:P.t) :
             let (_, _, _, aliasset) as targetTuple =
               try weak_search_target_tuple_by_id id (fst apair)
               with _ -> bottuple in
-            begin try
-              let pvar_var, _ = A.find_first is_program_var_ap aliasset in
-              let most_recent_loc = H.get_most_recent_loc (methname, (pvar_var, [])) (snd apair) in
-              let candStates = search_target_tuples_by_vardef pvar_var methname (fst apair) in
-              let (proc,var,loc,aliasset') as candState = search_astate_by_loc most_recent_loc candStates in
-              let astate_rmvd = S.remove candState (fst apair) in
-              let logicalvar = Var.of_id id in
-              let programvar = Var.of_pvar pv in
-              let newtuple = (proc,var,loc,A.union aliasset' (doubleton (logicalvar, []) (programvar, []))) in
-              let newset = S.add newtuple astate_rmvd in
-              (newset, snd apair)
-            with _ -> (* the pvar_var is not redefined in the procedure. *)
-              let newset = S.remove targetTuple (fst apair) in
-              (newset, snd apair) end
+            begin try (* 가장 최근의 pvar를 찾아서 alias set에 return을 집어넣어 준다. *)
+                let pvar_var, _ = A.find_first is_program_var_ap aliasset in
+                let most_recent_loc = H.get_most_recent_loc (methname, (pvar_var, [])) (snd apair) in
+                let candStates = search_target_tuples_by_vardef pvar_var methname (fst apair) in
+                let (proc,var,loc,aliasset') as candState = search_astate_by_loc most_recent_loc candStates in
+                let astate_rmvd = S.remove candState (fst apair) in
+                let logicalvar = Var.of_id id in
+                let returnvar = Var.of_pvar pv in
+                let newtuple = (proc,var,loc,A.union aliasset' (doubleton (logicalvar, []) (returnvar, []))) in
+                let newset = S.add newtuple astate_rmvd in
+                (newset, snd apair)
+              with _ -> (* the pvar_var is not redefined in the procedure. *)
+                let (proc, var, loc, aliasset') as candState = search_target_tuple_by_id id methname (fst apair) in
+                let astate_rmvd = S.remove candState (fst apair) in
+                let logicalvar = Var.of_id id in
+                let returnvar = Var.of_pvar pv in
+                let newtuple = (proc, var, loc, A.union aliasset' (doubleton (logicalvar, []) (returnvar, []))) in
+                let newset = S.add newtuple astate_rmvd in
+                (newset, snd apair) end
         | false -> (* An ordinary variable assignment. *)
             let targetTuple =
               try weak_search_target_tuple_by_id id (fst apair)

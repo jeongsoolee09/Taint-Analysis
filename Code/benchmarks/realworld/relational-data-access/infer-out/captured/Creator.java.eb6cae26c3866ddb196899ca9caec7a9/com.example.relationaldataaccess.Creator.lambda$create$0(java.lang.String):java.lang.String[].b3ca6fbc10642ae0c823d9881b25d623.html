@@ -1,0 +1,123 @@
+<!DOCTYPE HTML PUBLIC "-//W3C//DTD HTML 4.01 Transitional//EN">
+<html>
+<head>
+<title>com.example.relationaldataaccess.Creator.lambda$create$0(java.lang.String):java.lang.String[].b3ca6fbc10642ae0c823d9881b25d623</title>
+<meta http-equiv="Content-Type" content="text/html; charset=utf-8">
+<style type="text/css">
+body { background-color:#fff; color:#000; font-family:Helvetica, sans-serif; font-size:10pt }
+h1 { font-size:14pt }
+.code { border-collapse:collapse; width:100%; font-family: "Andale Mono", monospace; font-size:10pt; line-height: 1.2em }
+.color_black { color: black }
+.color_blue { color: blue }
+.color_green { color: green }
+.color_orange { color: orange }
+.color_red { color: red }
+.line { border-left: 3px solid #ccc; padding-left: 1ex; white-space: pre; }
+.msg { background-color:#fff8b4; color:#000; float:left; font-family:Helvetica, sans-serif; font-size: smaller; font-weight: bold; margin-bottom:10px; margin-top:10px; max-width:60em; padding:0.5em 1ex 0.5em 1ex; -webkit-border-radius:5px; -webkit-box-shadow:1px 1px 7px #000; white-space: pre-wrap; word-wrap: break-word; }
+.num { background-color:#eee; color:#444; font-size: smaller; padding-right:2ex; text-align:right; width:2.5em; }
+.dangling { background-color:white; color: gray; }
+.visited { background-color:LemonChiffon; color: darkmagenta; }
+.tooltip { display: none; background-color:#FFF0F0; border: 2px solid #F00; font-weight: normal; left:10em; padding: 2px; position: absolute; top: -1em; -webkit-border-radius:5px; -webkit-box-shadow:1px 1px 7px #000; z-index: 1}
+.with_tooltip { position: relative; }
+.with_tooltip:hover .tooltip, .visited:hover .tooltip { display: block; }
+</style>
+</head>
+<body>
+<center><h1>Procedure <a href="./../Creator.java.eb6cae26c3866ddb196899ca9caec7a9.html#LINE15">java.lang.String[] Creator.lambda$create$0(String)</a></h1></center>
+<a href="./nodes/com.example.relationaldataaccess.Creator.lambda%24create%240%28java.lang.String%29%3Ajava.lang.String%5B%5D.b3ca6fbc10642ae0c823d9881b25d623_node1.html"><span class='visited with_tooltip'>S_1<span class='tooltip'>node1 preds: succs:4 exn:2 Start
+</span></span></a> <a href="./nodes/com.example.relationaldataaccess.Creator.lambda%24create%240%28java.lang.String%29%3Ajava.lang.String%5B%5D.b3ca6fbc10642ae0c823d9881b25d623_node2.html"><span class='visited with_tooltip'>E_2<span class='tooltip'>node2 preds:5 3 succs: exn: Exit
+</span></span></a> <a href="./nodes/com.example.relationaldataaccess.Creator.lambda%24create%240%28java.lang.String%29%3Ajava.lang.String%5B%5D.b3ca6fbc10642ae0c823d9881b25d623_node3.html"><span class='visited with_tooltip'>I_3<span class='tooltip'>node3 preds: succs:2 exn:2 Instructions
+NULLIFY(&amp;$irvar0); [line 15];
+EXIT_SCOPE($irvar0); [line 15];
+APPLY_ABSTRACTION; [line 15];
+</span></span></a> <a href="./nodes/com.example.relationaldataaccess.Creator.lambda%24create%240%28java.lang.String%29%3Ajava.lang.String%5B%5D.b3ca6fbc10642ae0c823d9881b25d623_node4.html"><span class='visited with_tooltip'>I_4<span class='tooltip'>node4 preds:1 succs:5 exn:3 Instructions
+n$0=*&amp;name:java.lang.String* [line 15];
+_=*n$0:java.lang.String*(root java.lang.String) [line 15];
+n$2=_fun_java.lang.String[] String.split(String)(n$0:java.lang.String*," ":java.lang.Object*) virtual [line 15];
+*&amp;$irvar0:java.lang.String*[_*_](*)=n$2 [line 15];
+NULLIFY(&amp;name); [line 15];
+EXIT_SCOPE(_,n$0,n$2,name); [line 15];
+</span></span></a> <a href="./nodes/com.example.relationaldataaccess.Creator.lambda%24create%240%28java.lang.String%29%3Ajava.lang.String%5B%5D.b3ca6fbc10642ae0c823d9881b25d623_node5.html"><span class='visited with_tooltip'>I_5<span class='tooltip'>node5 preds:4 succs:2 exn:3 Instructions
+n$3=*&amp;$irvar0:java.lang.String*[_*_](*) [line 15];
+*&amp;return:java.lang.String*[_*_](*)=n$3 [line 15];
+NULLIFY(&amp;$irvar0); [line 15];
+EXIT_SCOPE(n$3,$irvar0); [line 15];
+APPLY_ABSTRACTION; [line 15];
+</span></span></a><br />@
+
+<span class='color_black'>java.lang.String*[_*_](*) java.lang.String[] Creator.lambda$create$0(String)(java.lang.String* name)
+Analyzed
+</span><br />FAILURE:NONE SYMOPS:26
+<br />
+
+<hr width="100%">
+ADVICE DURING FOOTPRINT
+
+<hr width="100%">
+ERROR DURING FOOTPRINT
+
+<hr width="100%">
+INFO DURING FOOTPRINT
+<br>SKIP_FUNCTION java.lang.String[] String.split(String) <a href="./nodes/node4.html#session33">node4#session33</a>(<a href="./../Creator.java.eb6cae26c3866ddb196899ca9caec7a9.html#LINE15">15</a>)
+<hr width="100%">
+LIKE DURING FOOTPRINT
+
+<hr width="100%">
+WARNING DURING FOOTPRINT
+
+<hr width="100%">
+<LISTING>
+Biabduction: phase= RE_EXECUTION
+--------------------------- 1 of 1 [nvisited:15] ---------------------------
+PRE:
+<span class='color_blue'><span class='color_blue'>name = val$1<span class='color_orange'>formal</span>:java.lang.String*( sub ) ;
+name|->{}<span class='color_orange'>rearrange:(z)15</span>:java.lang.String( sub )</span></span>
+POST 1 of 1:
+<span class='color_blue'><span class='color_red'>UND &lt; java.lang.String[] String.split(String) &gt; :15(return)</span> ;
+<span class='color_blue'>name = val$1<span class='color_orange'>formal</span>:java.lang.String*( sub )</span>; <span class='color_red'>return = val$2<span class='color_orange'>update:15</span>:java.lang.String*[_*_](*)</span> ;
+<span class='color_blue'>name|->{}<span class='color_orange'>formal(z)</span>:java.lang.String( sub )</span></span>
+----------------------------------------------------------------<br>
+
+RacerD: 
+Threads: NoThread, Locks: { } 
+Accesses { } 
+Ownership: Unowned 
+Return Attributes: { } 
+
+Starvation: {thread= UnknownThread; return_attributes= Nothing;
+             critical_pairs={ };
+             scheduled_work= { };
+             attributes= { }}
+My Liveness Checker: { &name }
+def/loc/alias: ({ (java.lang.String[] Creator.lambda$create$0(String), (name, []), { line 14 }, { (callv, []),
+                                                                    (name, []) }),
+                  (java.lang.String[] Creator.lambda$create$0(String), (name, []), { line 14 }, { (name, []) }),
+                  (java.lang.String[] Creator.lambda$create$0(String), ($irvar0, []), { line 15 }, { (n$2, []),
+                                                                    (n$3, []),
+                                                                    ($irvar0, []),
+                                                                    (return, []),
+                                                                    (returnv, []) }),
+                  (java.lang.String[] Creator.lambda$create$0(String), ($irvar0, []), { line 15 }, { (n$2, []),
+                                                                    ($irvar0, []),
+                                                                    (returnv, []) }),
+                  (java.lang.String[] Creator.lambda$create$0(String), (ph, []), { line -1 }, { (n$0, []),
+                                                                    (name, []) }),
+                  (java.lang.String[] Creator.lambda$create$0(String), (ph, []), { line -1 }, { (n$3, []),
+                                                                    ($irvar0, []) }) }, 
+{ (java.lang.String[] Creator.lambda$create$0(String), (name, [])) -> { line 14 },
+  (java.lang.String[] Creator.lambda$create$0(String), ($irvar0, [])) -> { line 15 } })
+</LISTING>
+<hr />
+<pre>
+{ proc_name= java.lang.String[] Creator.lambda$create$0(String)
+; translation_unit= src/main/java/com/example/relationaldataaccess/Creator.java
+; access= Private
+; formals= [(name,java.lang.String*)]
+; is_defined= true
+; passed_as_noescape_block_to [None]; is_synthetic_method= true
+; loc= src/main/java/com/example/relationaldataaccess/Creator.java:15
+; locals= [{ name= $irvar0; typ= void; modify_in_block= false }]
+; ret_type= java.lang.String*[_*_](*) 
+; proc_id= com.example.relationaldataaccess.Creator.lambda$create$0(java.lang.String):java.lang.String[] }</pre>
+</body>
+</html>

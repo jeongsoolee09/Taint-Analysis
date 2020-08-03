@@ -1,0 +1,127 @@
+<!DOCTYPE HTML PUBLIC "-//W3C//DTD HTML 4.01 Transitional//EN">
+<html>
+<head>
+<title>com.example.relationaldataaccess.RelationalDataAccessApplication.access_com.example.relationaldataac.c24bffd73ee4aefe10bc5c934f2fefd5</title>
+<meta http-equiv="Content-Type" content="text/html; charset=utf-8">
+<style type="text/css">
+body { background-color:#fff; color:#000; font-family:Helvetica, sans-serif; font-size:10pt }
+h1 { font-size:14pt }
+.code { border-collapse:collapse; width:100%; font-family: "Andale Mono", monospace; font-size:10pt; line-height: 1.2em }
+.color_black { color: black }
+.color_blue { color: blue }
+.color_green { color: green }
+.color_orange { color: orange }
+.color_red { color: red }
+.line { border-left: 3px solid #ccc; padding-left: 1ex; white-space: pre; }
+.msg { background-color:#fff8b4; color:#000; float:left; font-family:Helvetica, sans-serif; font-size: smaller; font-weight: bold; margin-bottom:10px; margin-top:10px; max-width:60em; padding:0.5em 1ex 0.5em 1ex; -webkit-border-radius:5px; -webkit-box-shadow:1px 1px 7px #000; white-space: pre-wrap; word-wrap: break-word; }
+.num { background-color:#eee; color:#444; font-size: smaller; padding-right:2ex; text-align:right; width:2.5em; }
+.dangling { background-color:white; color: gray; }
+.visited { background-color:LemonChiffon; color: darkmagenta; }
+.tooltip { display: none; background-color:#FFF0F0; border: 2px solid #F00; font-weight: normal; left:10em; padding: 2px; position: absolute; top: -1em; -webkit-border-radius:5px; -webkit-box-shadow:1px 1px 7px #000; z-index: 1}
+.with_tooltip { position: relative; }
+.with_tooltip:hover .tooltip, .visited:hover .tooltip { display: block; }
+</style>
+</head>
+<body>
+<center><h1>Procedure <a href="./../RelationalDataAccessApplication.java.2ccb916c20dfbcb55e1f3ee6cf6dc07e.html#LINE55">Customer RelationalDataAccessApplication.access_com.example.relationaldataaccess.RelationalDataAccessApplication$Lambda$_8_25(ResultSet,int)</a></h1></center>
+<a href="./nodes/com.example.relationaldataaccess.RelationalDataAccessApplication.access_com.example.relationaldataac.c24bffd73ee4aefe10bc5c934f2fefd5_node1.html"><span class='visited with_tooltip'>S_1<span class='tooltip'>node1 preds: succs:4 exn:2 Start
+</span></span></a> <a href="./nodes/com.example.relationaldataaccess.RelationalDataAccessApplication.access_com.example.relationaldataac.c24bffd73ee4aefe10bc5c934f2fefd5_node2.html"><span class='visited with_tooltip'>E_2<span class='tooltip'>node2 preds:5 3 succs: exn: Exit
+</span></span></a> <a href="./nodes/com.example.relationaldataaccess.RelationalDataAccessApplication.access_com.example.relationaldataac.c24bffd73ee4aefe10bc5c934f2fefd5_node3.html"><span class='visited with_tooltip'>I_3<span class='tooltip'>node3 preds: succs:2 exn:2 Instructions
+NULLIFY(&amp;$irvar0); [line 55];
+EXIT_SCOPE($irvar0); [line 55];
+APPLY_ABSTRACTION; [line 55];
+</span></span></a> <a href="./nodes/com.example.relationaldataaccess.RelationalDataAccessApplication.access_com.example.relationaldataac.c24bffd73ee4aefe10bc5c934f2fefd5_node4.html"><span class='visited with_tooltip'>I_4<span class='tooltip'>node4 preds:1 succs:5 exn:3 Instructions
+n$0=*&amp;$bcvar0:java.sql.ResultSet* [line 55];
+n$1=*&amp;$bcvar1:int [line 55];
+n$2=_fun___new(n$0:java.sql.ResultSet*) [line 55];
+*&amp;$irvar0:com.example.relationaldataaccess.Customer*=n$2 [line 55];
+NULLIFY(&amp;$bcvar0); [line 55];
+NULLIFY(&amp;$bcvar1); [line 55];
+EXIT_SCOPE(n$0,n$1,n$2,$bcvar0,$bcvar1); [line 55];
+</span></span></a> <a href="./nodes/com.example.relationaldataaccess.RelationalDataAccessApplication.access_com.example.relationaldataac.c24bffd73ee4aefe10bc5c934f2fefd5_node5.html"><span class='visited with_tooltip'>I_5<span class='tooltip'>node5 preds:4 succs:2 exn:3 Instructions
+n$3=*&amp;$irvar0:com.example.relationaldataaccess.Customer* [line 55];
+*&amp;return:com.example.relationaldataaccess.Customer*=n$3 [line 55];
+NULLIFY(&amp;$irvar0); [line 55];
+EXIT_SCOPE(n$3,$irvar0); [line 55];
+APPLY_ABSTRACTION; [line 55];
+</span></span></a><br />@
+
+<span class='color_black'>com.example.relationaldataaccess.Customer* Customer RelationalDataAccessApplication.access_com.example.relationaldataaccess.RelationalDataAccessApplication$Lambda$_8_25(ResultSet,int)(java.sql.ResultSet* $bcvar0, int $bcvar1)
+Analyzed
+</span><br />FAILURE:NONE SYMOPS:28
+<br />
+
+<hr width="100%">
+ADVICE DURING FOOTPRINT
+
+<hr width="100%">
+ERROR DURING FOOTPRINT
+
+<hr width="100%">
+INFO DURING FOOTPRINT
+
+<hr width="100%">
+LIKE DURING FOOTPRINT
+
+<hr width="100%">
+WARNING DURING FOOTPRINT
+
+<hr width="100%">
+<LISTING>
+Biabduction: phase= RE_EXECUTION
+--------------------------- 1 of 1 [nvisited:55] ---------------------------
+PRE:
+<span class='color_blue'><span class='color_blue'>$bcvar0 = val$2<span class='color_orange'>formal</span>:java.sql.ResultSet*( sub ); $bcvar1 = val$1<span class='color_orange'>formal</span>:int( sub )</span></span>
+POST 1 of 1:
+<span class='color_blue'><span class='color_red'>MEMne &lt; new:55 &gt; <span class='color_orange'>{vpath: }</span>(return)</span> ;
+<span class='color_blue'>$bcvar0 = val$2<span class='color_orange'>formal</span>:java.sql.ResultSet*( sub )</span>; <span class='color_red'>return = val$3<span class='color_orange'>update:55</span>:com.example.relationaldataaccess.Customer*</span>; <span class='color_blue'>$bcvar1 = val$1<span class='color_orange'>formal</span>:int( sub )</span> ;
+<span class='color_red'>return|->[$bcvar0|]<span class='color_orange'>alloc</span>:char[_*1][$bcvar0]</span></span>
+----------------------------------------------------------------<br>
+
+RacerD: 
+Threads: NoThread, Locks: { } 
+Accesses { } 
+Ownership: Owned 
+Return Attributes: { } 
+
+Starvation: {thread= UnknownThread; return_attributes= Nothing;
+             critical_pairs={ };
+             scheduled_work= { };
+             attributes= { }}
+My Liveness Checker: { &$bcvar0, &$bcvar1 }
+def/loc/alias: ({ (Customer RelationalDataAccessApplication.access_com.example.relationaldataaccess.RelationalDataAccessApplication$Lambda$_8_25(ResultSet,int), ($bcvar0, []), { line 54 }, { ($bcvar0, []) }),
+                  (Customer RelationalDataAccessApplication.access_com.example.relationaldataaccess.RelationalDataAccessApplication$Lambda$_8_25(ResultSet,int), ($bcvar0, []), { line 54 }, { ($bcvar0, []),
+                                                                    (callv, []) }),
+                  (Customer RelationalDataAccessApplication.access_com.example.relationaldataaccess.RelationalDataAccessApplication$Lambda$_8_25(ResultSet,int), ($irvar0, []), { line 55 }, { (n$2, []),
+                                                                    (n$3, []),
+                                                                    ($irvar0, []),
+                                                                    (return, []),
+                                                                    (returnv, []) }),
+                  (Customer RelationalDataAccessApplication.access_com.example.relationaldataaccess.RelationalDataAccessApplication$Lambda$_8_25(ResultSet,int), ($irvar0, []), { line 55 }, { (n$2, []),
+                                                                    ($irvar0, []),
+                                                                    (returnv, []) }),
+                  (Customer RelationalDataAccessApplication.access_com.example.relationaldataaccess.RelationalDataAccessApplication$Lambda$_8_25(ResultSet,int), (ph, []), { line -1 }, { (n$0, []),
+                                                                    ($bcvar0, []) }),
+                  (Customer RelationalDataAccessApplication.access_com.example.relationaldataaccess.RelationalDataAccessApplication$Lambda$_8_25(ResultSet,int), (ph, []), { line -1 }, { (n$1, []),
+                                                                    ($bcvar1, []) }),
+                  (Customer RelationalDataAccessApplication.access_com.example.relationaldataaccess.RelationalDataAccessApplication$Lambda$_8_25(ResultSet,int), (ph, []), { line -1 }, { (n$3, []),
+                                                                    ($irvar0, []) }),
+                  (Customer RelationalDataAccessApplication.access_com.example.relationaldataaccess.RelationalDataAccessApplication$Lambda$_8_25(ResultSet,int), ($bcvar1, []), { line 54 }, { ($bcvar1, []) }) }, 
+{ (Customer RelationalDataAccessApplication.access_com.example.relationaldataaccess.RelationalDataAccessApplication$Lambda$_8_25(ResultSet,int), ($bcvar0, [])) -> { line 54 },
+  (Customer RelationalDataAccessApplication.access_com.example.relationaldataaccess.RelationalDataAccessApplication$Lambda$_8_25(ResultSet,int), ($irvar0, [])) -> { line 55 },
+  (Customer RelationalDataAccessApplication.access_com.example.relationaldataaccess.RelationalDataAccessApplication$Lambda$_8_25(ResultSet,int), ($bcvar1, [])) -> { line 54 } })
+</LISTING>
+<hr />
+<pre>
+{ proc_name= Customer RelationalDataAccessApplication.access_com.example.relationaldataaccess.RelationalDataAccessApplication$Lambda$_8_25(ResultSet,int)
+; translation_unit= src/main/java/com/example/relationaldataaccess/RelationalDataAccessApplication.java
+; access= Public
+; formals= [($bcvar0,java.sql.ResultSet*);  ($bcvar1,int)]
+; is_defined= true
+; passed_as_noescape_block_to [None]; is_synthetic_method= true
+; loc= src/main/java/com/example/relationaldataaccess/RelationalDataAccessApplication.java:55
+; locals= [{ name= $irvar0; typ= void; modify_in_block= false }]
+; ret_type= com.example.relationaldataaccess.Customer* 
+; proc_id= com.example.relationaldataaccess.RelationalDataAccessApplication.access_com.example.relationaldataaccess.RelationalDataAccessApplication$Lambda$_8_25(java.sql.ResultSet,int):com.example.relationaldataaccess.Customer }</pre>
+</body>
+</html>

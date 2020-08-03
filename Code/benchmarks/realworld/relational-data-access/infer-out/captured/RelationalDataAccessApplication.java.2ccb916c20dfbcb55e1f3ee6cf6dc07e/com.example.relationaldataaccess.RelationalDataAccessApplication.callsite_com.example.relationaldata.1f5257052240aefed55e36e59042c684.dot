@@ -1,0 +1,24 @@
+/* @generated */
+digraph cfg {
+"com.example.relationaldataaccess.RelationalDataAccessApplication.callsite_com.example.relationaldata.1f5257052240aefed55e36e59042c684_1" [label="1: Start Consumer RelationalDataAccessApplication.callsite_com.example.relationaldataaccess.RelationalDataAccessApplication$Lambda$_8_33()\nFormals: \nLocals:  $irvar0:void \n  " color=yellow style=filled]
+	
+
+	 "com.example.relationaldataaccess.RelationalDataAccessApplication.callsite_com.example.relationaldata.1f5257052240aefed55e36e59042c684_1" -> "com.example.relationaldataaccess.RelationalDataAccessApplication.callsite_com.example.relationaldata.1f5257052240aefed55e36e59042c684_4" ;
+"com.example.relationaldataaccess.RelationalDataAccessApplication.callsite_com.example.relationaldata.1f5257052240aefed55e36e59042c684_2" [label="2: Exit Consumer RelationalDataAccessApplication.callsite_com.example.relationaldataaccess.RelationalDataAccessApplication$Lambda$_8_33() \n  " color=yellow style=filled]
+	
+
+"com.example.relationaldataaccess.RelationalDataAccessApplication.callsite_com.example.relationaldata.1f5257052240aefed55e36e59042c684_3" [label="3:  exceptions sink \n   NULLIFY(&$irvar0); [line 55]\n  EXIT_SCOPE($irvar0); [line 55]\n  APPLY_ABSTRACTION; [line 55]\n " shape="box"]
+	
+
+	 "com.example.relationaldataaccess.RelationalDataAccessApplication.callsite_com.example.relationaldata.1f5257052240aefed55e36e59042c684_3" -> "com.example.relationaldataaccess.RelationalDataAccessApplication.callsite_com.example.relationaldata.1f5257052240aefed55e36e59042c684_2" ;
+"com.example.relationaldataaccess.RelationalDataAccessApplication.callsite_com.example.relationaldata.1f5257052240aefed55e36e59042c684_4" [label="4:  Call RelationalDataAccessApplication$Lambda$_8_33.<init>() \n   n$0=_fun___new(sizeof(t=com.example.relationaldataaccess.RelationalDataAccessApplication$Lambda$_8_33):com.example.relationaldataaccess.RelationalDataAccessApplication$Lambda$_8_33*) [line 55]\n  n$1=_fun_Object.<init>()(n$0:com.example.relationaldataaccess.RelationalDataAccessApplication$Lambda$_8_33*) [line 55]\n  *&$irvar0:com.example.relationaldataaccess.RelationalDataAccessApplication$Lambda$_8_33*=n$0 [line 55]\n  EXIT_SCOPE(n$0,n$1); [line 55]\n " shape="box"]
+	
+
+	 "com.example.relationaldataaccess.RelationalDataAccessApplication.callsite_com.example.relationaldata.1f5257052240aefed55e36e59042c684_4" -> "com.example.relationaldataaccess.RelationalDataAccessApplication.callsite_com.example.relationaldata.1f5257052240aefed55e36e59042c684_5" ;
+	 "com.example.relationaldataaccess.RelationalDataAccessApplication.callsite_com.example.relationaldata.1f5257052240aefed55e36e59042c684_4" -> "com.example.relationaldataaccess.RelationalDataAccessApplication.callsite_com.example.relationaldata.1f5257052240aefed55e36e59042c684_3" [color="red" ];
+"com.example.relationaldataaccess.RelationalDataAccessApplication.callsite_com.example.relationaldata.1f5257052240aefed55e36e59042c684_5" [label="5:  method_body \n   n$2=*&$irvar0:com.example.relationaldataaccess.RelationalDataAccessApplication$Lambda$_8_33* [line 55]\n  *&return:java.util.function.Consumer*=n$2 [line 55]\n  NULLIFY(&$irvar0); [line 55]\n  EXIT_SCOPE(n$2,$irvar0); [line 55]\n  APPLY_ABSTRACTION; [line 55]\n " shape="box"]
+	
+
+	 "com.example.relationaldataaccess.RelationalDataAccessApplication.callsite_com.example.relationaldata.1f5257052240aefed55e36e59042c684_5" -> "com.example.relationaldataaccess.RelationalDataAccessApplication.callsite_com.example.relationaldata.1f5257052240aefed55e36e59042c684_2" ;
+	 "com.example.relationaldataaccess.RelationalDataAccessApplication.callsite_com.example.relationaldata.1f5257052240aefed55e36e59042c684_5" -> "com.example.relationaldataaccess.RelationalDataAccessApplication.callsite_com.example.relationaldata.1f5257052240aefed55e36e59042c684_3" [color="red" ];
+}

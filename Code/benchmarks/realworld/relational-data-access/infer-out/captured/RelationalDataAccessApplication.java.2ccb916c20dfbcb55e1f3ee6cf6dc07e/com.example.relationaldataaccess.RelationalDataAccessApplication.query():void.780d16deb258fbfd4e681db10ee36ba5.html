@@ -1,0 +1,221 @@
+<!DOCTYPE HTML PUBLIC "-//W3C//DTD HTML 4.01 Transitional//EN">
+<html>
+<head>
+<title>com.example.relationaldataaccess.RelationalDataAccessApplication.query():void.780d16deb258fbfd4e681db10ee36ba5</title>
+<meta http-equiv="Content-Type" content="text/html; charset=utf-8">
+<style type="text/css">
+body { background-color:#fff; color:#000; font-family:Helvetica, sans-serif; font-size:10pt }
+h1 { font-size:14pt }
+.code { border-collapse:collapse; width:100%; font-family: "Andale Mono", monospace; font-size:10pt; line-height: 1.2em }
+.color_black { color: black }
+.color_blue { color: blue }
+.color_green { color: green }
+.color_orange { color: orange }
+.color_red { color: red }
+.line { border-left: 3px solid #ccc; padding-left: 1ex; white-space: pre; }
+.msg { background-color:#fff8b4; color:#000; float:left; font-family:Helvetica, sans-serif; font-size: smaller; font-weight: bold; margin-bottom:10px; margin-top:10px; max-width:60em; padding:0.5em 1ex 0.5em 1ex; -webkit-border-radius:5px; -webkit-box-shadow:1px 1px 7px #000; white-space: pre-wrap; word-wrap: break-word; }
+.num { background-color:#eee; color:#444; font-size: smaller; padding-right:2ex; text-align:right; width:2.5em; }
+.dangling { background-color:white; color: gray; }
+.visited { background-color:LemonChiffon; color: darkmagenta; }
+.tooltip { display: none; background-color:#FFF0F0; border: 2px solid #F00; font-weight: normal; left:10em; padding: 2px; position: absolute; top: -1em; -webkit-border-radius:5px; -webkit-box-shadow:1px 1px 7px #000; z-index: 1}
+.with_tooltip { position: relative; }
+.with_tooltip:hover .tooltip, .visited:hover .tooltip { display: block; }
+</style>
+</head>
+<body>
+<center><h1>Procedure <a href="./../RelationalDataAccessApplication.java.2ccb916c20dfbcb55e1f3ee6cf6dc07e.html#LINE54">void RelationalDataAccessApplication.query()</a></h1></center>
+<a href="./nodes/com.example.relationaldataaccess.RelationalDataAccessApplication.query%28%29%3Avoid.780d16deb258fbfd4e681db10ee36ba5_node1.html"><span class='visited with_tooltip'>S_1<span class='tooltip'>node1 preds: succs:4 exn:2 Start
+</span></span></a> <a href="./nodes/com.example.relationaldataaccess.RelationalDataAccessApplication.query%28%29%3Avoid.780d16deb258fbfd4e681db10ee36ba5_node2.html"><span class='visited with_tooltip'>E_2<span class='tooltip'>node2 preds:12 3 succs: exn: Exit
+</span></span></a> <a href="./nodes/com.example.relationaldataaccess.RelationalDataAccessApplication.query%28%29%3Avoid.780d16deb258fbfd4e681db10ee36ba5_node3.html"><span class='visited with_tooltip'>I_3<span class='tooltip'>node3 preds: succs:2 exn:2 Instructions
+NULLIFY(&amp;$irvar3); [line 60];
+NULLIFY(&amp;$irvar4); [line 60];
+NULLIFY(&amp;$irvar0); [line 60];
+NULLIFY(&amp;$irvar1); [line 60];
+NULLIFY(&amp;$irvar2); [line 60];
+EXIT_SCOPE($irvar3,$irvar4,$irvar0,$irvar1,$irvar2); [line 60];
+APPLY_ABSTRACTION; [line 60];
+</span></span></a> <a href="./nodes/com.example.relationaldataaccess.RelationalDataAccessApplication.query%28%29%3Avoid.780d16deb258fbfd4e681db10ee36ba5_node4.html"><span class='visited with_tooltip'>I_4<span class='tooltip'>node4 preds:1 succs:5 exn:3 Instructions
+n$0=*&amp;#GB<>$com.example.relationaldataaccess.RelationalDataAccessApplication.log:org.slf4j.Logger*(root com.example.relationaldataaccess.RelationalDataAccessApplication) [line 54];
+_=*n$0:org.slf4j.Logger*(root org.slf4j.Logger) [line 54];
+n$2=_fun_void Logger.info(String)(n$0:org.slf4j.Logger*,"Querying for customer records where first_name = 'Josh':":java.lang.Object*) interface virtual [line 54];
+EXIT_SCOPE(_,n$0,n$2); [line 54];
+</span></span></a> <a href="./nodes/com.example.relationaldataaccess.RelationalDataAccessApplication.query%28%29%3Avoid.780d16deb258fbfd4e681db10ee36ba5_node5.html"><span class='visited with_tooltip'>I_5<span class='tooltip'>node5 preds:4 succs:6 exn:3 Instructions
+n$3=_fun___new_array(sizeof(t=java.lang.Object*[_*_];len=[1]):java.lang.Object*[_*_](*)) [line 55];
+*&amp;$irvar0:java.lang.Object*[_*_](*)=n$3 [line 55];
+EXIT_SCOPE(n$3); [line 55];
+</span></span></a> <a href="./nodes/com.example.relationaldataaccess.RelationalDataAccessApplication.query%28%29%3Avoid.780d16deb258fbfd4e681db10ee36ba5_node6.html"><span class='visited with_tooltip'>I_6<span class='tooltip'>node6 preds:5 succs:7 exn:3 Instructions
+n$4=*&amp;$irvar0:java.lang.Object*[_*_](*) [line 55];
+*n$4[0]:java.lang.Object*="Josh" [line 55];
+EXIT_SCOPE(n$4); [line 55];
+</span></span></a> <a href="./nodes/com.example.relationaldataaccess.RelationalDataAccessApplication.query%28%29%3Avoid.780d16deb258fbfd4e681db10ee36ba5_node7.html"><span class='visited with_tooltip'>I_7<span class='tooltip'>node7 preds:6 succs:8 exn:3 Instructions
+n$5=*&amp;this:com.example.relationaldataaccess.RelationalDataAccessApplication* [line 55];
+n$6=*n$5.jdbcTemplate:org.springframework.jdbc.core.JdbcTemplate*(root com.example.relationaldataaccess.RelationalDataAccessApplication) [line 55];
+*&amp;$irvar1:org.springframework.jdbc.core.JdbcTemplate*=n$6 [line 55];
+NULLIFY(&amp;this); [line 55];
+EXIT_SCOPE(n$5,n$6,this); [line 55];
+</span></span></a> <a href="./nodes/com.example.relationaldataaccess.RelationalDataAccessApplication.query%28%29%3Avoid.780d16deb258fbfd4e681db10ee36ba5_node8.html"><span class='visited with_tooltip'>I_8<span class='tooltip'>node8 preds:7 succs:9 exn:3 Instructions
+n$7=_fun_RowMapper RelationalDataAccessApplication.callsite_com.example.relationaldataaccess.RelationalDataAccessApplication$Lambda$_8_25()() [line 55];
+*&amp;$irvar2:org.springframework.jdbc.core.RowMapper*=n$7 [line 55];
+EXIT_SCOPE(n$7); [line 55];
+</span></span></a> <a href="./nodes/com.example.relationaldataaccess.RelationalDataAccessApplication.query%28%29%3Avoid.780d16deb258fbfd4e681db10ee36ba5_node9.html"><span class='visited with_tooltip'>I_9<span class='tooltip'>node9 preds:8 succs:10 exn:3 Instructions
+n$8=*&amp;$irvar1:org.springframework.jdbc.core.JdbcTemplate* [line 55];
+_=*n$8:org.springframework.jdbc.core.JdbcTemplate*(root org.springframework.jdbc.core.JdbcTemplate) [line 55];
+n$10=*&amp;$irvar0:java.lang.Object*[_*_](*) [line 55];
+n$11=*&amp;$irvar2:org.springframework.jdbc.core.RowMapper* [line 55];
+n$12=_fun_List JdbcTemplate.query(String,java.lang.Object[],RowMapper)(n$8:org.springframework.jdbc.core.JdbcTemplate*,"SELECT id, first_name, last_name FROM customers WHERE first_name = ?":java.lang.Object*,n$10:java.lang.Object*[_*_](*),n$11:org.springframework.jdbc.core.RowMapper*) virtual [line 55];
+*&amp;$irvar3:java.util.List*=n$12 [line 55];
+NULLIFY(&amp;$irvar0); [line 55];
+NULLIFY(&amp;$irvar1); [line 55];
+NULLIFY(&amp;$irvar2); [line 55];
+EXIT_SCOPE(_,n$8,n$10,n$11,n$12,$irvar0,$irvar1,$irvar2); [line 55];
+</span></span></a> <a href="./nodes/com.example.relationaldataaccess.RelationalDataAccessApplication.query%28%29%3Avoid.780d16deb258fbfd4e681db10ee36ba5_node10.html"><span class='visited with_tooltip'>I_10<span class='tooltip'>node10 preds:9 succs:11 exn:3 Instructions
+n$13=_fun_Consumer RelationalDataAccessApplication.callsite_com.example.relationaldataaccess.RelationalDataAccessApplication$Lambda$_8_33()() [line 55];
+*&amp;$irvar4:java.util.function.Consumer*=n$13 [line 55];
+EXIT_SCOPE(n$13); [line 55];
+</span></span></a> <a href="./nodes/com.example.relationaldataaccess.RelationalDataAccessApplication.query%28%29%3Avoid.780d16deb258fbfd4e681db10ee36ba5_node11.html"><span class='visited with_tooltip'>I_11<span class='tooltip'>node11 preds:10 succs:12 exn:3 Instructions
+n$14=*&amp;$irvar3:java.util.List* [line 58];
+_=*n$14:java.util.List*(root java.util.List) [line 58];
+n$16=*&amp;$irvar4:java.util.function.Consumer* [line 58];
+n$17=_fun_void List.forEach(Consumer)(n$14:java.util.List*,n$16:java.util.function.Consumer*) interface virtual [line 58];
+NULLIFY(&amp;$irvar3); [line 58];
+NULLIFY(&amp;$irvar4); [line 58];
+EXIT_SCOPE(_,n$14,n$16,n$17,$irvar3,$irvar4); [line 58];
+</span></span></a> <a href="./nodes/com.example.relationaldataaccess.RelationalDataAccessApplication.query%28%29%3Avoid.780d16deb258fbfd4e681db10ee36ba5_node12.html"><span class='visited with_tooltip'>I_12<span class='tooltip'>node12 preds:11 succs:2 exn:3 Instructions
+APPLY_ABSTRACTION; [line 60];
+</span></span></a><br />@
+
+<span class='color_black'>void void RelationalDataAccessApplication.query()(com.example.relationaldataaccess.RelationalDataAccessApplication* this)
+Analyzed
+</span><br />FAILURE:NONE SYMOPS:86
+<br />
+
+<hr width="100%">
+ADVICE DURING FOOTPRINT
+
+<hr width="100%">
+ERROR DURING FOOTPRINT
+
+<hr width="100%">
+INFO DURING FOOTPRINT
+<br>SKIP_FUNCTION void Logger.info(String) <a href="./nodes/node4.html#session97">node4#session97</a>(<a href="./../RelationalDataAccessApplication.java.2ccb916c20dfbcb55e1f3ee6cf6dc07e.html#LINE54">54</a>)<br>SKIP_FUNCTION void Iterable.forEach(RelationalDataAccessApplication$Lambda$_8_33) <a href="./nodes/node11.html#session104">node11#session104</a>(<a href="./../RelationalDataAccessApplication.java.2ccb916c20dfbcb55e1f3ee6cf6dc07e.html#LINE58">58</a>)<br>SKIP_FUNCTION List JdbcTemplate.query(String,java.lang.Object[],RelationalDataAccessApplication$Lambda$_8_25) <a href="./nodes/node9.html#session102">node9#session102</a>(<a href="./../RelationalDataAccessApplication.java.2ccb916c20dfbcb55e1f3ee6cf6dc07e.html#LINE55">55</a>)
+<hr width="100%">
+LIKE DURING FOOTPRINT
+
+<hr width="100%">
+WARNING DURING FOOTPRINT
+
+<hr width="100%">
+<LISTING>
+Biabduction: phase= RE_EXECUTION
+--------------------------- 1 of 1 [nvisited:54 55 58 60] ---------------------------
+PRE:
+<span class='color_blue'><span class='color_blue'>#GB<>$com.example.relationaldataaccess.RelationalDataAccessApplication = {log:val$3<span class='color_orange'>rearrange:54</span>}<span class='color_orange'>rearrange:54</span>:com.example.relationaldataaccess.RelationalDataAccessApplication( sub ); this = val$1<span class='color_orange'>formal</span>:com.example.relationaldataaccess.RelationalDataAccessApplication*( sub ) ;
+val$3|->{}<span class='color_orange'>rearrange:(z)54</span>:org.slf4j.Logger( sub ); val$2|->{}<span class='color_orange'>rearrange:(z)55</span>:org.springframework.jdbc.core.JdbcTemplate( sub ); this|->{jdbcTemplate:val$2<span class='color_orange'>rearrange:(z)55</span>}<span class='color_orange'>rearrange:(z)55</span>:com.example.relationaldataaccess.RelationalDataAccessApplication( sub )</span></span>
+POST 1 of 1:
+<span class='color_blue'><span class='color_blue'>#GB<>$com.example.relationaldataaccess.RelationalDataAccessApplication = {log:val$3<span class='color_orange'>formal</span>}<span class='color_orange'>formal</span>:com.example.relationaldataaccess.RelationalDataAccessApplication( sub )</span>; <span class='color_red'>return = val$4<span class='color_orange'>initial</span>:void</span>; <span class='color_blue'>this = val$1<span class='color_orange'>formal</span>:com.example.relationaldataaccess.RelationalDataAccessApplication*( sub )</span> ;
+<span class='color_blue'>val$3|->{}<span class='color_orange'>formal(z)</span>:org.slf4j.Logger( sub )</span>; <span class='color_blue'>val$2|->{}<span class='color_orange'>formal(z)</span>:org.springframework.jdbc.core.JdbcTemplate( sub )</span>; <span class='color_blue'>this|->{jdbcTemplate:val$2<span class='color_orange'>formal(z)</span>}<span class='color_orange'>formal(z)</span>:com.example.relationaldataaccess.RelationalDataAccessApplication( sub )</span></span>
+----------------------------------------------------------------<br>
+
+RacerD: 
+Threads: NoThread, Locks: { } 
+Accesses { Loc: line 54 Access: Read of relationaldataaccess.RelationalDataAccessApplication.log Thread: NoThread Lock: false Pre: False,
+           Loc: line 55 Access: Read of this->jdbcTemplate Thread: NoThread Lock: false Pre: Owned({ 0 }),
+           Loc: line 54 Access: Call to un-annotated interface method void Logger.info(String) Thread: NoThread Lock: false Pre: False } 
+Ownership: Unowned 
+Return Attributes: { } 
+
+Starvation: {thread= UnknownThread; return_attributes= Nothing;
+             critical_pairs={ };
+             scheduled_work= { };
+             attributes= { }}
+My Liveness Checker: { &this }
+def/loc/alias: ({ (void RelationalDataAccessApplication.query(), ($irvar3, []), { line 55 }, { (n$14, []),
+                                                                    ($irvar3, []),
+                                                                    (callv, []) }),
+                  (void RelationalDataAccessApplication.query(), ($irvar3, []), { line 55 }, { ($irvar3, []) }),
+                  (void RelationalDataAccessApplication.query(), ($irvar4, []), { line 55 }, { (n$13, []),
+                                                                    (n$16, []),
+                                                                    ($irvar4, []),
+                                                                    (callv, []),
+                                                                    ($irvar0, []),
+                                                                    (returnv, []) }),
+                  (void RelationalDataAccessApplication.query(), ($irvar4, []), { line 55 }, { (n$13, []),
+                                                                    ($irvar4, []),
+                                                                    ($irvar0, []),
+                                                                    (returnv, []) }),
+                  (void RelationalDataAccessApplication.query(), ($irvar0, []), { line 55 }, { (n$3, []),
+                                                                    ($irvar0, []),
+                                                                    (returnv, []) }),
+                  (void RelationalDataAccessApplication.query(), ($irvar0, [[_], ]), { line 55 }, { (n$3, []),
+                                                                    (n$4, []),
+                                                                    (n$10, []),
+                                                                    ($irvar0, [[_], ]),
+                                                                    (returnv, []) }),
+                  (void RelationalDataAccessApplication.query(), ($irvar0, [[_], ]), { line 55 }, { (n$3, []),
+                                                                    (n$4, []),
+                                                                    ($irvar0, [[_], ]),
+                                                                    (returnv, []) }),
+                  (void RelationalDataAccessApplication.query(), ($irvar1, []), { line 55 }, { (n$6, []),
+                                                                    (n$8, []),
+                                                                    ($irvar1, []),
+                                                                    (this, [jdbcTemplate, ]) }),
+                  (void RelationalDataAccessApplication.query(), ($irvar1, []), { line 55 }, { (n$6, []),
+                                                                    ($irvar1, []),
+                                                                    (this, [jdbcTemplate, ]) }),
+                  (void RelationalDataAccessApplication.query(), ($irvar2, []), { line 55 }, { (n$7, []),
+                                                                    (n$11, []),
+                                                                    ($irvar0, []),
+                                                                    ($irvar2, []),
+                                                                    (returnv, []) }),
+                  (void RelationalDataAccessApplication.query(), ($irvar2, []), { line 55 }, { (n$7, []),
+                                                                    ($irvar0, []),
+                                                                    ($irvar2, []),
+                                                                    (returnv, []) }),
+                  (void RelationalDataAccessApplication.query(), (this, []), { line 53 }, { (n$5, []),
+                                                                    (this, []) }),
+                  (void RelationalDataAccessApplication.query(), (this, []), { line 53 }, { (this, []) }),
+                  (void RelationalDataAccessApplication.query(), (ph, []), { line -1 }, { (n$0, []),
+                                                                    (relationaldataaccess.RelationalDataAccessApplication, [log, ]) }),
+                  (void RelationalDataAccessApplication.query(), (ph, []), { line -1 }, { (n$4, []),
+                                                                    ($irvar0, []) }),
+                  (void RelationalDataAccessApplication.query(), (ph, []), { line -1 }, { (n$5, []),
+                                                                    (this, []) }),
+                  (void RelationalDataAccessApplication.query(), (ph, []), { line -1 }, { (n$8, []),
+                                                                    ($irvar1, []) }),
+                  (void RelationalDataAccessApplication.query(), (ph, []), { line -1 }, { (n$10, []),
+                                                                    ($irvar0, []) }),
+                  (void RelationalDataAccessApplication.query(), (ph, []), { line -1 }, { (n$11, []),
+                                                                    ($irvar2, []) }),
+                  (void RelationalDataAccessApplication.query(), (ph, []), { line -1 }, { (n$14, []),
+                                                                    ($irvar3, []) }),
+                  (void RelationalDataAccessApplication.query(), (ph, []), { line -1 }, { (n$16, []),
+                                                                    ($irvar4, []) }),
+                  (void RelationalDataAccessApplication.query(), (ph, []), { line -1 }, { (n$17, []),
+                                                                    (returnv, []) }) }, 
+{ (void RelationalDataAccessApplication.query(), ($irvar3, [])) -> { line 55 },
+  (void RelationalDataAccessApplication.query(), ($irvar4, [])) -> { line 55 },
+  (void RelationalDataAccessApplication.query(), ($irvar0, [])) -> { line 55 },
+  (void RelationalDataAccessApplication.query(), ($irvar0, [[_], ])) -> { line 55 },
+  (void RelationalDataAccessApplication.query(), ($irvar1, [])) -> { line 55 },
+  (void RelationalDataAccessApplication.query(), ($irvar2, [])) -> { line 55 },
+  (void RelationalDataAccessApplication.query(), (this, [])) -> { line 53 } })
+</LISTING>
+<hr />
+<pre>
+{ proc_name= void RelationalDataAccessApplication.query()
+; translation_unit= src/main/java/com/example/relationaldataaccess/RelationalDataAccessApplication.java
+; access= Public
+; exceptions= [java.lang.Exception]
+; formals= [(this,
+            com.example.relationaldataaccess.RelationalDataAccessApplication*)]
+; is_defined= true
+; passed_as_noescape_block_to [None]; loc= src/main/java/com/example/relationaldataaccess/RelationalDataAccessApplication.java:54
+; locals= [{ name= $irvar4; typ= void; modify_in_block= false }; 
+           { name= $irvar3; typ= void; modify_in_block= false }; 
+           { name= $irvar2; typ= void; modify_in_block= false }; 
+           { name= $irvar1; typ= void; modify_in_block= false }; 
+           { name= $irvar0; typ= void; modify_in_block= false }]
+; ret_type= void 
+; proc_id= com.example.relationaldataaccess.RelationalDataAccessApplication.query():void }</pre>
+</body>
+</html>

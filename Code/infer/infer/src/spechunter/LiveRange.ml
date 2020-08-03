@@ -178,12 +178,12 @@ let print_graph graph = BFS.iter (fun (proc, _) -> L.progress "proc: %a@." Procn
 
 
 (** alias set에서 자기 자신, this, ph, 직전 variable을 빼고 남은 program variable들을 리턴 *)
-let collect_program_var_aps_from (aliases:A.t) (self:MyAccessPath.t) (just_before:MyAccessPath.t) : MyAccessPath.t list =
+let collect_program_var_aps_from (aliasset:A.t) ~self:(self:MyAccessPath.t) ~just_before:(just_before:MyAccessPath.t) : MyAccessPath.t list =
   List.filter ~f:(fun x -> is_program_var (fst x) &&
                            not @@ MyAccessPath.equal self x &&
                            not @@ Var.is_this (fst x) &&
                            not @@ is_placeholder_vardef (fst x) &&
-                           not @@ MyAccessPath.equal just_before x) (A.elements aliases)
+                           not @@ MyAccessPath.equal just_before x) (A.elements aliasset)
 
 
 let select_up_to (state:S.elt) ~within:(astate_set:S.t) : S.t =
@@ -249,8 +249,14 @@ let pp_pairofms fmt (proc, summ) =
   F.fprintf fmt ")"
 
 
-let progress_pairofms_list list =
+let pp_pairofms_list list =
   List.iter ~f:(fun x -> L.progress "%a@." pp_pairofms x) list
+
+
+let pp_ap_list list =
+  L.progress "[";
+  List.iter ~f:(fun ap -> L.progress "%a\n" MyAccessPath.pp ap) list;
+  L.progress "]"
 
 
 (** get_formal_args는 skip_function에 대해 실패한다는 점을 이용한 predicate *)
@@ -427,15 +433,16 @@ let is_carriedover_ap (ap:A.elt) (current_methname:Procname.t) (current_astate_s
 let rec compute_chain_inner (current_methname:Procname.t) (current_astate_set:S.t) (current_astate:S.elt) (current_chain:chain) : chain =
   (* L.progress "current_astate: %a@." T.pp current_astate; *)
   (* L.progress "current_chain: %a@." pp_chain current_chain; *)
+  (* 현재 보고 있는 astate의 aliasset을 청소한 결과물: returnv, carryover된 var, 그리고 callv를 모두 청소함 *)
   let current_aliasset_cleanedup = A.filter (fun tup ->
       not @@ is_returnv_ap tup &&
       not @@ is_carriedover_ap tup current_methname current_astate_set &&
       not @@ is_callv_ap tup) @@ fourth_of current_astate in
   let current_vardef = second_of current_astate in
-  (* 직전에 추론했던 chain 토막에서 끄집어낸 variable *)
+  (* 직전에 방문했던 astate에서 끄집어낸 variable *)
   let just_before = extract_ap_from_chain_slice @@ pop current_chain in
   (* 직전의 variable과 현재의 variable과 returnv를 모두 제거하고 나서 남은 pvar를 봤더니 *)
-  match collect_program_var_aps_from current_aliasset_cleanedup current_vardef just_before with
+  match collect_program_var_aps_from current_aliasset_cleanedup ~self:current_vardef ~just_before:just_before with
   | [] -> (* either redefinition or dead end *)
       let states = S.elements (remove_duplicates_from current_astate_set) in
       let redefined_states = List.fold_left states ~init:[] ~f:(fun (acc:T.t list) (st:T.t) ->
@@ -443,12 +450,15 @@ let rec compute_chain_inner (current_methname:Procname.t) (current_astate_set:S.
       begin match redefined_states with
         | [_] -> (* 나 하나밖에 없네: Dead end *)
             (current_methname, Dead) :: current_chain
-        | _::_ -> (* 나 말고 다른 애들도 있네: Redefinition *) (* 현재에서 가장 가까운 future state 중에서 vardef가 같은 state 찾기 *)
-            let future_states = S.diff (remove_duplicates_from current_astate_set) @@ select_up_to current_astate ~within:(remove_duplicates_from current_astate_set) in
-            let new_state = find_earliest_astate_of_var_within (S.elements future_states) in
+        | _::_ -> (* 나 말고 다른 애들도 있네: Redefinition *)
+            (* 현재에서 가장 가까운 future state 중에서 vardef가 같은 state 찾기 *)
+            let current_astate_cleanedup = remove_duplicates_from current_astate_set in
+            let states_upto_current = select_up_to current_astate ~within:current_astate_cleanedup in
+            let future_states = S.diff current_astate_cleanedup states_upto_current in
+            let new_state = find_earliest_astate_of_var_within @@ S.elements future_states in
             let new_chain = (current_methname, Redefine (current_vardef)) :: current_chain in
             compute_chain_inner current_methname current_astate_set new_state new_chain
-        | _ -> L.die InternalError "compute_chain_inner failed, current_methname: %a, current_astate_set: %a, current_astate: %a, current_chain: %a@." Procname.pp current_methname S.pp current_astate_set T.pp current_astate pp_chain current_chain end
+        | _ -> L.die InternalError "compute_chain_inner failed (1), current_methname: %a, current_astate_set: %a, current_astate: %a, current_chain: %a@." Procname.pp current_methname S.pp current_astate_set T.pp current_astate pp_chain current_chain end
   | [ap] -> (* either definition or call *)
       if Var.is_return (fst ap)
       then (* caller에서의 define *)
@@ -469,9 +479,9 @@ let rec compute_chain_inner (current_methname:Procname.t) (current_astate_set:S.
         begin match search_target_tuples_by_vardef_ap ap current_methname current_astate_set with
           | [] -> (* Call *)
               let current_aliasset = fourth_of current_astate in
-              L.progress "current_astate: %a@." T.pp current_astate;
+              (* L.progress "current_astate: %a@." T.pp current_astate; *)
               let callv = A.fold (fun ap acc -> if is_callv_ap ap then ap else acc) current_aliasset (second_of bottuple) in
-              L.progress "callv: %a, contents: %a@." MyAccessPath.pp callv Procname.pp (extract_callee_from callv);
+              (* L.progress "callv: %a, contents: %a@." MyAccessPath.pp callv Procname.pp (extract_callee_from callv); *)
               let callee_methname = (* find_immediate_successor current_methname current_astate_set ap *) extract_callee_from callv in
               (* L.progress "extracted methname: %a@." Procname.pp callee_methname; *)
               (* 파라미터 (ap) 튜플들 *)
@@ -482,7 +492,7 @@ let rec compute_chain_inner (current_methname:Procname.t) (current_astate_set:S.
               let new_chain = (current_methname, Call (callee_methname, ap))::current_chain in
               compute_chain_inner callee_methname (get_summary callee_methname) new_state new_chain
           | nonempty_list -> (* 동일 proc에서의 Define *)
-              L.progress "current ap: %a@." MyAccessPath.pp current_vardef;
+              (* L.progress "current ap: %a@." MyAccessPath.pp current_vardef; *)
               let new_state = find_earliest_astate_within @@ S.elements (remove_duplicates_from @@ S.of_list nonempty_list) in
               let new_slice = (current_methname, Define (current_methname, ap)) in
               (* cycle을 막기 위해, 이미 동일 slice를 만든 적이 있었다면 생성 중단 *)
@@ -491,19 +501,20 @@ let rec compute_chain_inner (current_methname:Procname.t) (current_astate_set:S.
               else
                 let new_chain = new_slice::current_chain in
                 compute_chain_inner current_methname current_astate_set new_state new_chain end
-  | _ -> (* 현재 astate의 aliasset을 청소해서 불필요한 pvar를 없애고 재시도 *)
+  | lst -> (* 현재 astate의 aliasset을 청소해서 불필요한 pvar를 없애고 재시도 *)
+      pp_ap_list lst;
       try
         let (a, b, c, aliasset) = current_astate in
         let current_aliasset_cleaned_up = cleanup_aliasset aliasset current_vardef in
         let current_astate_cleaned_up = (a, b, c, current_aliasset_cleaned_up) in
         compute_chain_inner current_methname (current_astate_set) current_astate_cleaned_up current_chain
       with _ ->
-        L.die InternalError "compute_chain_inner failed, current_methname: %a, current_astate_set: %a, current_astate: %a, current_chain: %a@." Procname.pp current_methname S.pp current_astate_set T.pp current_astate pp_chain current_chain
+        L.die InternalError "compute_chain_inner failed (2), current_methname: %a, current_astate_set: %a, current_astate: %a, current_chain: %a@." Procname.pp current_methname S.pp current_astate_set T.pp current_astate pp_chain current_chain
 
 
 (** 콜 그래프와 분석 결과를 토대로 체인 (Define -> ... -> Dead)을 계산해 낸다 *)
 let compute_chain_ (ap:MyAccessPath.t) : chain =
-  L.progress "computing chain for %a@." MyAccessPath.pp ap;
+  (* L.progress "computing chain for %a@." MyAccessPath.pp ap; *)
   let (first_methname, first_astate_set, first_astate) = find_first_occurrence_of ap in
   let first_aliasset = fourth_of first_astate in
   let returnv_opt = A.find_first_opt is_returnv_ap first_aliasset in

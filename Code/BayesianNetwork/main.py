@@ -34,6 +34,14 @@ def flatten(ll):
     return flat_list
 
 
+filtermethod = lambda string:\
+    "__new" not in string and\
+    "<init>" not in string and\
+    "<clinit>" not in string and\
+    "lambda" not in string and\
+    "Lambda" not in string
+
+
 def populate_sofallm():
     global setofallmethods
     methods = []
@@ -41,30 +49,33 @@ def populate_sofallm():
     with open(methodfile, "r+") as f:
         for line in f.readlines():
             methods.append(line.rstrip())
-    methods = list(filter(lambda string: "<init>" not in string and
-                          "<clinit>" not in string, methods))
+    methods = list(filter(filtermethod, methods))
     methods = set(methods)
     with open(callmethodfile, "r+") as g:
         for line in g.readlines():
             callmethods.append(line.rstrip())
-    callmethods = list(filter(lambda line: "__new" not in line
-                              and "<init>" not in line, callmethods))
+    callmethods = list(filter(filtermethod, callmethods))
     callmethods = list(map(lambda line: line.rstrip(), callmethods))
     callmethods = list(map(lambda line: line.split(" -> "), callmethods))
     callmethods = set(flatten(callmethods))
     setofallmethods = list(methods.union(callmethods))
+    setofallmethods = list(filter(lambda meth: ' ' in meth, setofallmethods))
     setofallmethods = list(map(lambda meth: process(meth), setofallmethods))
 
 
 def process(info):
-    pkg = info.split('.')[0].split(' ')[1]
-    rtntype = info.split('.')[0].split(' ')[0]
-    name_and_type = info.split('.')[1]
-    name = name_and_type.split('(')[0]
-    intype = regex.findall(name_and_type)[0]
+    space_index = info.index(' ')
+    split_on_open_paren = info.split('(')
+    last_dot_index = split_on_open_paren[0].rindex('.')
+    open_paren_index = info.index('(')
+    rtntype = info[:space_index]
+    pkg = info[space_index+1:last_dot_index]
+    name = info[last_dot_index+1:open_paren_index]
+    intype = regex.findall(info)[0]
     if intype == '':
         intype = 'void'
     return (pkg, rtntype, name, intype, info)
+
 
 
 def write_to_csv():

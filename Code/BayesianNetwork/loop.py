@@ -8,6 +8,7 @@ import networkx as nx
 import itertools as it
 import os
 import random
+import solutions
 from toolz import valmap
 from make_CPT import *
 
@@ -222,7 +223,7 @@ def init_BN():
 # ====================================================
 
 graph_for_reference = init_graph()
-BN_for_inference = init_BN()
+# BN_for_inference = init_BN()
 
 
 def tuplestring_to_tuple(tuple_string):
@@ -449,7 +450,6 @@ def tactical_loop(current_asked, current_evidence, updated_nodes, prev_snapshot,
     if oracle_response == 'src':
         current_evidence[query] = 1
         new_snapshot = BN_for_inference.predict_proba(current_evidence)
-        print_distrib(new_snapshot)
         visualize_snapshot(new_snapshot)
         current_precision_list = calculate_precision(new_snapshot)
         current_stability_list = calculate_stability(prev_snapshot, new_snapshot)
@@ -457,7 +457,6 @@ def tactical_loop(current_asked, current_evidence, updated_nodes, prev_snapshot,
     elif oracle_response == 'sin':
         current_evidence[query] = 2
         new_snapshot = BN_for_inference.predict_proba(current_evidence)
-        print_distrib(new_snapshot)
         visualize_snapshot(new_snapshot)
         current_precision_list = calculate_precision(new_snapshot)
         current_stability_list = calculate_stability(prev_snapshot, new_snapshot)
@@ -465,7 +464,6 @@ def tactical_loop(current_asked, current_evidence, updated_nodes, prev_snapshot,
     elif oracle_response == 'san':
         current_evidence[query] = 3
         new_snapshot = BN_for_inference.predict_proba(current_evidence)
-        print_distrib(new_snapshot)
         visualize_snapshot(new_snapshot)
         current_precision_list = calculate_precision(new_snapshot)
         current_stability_list = calculate_stability(prev_snapshot, new_snapshot)
@@ -473,7 +471,6 @@ def tactical_loop(current_asked, current_evidence, updated_nodes, prev_snapshot,
     elif oracle_response == 'non':
         current_evidence[query] = 4
         new_snapshot = BN_for_inference.predict_proba(current_evidence)
-        print_distrib(new_snapshot)
         visualize_snapshot(new_snapshot)
         current_precision_list = calculate_precision(new_snapshot)
         current_stability_list = calculate_stability(prev_snapshot, new_snapshot)
@@ -603,24 +600,17 @@ def plot_graph():
 # Methods for Scoring ====================================
 # ========================================================
 
-correct_solution = dict([('void PrintStream.println(int)', 'sin'),
-                         ('void WhatIWantExample.g(int)', 'san'),
-                         ('void WhatIWantExample.m3(int)', 'sin'),
-                         ('void WhatIWantExample.h(int)', 'non'),
-                         ('void WhatIWantExample.main()', 'non'),
-                         ('int WhatIWantExample.m2(int)', 'san'),
-                         ('void WhatIWantExample.f()', 'src'),
-                         ('int WhatIWantExample.m1()', 'src')])
-
 
 def calculate_precision(current_snapshot):
     """현재 확률분포 스냅샷의 정확도를 측정한다."""
     # current_snapshot의 타입은? np.ndarray of Distribution.
     names_and_dists = make_names_and_dists(current_snapshot)
     names_and_labels = dict(map(lambda tup: (tup[0], find_max_val(tup[1])), names_and_dists))
+    print(names_and_labels["int[] JdbcTemplate.batchUpdate(String,List)"])
     wrong_nodes = []
     for node_name in graph_for_reference.nodes:
-        if names_and_labels[node_name] == correct_solution[node_name]:
+        print("node_name: ", node_name)
+        if names_and_labels[node_name] == correct_solution_WhatIWantExample[node_name]:
             wrong_nodes.append(node_name)
     return wrong_nodes
 

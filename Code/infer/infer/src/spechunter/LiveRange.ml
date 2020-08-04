@@ -147,10 +147,11 @@ let callg_hash2og () : unit =
     G.add_edge callgraph (key, get_summary key) (value, get_summary value)) callgraph_table
 
 
-let filter_callgraph_table hashtbl =
+(** 주어진 hashtbl의 엔트리 중에서 (callgraph_table이 쓰일 것) summary_table에 있지 않은 엔트리를 날린다. *)
+let filter_callgraph_table hashtbl : unit =
   let procs = Hashtbl.fold (fun k _ acc -> k::acc) summary_table [] in
   Hashtbl.iter (fun k v ->
-      if not @@ List.mem procs k ~equal:Procname.equal ||
+      if not @@ List.mem procs k ~equal:Procname.equal &&
          not @@ List.mem procs v ~equal:Procname.equal
       then Hashtbl.remove hashtbl k
       else ()) hashtbl
@@ -502,7 +503,7 @@ let rec compute_chain_inner (current_methname:Procname.t) (current_astate_set:S.
                 let new_chain = new_slice::current_chain in
                 compute_chain_inner current_methname current_astate_set new_state new_chain end
   | lst -> (* 현재 astate의 aliasset을 청소해서 불필요한 pvar를 없애고 재시도 *)
-      pp_ap_list lst;
+      pp_ap_list lst; (* 디버깅용 *)
       try
         let (a, b, c, aliasset) = current_astate in
         let current_aliasset_cleaned_up = cleanup_aliasset aliasset current_vardef in
@@ -526,6 +527,7 @@ let compute_chain_ (ap:MyAccessPath.t) : chain =
 
 (** 본체인 compute_chain_을 포장하는 함수 *)
 let compute_chain (ap:MyAccessPath.t) : chain =
+  (* L.progress "%a@." MyAccessPath.pp ap; *)
   let (first_methname, _, first_astate) = find_first_occurrence_of ap in
   if Procname.equal first_methname Procname.empty_block then [] else
   let first_aliasset = fourth_of first_astate in
@@ -608,15 +610,11 @@ let run_lrm () =
     not @@ Var.is_this var &&
     not @@ is_placeholder_vardef var &&
     not @@ Pvar.is_frontend_tmp pv) setofallprocandap_with_garbage in
-
-  (* temp code for debugging WhatIWantExample.java *)
-  let setofallap = List.map ~f:(fun (_, b) -> b) setofallprocandap in
-  let xvar = (List.nth_exn setofallap 0) in
-  let setofallprocandap_nox = List.filter ~f:(fun (_, x) -> not @@ MyAccessPath.equal xvar x) setofallprocandap in
-  (* temp code end *)
-
+  (* List.iter ~f:(fun (_, myap) -> L.progress "%a@."MyAccessPath.pp myap) setofallprocandap; *)
   List.iter ~f:(fun (proc, ap) ->
     add_chain (proc, ap) (compute_chain ap)) setofallprocandap;
+  (* L.progress "Hashtbl: %a@." pp_summary_table summary_table; *)
+  print_graph callgraph;
   let out_string = F.asprintf "%s\n" (chains_to_string chains) in
   let ch = Out_channel.create "Chain.txt" in
   Out_channel.output_string ch out_string;

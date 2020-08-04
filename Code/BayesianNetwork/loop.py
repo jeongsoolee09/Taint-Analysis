@@ -432,15 +432,21 @@ def tactical_loop(current_asked, current_evidence, updated_nodes, prev_snapshot,
     there_are_no_nodes_left = not there_are_nodes_left
     its_time_to_terminate = time_to_terminate(BN_for_inference, current_evidence)
     not_yet_time_to_terminate = not its_time_to_terminate
+
     query = find_max_d_con(current_asked, updated_nodes, graph_for_reference.nodes)
+
     if there_are_no_nodes_left and not_yet_time_to_terminate:
+        print("case 1")
         if set(graph_for_reference.nodes) == set(current_asked):
+            print("\nWarning: some distributions are not fully determined.\n")
             return prev_snapshot, precision_list, stability_list
         else:
             query = find_max_d_con([], [], remove_sublist(graph_for_reference.nodes, current_asked))
     elif there_are_no_nodes_left and its_time_to_terminate:
+        print("case 2")
         return prev_snapshot, precision_list, stability_list
     elif there_are_nodes_left and not_yet_time_to_terminate:
+        print("case 3")
         pass
     elif there_are_nodes_left and its_time_to_terminate:
         raise ThisIsImpossible

@@ -13,6 +13,12 @@ methodInfo2 = methodInfo2.drop('id', axis=1)
 # TODO: Dead 스트링의 끝에 )가 하나 남음
 def tuple_string_to_tuple(tuple_string):
     string_list = tuple_string.split(", ")
+    if len(string_list) > 3:  # not sure about the number 3...
+        method, *rest = string_list
+        activity = ""
+        for s in string_list:
+            activity = activity + s
+        string_list = [method, activity]
     if len(string_list) == 3:
         string_list = [string_list[0], string_list[1]+", "+string_list[2]]
     string_list[0] = string_list[0].lstrip('(')
@@ -33,7 +39,7 @@ def parse_chain(var_and_chain):
 
 def make_chain():
     path = os.path.abspath("..")
-    path = os.path.join(path, "benchmarks", "fabricated", "Chain.txt")
+    path = os.path.join(path, "benchmarks", "realworld", "relational-data-access", "Chain.txt")
     with open(path, "r+") as chainfile:
         lines = chainfile.readlines()
         var_to_chain = list(filter(lambda line: line != "\n", lines))
@@ -45,7 +51,7 @@ def make_chain():
 
 def make_calledges():
     path = os.path.abspath("..")
-    path = os.path.join(path, "benchmarks", "fabricated", "Callgraph.txt")
+    path = os.path.join(path, "benchmarks", "realworld", "relational-data-access", "Callgraph.txt")
     with open(path, "r+") as callgraphfile:
         lines = callgraphfile.readlines()
         lines = list(filter(lambda line: "__new" not in line
@@ -56,7 +62,20 @@ def make_calledges():
     return call_edges
 
 
-var_and_chain = make_chain()
+filtermethod = lambda string:\
+    "__new" not in string and\
+    "<init>" not in string and\
+    "<clinit>" not in string and\
+    "lambda" not in string and\
+    "Lambda" not in string
+
+
+def filter_var_and_chain(var_and_chain):
+    """var_and_chain의 key인 var이 만약 filtermethod를 만족하지 않는 경우라면 var_and_chain에서 삭제한다."""
+    
+
+
+var_and_chain = dict(make_chain())
 call_edges = make_calledges()
 
 
@@ -77,7 +96,7 @@ def scoring_function(info1, info2):
 
 def detect_dataflow():  # method1, method2
     out = []
-    for [_, chain] in var_and_chain:
+    for chain in var_and_chain.values():
         for tup in chain:
             caller_name, activity = tup
             if "Call" in activity:
@@ -85,6 +104,7 @@ def detect_dataflow():  # method1, method2
                 callee_name = tmplst[1]+"("+tmplst[2].rstrip()
                 out.append((caller_name, callee_name))
             if "Define" in activity:
+                # print(activity)
                 callee_name = activity.split("using")[1]
                 callee_name = callee_name.lstrip(" ")
                 out.append((callee_name, caller_name))

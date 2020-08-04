@@ -610,7 +610,7 @@ def report_meta_statistics():
     print("elapsed time: ", time.time() - start)
 
 
-def plot_graph():
+def plot_underlying_graph():
     """단순하게 underlying graph만 출력한다."""
     plt.clf()
     edge_colormap = create_edge_colormap()

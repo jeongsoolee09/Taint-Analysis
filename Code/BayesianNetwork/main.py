@@ -19,9 +19,9 @@ regex = re.compile(regex)
 
 current_path = os.path.abspath("..")
 methodfile = os.path.join(current_path, 'benchmarks',
-                          'fabricated', 'Methods.txt')
+                          'realworld', 'relational-data-access', 'Methods.txt')
 callmethodfile = os.path.join(current_path, 'benchmarks',
-                              'fabricated', 'Callgraph.txt')
+                              'realworld', 'relational-data-access', 'Callgraph.txt')
 
 setofallmethods = []
 

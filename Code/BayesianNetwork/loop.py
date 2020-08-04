@@ -8,7 +8,7 @@ import networkx as nx
 import itertools as it
 import os
 import random
-import solutions
+from solutions import *
 from toolz import valmap
 from make_CPT import *
 
@@ -223,7 +223,7 @@ def init_BN():
 # ====================================================
 
 graph_for_reference = init_graph()
-# BN_for_inference = init_BN()
+BN_for_inference = init_BN()
 
 
 def tuplestring_to_tuple(tuple_string):
@@ -522,17 +522,31 @@ def find_max_val(stats):
         return "non"
 
 
-colordict = {"src": "red", "sin": "orange", "san": "yellow", "non": "green"}
+node_colordict = {"src": "red", "sin": "orange", "san": "yellow", "non": "green"}
 
 
-def create_colormap(names_and_labels):
+def create_node_colormap(names_and_labels):
     """BN을 기준으로 계산된 names_and_labels를 받아서 graph_for_reference를 기준으로 한 colormap을 만든다."""
     out = list(graph_for_reference.nodes)[:]
     for name, label in names_and_labels:
         index = out.index(name)
-        out[index] = colordict[label]
+        out[index] = node_colordict[label]
     return out
-        
+
+
+def create_edge_colormap():
+    """엣지 목록을 받아서, 엣지의 종류에 따라 graph_for_reference를 그릴 때 엣지의 색깔을 달리한다."""
+    out = list(graph_for_reference.edges)[:]
+    for edge in out:
+        index = out.index(edge)
+        if edge in df_edges:    # df
+            out[index] = "red"
+        elif edge in call_edges:  # call
+            out[index] = "green"
+        else:                   # sim
+            out[index] = "blue"
+    return out
+
 
 def make_names_and_dists(snapshot):
     dists = []
@@ -552,8 +566,9 @@ def visualize_snapshot(snapshot):
     plt.ion()
     names_and_dists = make_names_and_dists(snapshot)
     names_and_labels = list(map(lambda tup: (tup[0], find_max_val(tup[1])), names_and_dists))
-    colormap = create_colormap(names_and_labels)
-    nx.draw(graph_for_reference, node_color=colormap,
+    node_colormap = create_node_colormap(names_and_labels)
+    edge_colormap = create_edge_colormap()
+    nx.draw(graph_for_reference, node_color=node_colormap, edge_color=edge_colormap,
             pos=nx.circular_layout(graph_for_reference),
             with_labels=True, node_size=100)
     plt.show(block=False)
@@ -592,7 +607,8 @@ def report_meta_statistics():
 def plot_graph():
     """단순하게 underlying graph만 출력한다."""
     plt.clf()
-    nx.draw(graph_for_reference, font_size=8, with_labels=True,
+    edge_colormap = create_edge_colormap()
+    nx.draw(graph_for_reference, font_size=8, with_labels=True, edge_color=edge_colormap,
             pos=nx.circular_layout(graph_for_reference))
     plt.show(block=False)
 
@@ -606,11 +622,11 @@ def calculate_precision(current_snapshot):
     # current_snapshot의 타입은? np.ndarray of Distribution.
     names_and_dists = make_names_and_dists(current_snapshot)
     names_and_labels = dict(map(lambda tup: (tup[0], find_max_val(tup[1])), names_and_dists))
-    print(names_and_labels["int[] JdbcTemplate.batchUpdate(String,List)"])
+    # print(names_and_labels["int[] JdbcTemplate.batchUpdate(String,List)"])
     wrong_nodes = []
     for node_name in graph_for_reference.nodes:
-        print("node_name: ", node_name)
-        if names_and_labels[node_name] == correct_solution_WhatIWantExample[node_name]:
+        # print("node_name: ", node_name)
+        if names_and_labels[node_name] == correct_solution_relational[node_name]:
             wrong_nodes.append(node_name)
     return wrong_nodes
 

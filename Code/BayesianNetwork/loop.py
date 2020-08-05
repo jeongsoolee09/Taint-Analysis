@@ -622,7 +622,7 @@ def visualize_snapshot(snapshot, dependent_nodes):
     for dependent_node in dependent_nodes:
         coord_lists.append(node_posmap[dependent_node])
     coord_lists = np.asarray(coord_lists)
-    polygon = ptch.Polygon(coord_lists, alpha=0.4)
+    polygon = ptch.Polygon(coord_lists, closed=True, alpha=0.4)
     ax.add_patch(polygon)
 
     nx.draw(graph_for_reference,

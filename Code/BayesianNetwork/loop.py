@@ -2,6 +2,8 @@ from pomegranate import *
 import time
 import numpy as np
 import matplotlib.pyplot as plt
+import matplotlib.patches as ptch
+import matplotlib.axes as axes
 import pandas as pd
 import csv
 import networkx as nx
@@ -331,28 +333,28 @@ def random_loop(current_asked, current_evidence, prev_snapshot, precision_list, 
         current_evidence[query] = 1
         # snapshot은 distribution object들의 nparray이다.
         new_snapshot = BN_for_inference.predict_proba(current_evidence)
-        visualize_snapshot(new_snapshot)
+        visualize_snapshot(new_snapshot, [])
         current_precision_list = calculate_precision(new_snapshot)
         current_stability_list = calculate_stability(prev_snapshot, new_snapshot)
         return random_loop(current_asked+[query], current_evidence, new_snapshot,  precision_list+[current_precision_list], stability_list+[current_stability_list])
     elif oracle_response == 'sin':
         current_evidence[query] = 2
         new_snapshot = BN_for_inference.predict_proba(current_evidence)
-        visualize_snapshot(new_snapshot)
+        visualize_snapshot(new_snapshot, [])
         current_precision_list = calculate_precision(new_snapshot)
         current_stability_list = calculate_stability(prev_snapshot, new_snapshot)
         return random_loop(current_asked+[query], current_evidence, new_snapshot,  precision_list+[current_precision_list], stability_list+[current_stability_list])
     elif oracle_response == 'san':
         current_evidence[query] = 3
         new_snapshot = BN_for_inference.predict_proba(current_evidence)
-        visualize_snapshot(new_snapshot)
+        visualize_snapshot(new_snapshot, [])
         current_precision_list = calculate_precision(new_snapshot)
         current_stability_list = calculate_stability(prev_snapshot, new_snapshot)
         return random_loop(current_asked+[query], current_evidence, new_snapshot,  precision_list+[current_precision_list], stability_list+[current_stability_list])
     elif oracle_response == 'non':
         current_evidence[query] = 4
         new_snapshot = BN_for_inference.predict_proba(current_evidence)
-        visualize_snapshot(new_snapshot)
+        visualize_snapshot(new_snapshot, [])
         current_precision_list = calculate_precision(new_snapshot)
         current_stability_list = calculate_stability(prev_snapshot, new_snapshot)
         return random_loop(current_asked+[query], current_evidence, new_snapshot,  precision_list+[current_precision_list], stability_list+[current_stability_list])
@@ -389,19 +391,21 @@ def forall(unary_pred, collection):
 
 def find_max_d_con(current_asked, updated_nodes, list_of_all_node):  # 전체 node pool을 제한할 수 있음
     """graph_for_reference의 node들 중에서 가장 d_connected node가 가장 많은 노드를 찾아낸다."""
-    tmpdict = dict()
+    d_connected_set_dict = dict()
     for node in list_of_all_node:
-        tmpdict[node] = d_connected(node, current_asked)
-    tmpdict = valmap(lambda set_: set_-set(current_asked)-set(updated_nodes), tmpdict)
-    if forall(lambda set_: set_ == set(), tmpdict.values()):  # no more to ask
+        d_connected_set_dict[node] = d_connected(node, current_asked)
+    d_connected_set_dict = valmap(lambda set_: set_-set(current_asked)-set(updated_nodes), d_connected_set_dict)
+    if forall(lambda set_: set_ == set(), d_connected_set_dict.values()):  # no more to ask
         return None
-    tmpdict = valmap(lambda set_: len(set_), tmpdict)
-    max_key = max(tmpdict, key=lambda key: tmpdict[key])
-    return max_key
+    d_connected_len_dict = valmap(lambda set_: len(set_), d_connected_set_dict)
+    max_key = max(d_connected_len_dict, key=lambda key: d_connected_len_dict[key])
+    return max_key, d_connected_set_dict[max_key]
 
 
 def is_confident(parameters):
     """확률분포 (Distribution 오브젝트의 parameters 부분)를 보고, 가장 높은 확률이 다른 확률들보다 적어도 0.1은 높은지 확인한다."""
+    if type(parameters) == dict:
+        parameters = list(parameters.values())
     first_rank = max(parameters)
     parameters_ = parameters[:]
     parameters_.remove(first_rank)
@@ -435,7 +439,15 @@ def tactical_loop(current_asked, current_evidence, updated_nodes, prev_snapshot,
     its_time_to_terminate = time_to_terminate(BN_for_inference, current_evidence)
     not_yet_time_to_terminate = not its_time_to_terminate
 
-    query = find_max_d_con(current_asked, updated_nodes, graph_for_reference.nodes)
+    # query, dependent_nodes = find_max_d_con(current_asked, updated_nodes, graph_for_reference.nodes)
+    maybe_query_tuple = find_max_d_con(current_asked, updated_nodes, graph_for_reference.nodes)
+    if maybe_query_tuple == None:
+        query = None
+        dependent_nodes = []
+    else:
+        query = maybe_query_tuple[0]
+        dependent_nodes = maybe_query_tuple[1]
+
 
     if there_are_no_nodes_left and not_yet_time_to_terminate:
         print("case 1")
@@ -443,7 +455,7 @@ def tactical_loop(current_asked, current_evidence, updated_nodes, prev_snapshot,
             print("\nWarning: some distributions are not fully determined.\n")
             return prev_snapshot, precision_list, stability_list
         else:
-            query = find_max_d_con([], [], remove_sublist(graph_for_reference.nodes, current_asked))
+            query, dependent_nodes = find_max_d_con([], [], remove_sublist(graph_for_reference.nodes, current_asked))
     elif there_are_no_nodes_left and its_time_to_terminate:
         print("case 2")
         return prev_snapshot, precision_list, stability_list
@@ -458,28 +470,28 @@ def tactical_loop(current_asked, current_evidence, updated_nodes, prev_snapshot,
     if oracle_response == 'src':
         current_evidence[query] = 1
         new_snapshot = BN_for_inference.predict_proba(current_evidence)
-        visualize_snapshot(new_snapshot)
+        visualize_snapshot(new_snapshot, dependent_nodes)
         current_precision_list = calculate_precision(new_snapshot)
         current_stability_list = calculate_stability(prev_snapshot, new_snapshot)
         return tactical_loop(current_asked, current_evidence, updated_nodes, new_snapshot, precision_list+[current_precision_list], stability_list+[current_stability_list])
     elif oracle_response == 'sin':
         current_evidence[query] = 2
         new_snapshot = BN_for_inference.predict_proba(current_evidence)
-        visualize_snapshot(new_snapshot)
+        visualize_snapshot(new_snapshot, dependent_nodes)
         current_precision_list = calculate_precision(new_snapshot)
         current_stability_list = calculate_stability(prev_snapshot, new_snapshot)
         return tactical_loop(current_asked, current_evidence, updated_nodes, new_snapshot, precision_list+[current_precision_list], stability_list+[current_stability_list])
     elif oracle_response == 'san':
         current_evidence[query] = 3
         new_snapshot = BN_for_inference.predict_proba(current_evidence)
-        visualize_snapshot(new_snapshot)
+        visualize_snapshot(new_snapshot, dependent_nodes)
         current_precision_list = calculate_precision(new_snapshot)
         current_stability_list = calculate_stability(prev_snapshot, new_snapshot)
         return tactical_loop(current_asked, current_evidence, updated_nodes, new_snapshot, precision_list+[current_precision_list], stability_list+[current_stability_list])
     elif oracle_response == 'non':
         current_evidence[query] = 4
         new_snapshot = BN_for_inference.predict_proba(current_evidence)
-        visualize_snapshot(new_snapshot)
+        visualize_snapshot(new_snapshot, dependent_nodes)
         current_precision_list = calculate_precision(new_snapshot)
         current_stability_list = calculate_stability(prev_snapshot, new_snapshot)
         return tactical_loop(current_asked, current_evidence, updated_nodes, new_snapshot, precision_list+[current_precision_list], stability_list+[current_stability_list])
@@ -491,19 +503,19 @@ def single_loop(query):
     if oracle_response == 'src':
         current_evidence[query] = 1
         new_snapshot = BN_for_inference.predict_proba(current_evidence)
-        visualize_snapshot(new_snapshot)
+        visualize_snapshot(new_snapshot, [])
     elif oracle_response == 'sin':
         current_evidence[query] = 2
         new_snapshot = BN_for_inference.predict_proba(current_evidence)
-        visualize_snapshot(new_snapshot)
+        visualize_snapshot(new_snapshot, [])
     elif oracle_response == 'san':
         current_evidence[query] = 3
         new_snapshot = BN_for_inference.predict_proba(current_evidence)
-        visualize_snapshot(new_snapshot)
+        visualize_snapshot(new_snapshot, [])
     elif oracle_response == 'non':
         current_evidence[query] = 4
         new_snapshot = BN_for_inference.predict_proba(current_evidence)
-        visualize_snapshot(new_snapshot)
+        visualize_snapshot(new_snapshot, [])
 
 
 def normalize_dist(oracle_response):
@@ -578,20 +590,46 @@ def find_confident_node_names(names_and_params):
     return confident_node_names
 
 
-def visualize_snapshot(snapshot):
+
+fig = plt.figure()
+
+def visualize_snapshot(snapshot, dependent_nodes):
     """한번 iteration 돌 때마다, 전체 BN의 snapshot을 가시화한다. 이 때, confident node들의 테두리는 굵고, 분홍색으로 만든다."""
+    global fig
     plt.clf()
     plt.ion()
+    ax = fig.add_subplot(111)
     names_and_params = make_names_and_params(snapshot)
+    params = list(map(lambda tup: tup[1], names_and_params))
     names_and_labels = list(map(lambda tup: (tup[0], find_max_val(tup[1])), names_and_params))
     node_colormap = create_node_colormap(names_and_labels)
     edge_colormap = create_edge_colormap()
-    confident_nodes = is_confident(names_and_params)
+
+    node_posmap = nx.circular_layout(graph_for_reference)
+
+    # confident node들 마킹하기
+    confident_node_indices = []
+    for i, param in enumerate(params):
+        if is_confident(param):
+            confident_node_indices.append(i)
+    confident_nodes = list(map(lambda index: names_and_params[index][0], confident_node_indices))
+    for confident_node in confident_nodes:
+        x, y = node_posmap[confident_node]
+        plt.text(x, y+0.1, s='conf', bbox=dict(facecolor='blue', alpha=0.5), horizontalalignment='center')
+    
+    # dependent node들 다각형으로 그리기
+    coord_lists = []
+    for dependent_node in dependent_nodes:
+        coord_lists.append(node_posmap[dependent_node])
+    coord_lists = np.asarray(coord_lists)
+    polygon = ptch.Polygon(coord_lists, alpha=0.4)
+    ax.add_patch(polygon)
+
     nx.draw(graph_for_reference,
             node_color=node_colormap, edge_color=edge_colormap,
-            pos=nx.circular_layout(graph_for_reference),
+            pos=node_posmap,
+            ax=ax,
             with_labels=True, node_size=100)
-    nx.draw_networkx_labels(graph_for_reference,)
     plt.show(block=False)
 
 
@@ -629,8 +667,12 @@ def plot_underlying_graph():
     """단순하게 underlying graph만 출력한다."""
     plt.clf()
     edge_colormap = create_edge_colormap()
-    nx.draw(graph_for_reference, font_size=8, with_labels=True, edge_color=edge_colormap,
-            pos=nx.circular_layout(graph_for_reference))
+    circular = nx.circular_layout(graph_for_reference)  # 노드 이름과 그래프 상에서의 좌표를 엮은 dict
+    nx.draw(graph_for_reference,
+            font_size=8,
+            with_labels=True,
+            edge_color=edge_colormap,
+            pos=circular)
     plt.show(block=False)
 
 

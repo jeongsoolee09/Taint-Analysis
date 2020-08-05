@@ -329,6 +329,7 @@ def random_loop(current_asked, current_evidence, prev_snapshot, precision_list, 
     oracle_response = input("What label does <" + query + "> bear? [src/sin/san/non]: ")
     if oracle_response == 'src':
         current_evidence[query] = 1
+        # snapshot은 distribution object들의 nparray이다.
         new_snapshot = BN_for_inference.predict_proba(current_evidence)
         visualize_snapshot(new_snapshot)
         current_precision_list = calculate_precision(new_snapshot)
@@ -399,7 +400,8 @@ def find_max_d_con(current_asked, updated_nodes, list_of_all_node):  # 전체 no
     return max_key
 
 
-def first_rank_is_way_higher(parameters):
+def is_confident(parameters):
+    """확률분포 (Distribution 오브젝트의 parameters 부분)를 보고, 가장 높은 확률이 다른 확률들보다 적어도 0.1은 높은지 확인한다."""
     first_rank = max(parameters)
     parameters_ = parameters[:]
     parameters_.remove(first_rank)
@@ -415,13 +417,13 @@ def time_to_terminate(BN, current_evidence):
     dist_dicts = list(map(lambda dist: dist.parameters[0], BN_for_inference.predict_proba({})))
     # list of lists of the probabilities across random variables' values, extracted from dist_dicts
     dist_probs = list(map(lambda dist: list(dist.values()), dist_dicts))
-    # Do all the nodes' probability lists satisfy first_rank_is_way_higher()?
-    return reduce(lambda acc, lst: first_rank_is_way_higher(lst) and acc, dist_probs, True)
+    # Do all the nodes' probability lists satisfy is_confident()?
+    return reduce(lambda acc, lst: is_confident(lst) and acc, dist_probs, True)
 
 
 def print_distrib(snapshot):
-    names_and_dists = make_names_and_dists(snapshot)
-    for i in names_and_dists:
+    names_and_params = make_names_and_params(snapshot)
+    for i in names_and_params:
         print(i)
 
 
@@ -554,7 +556,8 @@ def create_edge_colormap():
     return out
 
 
-def make_names_and_dists(snapshot):
+def make_names_and_params(snapshot):
+    """snapshot을 읽어서, 랜덤변수 별 확률값의 dict인 parameters만을 빼낸 다음 node의 이름과 짝지어서 list에 담아 낸다."""
     dists = []
     node_name_list = list(map(lambda node: node.name, BN_for_inference.states))
     for dist in snapshot:
@@ -562,30 +565,42 @@ def make_names_and_dists(snapshot):
             dists.append(normalize_dist(dist))
         else:
             dists.append(dist.parameters[0])
-    names_and_dists = list(zip(node_name_list, dists))
-    return names_and_dists
+    names_and_params = list(zip(node_name_list, dists))
+    return names_and_params
+
+
+def find_confident_node_names(names_and_params):
+    """노드 이름과 그 parameters의 짝 리스트를 받아서, 이 중에서 confident한 parameter를 가지고 있는 노드의 이름들 (str list)을 내놓는다."""
+    confident_node_names = []
+    for name, param in names_and_params:
+        if is_confident(param):
+           confident_node_names.append(name)
+    return confident_node_names
 
 
 def visualize_snapshot(snapshot):
-    """한번 iteration 돌 때마다, 전체 BN의 snapshot을 가시화한다."""
+    """한번 iteration 돌 때마다, 전체 BN의 snapshot을 가시화한다. 이 때, confident node들의 테두리는 굵고, 분홍색으로 만든다."""
     plt.clf()
     plt.ion()
-    names_and_dists = make_names_and_dists(snapshot)
-    names_and_labels = list(map(lambda tup: (tup[0], find_max_val(tup[1])), names_and_dists))
+    names_and_params = make_names_and_params(snapshot)
+    names_and_labels = list(map(lambda tup: (tup[0], find_max_val(tup[1])), names_and_params))
     node_colormap = create_node_colormap(names_and_labels)
     edge_colormap = create_edge_colormap()
-    nx.draw(graph_for_reference, node_color=node_colormap, edge_color=edge_colormap,
+    confident_nodes = is_confident(names_and_params)
+    nx.draw(graph_for_reference,
+            node_color=node_colormap, edge_color=edge_colormap,
             pos=nx.circular_layout(graph_for_reference),
             with_labels=True, node_size=100)
+    nx.draw_networkx_labels(graph_for_reference,)
     plt.show(block=False)
 
 
 def report_results(final_snapshot):
     initial_snapshot = BN_for_inference.predict_proba({})
-    names_and_dists_initial = make_names_and_dists(initial_snapshot)
+    names_and_dists_initial = make_names_and_params(initial_snapshot)
     names_and_labels_initial = list(map(lambda tup: (tup[0], find_max_val(tup[1])), names_and_dists_initial))
 
-    names_and_dists_final = make_names_and_dists(final_snapshot)
+    names_and_dists_final = make_names_and_params(final_snapshot)
     names_and_labels_final = list(map(lambda tup: (tup[0], find_max_val(tup[1])), names_and_dists_final))
     
     changed_mesg = []
@@ -597,7 +612,7 @@ def report_results(final_snapshot):
 
 def save_data_as_csv(final_snapshot):
     """inference가 다 끝난 label들을 csv로 저장한다."""
-    names_and_dists_final = make_names_and_dists(final_snapshot)
+    names_and_dists_final = make_names_and_params(final_snapshot)
     names_and_labels_final = list(map(lambda tup: (tup[0], find_max_val(tup[1])), names_and_dists_final))
     out_df = pd.DataFrame(names_and_labels_final, columns=["name", "label"])
     out_df.to_csv("inferred.csv", mode='w')
@@ -625,9 +640,9 @@ def plot_underlying_graph():
 
 def calculate_precision(current_snapshot):
     """현재 확률분포 스냅샷의 정확도를 측정한다."""
-    # current_snapshot의 타입은? np.ndarray of Distribution.
-    names_and_dists = make_names_and_dists(current_snapshot)
-    names_and_labels = dict(map(lambda tup: (tup[0], find_max_val(tup[1])), names_and_dists))
+    # current_snapshot의 타입은? np.array of Distribution.
+    names_and_params = make_names_and_params(current_snapshot)
+    names_and_labels = dict(map(lambda tup: (tup[0], find_max_val(tup[1])), names_and_params))
     # print(names_and_labels["int[] JdbcTemplate.batchUpdate(String,List)"])
     wrong_nodes = []
     for node_name in graph_for_reference.nodes:
@@ -640,9 +655,9 @@ def calculate_precision(current_snapshot):
 # time t에서의 stability: time (t-1)에서의 스냅샷과 비교했을 때 time t에서의 스냅샷에서 레이블이 달라진 노드의 개수
 def calculate_stability(prev_snapshot, current_snapshot):
     """직전 확률분포 스냅샷에 대한 현재 확률분포 스냅샷의 stability를 측정한다."""
-    names_and_dists_prev = make_names_and_dists(prev_snapshot)
+    names_and_dists_prev = make_names_and_params(prev_snapshot)
     names_and_labels_prev = dict(map(lambda tup: (tup[0], find_max_val(tup[1])), names_and_dists_prev))
-    names_and_dists_current = make_names_and_dists(current_snapshot)
+    names_and_dists_current = make_names_and_params(current_snapshot)
     names_and_labels_current = dict(map(lambda tup: (tup[0], find_max_val(tup[1])), names_and_dists_current))
     changed_nodes = []
     for node_name in graph_for_reference.nodes:

@@ -418,9 +418,10 @@ def is_confident(parameters):
 
 def time_to_terminate(BN, current_evidence):
     # the distribution across random variables' values
-    dist_dicts = list(map(lambda dist: dist.parameters[0], BN_for_inference.predict_proba({})))
+    names_and_params = make_names_and_params(BN_for_inference.predict_proba(current_evidence))
+    params = list(map(lambda tup: tup[1], names_and_params))
     # list of lists of the probabilities across random variables' values, extracted from dist_dicts
-    dist_probs = list(map(lambda dist: list(dist.values()), dist_dicts))
+    dist_probs = list(map(lambda dist: list(dist.values()), params))
     # Do all the nodes' probability lists satisfy is_confident()?
     return reduce(lambda acc, lst: is_confident(lst) and acc, dist_probs, True)
 

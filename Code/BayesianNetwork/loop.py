@@ -478,30 +478,72 @@ def tactical_loop(interaction_number, current_asked, current_evidence, updated_n
     current_stability = calculate_stability(prev_snapshot, new_snapshot)
     precision_list[interaction_number] = current_precision
     stability_list[interaction_number] = current_stability
-    plt.clf()
-    visualize_snapshot(new_snapshot, dependent_nodes)
     draw_precision_graph(list(range(1, len(BN_for_inference.states)+1)), precision_list)
     draw_stability_graph(list(range(1, len(BN_for_inference.states)+1)), stability_list)
+    visualize_snapshot(new_snapshot, dependent_nodes)
     plt.show(block=False)
     return tactical_loop(interaction_number+1, current_asked, current_evidence, updated_nodes, new_snapshot, precision_list, stability_list)
 
 
+def visualize_snapshot(snapshot, dependent_nodes):
+    """한번 iteration 돌 때마다, 전체 BN의 snapshot을 가시화한다. 이 때, confident node들 위에는 `conf`라는 문구를 띄운다."""
+    network_figure = plt.figure("Bayesian Network")
+    network_figure.clf()
+    plt.ion()
+    ax = network_figure.add_subplot()
+    names_and_params = make_names_and_params(snapshot)
+    params = list(map(lambda tup: tup[1], names_and_params))
+    names_and_labels = list(map(lambda tup: (tup[0], find_max_val(tup[1])), names_and_params))
+    node_colormap = create_node_colormap(names_and_labels)
+    edge_colormap = create_edge_colormap()
+
+    node_posmap = nx.circular_layout(graph_for_reference)
+
+    # confident node들 위에 문구 띄우기
+    confident_node_indices = []
+    for i, param in enumerate(params):
+        if is_confident(param):
+            confident_node_indices.append(i)
+    confident_nodes = list(map(lambda index: names_and_params[index][0], confident_node_indices))
+    for confident_node in confident_nodes:
+        x, y = node_posmap[confident_node]
+        plt.text(x, y+0.1, s='conf', bbox=dict(facecolor='blue', alpha=0.5), horizontalalignment='center')
+    
+    # dependent node들 다각형으로 그리기
+    coord_lists = []
+    for dependent_node in dependent_nodes:
+        coord_lists.append(node_posmap[dependent_node])
+    coord_lists = np.asarray(coord_lists)
+    polygon = ptch.Polygon(coord_lists, closed=True, alpha=0.4)
+    ax.add_patch(polygon)
+
+    nx.draw(graph_for_reference,
+            node_color=node_colormap, edge_color=edge_colormap,
+            pos=node_posmap,
+            ax=ax,
+            with_labels=True, node_size=100)
+
+
 def draw_precision_graph(x, y):
     """precision graph를 그리는 함수. NOTE: x와 y의 input 길이를 맞춰줘야 함."""
-    global precision_figure
-    num_of_states = len(graph_for_reference.nodes)
     plt.ion()
+    precision_figure = plt.figure("Precision")
+    precision_figure.clf()
     plt.plot(x, y, 'b-')
+    num_of_states = len(graph_for_reference.nodes)
     precision_figure.add_axes([1, num_of_states, 0, num_of_states])
+    precision_figure.canvas.draw()
 
 
 def draw_stability_graph(x, y):
     """stability graph를 그리는 함수. NOTE: x와 y의 input 길이를 맞춰줘야 함."""
-    global stability_figure
-    num_of_states = len(graph_for_reference.nodes)
     plt.ion()
+    stability_figure = plt.figure("Stability")
+    stability_figure.clf()
     plt.plot(x, y, 'b-')
+    num_of_states = len(graph_for_reference.nodes)
     stability_figure.add_axes([1, num_of_states, 0, num_of_states])
+    stability_figure.canvas.draw()
 
 
 def single_loop(query):
@@ -597,51 +639,6 @@ def find_confident_node_names(names_and_params):
     return confident_node_names
 
 
-# The order of making figure MATTERS!!
-precision_figure = plt.figure("Precision")
-stability_figure = plt.figure("Stability")
-network_figure = plt.figure("Bayesian Network")
-
-
-def visualize_snapshot(snapshot, dependent_nodes):
-    """한번 iteration 돌 때마다, 전체 BN의 snapshot을 가시화한다. 이 때, confident node들 위에는 `conf`라는 문구를 띄운다."""
-    global network_figure
-    # plt.clf()
-    plt.ion()
-    ax = network_figure.add_subplot()
-    names_and_params = make_names_and_params(snapshot)
-    params = list(map(lambda tup: tup[1], names_and_params))
-    names_and_labels = list(map(lambda tup: (tup[0], find_max_val(tup[1])), names_and_params))
-    node_colormap = create_node_colormap(names_and_labels)
-    edge_colormap = create_edge_colormap()
-
-    node_posmap = nx.circular_layout(graph_for_reference)
-
-    # confident node들 위에 문구 띄우기
-    confident_node_indices = []
-    for i, param in enumerate(params):
-        if is_confident(param):
-            confident_node_indices.append(i)
-    confident_nodes = list(map(lambda index: names_and_params[index][0], confident_node_indices))
-    for confident_node in confident_nodes:
-        x, y = node_posmap[confident_node]
-        plt.text(x, y+0.1, s='conf', bbox=dict(facecolor='blue', alpha=0.5), horizontalalignment='center')
-    
-    # dependent node들 다각형으로 그리기
-    coord_lists = []
-    for dependent_node in dependent_nodes:
-        coord_lists.append(node_posmap[dependent_node])
-    coord_lists = np.asarray(coord_lists)
-    polygon = ptch.Polygon(coord_lists, closed=True, alpha=0.4)
-    ax.add_patch(polygon)
-
-    nx.draw(graph_for_reference,
-            node_color=node_colormap, edge_color=edge_colormap,
-            pos=node_posmap,
-            ax=ax,
-            with_labels=True, node_size=100)
-
-
 def report_results(final_snapshot):
     initial_snapshot = BN_for_inference.predict_proba({})
     names_and_dists_initial = make_names_and_params(initial_snapshot)
@@ -696,7 +693,7 @@ def calculate_precision(current_snapshot):
     names_and_labels = dict(map(lambda tup: (tup[0], find_max_val(tup[1])), names_and_params))
     wrong_nodes = []
     for node_name in graph_for_reference.nodes:
-        if names_and_labels[node_name] == correct_solution_relational[node_name]:
+        if names_and_labels[node_name] != correct_solution_relational[node_name]:
             wrong_nodes.append(node_name)
     return len(wrong_nodes)
 
@@ -737,8 +734,6 @@ final_snapshot, precision_list, stability_list = tactical_loop(0, list(), dict()
 # final_snapshot, precision_list, stability_list = random_loop(list(), dict(), initial_snapshot, list(), list())
 report_results(final_snapshot)
 save_data_as_csv(final_snapshot)
-# draw_report_graph(*build_graph(precision_list))
-# draw_report_graph(*build_graph(stability_list))
 
 raw_data.close()
 edges_data.close()

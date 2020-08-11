@@ -529,9 +529,11 @@ def draw_precision_graph(x, y):
     plt.ion()
     precision_figure = plt.figure("Precision")
     precision_figure.clf()
-    plt.plot(x, y, 'b-')
     num_of_states = len(graph_for_reference.nodes)
-    precision_figure.add_axes([1, num_of_states, 0, num_of_states])
+    plt.xlim(1, num_of_states)
+    plt.ylim(0, num_of_states)
+    plt.plot(x, y, 'b-')
+    # precision_figure.add_axes([1, num_of_states, 0, num_of_states])
     precision_figure.canvas.draw()
 
 
@@ -540,8 +542,10 @@ def draw_stability_graph(x, y):
     plt.ion()
     stability_figure = plt.figure("Stability")
     stability_figure.clf()
-    plt.plot(x, y, 'b-')
     num_of_states = len(graph_for_reference.nodes)
+    plt.xlim(1, num_of_states)
+    plt.ylim(0, num_of_states)
+    plt.plot(x, y, 'b-')
     stability_figure.add_axes([1, num_of_states, 0, num_of_states])
     stability_figure.canvas.draw()
 

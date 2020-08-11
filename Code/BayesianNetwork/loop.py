@@ -13,6 +13,7 @@ import random
 from solutions import *
 from toolz import valmap
 from make_CPT import *
+from matplotlib.ticker import MaxNLocator
 
 start = time.time()
 
@@ -528,6 +529,9 @@ def draw_precision_graph(x, y):
     """precision graph를 그리는 함수. NOTE: x와 y의 input 길이를 맞춰줘야 함."""
     plt.ion()
     precision_figure = plt.figure("Precision")
+    ax = precision_figure.gca()
+    ax.xaxis.set_major_locator(MaxNLocator(integer=True))
+    ax.yaxis.set_major_locator(MaxNLocator(integer=True))
     precision_figure.clf()
     num_of_states = len(graph_for_reference.nodes)
     plt.xlim(1, num_of_states)
@@ -541,12 +545,15 @@ def draw_stability_graph(x, y):
     """stability graph를 그리는 함수. NOTE: x와 y의 input 길이를 맞춰줘야 함."""
     plt.ion()
     stability_figure = plt.figure("Stability")
+    ax = stability_figure.gca()
+    ax.xaxis.set_major_locator(MaxNLocator(integer=True))
+    ax.yaxis.set_major_locator(MaxNLocator(integer=True))
     stability_figure.clf()
     num_of_states = len(graph_for_reference.nodes)
     plt.xlim(1, num_of_states)
     plt.ylim(0, num_of_states)
     plt.plot(x, y, 'b-')
-    stability_figure.add_axes([1, num_of_states, 0, num_of_states])
+    # stability_figure.add_axes([1, num_of_states, 0, num_of_states])
     stability_figure.canvas.draw()
 
 

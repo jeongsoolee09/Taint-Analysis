@@ -432,7 +432,7 @@ def print_distrib(snapshot):
         print(i)
 
 
-def tactical_loop(current_asked, current_evidence, updated_nodes, prev_snapshot, precision_list, stability_list):
+def tactical_loop(interaction_number, current_asked, current_evidence, updated_nodes, prev_snapshot, precision_list, stability_list):
     """the main interaction functionality, asking tactically using d-separation"""
     # some variables to make our code resemble the English language
     there_are_nodes_left = find_max_d_con(current_asked, updated_nodes, graph_for_reference.nodes)
@@ -461,37 +461,47 @@ def tactical_loop(current_asked, current_evidence, updated_nodes, prev_snapshot,
         pass
     elif there_are_nodes_left and its_time_to_terminate:
         raise ThisIsImpossible
+
     oracle_response = input("What label does <" + query + "> bear? [src/sin/san/non]: ")
     updated_nodes = updated_nodes + list(d_connected(query, current_asked))
     current_asked = current_asked + [query]
     if oracle_response == 'src':
         current_evidence[query] = 1
-        new_snapshot = BN_for_inference.predict_proba(current_evidence)
-        visualize_snapshot(new_snapshot, dependent_nodes)
-        current_precision_list = calculate_precision(new_snapshot)
-        current_stability_list = calculate_stability(prev_snapshot, new_snapshot)
-        return tactical_loop(current_asked, current_evidence, updated_nodes, new_snapshot, precision_list+[current_precision_list], stability_list+[current_stability_list])
     elif oracle_response == 'sin':
         current_evidence[query] = 2
-        new_snapshot = BN_for_inference.predict_proba(current_evidence)
-        visualize_snapshot(new_snapshot, dependent_nodes)
-        current_precision_list = calculate_precision(new_snapshot)
-        current_stability_list = calculate_stability(prev_snapshot, new_snapshot)
-        return tactical_loop(current_asked, current_evidence, updated_nodes, new_snapshot, precision_list+[current_precision_list], stability_list+[current_stability_list])
     elif oracle_response == 'san':
         current_evidence[query] = 3
-        new_snapshot = BN_for_inference.predict_proba(current_evidence)
-        visualize_snapshot(new_snapshot, dependent_nodes)
-        current_precision_list = calculate_precision(new_snapshot)
-        current_stability_list = calculate_stability(prev_snapshot, new_snapshot)
-        return tactical_loop(current_asked, current_evidence, updated_nodes, new_snapshot, precision_list+[current_precision_list], stability_list+[current_stability_list])
     elif oracle_response == 'non':
         current_evidence[query] = 4
-        new_snapshot = BN_for_inference.predict_proba(current_evidence)
-        visualize_snapshot(new_snapshot, dependent_nodes)
-        current_precision_list = calculate_precision(new_snapshot)
-        current_stability_list = calculate_stability(prev_snapshot, new_snapshot)
-        return tactical_loop(current_asked, current_evidence, updated_nodes, new_snapshot, precision_list+[current_precision_list], stability_list+[current_stability_list])
+    new_snapshot = BN_for_inference.predict_proba(current_evidence)
+    current_precision = calculate_precision(new_snapshot)
+    current_stability = calculate_stability(prev_snapshot, new_snapshot)
+    precision_list[interaction_number] = current_precision
+    stability_list[interaction_number] = current_stability
+    plt.clf()
+    visualize_snapshot(new_snapshot, dependent_nodes)
+    draw_precision_graph(list(range(1, len(BN_for_inference.states)+1)), precision_list)
+    draw_stability_graph(list(range(1, len(BN_for_inference.states)+1)), stability_list)
+    plt.show(block=False)
+    return tactical_loop(interaction_number+1, current_asked, current_evidence, updated_nodes, new_snapshot, precision_list, stability_list)
+
+
+def draw_precision_graph(x, y):
+    """precision graph를 그리는 함수. NOTE: x와 y의 input 길이를 맞춰줘야 함."""
+    global precision_figure
+    num_of_states = len(graph_for_reference.nodes)
+    plt.ion()
+    plt.plot(x, y, 'b-')
+    precision_figure.add_axes([1, num_of_states, 0, num_of_states])
+
+
+def draw_stability_graph(x, y):
+    """stability graph를 그리는 함수. NOTE: x와 y의 input 길이를 맞춰줘야 함."""
+    global stability_figure
+    num_of_states = len(graph_for_reference.nodes)
+    plt.ion()
+    plt.plot(x, y, 'b-')
+    stability_figure.add_axes([1, num_of_states, 0, num_of_states])
 
 
 def single_loop(query):
@@ -587,15 +597,18 @@ def find_confident_node_names(names_and_params):
     return confident_node_names
 
 
+# The order of making figure MATTERS!!
+precision_figure = plt.figure("Precision")
+stability_figure = plt.figure("Stability")
+network_figure = plt.figure("Bayesian Network")
 
-fig = plt.figure()
 
 def visualize_snapshot(snapshot, dependent_nodes):
-    """한번 iteration 돌 때마다, 전체 BN의 snapshot을 가시화한다. 이 때, confident node들의 테두리는 굵고, 분홍색으로 만든다."""
-    global fig
-    plt.clf()
+    """한번 iteration 돌 때마다, 전체 BN의 snapshot을 가시화한다. 이 때, confident node들 위에는 `conf`라는 문구를 띄운다."""
+    global network_figure
+    # plt.clf()
     plt.ion()
-    ax = fig.add_subplot(111)
+    ax = network_figure.add_subplot()
     names_and_params = make_names_and_params(snapshot)
     params = list(map(lambda tup: tup[1], names_and_params))
     names_and_labels = list(map(lambda tup: (tup[0], find_max_val(tup[1])), names_and_params))
@@ -604,7 +617,7 @@ def visualize_snapshot(snapshot, dependent_nodes):
 
     node_posmap = nx.circular_layout(graph_for_reference)
 
-    # confident node들 마킹하기
+    # confident node들 위에 문구 띄우기
     confident_node_indices = []
     for i, param in enumerate(params):
         if is_confident(param):
@@ -627,7 +640,6 @@ def visualize_snapshot(snapshot, dependent_nodes):
             pos=node_posmap,
             ax=ax,
             with_labels=True, node_size=100)
-    plt.show(block=False)
 
 
 def report_results(final_snapshot):
@@ -662,7 +674,7 @@ def report_meta_statistics():
 
 def plot_underlying_graph():
     """단순하게 underlying graph만 출력한다."""
-    plt.clf()
+    # plt.clf()
     edge_colormap = create_edge_colormap()
     circular = nx.circular_layout(graph_for_reference)  # 노드 이름과 그래프 상에서의 좌표를 엮은 dict
     nx.draw(graph_for_reference,
@@ -682,13 +694,11 @@ def calculate_precision(current_snapshot):
     # current_snapshot의 타입은? np.array of Distribution.
     names_and_params = make_names_and_params(current_snapshot)
     names_and_labels = dict(map(lambda tup: (tup[0], find_max_val(tup[1])), names_and_params))
-    # print(names_and_labels["int[] JdbcTemplate.batchUpdate(String,List)"])
     wrong_nodes = []
     for node_name in graph_for_reference.nodes:
-        # print("node_name: ", node_name)
         if names_and_labels[node_name] == correct_solution_relational[node_name]:
             wrong_nodes.append(node_name)
-    return wrong_nodes
+    return len(wrong_nodes)
 
 
 # time t에서의 stability: time (t-1)에서의 스냅샷과 비교했을 때 time t에서의 스냅샷에서 레이블이 달라진 노드의 개수
@@ -702,7 +712,7 @@ def calculate_stability(prev_snapshot, current_snapshot):
     for node_name in graph_for_reference.nodes:
         if names_and_labels_prev[node_name] != names_and_labels_current[node_name]:
             changed_nodes.append(node_name)
-    return changed_nodes
+    return len(changed_nodes)
 
 
 def build_graph(result_report):
@@ -715,39 +725,22 @@ def build_graph(result_report):
     return x, y
 
 
-# for generating fresh variables
-precision_figure_number = 1
-stability_figure_number = 1
-
-
-def draw_report_graph(x, y):
-    """precision graph, stability graph를 모두 그릴 수 있는 다재다능한 함수. NOTE: x와 y의 input 길이를 맞춰줘야 함."""
-    global precision_figure_number
-    plt.ioff()
-    plt.clf()
-    plt.figure(precision_figure_number)
-    precision_figure_number += 1
-    plt.plot(x, y, 'b-')
-    plt.axis([1, 8, 0, 8])
-    plt.show(block=False)
-
-
 # ========================================================
 
 
-def main():
-    initial_snapshot = BN_for_inference.predict_proba({})
-    final_snapshot, precision_list, stability_list = tactical_loop(list(), dict(), list(), initial_snapshot, list(), list())
-    # final_snapshot, precision_list, stability_list = random_loop(list(), dict(), initial_snapshot, list(), list())
-    report_results(final_snapshot)
-    save_data_as_csv(final_snapshot)
-    draw_report_graph(*build_graph(precision_list))
-    draw_report_graph(*build_graph(stability_list))
-
+# main
+initial_snapshot = BN_for_inference.predict_proba({})
+number_of_states = len(BN_for_inference.states)
+initial_precision_list = [np.nan for _ in range(len(BN_for_inference.states))]
+initial_stability_list = [np.nan for _ in range(len(BN_for_inference.states))]
+final_snapshot, precision_list, stability_list = tactical_loop(0, list(), dict(), list(), initial_snapshot, initial_precision_list, initial_precision_list)
+# final_snapshot, precision_list, stability_list = random_loop(list(), dict(), initial_snapshot, list(), list())
+report_results(final_snapshot)
+save_data_as_csv(final_snapshot)
+# draw_report_graph(*build_graph(precision_list))
+# draw_report_graph(*build_graph(stability_list))
 
 raw_data.close()
 edges_data.close()
 
 
-if __name__ == "__main__":
-    main()

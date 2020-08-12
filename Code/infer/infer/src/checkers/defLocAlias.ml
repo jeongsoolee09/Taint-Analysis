@@ -75,24 +75,24 @@ module TransferFunctions = struct
     List.filter ~f:leave_logical ziplist |> List.map ~f:map_func
 
 
-(** id를 토대로 가장 최근의 non-ph 튜플을 찾아내고, 없으면 raise *)
-let search_recent_vardef_astate (methname:Procname.t) (pvar:Var.t) (apair:P.t) : T.t =
-  let elements = S.elements (fst apair) in
-  let rec search_recent_vardef_astate_inner methname id astate_list =
-    match astate_list with
-    | [] -> L.die InternalError "search_recent_vardef_astate failed, methname: %a, pvar: %a, astate_set: %a@." Procname.pp methname Var.pp pvar P.pp apair
-    | targetTuple::t ->
-        let proc, (var, _), loc, aliasset = targetTuple in
-        let proc_cond = Procname.equal proc methname in
-        let id_cond = A.mem (id, []) aliasset in
-        let var_cond = not @@ Var.equal var (placeholder_vardef proc) in
-        if var_cond then 
-        (let most_recent_loc = H.get_most_recent_loc (methname, (var, [])) (snd apair) in
-        let loc_cond = LocationSet.equal most_recent_loc loc in
-        if proc_cond && id_cond && loc_cond then
-        targetTuple else search_recent_vardef_astate_inner methname id t)
-        else search_recent_vardef_astate_inner methname id t in
-  search_recent_vardef_astate_inner methname pvar elements
+  (** id를 토대로 가장 최근의 non-ph 튜플을 찾아내고, 없으면 raise *)
+  let search_recent_vardef_astate (methname:Procname.t) (pvar:Var.t) (apair:P.t) : T.t =
+    let elements = S.elements (fst apair) in
+    let rec search_recent_vardef_astate_inner methname id astate_list =
+      match astate_list with
+      | [] -> L.die InternalError "search_recent_vardef_astate failed, methname: %a, pvar: %a, astate_set: %a@." Procname.pp methname Var.pp pvar P.pp apair
+      | targetTuple::t ->
+          let proc, (var, _), loc, aliasset = targetTuple in
+          let proc_cond = Procname.equal proc methname in
+          let id_cond = A.mem (id, []) aliasset in
+          let var_cond = not @@ Var.equal var (placeholder_vardef proc) in
+          if var_cond then 
+          (let most_recent_loc = H.get_most_recent_loc (methname, (var, [])) (snd apair) in
+          let loc_cond = LocationSet.equal most_recent_loc loc in
+          if proc_cond && id_cond && loc_cond then
+          targetTuple else search_recent_vardef_astate_inner methname id t)
+          else search_recent_vardef_astate_inner methname id t in
+    search_recent_vardef_astate_inner methname pvar elements
 
 
   let pp_aliasset_list fmt (varsetlist:A.t list) =
@@ -407,7 +407,7 @@ let search_recent_vardef_astate (methname:Procname.t) (pvar:Var.t) (apair:P.t) :
         (* finding the pvar tuple getting stored *)
         let (proc1, var1, loc1, aliasset) as vartuple = search_target_tuple_by_id id1 methname (fst apair) in
         let pvar_tuple : A.elt = begin try
-            find_another_pvar_vardef aliasset
+            find_another_pvar_vardef aliasset (* ph를 찾으라고 할 수는 없으니까 *)
           with _ -> (* oops, long access path *)
             let varstate2 = search_target_tuple_by_id id2 methname (fst apair) in
             let aliasset = fourth_of varstate2 in

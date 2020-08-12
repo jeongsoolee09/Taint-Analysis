@@ -46,7 +46,7 @@ let doubleton (a:SetofAliases.elt) (b:SetofAliases.elt) : SetofAliases.t =
 
 (** The Quadruple of the above four. *)
 module Quadruple (Domain1:Methname) (Domain2:MAtype) (Domain3:LocSetType) (Domain4:SetofAliases) = struct
-  type t = Domain1.t * Domain2.t * Domain3.t * Domain4.t [@@deriving compare]
+  type t = Domain1.t * Domain2.t * Domain3.t * Domain4.t [@@deriving equal, compare]
 end
 
 module QuadrupleWithPP = struct
@@ -54,6 +54,7 @@ module QuadrupleWithPP = struct
 
   let pp : F.formatter -> t -> unit = fun fmt (methname, vardefs, defloc, aliasset) ->
     F.fprintf fmt "(%a, %a, %a, %a)" Methname.pp methname MyAccessPath.pp vardefs LocationSet.pp defloc SetofAliases.pp aliasset
+
 end
 
 (** Pair of Procname.t and MyAccessPath.t *)

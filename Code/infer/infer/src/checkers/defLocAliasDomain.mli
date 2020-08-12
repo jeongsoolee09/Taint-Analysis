@@ -32,7 +32,7 @@ val doubleton : SetofAliases.elt -> SetofAliases.elt -> SetofAliases.t
 
 (** The Quadruple of the above four. **)
 module Quadruple (Domain1:Methname) (Domain2:MAtype) (Domain3:LocSetType) (Domain4:SetofAliases) : sig
-  type t = Domain1.t * Domain2.t * Domain3.t * Domain4.t [@@deriving compare]
+  type t = Domain1.t * Domain2.t * Domain3.t * Domain4.t [@@deriving equal, compare]
 end
 
 module QuadrupleWithPP : sig

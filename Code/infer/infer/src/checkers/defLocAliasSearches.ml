@@ -220,8 +220,9 @@ let is_program_var_ap (ap:A.elt) : bool =
 
 let find_var_being_returned (aliasset:A.t) : Var.t =
   let elements = A.elements aliasset in
-  let filtered = List.filter ~f:is_program_var_ap elements
-                 |> List.filter ~f:(is_return_ap >> not) in
+  let filtered = List.filter ~f:(fun ap -> is_program_var_ap ap &&
+                                           not @@ is_return_ap ap &&
+                                           not @@ Var.is_this (fst ap)) elements in
   match filtered with
   | [(var, _)] -> var
   | _ -> L.die InternalError "find_var_being_returned falied, aliasset: %a@." A.pp aliasset
@@ -254,8 +255,9 @@ let find_another_pvar_vardef (varset:A.t) : A.elt =
 
 let extract_from_singleton (singleton:A.t) : A.elt =
   match A.elements singleton with
+  | [] -> L.die InternalError "extract_from_singleton failed (too few), aliasset: %a@." A.pp singleton
   | [x] -> x
-  | _ -> L.die InternalError "extract_from_singleton failed, singleton: %a@." A.pp singleton
+  | _ -> L.die InternalError "extract_from_singleton failed (too many), singleton: %a@." A.pp singleton
 
 
 (** A.t의 aliasset 안에서 pvar 튜플을 찾아낸다. *)
@@ -293,5 +295,3 @@ let search_target_tuple_by_vardef_ap (ap:MyAccessPath.t) (methname:Procname.t) (
         then target
         else search_target_tuple_by_ap_inner ap methname t in
   search_target_tuple_by_ap_inner ap methname elements
-
-

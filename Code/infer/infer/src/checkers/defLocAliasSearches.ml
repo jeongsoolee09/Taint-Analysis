@@ -17,7 +17,7 @@ let placeholder_vardef (pid:Procname.t) : Var.t =
   Var.of_pvar ph_vardef
 
 
-let search_target_tuple_by_pvar (pvar:Var.t) (methname:Procname.t) (astate_set:S.t) =
+let search_target_tuple_by_pvar (pvar:Var.t) (methname:Procname.t) (astate_set:S.t) : T.t =
   let elements = S.elements astate_set in
   let rec search_target_tuple_by_pvar_inner pvar (methname:Procname.t) elements = 
     match elements with
@@ -28,7 +28,7 @@ let search_target_tuple_by_pvar (pvar:Var.t) (methname:Procname.t) (astate_set:S
 
 
 (* list version of the above *)
-let search_target_tuples_by_pvar (pvar:Var.t) (methname:Procname.t) (tupleset:S.t) =
+let search_target_tuples_by_pvar (pvar:Var.t) (methname:Procname.t) (tupleset:S.t) : T.t list =
   let elements = S.elements tupleset in
   let rec search_target_tuples_by_pvar_inner pvar (methname:Procname.t) elements = 
     match elements with
@@ -40,7 +40,7 @@ let search_target_tuples_by_pvar (pvar:Var.t) (methname:Procname.t) (tupleset:S.
   search_target_tuples_by_pvar_inner pvar methname elements
 
 
-let search_target_tuple_by_id (id:Ident.t) (methname:Procname.t) (astate_set:S.t) =
+let search_target_tuple_by_id (id:Ident.t) (methname:Procname.t) (astate_set:S.t) : T.t =
   (* L.d_printfln "id: %a, methname: %a, tupleset: %a@." Ident.pp id Procname.pp methname S.pp tupleset; *)
   let elements = S.elements astate_set in
   let rec search_target_tuple_by_id_inner id (methname:Procname.t) elements = 
@@ -51,7 +51,7 @@ let search_target_tuple_by_id (id:Ident.t) (methname:Procname.t) (astate_set:S.t
   search_target_tuple_by_id_inner id methname elements
 
 
-let search_target_tuple_by_pvar_ap (ap:MyAccessPath.t) (methname:Procname.t) (astate_set:S.t) =
+let search_target_tuple_by_pvar_ap (ap:MyAccessPath.t) (methname:Procname.t) (astate_set:S.t) : T.t =
   let elements = S.elements astate_set in
   let rec search_target_tuple_by_pvar_inner pvar (methname:Procname.t) elements = 
     match elements with
@@ -73,7 +73,7 @@ let search_target_tuples_by_id (id:Ident.t) (methname:Procname.t) (astate_set:S.
   search_target_tuples_by_id_inner id methname elements []
 
 
-let weak_search_target_tuple_by_id (id:Ident.t) (astate_set:S.t) =
+let weak_search_target_tuple_by_id (id:Ident.t) (astate_set:S.t) : T.t =
   let elements = S.elements astate_set in
   let rec weak_search_target_tuple_by_id_inner id (elements:S.elt list) = 
     match elements with
@@ -84,12 +84,12 @@ let weak_search_target_tuple_by_id (id:Ident.t) (astate_set:S.t) =
   weak_search_target_tuple_by_id_inner id elements
 
 
-let is_return_ap (ap:A.elt) =
+let is_return_ap (ap:A.elt) : bool =
   let var, _ = ap in
   Var.is_return var
 
 
-let find_tuples_with_ret (tupleset:S.t) (methname:Procname.t) =
+let find_tuples_with_ret (tupleset:S.t) (methname:Procname.t) : T.t list =
   let elements = S.elements tupleset in
   let rec find_tuple_with_ret_inner (tuplelist:T.t list) (methname:Procname.t) (acc:T.t list) =
     match tuplelist with
@@ -101,7 +101,7 @@ let find_tuples_with_ret (tupleset:S.t) (methname:Procname.t) =
   find_tuple_with_ret_inner elements methname []
 
 
-let search_target_tuples_by_vardef (pv:Var.t) (methname:Procname.t) (tupleset:S.t) =
+let search_target_tuples_by_vardef (pv:Var.t) (methname:Procname.t) (tupleset:S.t) : T.t list =
   let elements = S.elements tupleset in
   let rec search_target_tuples_by_vardef_inner pv (methname:Procname.t) elements acc = 
     match elements with
@@ -113,7 +113,7 @@ let search_target_tuples_by_vardef (pv:Var.t) (methname:Procname.t) (tupleset:S.
   search_target_tuples_by_vardef_inner pv methname elements []
 
 
-let search_target_tuples_by_vardef_ap (pv_ap:MyAccessPath.t) (methname:Procname.t) (tupleset:S.t) =
+let search_target_tuples_by_vardef_ap (pv_ap:MyAccessPath.t) (methname:Procname.t) (tupleset:S.t) : T.t list =
   let elements = S.elements tupleset in
   let rec search_target_tuples_by_vardef_ap_inner pv_ap methname elements acc =
     match elements with
@@ -131,7 +131,7 @@ let pp_tuplelist fmt (tuplelist:T.t list) : unit =
   F.fprintf fmt "]"
 
 
-let rec search_tuple_by_loc (loc_set:LocationSet.t) (tuplelist:T.t list) =
+let rec search_tuple_by_loc (loc_set:LocationSet.t) (tuplelist:T.t list) : T.t =
   match tuplelist with
   | [] -> L.die InternalError "search_tuple_by_loc failed, loc_set: %a, tuplelist: %a@." LocationSet.pp loc_set pp_tuplelist tuplelist
   | tuple::t ->
@@ -139,7 +139,7 @@ let rec search_tuple_by_loc (loc_set:LocationSet.t) (tuplelist:T.t list) =
       if LocationSet.equal loc_set l || LocationSet.subset l loc_set then tuple else search_tuple_by_loc loc_set t
 
 
-let rec search_astate_by_loc (loc_set:LocationSet.t) (tuplelist:T.t list) =
+let rec search_astate_by_loc (loc_set:LocationSet.t) (tuplelist:T.t list) : T.t =
   match tuplelist with
   | [] -> L.die InternalError "search_astate_by_loc failed, loc_set %a@." LocationSet.pp loc_set
   | astate::t ->
@@ -148,7 +148,7 @@ let rec search_astate_by_loc (loc_set:LocationSet.t) (tuplelist:T.t list) =
 
 
 (** List version of search_tuple_by_loc *)
-let rec search_tuples_by_loc (loc_set:LocationSet.t) (tuplelist:S.elt list) =
+let rec search_tuples_by_loc (loc_set:LocationSet.t) (tuplelist:S.elt list) : T.t list =
   match tuplelist with
   | [] -> []
   | tuple::t ->
@@ -159,7 +159,7 @@ let rec search_tuples_by_loc (loc_set:LocationSet.t) (tuplelist:S.elt list) =
 
 
   (* x => y: y is more recent than x in a same file *)
-  let (=>) (x:LocationSet.t) (y:LocationSet.t) =
+  let (=>) (x:LocationSet.t) (y:LocationSet.t) : bool =
     let x_min = LocationSet.min_elt x in
     let y_min = LocationSet.min_elt y in
     let loc_cond = x_min.line <= y_min.line in
@@ -167,7 +167,7 @@ let rec search_tuples_by_loc (loc_set:LocationSet.t) (tuplelist:S.elt list) =
 
 
     (* x ==> y: y is STRICTLY more recent than x in a same file *)
-  let (==>) (x:LocationSet.t) (y:LocationSet.t) =
+  let (==>) (x:LocationSet.t) (y:LocationSet.t) : bool =
     let x_min = LocationSet.min_elt x in
     let y_min = LocationSet.min_elt y in
     let loc_cond = x_min.line < y_min.line in
@@ -227,7 +227,7 @@ let find_var_being_returned (aliasset:A.t) : Var.t =
   | _ -> L.die InternalError "find_var_being_returned falied, aliasset: %a@." A.pp aliasset
 
 
-let batch_search_target_tuples_by_vardef (varlist:Var.t list) (current_methname:Procname.t) (astate_set:S.t) =
+let batch_search_target_tuples_by_vardef (varlist:Var.t list) (current_methname:Procname.t) (astate_set:S.t) : bool * T.t list=
   List.fold_left ~f:(fun (prev_bool, prev_list) var ->
       let search_result = search_target_tuples_by_vardef var current_methname astate_set in
       if Int.equal (List.length search_result) 0
@@ -266,15 +266,15 @@ let find_pvar_ap_in (aliasset:A.t) : A.elt =
   | [] -> acc
   | (var, _) as target::t ->
       if is_program_var var then target::acc else find_pvar_ap_in_inner t acc in
-      let result = find_pvar_ap_in_inner elements [] in
-      begin match result with
-      | [] -> L.die InternalError "find_pvar_ap_in failed, aliasset: %a@." A.pp aliasset
-      | [x] -> x
-      | _ -> L.die InternalError "find_pvar_ap_in failed, aliasset: %a@." A.pp aliasset end
+  let result = find_pvar_ap_in_inner elements [] in
+  begin match result with
+    | [] -> L.die InternalError "find_pvar_ap_in failed (too few), aliasset: %a@." A.pp aliasset
+    | [x] -> x
+    | _ -> L.die InternalError "find_pvar_ap_in failed (too many), aliasset: %a@." A.pp aliasset end
 
 
 (** aliasset이 주어졌을 때 그 중에서 field를 갖고 있는 튜플을 내놓는다. *)
-let find_ap_with_field (aliasset:A.t) =
+let find_ap_with_field (aliasset:A.t) : A.elt =
   let elements = A.elements aliasset in
     let rec find_ap_with_field_inner (elements:A.elt list) =
     match elements with
@@ -283,7 +283,7 @@ let find_ap_with_field (aliasset:A.t) =
   find_ap_with_field_inner elements
 
 
-let search_target_tuple_by_vardef_ap (ap:MyAccessPath.t) (methname:Procname.t) (astate_set:S.t) =
+let search_target_tuple_by_vardef_ap (ap:MyAccessPath.t) (methname:Procname.t) (astate_set:S.t) : T.t =
   let elements = S.elements astate_set in
   let rec search_target_tuple_by_ap_inner (ap:MyAccessPath.t) (methname:Procname.t) (elements:S.elt list) = 
     match elements with
@@ -293,3 +293,5 @@ let search_target_tuple_by_vardef_ap (ap:MyAccessPath.t) (methname:Procname.t) (
         then target
         else search_target_tuple_by_ap_inner ap methname t in
   search_target_tuple_by_ap_inner ap methname elements
+
+

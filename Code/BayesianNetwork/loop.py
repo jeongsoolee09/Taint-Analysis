@@ -433,8 +433,11 @@ def print_distrib(snapshot):
         print(i)
 
 
-def tactical_loop(interaction_number, current_asked, current_evidence, updated_nodes, prev_snapshot, precision_list, stability_list):
-    """the main interaction functionality, asking tactically using d-separation"""
+def tactical_loop(interaction_number, current_asked, current_evidence, updated_nodes, prev_snapshot, precision_list, stability_list, **kwargs):
+    """the main interaction functionality, asking tactically using d-separation
+       available kwargs:
+        - skip_call_sim_heur: skip an interaction for non methods connected with call/sim edges.
+    """
     # some variables to make our code resemble the English language
     there_are_nodes_left = find_max_d_con(current_asked, updated_nodes, graph_for_reference.nodes)
     there_are_no_nodes_left = not there_are_nodes_left
@@ -536,7 +539,9 @@ def draw_precision_graph(x, y):
     num_of_states = len(graph_for_reference.nodes)
     plt.xlim(1, num_of_states)
     plt.ylim(0, num_of_states)
-    plt.title("# of correct labels")
+    plt.xlabel('# of interactions')
+    plt.ylabel('# of correct nodes')
+    plt.title("Precision development during interaction")
     plt.plot(x, y, 'b-')
     # precision_figure.add_axes([1, num_of_states, 0, num_of_states])
     precision_figure.canvas.draw()
@@ -553,7 +558,9 @@ def draw_stability_graph(x, y):
     num_of_states = len(graph_for_reference.nodes)
     plt.xlim(1, num_of_states)
     plt.ylim(0, num_of_states)
-    plt.title("# of changed labels")
+    plt.xlabel("# of interactions")
+    plt.ylabel('# of changed nodes')
+    plt.title("Stability development during interaction")
     plt.plot(x, y, 'b-')
     # stability_figure.add_axes([1, num_of_states, 0, num_of_states])
     stability_figure.canvas.draw()

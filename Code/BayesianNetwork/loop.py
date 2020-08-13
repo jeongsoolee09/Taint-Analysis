@@ -536,6 +536,7 @@ def draw_precision_graph(x, y):
     num_of_states = len(graph_for_reference.nodes)
     plt.xlim(1, num_of_states)
     plt.ylim(0, num_of_states)
+    plt.title("# of correct labels")
     plt.plot(x, y, 'b-')
     # precision_figure.add_axes([1, num_of_states, 0, num_of_states])
     precision_figure.canvas.draw()
@@ -552,6 +553,7 @@ def draw_stability_graph(x, y):
     num_of_states = len(graph_for_reference.nodes)
     plt.xlim(1, num_of_states)
     plt.ylim(0, num_of_states)
+    plt.title("# of changed labels")
     plt.plot(x, y, 'b-')
     # stability_figure.add_axes([1, num_of_states, 0, num_of_states])
     stability_figure.canvas.draw()
@@ -702,11 +704,11 @@ def calculate_precision(current_snapshot):
     # current_snapshot의 타입은? np.array of Distribution.
     names_and_params = make_names_and_params(current_snapshot)
     names_and_labels = dict(map(lambda tup: (tup[0], find_max_val(tup[1])), names_and_params))
-    wrong_nodes = []
+    correct_nodes = []
     for node_name in graph_for_reference.nodes:
-        if names_and_labels[node_name] != correct_solution_relational[node_name]:
-            wrong_nodes.append(node_name)
-    return len(wrong_nodes)
+        if names_and_labels[node_name] == correct_solution_relational[node_name]:
+            correct_nodes.append(node_name)
+    return len(correct_nodes)
 
 
 # time t에서의 stability: time (t-1)에서의 스냅샷과 비교했을 때 time t에서의 스냅샷에서 레이블이 달라진 노드의 개수
@@ -741,7 +743,7 @@ initial_snapshot = BN_for_inference.predict_proba({})
 number_of_states = len(BN_for_inference.states)
 initial_precision_list = [np.nan for _ in range(len(BN_for_inference.states))]
 initial_stability_list = [np.nan for _ in range(len(BN_for_inference.states))]
-final_snapshot, precision_list, stability_list = tactical_loop(0, list(), dict(), list(), initial_snapshot, initial_precision_list, initial_precision_list)
+final_snapshot, precision_list, stability_list = tactical_loop(0, list(), dict(), list(), initial_snapshot, initial_precision_list, initial_stability_list)
 # final_snapshot, precision_list, stability_list = random_loop(list(), dict(), initial_snapshot, list(), list())
 report_results(final_snapshot)
 save_data_as_csv(final_snapshot)

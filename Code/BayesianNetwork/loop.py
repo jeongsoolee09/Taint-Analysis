@@ -538,7 +538,10 @@ def tactical_loop(interaction_number, current_asked, current_evidence, updated_n
             print("\nWarning: some distributions are not fully determined.\n")
             return prev_snapshot, precision_list, stability_list
         else:
-            query, dependent_nodes = find_max_d_con([], [], remove_sublist(graph_for_reference.nodes, current_asked), nth=0)
+            if config["skip_call_sim_heur"]:
+                query, dependent_nodes = find_max_d_con([], [], remove_sublist(graph_for_reference.nodes, current_asked), nth=0, prune=pruneable_nodes)
+            else: # vanilla
+                query, dependent_nodes = find_max_d_con([], [], remove_sublist(graph_for_reference.nodes, current_asked), nth=0)
     elif there_are_no_nodes_left and its_time_to_terminate:
         return prev_snapshot, precision_list, stability_list
     elif there_are_nodes_left and not_yet_time_to_terminate:
@@ -831,7 +834,7 @@ number_of_states = len(BN_for_inference.states)
 initial_precision_list = [np.nan for _ in range(len(BN_for_inference.states))]
 initial_stability_list = [np.nan for _ in range(len(BN_for_inference.states))]
 print()  # for aesthetics in the REPL
-final_snapshot, precision_list, stability_list = tactical_loop(0, list(), dict(), list(), initial_snapshot, initial_precision_list, initial_stability_list, skip_call_sim_heur=False)
+final_snapshot, precision_list, stability_list = tactical_loop(0, list(), dict(), list(), initial_snapshot, initial_precision_list, initial_stability_list, skip_call_sim_heur=True)
 # final_snapshot, precision_list, stability_list = random_loop(list(), dict(), initial_snapshot, list(), list())
 report_results(final_snapshot)
 save_data_as_csv(final_snapshot)

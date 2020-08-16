@@ -23,12 +23,12 @@ correct_solution_relational = dict([
     ("void Logger.info(String)", "sin"),
     ("Collector Collectors.toList()", "non"),
     ("String String.format(String,java.lang.Object[])", "non"),
-    ("void RelationalDataAccessApplication.query()", "sin"),
+    ("void RelationalDataAccessApplication.query()", "src"),
     ("List Arrays.asList(java.lang.Object[])", "non"),
     ("Long Long.valueOf(long)", "non"),
     ("void RelationalDataAccessApplication.main(java.lang.String[])", "non"),
     ("List Creator.create()", "src"),
     ("Stream List.stream()", "non"),
     ("Stream Stream.map(Function)", "non"),
-    ("List JdbcTemplate.query(String,java.lang.Object[],RowMapper)", "sin")
+    ("List JdbcTemplate.query(String,java.lang.Object[],RowMapper)", "src")
 ])

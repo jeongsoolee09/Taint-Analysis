@@ -100,19 +100,19 @@ def add_edge_to_graph(G):
         G.add_edge(firstNodeID, secondNodeID)
 
 
-def find_edges_of(node):
+def find_edges_of(node_name):
     global graph_for_reference
     lookup_edges = graph_for_reference.edges
     out = []
     for (m1, m2) in lookup_edges:
-        if m2 == node:
+        if m2 == node_name:
             out.append((m1, m2))
     return out
 
 
-def find_edge_labels(node):
+def find_edge_labels(node_name):
     """하나의 node를 받아 그 node가 속한 모든 엣지의 각 종류(df, call, sim)를 판별한다."""
-    edges = find_edges_of(node)
+    edges = find_edges_of(node_name)
     out = []
     for edge in edges:
         if edge in df_edges:
@@ -157,15 +157,16 @@ def find_nodes_matching_names(states, names):
     return out
 
 
-def create_internal_node_for_BN(node, BN, prev_states):
+def create_internal_node_for_BN(node_name, BN, prev_states):
     """BN에 internal node를 만들어 추가한다."""
+    print("making a new node_name, # of incoming edges: ", len(list(graph_for_reference.in_edges(nbunch=node_name))))
     labels = [1, 2, 3, 4]       # src, sin, san, non
-    parents_and_edges = find_edge_labels(node)
+    parents_and_edges = find_edge_labels(node_name)
     parents = list(map(lambda tup: tup[0], parents_and_edges)) 
     edges = list(map(lambda tup: tup[1], parents_and_edges))
     parent_dist = list(map(lambda state: state.distribution, prev_states))
     probs = create_CPT(edges).transpose().flatten()
-    cond_prob_table_width = len(list(graph_for_reference.predecessors(node)))
+    cond_prob_table_width = len(list(graph_for_reference.predecessors(node_name)))
     cond_prob_table_gen = it.repeat(labels, cond_prob_table_width+1)
     cond_prob_table = list(cond_prob_table_gen)
     cond_prob_table = it.product(*cond_prob_table)
@@ -174,7 +175,7 @@ def create_internal_node_for_BN(node, BN, prev_states):
     cond_prob_table = np.c_[cond_prob_table, probs]
     cond_prob_table = cond_prob_table.tolist()
     cond_prob_table = ConditionalProbabilityTable(cond_prob_table, parent_dist)
-    new_node = State(cond_prob_table, name=node)
+    new_node = State(cond_prob_table, name=node_name)
     BN.add_state(new_node)
     return new_node
 

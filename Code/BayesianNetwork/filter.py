@@ -30,6 +30,8 @@ def tuple_string_to_tuple(tuple_string):
 def parse_chain(var_and_chain):
     var = var_and_chain[0]
     chain = var_and_chain[1]
+    if 'Call ( with (noparam, [])' in chain:
+        print(chain)
     chain = chain.split(" -> ")
     chain = list(filter(lambda string: string != "", chain))
     chain = list(map(lambda item: item.lstrip(), chain))
@@ -39,9 +41,11 @@ def parse_chain(var_and_chain):
 
 def make_chain():
     path = os.path.abspath("..")
-    path = os.path.join(path, "benchmarks", "realworld", "relational-data-access", "Chain.txt")
+    path = os.path.join(path, "benchmarks", "realworld", "sagan", "Chain.txt")
     with open(path, "r+") as chainfile:
         lines = chainfile.readlines()
+        lines = list(filter(lambda line: not line.endswith(': \n'), lines))
+        lines = list(filter(lambda line: 'noparam' not in line, lines))
         var_to_chain = list(filter(lambda line: line != "\n", lines))
         var_to_chain = list(map(lambda line: line.rstrip(), var_to_chain))
         var_and_chain = list(map(lambda line: line.split(": "), var_to_chain))
@@ -51,7 +55,7 @@ def make_chain():
 
 def make_calledges():
     path = os.path.abspath("..")
-    path = os.path.join(path, "benchmarks", "realworld", "relational-data-access", "Callgraph.txt")
+    path = os.path.join(path, "benchmarks", "realworld", "sagan", "Callgraph.txt")
     with open(path, "r+") as callgraphfile:
         lines = callgraphfile.readlines()
         lines = list(filter(lambda line: "__new" not in line
@@ -100,7 +104,12 @@ def detect_dataflow():  # method1, method2
         for tup in chain:
             caller_name, activity = tup
             if "Call" in activity:
-                tmplst = activity.split("with")[0].split("(")
+                tmplst = activity.split(" with ")[0].split("(")
+                # print(tmplst[1], "| ", end="")
+                # print(tmplst)
+                # print(tmplst[2])
+                if 'Call ( with (noparam, [])' == activity:
+                    print(tup)
                 callee_name = tmplst[1]+"("+tmplst[2].rstrip()
                 out.append((caller_name, callee_name))
             if "Define" in activity:

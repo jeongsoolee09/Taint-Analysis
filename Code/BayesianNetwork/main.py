@@ -1,4 +1,4 @@
-# Naive Spec Inference, augmented with real Bayesian Networks.
+# Spec Inference with real Bayesian Networks.
 # Graph Construction Criteria:
 #     1. If a pair of methods belong to the same package: +10 to the pair
 #     2. If a pair of methods start with a same prefix: +10 to the pair
@@ -19,9 +19,9 @@ regex = re.compile(regex)
 
 current_path = os.path.abspath("..")
 methodfile = os.path.join(current_path, 'benchmarks',
-                          'realworld', 'relational-data-access', 'Methods.txt')
+                          'realworld', 'sagan', 'Methods.txt')
 callmethodfile = os.path.join(current_path, 'benchmarks',
-                              'realworld', 'relational-data-access', 'Callgraph.txt')
+                              'realworld', 'sagan', 'Callgraph.txt')
 
 setofallmethods = []
 
@@ -47,6 +47,9 @@ def populate_sofallm():
     methods = []
     callmethods = []
     with open(methodfile, "r+") as f:
+        lines = f.readlines()
+        lines = list(filter(lambda line: not line.endswith(':\n'), lines))
+        lines = list(filter(lambda line: not 'noparam' not in line, lines))
         for line in f.readlines():
             methods.append(line.rstrip())
     methods = list(filter(filtermethod, methods))

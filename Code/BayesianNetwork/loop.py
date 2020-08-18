@@ -834,7 +834,7 @@ number_of_states = len(BN_for_inference.states)
 initial_precision_list = [np.nan for _ in range(len(BN_for_inference.states))]
 initial_stability_list = [np.nan for _ in range(len(BN_for_inference.states))]
 print()  # for aesthetics in the REPL
-final_snapshot, precision_list, stability_list = tactical_loop(0, list(), dict(), list(), initial_snapshot, initial_precision_list, initial_stability_list, skip_call_sim_heur=True)
+final_snapshot, precision_list, stability_list = tactical_loop(0, list(), dict(), list(), initial_snapshot, initial_precision_list, initial_stability_list, skip_call_sim_heur=False)
 # final_snapshot, precision_list, stability_list = random_loop(list(), dict(), initial_snapshot, list(), list())
 report_results(final_snapshot)
 save_data_as_csv(final_snapshot)

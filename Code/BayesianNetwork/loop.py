@@ -485,7 +485,7 @@ def time_to_terminate(BN, current_evidence):
     return reduce(lambda acc, lst: is_confident(lst) and acc, dist_probs, True)
 
 
-def tactical_loop(interaction_number, current_asked, current_evidence, updated_nodes, prev_snapshot, precision_list, stability_list, **config):
+def tactical_loop(interaction_number, current_asked, current_evidence, updated_nodes, prev_snapshot, precision_list, stability_list, precision_inferred_list, **config):
     """the main interaction functionality (loops via recursion), asking tactically using d-separation
        parameters:
             - interaction_number: number of interactions performed so far.
@@ -563,13 +563,16 @@ def tactical_loop(interaction_number, current_asked, current_evidence, updated_n
     new_snapshot = BN_for_inference.predict_proba(current_evidence)
     current_precision = calculate_precision(new_snapshot)
     current_stability = calculate_stability(prev_snapshot, new_snapshot)
+    current_precision_inferred = calculate_precision_inferred(new_snapshot, interaction_number)
     precision_list[interaction_number] = current_precision
     stability_list[interaction_number] = current_stability
+    precision_inferred_list[interaction_number] = current_precision_inferred
     draw_precision_graph(list(range(1, len(BN_for_inference.states)+1)), precision_list)
     draw_stability_graph(list(range(1, len(BN_for_inference.states)+1)), stability_list)
+    draw_precision_inferred_graph(range(1, len(BN_for_inference.states)+1), precision_inferred_list)
     visualize_snapshot(new_snapshot, dependent_nodes)
     plt.show(block=False)
-    return tactical_loop(interaction_number+1, current_asked, current_evidence, updated_nodes, new_snapshot, precision_list, stability_list, **config)
+    return tactical_loop(interaction_number+1, current_asked, current_evidence, updated_nodes, new_snapshot, precision_list, stability_list, precision_inferred_list, **config)
 
 
 def visualize_snapshot(snapshot, dependent_nodes):
@@ -644,6 +647,25 @@ def draw_stability_graph(x, y):
     plt.xlabel("# of interactions")
     plt.ylabel('# of changed nodes')
     plt.title("Stability development during interaction")
+    plt.plot(x, y, 'b-')
+    # stability_figure.add_axes([1, num_of_states, 0, num_of_states])
+    stability_figure.canvas.draw()
+
+
+def draw_precision_inferred_graph(x, y):
+    """stability graph를 그리는 함수. NOTE: x와 y의 input 길이를 맞춰줘야 함."""
+    plt.ion()
+    stability_figure = plt.figure("Inferred Precision")
+    ax = stability_figure.gca()
+    ax.xaxis.set_major_locator(MaxNLocator(integer=True))
+    ax.yaxis.set_major_locator(MaxNLocator(integer=True))
+    stability_figure.clf()
+    num_of_states = len(graph_for_reference.nodes)
+    plt.xlim(1, num_of_states)
+    plt.ylim(0, num_of_states)
+    plt.xlabel("# of interactions")
+    plt.ylabel('# of correctly inferred nodes')
+    plt.title("Inferred precision development during interaction")
     plt.plot(x, y, 'b-')
     # stability_figure.add_axes([1, num_of_states, 0, num_of_states])
     stability_figure.canvas.draw()
@@ -815,6 +837,18 @@ def calculate_stability(prev_snapshot, current_snapshot):
     return len(changed_nodes)
 
 
+def calculate_precision_inferred(current_snapshot, number_of_interaction):
+    """현재 확률분포 스냅샷을 보고, BN이 순수하게 infer한 것들 중에 맞힌 레이블의 개수를 구한다."""
+    # current_snapshot의 타입은? np.array of Distribution.
+    names_and_params = make_names_and_params(current_snapshot)
+    names_and_labels = dict(map(lambda tup: (tup[0], find_max_val(tup[1])), names_and_params))
+    correct_nodes = []
+    for node_name in graph_for_reference.nodes:
+        if names_and_labels[node_name] == correct_solution_relational[node_name]:
+            correct_nodes.append(node_name)
+    return len(correct_nodes) - number_of_interaction
+
+
 def build_graph(result_report):
     """precision_graph의 x축 값의 list와 y축 값의 list를 만든다."""
     x = list(range(1, len(graph_for_reference.nodes)+1))
@@ -833,13 +867,12 @@ initial_snapshot = BN_for_inference.predict_proba({})
 number_of_states = len(BN_for_inference.states)
 initial_precision_list = [np.nan for _ in range(len(BN_for_inference.states))]
 initial_stability_list = [np.nan for _ in range(len(BN_for_inference.states))]
+initial_precision_inferred_list = [np.nan for _ in range(len(BN_for_inference.states))]
 print()  # for aesthetics in the REPL
-final_snapshot, precision_list, stability_list = tactical_loop(0, list(), dict(), list(), initial_snapshot, initial_precision_list, initial_stability_list, skip_call_sim_heur=False)
+final_snapshot, precision_list, stability_list = tactical_loop(0, list(), dict(), list(), initial_snapshot, initial_precision_list, initial_stability_list, initial_precision_inferred_list, skip_call_sim_heur=False)
 # final_snapshot, precision_list, stability_list = random_loop(list(), dict(), initial_snapshot, list(), list())
 report_results(final_snapshot)
 save_data_as_csv(final_snapshot)
 
 raw_data.close()
 edges_data.close()
-
-

@@ -53,8 +53,8 @@ df_edges = df_reader()
 call_edges = call_reader()
 
 
-# ===================================================
 # Methods for Graphs ================================
+# ===================================================
 
 
 def add_node_to_graph(G):
@@ -133,8 +133,8 @@ def init_graph():
     return G
 
 
-# ====================================================
 # Methods for BNs ====================================
+# ====================================================
 
 
 def create_roots_for_BN(G, BN):
@@ -224,10 +224,13 @@ def init_BN():
     BN.bake()
     return BN
 
-# ====================================================
 
 graph_for_reference = init_graph()
 BN_for_inference = init_BN()
+
+
+# Methods for chains =================================
+# ====================================================
 
 
 def tuplestring_to_tuple(tuple_string):
@@ -300,9 +303,9 @@ def collect_non(chain_without_var, src_s, san_s, sin_s, setofallmethods):
     return non_suspects
 
 
-# should be called AFTER graph_for_reference is constructed
 def create_tactics(chain_without_var):
-    """consuming a chain in tuple list form, plans ahead how to question the oracle"""
+    """consuming a chain in tuple list form, plans ahead how to question the oracle.
+       should be called AFTER graph_for_reference is constructed"""
     setofallmethods = graph_for_reference.nodes()
     src_suspects = collect_src(chain_without_var)  # priority 4
     san_suspects = collect_san(chain_without_var)  # priority 3
@@ -315,9 +318,12 @@ def create_tactics(chain_without_var):
 
 var_and_chain = create_var_and_chain()
 
-# 각 variable의 관점에서 본 src/sin/san/non
+""" 각 variable의 관점에서 본 src/sin/san/non"""
 tactics_per_var = list(map(lambda x: (x[0], create_tactics(x[1])), var_and_chain))
 
+
+# simple loops ============================================
+# ========================================================
 
 def random_loop(current_asked, current_evidence, prev_snapshot, precision_list, stability_list):
     """the main interaction functionality, asking randomly"""
@@ -361,6 +367,31 @@ def random_loop(current_asked, current_evidence, prev_snapshot, precision_list, 
         current_stability_list = calculate_stability(prev_snapshot, new_snapshot)
         return random_loop(current_asked+[query], current_evidence, new_snapshot,  precision_list+[current_precision_list], stability_list+[current_stability_list])
 
+
+def single_loop(query):
+    oracle_response = input("What label does <" + query + "> bear? [src/sin/san/non]: ")
+    current_evidence = {}
+    if oracle_response == 'src':
+        current_evidence[query] = 1
+        new_snapshot = BN_for_inference.predict_proba(current_evidence)
+        visualize_snapshot(new_snapshot, [])
+    elif oracle_response == 'sin':
+        current_evidence[query] = 2
+        new_snapshot = BN_for_inference.predict_proba(current_evidence)
+        visualize_snapshot(new_snapshot, [])
+    elif oracle_response == 'san':
+        current_evidence[query] = 3
+        new_snapshot = BN_for_inference.predict_proba(current_evidence)
+        visualize_snapshot(new_snapshot, [])
+    elif oracle_response == 'non':
+        current_evidence[query] = 4
+        new_snapshot = BN_for_inference.predict_proba(current_evidence)
+        visualize_snapshot(new_snapshot, [])
+
+
+
+# tactical loop and its calculations ====================
+# ========================================================
 
 def d_connected(node, current_asked, pool):
     """현재까지 물어본 노드들이 주어졌을 때, node와 조건부 독립인 노드들의 set을 찾아낸다. Complexity: O(n)."""
@@ -576,6 +607,35 @@ def tactical_loop(interaction_number, current_asked, current_evidence, updated_n
     return tactical_loop(interaction_number+1, current_asked, current_evidence, updated_nodes, new_snapshot, precision_list, stability_list, precision_inferred_list, **config)
 
 
+def normalize_dist(oracle_response):
+    """*int로 주어진* oracle_response에 따라 4-nomial distribution을 만든다."""
+    if oracle_response == 1:
+        return {1.0: 1, 2.0: 0, 3.0: 0, 4.0: 0}
+    elif oracle_response == 2:
+        return {1.0: 0, 2.0: 1, 3.0: 0, 4.0: 0}
+    elif oracle_response == 3:
+        return {1.0: 0, 2.0: 0, 3.0: 1, 4.0: 0}
+    elif oracle_response == 4:
+        return {1.0: 0, 2.0: 0, 3.0: 0, 4.0: 1}
+
+
+def find_max_val(stats):
+    max_key = max(stats, key=lambda key: stats[key])
+    if max_key == 1.0:
+        return "src"
+    elif max_key == 2.0:
+        return "sin"
+    elif max_key == 3.0:
+        return "san"
+    elif max_key == 4.0:
+        return "non"
+
+
+# visualizing functions and their dependencies ============
+# ========================================================
+
+node_colordict = {"src": "red", "sin": "orange", "san": "yellow", "non": "green"}
+
 def visualize_snapshot(snapshot, dependent_nodes):
     """한번 iteration 돌 때마다, 전체 BN의 snapshot을 가시화한다. 이 때, confident node들 위에는 `conf`라는 문구를 띄운다."""
     network_figure = plt.figure("Bayesian Network")
@@ -672,54 +732,6 @@ def draw_precision_inferred_graph(x, y):
     stability_figure.canvas.draw()
 
 
-def single_loop(query):
-    oracle_response = input("What label does <" + query + "> bear? [src/sin/san/non]: ")
-    current_evidence = {}
-    if oracle_response == 'src':
-        current_evidence[query] = 1
-        new_snapshot = BN_for_inference.predict_proba(current_evidence)
-        visualize_snapshot(new_snapshot, [])
-    elif oracle_response == 'sin':
-        current_evidence[query] = 2
-        new_snapshot = BN_for_inference.predict_proba(current_evidence)
-        visualize_snapshot(new_snapshot, [])
-    elif oracle_response == 'san':
-        current_evidence[query] = 3
-        new_snapshot = BN_for_inference.predict_proba(current_evidence)
-        visualize_snapshot(new_snapshot, [])
-    elif oracle_response == 'non':
-        current_evidence[query] = 4
-        new_snapshot = BN_for_inference.predict_proba(current_evidence)
-        visualize_snapshot(new_snapshot, [])
-
-
-def normalize_dist(oracle_response):
-    """*int로 주어진* oracle_response에 따라 4-nomial distribution을 만든다."""
-    if oracle_response == 1:
-        return {1.0: 1, 2.0: 0, 3.0: 0, 4.0: 0}
-    elif oracle_response == 2:
-        return {1.0: 0, 2.0: 1, 3.0: 0, 4.0: 0}
-    elif oracle_response == 3:
-        return {1.0: 0, 2.0: 0, 3.0: 1, 4.0: 0}
-    elif oracle_response == 4:
-        return {1.0: 0, 2.0: 0, 3.0: 0, 4.0: 1}
-
-
-def find_max_val(stats):
-    max_key = max(stats, key=lambda key: stats[key])
-    if max_key == 1.0:
-        return "src"
-    elif max_key == 2.0:
-        return "sin"
-    elif max_key == 3.0:
-        return "san"
-    elif max_key == 4.0:
-        return "non"
-
-
-node_colordict = {"src": "red", "sin": "orange", "san": "yellow", "non": "green"}
-
-
 def create_node_colormap(names_and_labels):
     """BN을 기준으로 계산된 names_and_labels를 받아서 graph_for_reference를 기준으로 한 colormap을 만든다."""
     out = list(graph_for_reference.nodes)[:]
@@ -808,9 +820,8 @@ def plot_underlying_graph():
     plt.show(block=False)
 
 
-# Methods for Scoring ====================================
+# Methods for calculating graph values ====================
 # ========================================================
-
 
 def calculate_precision(current_snapshot):
     """현재 확률분포 스냅샷의 정확도를 측정한다."""
@@ -850,20 +861,12 @@ def calculate_precision_inferred(current_snapshot, number_of_interaction):
     return len(correct_nodes) - number_of_interaction
 
 
-def build_graph(result_report):
-    """precision_graph의 x축 값의 list와 y축 값의 list를 만든다."""
-    x = list(range(1, len(graph_for_reference.nodes)+1))
-    y = []
-    for elem_list in result_report:
-        number_of_elem_nodes = len(elem_list)
-        y.append(number_of_elem_nodes)
-    return x, y
-
-
 # ========================================================
 
 
-# main
+# main ====================================================
+# ========================================================
+
 initial_snapshot = BN_for_inference.predict_proba({})
 number_of_states = len(BN_for_inference.states)
 initial_precision_list = [np.nan for _ in range(len(BN_for_inference.states))]

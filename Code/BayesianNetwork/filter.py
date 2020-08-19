@@ -30,7 +30,7 @@ def tuple_string_to_tuple(tuple_string):
 def parse_chain(var_and_chain):
     var = var_and_chain[0]
     chain = var_and_chain[1]
-    if 'Call ( with (noparam, [])' in chain:
+    if 'Call ( with (noparam, [])' in chain:  # 이것 참 희한한 파라미터로군!
         print(chain)
     chain = chain.split(" -> ")
     chain = list(filter(lambda string: string != "", chain))

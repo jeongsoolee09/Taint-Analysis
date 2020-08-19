@@ -11,12 +11,17 @@ import itertools as it
 import os
 import random
 from solutions import *
+from scrape_oracle_docs import *
 from toolz import valmap
 from make_CPT import *
 from matplotlib.ticker import MaxNLocator
 
 start = time.time()
 
+# readers ============================================
+# ====================================================
+
+# lazy loading csvs
 edges = pd.read_csv("edges.csv", index_col=0, header=[0, 1])
 edge_targets = edges.iloc[:, edges.columns.get_level_values(1) == "name"]
 
@@ -26,11 +31,11 @@ data_reader = csv.reader(raw_data)
 edges_data = open("edges.csv", "r+")
 edges_reader = csv.reader(edges_data)
 
+# oracle doc urls
+java_lang_url = 'https://docs.oracle.com/javase/7/docs/api/java/lang/package-summary.html'
+java_utils_url = 'https://docs.oracle.com/javase/8/docs/api/java/util/package-summary.html'
 
-class ThisIsImpossible(Exception):
-    pass
-
-
+# eagerly loading txts
 def df_reader():
     with open("df.txt", "r+") as df:
         lines = df.readlines()
@@ -49,8 +54,27 @@ def call_reader():
     return lines
 
 
+def skip_func_reader():
+    """skip_func.txt를 읽은 다음, 그 안에 있는 함수들 중 java.lang과 java.utils의 메소드만을 골라낸다."""
+    path = os.path.abspath("..")
+    path = os.path.join(path, "benchmarks", "realworld", "sagan", "Chain.txt")
+    with open("skip_func.txt") as skip_func:
+        lines = skip_func.readlines()
+        lines = list(map(lambda line: line.rstrip(), lines))
+    return lines
+
+
+# eagerly loaded (line by line) txts
 df_edges = df_reader()
 call_edges = call_reader()
+skip_funcs = skip_func_reader()
+
+
+# Misc================================================
+# ====================================================
+
+class ThisIsImpossible(Exception):
+    pass
 
 
 # Methods for Graphs ================================
@@ -835,9 +859,9 @@ def calculate_precision(current_snapshot):
     return len(correct_nodes)
 
 
-# time t에서의 stability: time (t-1)에서의 스냅샷과 비교했을 때 time t에서의 스냅샷에서 레이블이 달라진 노드의 개수
 def calculate_stability(prev_snapshot, current_snapshot):
-    """직전 확률분포 스냅샷에 대한 현재 확률분포 스냅샷의 stability를 측정한다."""
+    """직전 확률분포 스냅샷에 대한 현재 확률분포 스냅샷의 stability를 측정한다.
+       stability: time t에서의 stability: time (t-1)에서의 스냅샷과 비교했을 때 time t에서의 스냅샷에서 레이블이 달라진 노드의 개수."""
     names_and_dists_prev = make_names_and_params(prev_snapshot)
     names_and_labels_prev = dict(map(lambda tup: (tup[0], find_max_val(tup[1])), names_and_dists_prev))
     names_and_dists_current = make_names_and_params(current_snapshot)

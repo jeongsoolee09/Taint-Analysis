@@ -261,12 +261,28 @@ let pp_ap_list list =
 
 
 (** get_formal_args는 skip_function에 대해 실패한다는 점을 이용한 predicate *)
-let is_skip_function (methname:Procname.t) =
+let is_skip_function (methname:Procname.t) : bool =
   try
     let _ = get_formal_args methname in
     false
   with _ ->
     true
+
+
+let save_skip_function () : unit =
+  let procnames = Hashtbl.fold (fun meth1 meth2 acc ->
+      let meth1_is_skip = is_skip_function meth1 in
+      let meth2_is_skip = is_skip_function meth2 in
+      match meth1_is_skip, meth2_is_skip with
+      | true, true -> Procname.Set.add meth1 acc |> Procname.Set.add meth2
+      | true, false -> Procname.Set.add meth1 acc
+      | false, true -> Procname.Set.add meth2 acc
+      | false, false -> acc) callgraph_table Procname.Set.empty in
+  let out_chan = Out_channel.create "skip_func.txt" in
+  let procnames_list = Procname.Set.elements procnames in
+  List.iter ~f:(fun procname ->
+      let func_name = Procname.to_string procname in
+      Out_channel.output_string out_chan @@ func_name^"\n") procnames_list
 
 
 (** returnv 혹은 callv 안에 들어 있는 callee method name을 뽑아 낸다. *)
@@ -634,6 +650,7 @@ let run_lrm () =
     add_chain (proc, ap) (compute_chain ap)) setofallprocandap;
   (* L.progress "Hashtbl: %a@." pp_summary_table summary_table; *)
   print_graph callgraph;
+  save_skip_function ();
   let out_string = F.asprintf "%s\n" (chains_to_string chains) in
   let ch = Out_channel.create "Chain.txt" in
   Out_channel.output_string ch out_string;

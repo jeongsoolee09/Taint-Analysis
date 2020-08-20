@@ -80,19 +80,7 @@ def populate_sofallm():
     return setofallmethods
 
 
-def populate_skipmethods():
-    skipmethods = []
-    with open(skipfuncfile, "r+") as f:
-        lines = f.readlines()
-        for line in lines:
-            skipmethods.append(line.rstrip())
-    skipmethods = list(filter(filtermethod, skipmethods))
-    skipmethods = list(map(process, skipmethods))
-    return skipmethods
-
-
 setofallmethods = populate_sofallm()
-skipmethods = populate_skipmethods()
 
 
 def write_to_csv():
@@ -112,20 +100,9 @@ def write_to_csv():
     write_list.to_csv("raw_data.csv", mode='w+')
 
 
-def skip_func_to_csv():
-    """skip_func.txt를 읽고 필터링한 결과를 csv로 저장"""
-    write_list = skipmethods
-    write_list = pd.DataFrame(write_list, columns=["pkg", "rtntype",
-                                                   "name", "intype", "id"],
-                              dtype="str")
-    write_list = write_list.reset_index()
-    write_list.to_csv("skip_func.csv", mode='w+')
-
-
 def main():
     populate_sofallm()
     write_to_csv()
-    skip_func_to_csv()
 
 
 main()

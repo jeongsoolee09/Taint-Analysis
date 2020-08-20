@@ -31,6 +31,9 @@ data_reader = csv.reader(raw_data)
 edges_data = open("edges.csv", "r+")
 edges_reader = csv.reader(edges_data)
 
+skip_func_data = open("skip_func.csv", "r+")
+skip_func_reader = csv.reader(skip_func_data)
+
 # oracle doc urls
 java_lang_url = 'https://docs.oracle.com/javase/7/docs/api/java/lang/package-summary.html'
 java_utils_url = 'https://docs.oracle.com/javase/8/docs/api/java/util/package-summary.html'
@@ -69,13 +72,14 @@ df_edges = df_reader()
 call_edges = call_reader()
 skip_funcs = skip_func_reader()
 
-
-# Misc================================================
+# Exceptions ========================================
 # ====================================================
 
 class ThisIsImpossible(Exception):
     pass
 
+class TooManyEdges(Exception):
+    pass
 
 # Methods for Graphs ================================
 # ===================================================
@@ -88,16 +92,6 @@ def add_node_to_graph(G):
         G.add_node(data[6])
 
 
-def add_data_to_node(G):
-    """adds data to each node needed for dependency solving algorithm"""
-    for node in G.nodes():
-        G.nodes[node]["under_construction"] = False
-        if G.in_degree(node) == 0:
-            G.nodes[node]["defined"] = True
-        else:
-            G.nodes[node]["defined"] = False
-
-
 def find_root(G):
     roots = []
     for node in G.nodes:
@@ -107,7 +101,7 @@ def find_root(G):
 
 
 def add_edge_to_graph(G):
-    """adds edges to reference graph G"""
+    """adds edges to `reference graph` G"""
     next(edges_reader)
     next(edges_reader)
     for row in edges_reader:
@@ -124,7 +118,31 @@ def add_edge_to_graph(G):
         G.add_edge(firstNodeID, secondNodeID)
 
 
+def filter_edges_from_graph(G):
+    """filters less important edges from `reference graph` G"""
+    for node_name in G.nodes:
+        print("filtering " + node_name)
+        in_edges = list(G.in_edges(nbunch=node_name))
+        print("in_edges: " + in_edges)
+        can_be_removed_edges = []
+        for parent, child in in_edges:
+            if parent in skip_funcs and len(list(G.out_edges(nbunch=parent))) > 1:
+                print("True!!")
+                can_be_removed_edges.append((parent, child))
+        if len(can_be_removed_edges) > 0:  # 없앨 수 있는 엣지가 있다면
+            print("True!!")
+            while len(in_edges) > 6:
+                print(len(in_edges))
+                # if len(can_be_removed_edges) == 0:
+                #     break
+                random_edge = random.choice(can_be_removed_edges)
+                G.remove_edge(*random_edge)
+                can_be_removed_edges.remove(random_edge)
+                in_edges.remove(random_edge)
+
+
 def find_edges_of(node_name):
+    """주어진 node_name을 갖는 노드의 모든 incoming edge를 찾아낸다."""
     global graph_for_reference
     lookup_edges = graph_for_reference.edges
     out = []
@@ -153,8 +171,13 @@ def init_graph():
     G = nx.DiGraph()
     add_node_to_graph(G)
     add_edge_to_graph(G)
-    add_data_to_node(G)
+    # filter_edges_from_graph(G)
     return G
+
+
+# def graph_statistics(G):
+#     for node_name in nodes:
+#         node_name
 
 
 # Methods for BNs ====================================
@@ -885,22 +908,21 @@ def calculate_precision_inferred(current_snapshot, number_of_interaction):
     return len(correct_nodes) - number_of_interaction
 
 
-# ========================================================
-
-
 # main ====================================================
 # ========================================================
 
-initial_snapshot = BN_for_inference.predict_proba({})
-number_of_states = len(BN_for_inference.states)
-initial_precision_list = [np.nan for _ in range(len(BN_for_inference.states))]
-initial_stability_list = [np.nan for _ in range(len(BN_for_inference.states))]
-initial_precision_inferred_list = [np.nan for _ in range(len(BN_for_inference.states))]
-print()  # for aesthetics in the REPL
-final_snapshot, precision_list, stability_list = tactical_loop(0, list(), dict(), list(), initial_snapshot, initial_precision_list, initial_stability_list, initial_precision_inferred_list, skip_call_sim_heur=False)
-# final_snapshot, precision_list, stability_list = random_loop(list(), dict(), initial_snapshot, list(), list())
-report_results(final_snapshot)
-save_data_as_csv(final_snapshot)
 
-raw_data.close()
-edges_data.close()
+def main():
+    initial_snapshot = BN_for_inference.predict_proba({})
+    number_of_states = len(BN_for_inference.states)
+    initial_precision_list = [np.nan for _ in range(len(BN_for_inference.states))]
+    initial_stability_list = [np.nan for _ in range(len(BN_for_inference.states))]
+    initial_precision_inferred_list = [np.nan for _ in range(len(BN_for_inference.states))]
+    print()  # for aesthetics in the REPL
+    final_snapshot, precision_list, stability_list = tactical_loop(0, list(), dict(), list(), initial_snapshot, initial_precision_list, initial_stability_list, initial_precision_inferred_list, skip_call_sim_heur=False)
+    # final_snapshot, precision_list, stability_list = random_loop(list(), dict(), initial_snapshot, list(), list())
+    report_results(final_snapshot)
+    save_data_as_csv(final_snapshot)
+
+    raw_data.close()
+    edges_data.close()

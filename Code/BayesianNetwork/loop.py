@@ -57,8 +57,8 @@ def call_reader():
 def skip_func_reader():
     """skip_func.txt를 읽은 다음, 그 안에 있는 함수들 중 java.lang과 java.utils의 메소드만을 골라낸다."""
     path = os.path.abspath("..")
-    path = os.path.join(path, "benchmarks", "realworld", "sagan", "Chain.txt")
-    with open("skip_func.txt") as skip_func:
+    path = os.path.join(path, "benchmarks", "realworld", "sagan", "skip_func.txt")
+    with open(path, "r+") as skip_func:
         lines = skip_func.readlines()
         lines = list(map(lambda line: line.rstrip(), lines))
     return lines

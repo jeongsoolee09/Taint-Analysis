@@ -17,14 +17,14 @@ start = time.time()
 regex = r'\((.*)\)'
 regex = re.compile(regex)
 
-current_path = os.path.abspath("..")
-methodfile = os.path.join(current_path, 'benchmarks',
+# let's read the files created by static analysis
+upper_path = os.path.abspath("..")
+methodfile = os.path.join(upper_path, 'benchmarks',
                           'realworld', 'sagan', 'Methods.txt')
-callmethodfile = os.path.join(current_path, 'benchmarks',
+callmethodfile = os.path.join(upper_path, 'benchmarks',
                               'realworld', 'sagan', 'Callgraph.txt')
-
-setofallmethods = []
-
+skipfuncfile = os.path.join(upper_path, 'benchmarks',
+                              'realworld', 'sagan', 'skip_func.txt')
 
 def flatten(ll):
     flat_list = []
@@ -35,35 +35,11 @@ def flatten(ll):
 
 
 filtermethod = lambda string:\
-    "__new" not in string and\
+    "__" not in string and\
     "<init>" not in string and\
     "<clinit>" not in string and\
     "lambda" not in string and\
     "Lambda" not in string
-
-
-def populate_sofallm():
-    global setofallmethods
-    methods = []
-    callmethods = []
-    with open(methodfile, "r+") as f:
-        lines = f.readlines()
-        lines = list(filter(lambda line: not line.endswith(':\n'), lines))
-        lines = list(filter(lambda line: not 'noparam' not in line, lines))
-        for line in f.readlines():
-            methods.append(line.rstrip())
-    methods = list(filter(filtermethod, methods))
-    methods = set(methods)
-    with open(callmethodfile, "r+") as g:
-        for line in g.readlines():
-            callmethods.append(line.rstrip())
-    callmethods = list(filter(filtermethod, callmethods))
-    callmethods = list(map(lambda line: line.rstrip(), callmethods))
-    callmethods = list(map(lambda line: line.split(" -> "), callmethods))
-    callmethods = set(flatten(callmethods))
-    setofallmethods = list(methods.union(callmethods))
-    setofallmethods = list(filter(lambda meth: ' ' in meth, setofallmethods))
-    setofallmethods = list(map(lambda meth: process(meth), setofallmethods))
 
 
 def process(info):
@@ -80,27 +56,76 @@ def process(info):
     return (pkg, rtntype, name, intype, info)
 
 
+def populate_sofallm():
+    setofallmethods = []
+    methods = []
+    callmethods = []
+    with open(methodfile, "r+") as f:
+        lines = f.readlines()
+        for line in f.readlines():
+            methods.append(line.rstrip())
+    methods = list(filter(filtermethod, methods))
+    methods = set(methods)
+    with open(callmethodfile, "r+") as g:
+        for line in g.readlines():
+            callmethods.append(line.rstrip())
+    callmethods = list(filter(filtermethod, callmethods))
+    callmethods = list(map(lambda line: line.rstrip(), callmethods))
+    callmethods = list(map(lambda line: line.split(" -> "), callmethods))
+    callmethods = set(flatten(callmethods))
+    setofallmethods = list(methods.union(callmethods))
+    setofallmethods = list(filter(lambda meth: ' ' in meth, setofallmethods))
+    # process에서 모든 heavy lifting 담당
+    setofallmethods = list(map(process, setofallmethods))
+    return setofallmethods
+
+
+def populate_skipmethods():
+    skipmethods = []
+    with open(skipfuncfile, "r+") as f:
+        lines = f.readlines()
+        for line in lines:
+            skipmethods.append(line.rstrip())
+    skipmethods = list(filter(filtermethod, skipmethods))
+    skipmethods = list(map(process, skipmethods))
+    return skipmethods
+
+
+setofallmethods = populate_sofallm()
+skipmethods = populate_skipmethods()
+
 
 def write_to_csv():
     """Randomly select 100 methods from the set of all methods,
-       or just use the set of all methods if possible"""
-    writeList = []
+       or just use the set of all methods if possible and save them to csv"""
+    write_list = []
     if len(setofallmethods) < 100:
-        writeList = setofallmethods
+        write_list = setofallmethods
     else:
         for i in random.sample(range(0, len(setofallmethods)), 100):
-            writeList.append(setofallmethods[i])
-    writeList = pd.DataFrame(writeList, columns=["pkg", "rtntype",
-                                                 "name", "intype",
-                                                 "id"], dtype="str")
+            write_list.append(setofallmethods[i])
+    write_list = pd.DataFrame(write_list, columns=["pkg", "rtntype",
+                                                   "name", "intype", "id"],
+                              dtype="str")
     # embed the index into a separate column
-    writeList = writeList.reset_index()
-    writeList.to_csv("raw_data.csv", mode='w+')
+    write_list = write_list.reset_index()
+    write_list.to_csv("raw_data.csv", mode='w+')
+
+
+def skip_func_to_csv():
+    """skip_func.txt를 읽고 필터링한 결과를 csv로 저장"""
+    write_list = skipmethods
+    write_list = pd.DataFrame(write_list, columns=["pkg", "rtntype",
+                                                   "name", "intype", "id"],
+                              dtype="str")
+    write_list = write_list.reset_index()
+    write_list.to_csv("skip_func.csv", mode='w+')
 
 
 def main():
     populate_sofallm()
     write_to_csv()
+    skip_func_to_csv()
 
 
 main()

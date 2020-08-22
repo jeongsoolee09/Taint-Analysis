@@ -121,20 +121,18 @@ def add_edge_to_graph(G):
 def filter_edges_from_graph(G):
     """filters less important edges from `reference graph` G"""
     for node_name in G.nodes:
-        print("filtering " + node_name)
+        # print("filtering " + node_name)
         in_edges = list(G.in_edges(nbunch=node_name))
-        print("in_edges: " + in_edges)
+        # print("in_edges: ", in_edges)
         can_be_removed_edges = []
         for parent, child in in_edges:
             if parent in skip_funcs and len(list(G.out_edges(nbunch=parent))) > 1:
-                print("True!!")
                 can_be_removed_edges.append((parent, child))
         if len(can_be_removed_edges) > 0:  # 없앨 수 있는 엣지가 있다면
-            print("True!!")
             while len(in_edges) > 6:
-                print(len(in_edges))
-                # if len(can_be_removed_edges) == 0:
-                #     break
+                print("iteration")
+                if len(can_be_removed_edges) == 0:
+                    break
                 random_edge = random.choice(can_be_removed_edges)
                 G.remove_edge(*random_edge)
                 can_be_removed_edges.remove(random_edge)
@@ -171,7 +169,7 @@ def init_graph():
     G = nx.DiGraph()
     add_node_to_graph(G)
     add_edge_to_graph(G)
-    # filter_edges_from_graph(G)
+    filter_edges_from_graph(G)
     return G
 
 
@@ -926,3 +924,5 @@ def main():
 
     raw_data.close()
     edges_data.close()
+
+main()

@@ -86,12 +86,13 @@ setofallmethods = populate_sofallm()
 def write_to_csv():
     """Randomly select 100 methods from the set of all methods,
        or just use the set of all methods if possible and save them to csv"""
-    write_list = []
-    if len(setofallmethods) < 100:
-        write_list = setofallmethods
-    else:
-        for i in random.sample(range(0, len(setofallmethods)), 100):
-            write_list.append(setofallmethods[i])
+    # write_list = []
+    # if len(setofallmethods) < 100:
+    #     write_list = setofallmethods
+    # else:
+    #     for i in random.sample(range(0, len(setofallmethods)), 100):
+    #         write_list.append(setofallmethods[i])
+    write_list = setofallmethods
     write_list = pd.DataFrame(write_list, columns=["pkg", "rtntype",
                                                    "name", "intype", "id"],
                               dtype="str")

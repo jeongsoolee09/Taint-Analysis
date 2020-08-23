@@ -12,6 +12,8 @@ module T = DefLocAliasDomain.AbstractState
 module L = Logging
 module F = Format
 
+module Json = Yojson.Safe
+
 exception NotImplemented
 exception IDontKnow
 
@@ -577,6 +579,15 @@ let compute_chain (ap:MyAccessPath.t) : chain =
   | false ->
       (* L.progress "false for %a@." MyAccessPath.pp ap; *)
       compute_chain_ ap
+
+
+(** chain을 받아서 json 값으로 변환한다. *)
+let status_to_json (status:status) : Json.json =
+  match status with
+  | Define (meth, ap) -> pass
+  | Call (meth, ap) -> pass
+  | Redefine ap -> pass
+  | Dead -> Json.
 
 
 let collect_all_proc_and_ap () =

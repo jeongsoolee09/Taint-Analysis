@@ -1,16 +1,49 @@
-import pandas as pd
+import modin.pandas as pd
 import time
 import os
-
-start = time.time()
-
-methodInfo1 = pd.read_csv("raw_data.csv", index_col=0)
-methodInfo2 = pd.read_csv("raw_data.csv", index_col=0)
-methodInfo1 = methodInfo1.drop('id', axis=1)
-methodInfo2 = methodInfo2.drop('id', axis=1)
+from multiprocessing import Pool
+from main import process
 
 
-# TODO: Dead 스트링의 끝에 )가 하나 남음
+def make_dataframes():
+    methodInfo1 = pd.read_csv("raw_data.csv", index_col=0)
+    methodInfo2 = pd.read_csv("raw_data.csv", index_col=0)
+
+    methodInfo1 = methodInfo1.drop('id', axis=1)
+    methodInfo2 = methodInfo2.drop('id', axis=1)
+
+    # renaming columns for producing cartesian product by merging
+    methodInfo1 = methodInfo1.rename(columns={'index':'index1', 'pkg':'pkg1',
+                                              'rtntype':'rtntype1', 'name':'name1',
+                                              'intype':'intype1'})
+    methodInfo2 = methodInfo2.rename(columns={'index':'index2', 'pkg':'pkg2',
+                                              'rtntype':'rtntype2', 'name':'name2',
+                                              'intype':'intype2'})
+    # Creating a key column for merging
+    methodInfo1['key'] = 1
+    methodInfo2['key'] = 1
+
+    carPro = pd.merge(methodInfo1, methodInfo2, how='outer')
+    carPro = carPro.drop('key', axis=1)
+
+    # restoring column names
+    methodInfo1 = methodInfo1.rename(columns={'index1':'index', 'pkg1':'pkg',
+                                              'rtntype1':'rtntype', 'name1':'name',
+                                              'intype1':'intype'})
+    methodInfo2 = methodInfo2.rename(columns={'index2':'index', 'pkg2':'pkg',
+                                              'rtntype2':'rtntype', 'name2':'name',
+                                              'intype2':'intype'})
+    return methodInfo1, methodInfo2, carPro
+
+
+def filtermethod(string):
+    return "__" not in string and\
+        "<init>" not in string and\
+        "<clinit>" not in string and\
+        "lambda" not in string and\
+        "Lambda" not in string
+
+
 def tuple_string_to_tuple(tuple_string):
     string_list = tuple_string.split(", ")
     if len(string_list) > 3:  # not sure about the number 3...
@@ -30,8 +63,6 @@ def tuple_string_to_tuple(tuple_string):
 def parse_chain(var_and_chain):
     var = var_and_chain[0]
     chain = var_and_chain[1]
-    if 'Call ( with (noparam, [])' in chain:  # 이것 참 희한한 파라미터로군!
-        print(chain)
     chain = chain.split(" -> ")
     chain = list(filter(lambda string: string != "", chain))
     chain = list(map(lambda item: item.lstrip(), chain))
@@ -45,7 +76,7 @@ def make_chain():
     with open(path, "r+") as chainfile:
         lines = chainfile.readlines()
         lines = list(filter(lambda line: not line.endswith(': \n'), lines))
-        lines = list(filter(lambda line: 'noparam' not in line, lines))
+        lines = list(filter(lambda line: 'noparam' not in line, lines))  # 왜 생기는지 모르는 희한한 파라미터
         var_to_chain = list(filter(lambda line: line != "\n", lines))
         var_to_chain = list(map(lambda line: line.rstrip(), var_to_chain))
         var_and_chain = list(map(lambda line: line.split(": "), var_to_chain))
@@ -63,24 +94,8 @@ def make_calledges():
         lines = list(map(lambda line: line.rstrip(), lines))
         lines = list(map(lambda line: line.split(" -> "), lines))
         call_edges = list(map(lambda lst: tuple(lst), lines))
+        call_edges = list(map(lambda tup: (process(tup[0]), process(tup[1])), call_edges))
     return call_edges
-
-
-filtermethod = lambda string:\
-    "__new" not in string and\
-    "<init>" not in string and\
-    "<clinit>" not in string and\
-    "lambda" not in string and\
-    "Lambda" not in string
-
-
-def filter_var_and_chain(var_and_chain):
-    """var_and_chain의 key인 var이 만약 filtermethod를 만족하지 않는 경우라면 var_and_chain에서 삭제한다."""
-    
-
-
-var_and_chain = dict(make_chain())
-call_edges = make_calledges()
 
 
 def scoring_function(info1, info2):
@@ -98,55 +113,43 @@ def scoring_function(info1, info2):
     return score
 
 
-def detect_dataflow():  # method1, method2
-    out = []
+def detect_dataflow(var_and_chain):  # method1, method2
+    dataflow_edges = []
     for chain in var_and_chain.values():
         for tup in chain:
             caller_name, activity = tup
             if "Call" in activity:
                 tmplst = activity.split(" with ")[0].split("(")
-                # print(tmplst[1], "| ", end="")
-                # print(tmplst)
-                # print(tmplst[2])
-                if 'Call ( with (noparam, [])' == activity:
-                    print(tup)
                 callee_name = tmplst[1]+"("+tmplst[2].rstrip()
-                out.append((caller_name, callee_name))
+                dataflow_edges.append((caller_name, callee_name))
             if "Define" in activity:
-                # print(activity)
                 callee_name = activity.split("using")[1]
                 callee_name = callee_name.lstrip(" ")
-                out.append((callee_name, caller_name))
-    out = list(filter(lambda tup: None not in tup, out))
-    return out
+                dataflow_edges.append((caller_name, callee_name))
+    dataflow_edges = list(filter(lambda tup: None not in tup, dataflow_edges))
+    dataflow_edges = list(filter(lambda tup: filtermethod(tup[0]) and filtermethod(tup[1]), dataflow_edges))
+    dataflow_edges = list(map(lambda tup: (process(tup[0]), process(tup[1])), dataflow_edges))
+    return dataflow_edges
 
 
-dataflow_edges = detect_dataflow()
-
-
-def output_dfedges():
-    global dataflow_edges
+def output_dfedges(dataflow_edges):
     with open("df.txt", "w+") as df:
         for (dfsend, dfrcv) in dataflow_edges:
             df.write(dfsend + ", " + dfrcv + "\n")
 
 
-def output_calledges():
-    global call_edges
+def output_calledges(call_edges):
     with open("callg.txt", "w+") as call:
         for (caller, callee) in call_edges:
             call.write(caller + ", " + callee + "\n")
 
 
-def output_alledges():
-    output_dfedges()
-    output_calledges()
+def output_alledges(dataflow_edges, call_edges):
+    output_dfedges(dataflow_edges)
+    output_calledges(call_edges)
 
 
-output_alledges()
-
-
-def there_is_dataflow(info1, info2):
+def there_is_dataflow(dataflow_edges, info1, info2):
     intype1 = "()" if info1[4] == "void" else "("+info1[4]+")"
     id1 = info1[2]+" "+info1[1]+"."+info1[3]+intype1
     intype2 = "()" if info2[4] == "void" else "("+info2[4]+")"
@@ -157,7 +160,7 @@ def there_is_dataflow(info1, info2):
         return False
 
 
-def there_is_calledge(info1, info2):
+def there_is_calledge(call_edges, info1, info2):
     intype1 = "()" if info1[4] == "void" else "("+info1[4]+")"
     id1 = info1[2]+" "+info1[1]+"."+info1[3]+intype1
     intype2 = "()" if info2[4] == "void" else "("+info2[4]+")"
@@ -182,18 +185,18 @@ def find_that_edge_between(row1, row2, edgelist):
         return (row2, row1)
 
 
-def add_edges():
+def add_edges(methodInfo1, methodInfo2, dataflow_edges, call_edges):
     edgelist = []
     for row1 in methodInfo1.itertuples(index=False):
         for row2 in methodInfo2.itertuples(index=False):
-            if there_is_dataflow(row1, row2):
+            if there_is_dataflow(dataflow_edges, row1, row2):
                 if there_is_already_an_edge_between(row1, row2, edgelist):
-                    edge = find_that_edge_between(row1, row2, edgelist)
-                    # print(edge)
-                    edgelist.remove(edge)
+                    # edge = find_that_edge_between(row1, row2, edgelist)
+                    # edgelist.remove(edge)
+                    continue
                 edgelist.append((row1, row2))
             else:
-                if there_is_calledge(row1, row2):
+                if there_is_calledge(call_edges, row1, row2):
                     edgelist.append((row1, row2))
                 else:
                     if scoring_function(row1, row2) > 20:
@@ -201,14 +204,21 @@ def add_edges():
     return edgelist
 
 
-[edge1, edge2] = zip(*add_edges())
-edge1 = list(edge1)
-edge2 = list(edge2)
-edge1 = pd.DataFrame(edge1, columns=methodInfo1.columns)
-edge2 = pd.DataFrame(edge2, columns=methodInfo2.columns)
-edges = pd.merge(edge1, edge2, left_index=True, right_index=True)
-edges.columns = pd.MultiIndex.from_product([['edge1', 'edge2'],
-                                            methodInfo1.columns])
+def add_edges2(carPro):
+    i = 0
+    for row in carPro.iterrows():
+        i += 1
+
+
+def make_multicolumn(methodInfo1, methodInfo2, edge1, edge2):
+    edge1 = list(edge1)
+    edge2 = list(edge2)
+    edge1 = pd.DataFrame(edge1, columns=methodInfo1.columns)
+    edge2 = pd.DataFrame(edge2, columns=methodInfo2.columns)
+    edges = pd.merge(edge1, edge2, left_index=True, right_index=True)
+    edges.columns = pd.MultiIndex.from_product([['edge1', 'edge2'],
+                                                methodInfo1.columns])
+    return edges
 
 
 def no_symmetric(dataframe):
@@ -244,8 +254,24 @@ def test_reflexive(dataframe):
     return dataframe[reflex1 & reflex2 & reflex3 & reflex4 & reflex5]
 
 
-edges_new = no_reflexive(no_symmetric(edges))
+def main():
+    methodInfo1, methodInfo2, carPro = make_dataframes() # the main data we are manipulating
+    var_and_chain = dict(make_chain())
+    dataflow_edges = detect_dataflow(var_and_chain)
+    call_edges = make_calledges()
+    output_alledges(dataflow_edges, call_edges)
+    return dataflow_edges, call_edges, methodInfo1, methodInfo2, carPro
 
-edges_new.to_csv("edges.csv", mode='w')
 
-print("elapsed time: ", time.time()-start)
+if __name__ == "__main__":
+    start = time.time()
+    dataflow_edges, call_edges, methodInfo1, methodInfo2, carPro = main()
+    
+    edgelist = add_edges(methodInfo1, methodInfo2, dataflow_edges, call_edges)
+    print('done multiprocessing')
+    [edge1, edge2] = zip(*edgelist)
+    make_multicolumn(methodInfo1, methodInfo2, edge1, edge2)
+    edges_new = no_reflexive(no_symmetric(edges))
+    edges_new.to_csv("edges.csv", mode='w')
+    print("elapsed time: ", time.time()-start)
+

@@ -620,16 +620,12 @@ let extract_pvar_from_var (var:Var.t) : Pvar.t =
 (* Method for Jsons ======================== *)
 (* ========================================= *)
 
-(** key should either be "current_method" or "using" *)
-let create_method (key:string) (procname:Procname.t) : json =
-  `Assoc [(key, `String (Procname.to_string procname))]
-
 
 (** 하나의 status에 대한 representation을 만든다. *)
 let represent_status (current_method:Procname.t) (status:status) : json =
   match status with
   | Define (callee, ap) ->
-      `Assoc [("current_method", `String (Procname.to_string current_method)); (* 실제로는 Procname.to_string *)
+      `Assoc [("current_method", `String (Procname.to_string current_method));
               ("status", `String "Define");
               ("access_path", `String (MyAccessPath.to_string ap));
               ("using", `String (Procname.to_string callee))]
@@ -669,22 +665,17 @@ let run_lrm () =
   save_callgraph ();
   load_summary_from_disk_to summary_table;
   batch_add_formal_args ();
-  (* batch_print_formal_args (); *)
   filter_callgraph_table callgraph_table;
   callg_hash2og ();
-  (* pp_chains callgraph; *)
   let setofallprocandap_with_garbage = List.stable_dedup (collect_all_proc_and_ap ()) in
   let setofallprocandap = List.filter ~f:(fun (_, (var, _)) ->
     let pv = extract_pvar_from_var var in
     not @@ Var.is_this var &&
     not @@ is_placeholder_vardef var &&
     not @@ Pvar.is_frontend_tmp pv) setofallprocandap_with_garbage in
-  (* List.iter ~f:(fun (_, myap) -> L.progress "%a@."MyAccessPath.pp myap) setofallprocandap; *)
   List.iter ~f:(fun (proc, ap) ->
       L.progress "computing chain for %a in %a@." MyAccessPath.pp ap Procname.pp proc;
     add_chain (proc, ap) (compute_chain ap)) setofallprocandap;
-  (* L.progress "Hashtbl: %a@." pp_summary_table summary_table; *)
-  print_graph callgraph;
   save_skip_function ();
   let out_string = F.asprintf "%s\n" (chains_to_string chains) in
   let ch = Out_channel.create "Chain.txt" in

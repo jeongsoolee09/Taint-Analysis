@@ -582,15 +582,6 @@ let compute_chain (ap:MyAccessPath.t) : chain =
       compute_chain_ ap
 
 
-(** chain을 받아서 json 값으로 변환한다. *)
-(* let status_to_json (status:status) : Json.json =
- *   match status with
- *   | Define (meth, ap) -> String ((Procname.to_string meth)^(MyAccessPath.pp ap))
- *   | Call (meth, ap) -> String ((Procname.to_string meth)^(MyAccessPath.pp ap))
- *   | Redefine ap -> String ()
- *   | Dead -> Json. *)
-
-
 let collect_all_proc_and_ap () =
   let setofallstates = Hashtbl.fold (fun _ v acc -> S.union v acc) summary_table S.empty in
   let listofallstates = S.elements setofallstates in
@@ -647,12 +638,19 @@ let represent_status (current_method:Procname.t) (status:status) : json =
 let wrap_chain_representation defining_method ap (chain_repr:json list) : json =
   `Assoc [("defining_method", `String (Procname.to_string defining_method));
           ("acess_path", `String (MyAccessPath.to_string ap));
-          ("chain", chain_repr)]
+          ("chain", `List chain_repr)]
 
 
 (** 수식된 chain들의 array를 만든다. *)
 let make_complete_representation (wrapped_chains:json list) : json =
   `List wrapped_chains
+
+
+let write_json (json:json) : unit = 
+  let out_channel = Out_channel.create "hello_world.json" in
+  to_channel out_channel json;
+  Out_channel.flush out_channel;
+  Out_channel.close out_channel
 
 
 (* Main Method ============================= *)
@@ -666,6 +664,7 @@ let run_lrm () =
   load_summary_from_disk_to summary_table;
   batch_add_formal_args ();
   filter_callgraph_table callgraph_table;
+  save_skip_function ();
   callg_hash2og ();
   let setofallprocandap_with_garbage = List.stable_dedup (collect_all_proc_and_ap ()) in
   let setofallprocandap = List.filter ~f:(fun (_, (var, _)) ->
@@ -675,10 +674,9 @@ let run_lrm () =
     not @@ Pvar.is_frontend_tmp pv) setofallprocandap_with_garbage in
   List.iter ~f:(fun (proc, ap) ->
       L.progress "computing chain for %a in %a@." MyAccessPath.pp ap Procname.pp proc;
-    add_chain (proc, ap) (compute_chain ap)) setofallprocandap;
-  save_skip_function ();
-  let out_string = F.asprintf "%s\n" (chains_to_string chains) in
-  let ch = Out_channel.create "Chain.txt" in
-  Out_channel.output_string ch out_string;
-  Out_channel.flush ch;
-  Out_channel.close ch
+      add_chain (proc, ap) (compute_chain ap)) setofallprocandap;
+  let wrapped_chains = Hashtbl.fold (fun (current_meth, target_ap) chain acc ->
+      wrap_chain_representation current_meth target_ap (List.map ~f:(fun (proc, status) ->
+          represent_status proc status) chain)::acc) chains [] in
+  let complete_json_representation = make_complete_representation wrapped_chains in
+  write_json complete_json_representation

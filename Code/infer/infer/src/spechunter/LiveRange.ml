@@ -3,6 +3,7 @@ open DefLocAlias.TransferFunctions
 open DefLocAliasSearches
 open DefLocAliasLogicTests
 open DefLocAliasDomain
+open Yojson.Basic
 
 module Hashtbl = Caml.Hashtbl
 module P = DefLocAliasDomain.AbstractPair
@@ -12,8 +13,6 @@ module T = DefLocAliasDomain.AbstractState
 module L = Logging
 module F = Format
 
-module Json = Yojson.Safe
-
 exception NotImplemented
 exception IDontKnow
 
@@ -22,6 +21,8 @@ type status =
   | Call of (Procname.t * MyAccessPath.t)
   | Redefine of MyAccessPath.t
   | Dead [@@deriving equal]
+
+type json = Yojson.Basic.t
 
 module Status = struct (* Status.equal 하나만을 위해 작성한 boilerplate ㅠㅠ *)
   type t = status [@@deriving equal]
@@ -582,12 +583,12 @@ let compute_chain (ap:MyAccessPath.t) : chain =
 
 
 (** chain을 받아서 json 값으로 변환한다. *)
-let status_to_json (status:status) : Json.json =
-  match status with
-  | Define (meth, ap) -> pass
-  | Call (meth, ap) -> pass
-  | Redefine ap -> pass
-  | Dead -> Json.
+(* let status_to_json (status:status) : Json.json =
+ *   match status with
+ *   | Define (meth, ap) -> String ((Procname.to_string meth)^(MyAccessPath.pp ap))
+ *   | Call (meth, ap) -> String ((Procname.to_string meth)^(MyAccessPath.pp ap))
+ *   | Redefine ap -> String ()
+ *   | Dead -> Json. *)
 
 
 let collect_all_proc_and_ap () =
@@ -616,27 +617,50 @@ let extract_pvar_from_var (var:Var.t) : Pvar.t =
   | ProgramVar pv -> pv
 
 
-(** throwaway code for debugging infinite loop for GuideRenderer.render *)
-let find_ap_for_guiderenderer () =
-  (* render라는 method name을 가진 (Procname.t * Summary.t) 쌍 전부 *)
-  let ms_pairs_with_render = BFS.fold (fun ((proc, _) as target) acc ->
-    if String.equal (Procname.get_method proc) "render"
-    then target::acc
-    else acc) [] callgraph in
-  let is_'type' = fun var ->
-    match var with
-    | Var.LogicalVar _ -> false
-    | Var.ProgramVar pv -> String.equal (Pvar.to_string pv) "type" in
-  (* render라는 method를 가진 쌍들 중에서 ap가 (type, [])인 튜플을 가진 astate_set *)
-  let render_summary = List.fold ~f:(fun acc (_, astate_set) ->
-    if S.exists (fun astate -> is_'type' (fst @@ second_of astate)) astate_set
-    then astate_set
-    else acc) ~init:S.empty ms_pairs_with_render in
-  let target_tuple = S.fold (fun astate acc -> 
-    if is_'type' (fst @@ second_of astate)
-    then astate
-    else acc) render_summary bottuple in
-  target_tuple
+(* Method for Jsons ======================== *)
+(* ========================================= *)
+
+(** key should either be "current_method" or "using" *)
+let create_method (key:string) (procname:Procname.t) : json =
+  `Assoc [(key, `String (Procname.to_string procname))]
+
+
+(** 하나의 status에 대한 representation을 만든다. *)
+let represent_status (current_method:Procname.t) (status:status) : json =
+  match status with
+  | Define (callee, ap) ->
+      `Assoc [("current_method", `String (Procname.to_string current_method)); (* 실제로는 Procname.to_string *)
+              ("status", `String "Define");
+              ("access_path", `String (MyAccessPath.to_string ap));
+              ("using", `String (Procname.to_string callee))]
+  | Call (callee, ap) ->
+      `Assoc [("current_method", `String (Procname.to_string current_method));
+              ("status", `String "Call");
+              ("callee", `String (Procname.to_string callee));
+              ("with", `String (MyAccessPath.to_string ap))]
+  | Redefine ap ->
+      `Assoc [("current_method", `String (Procname.to_string current_method));
+              ("status", `String "Redefine");
+              ("access_path", `String (MyAccessPath.to_string ap))]
+  | Dead ->
+      `Assoc [("current_method", `String (Procname.to_string current_method));
+              ("status", `String "Dead")]
+
+
+(** chain을 수식해서 ap에 관한 완전한 정보를 나타내는 Json object를 만든다. *)
+let wrap_chain_representation defining_method ap (chain_repr:json list) : json =
+  `Assoc [("defining_method", `String (Procname.to_string defining_method));
+          ("acess_path", `String (MyAccessPath.to_string ap));
+          ("chain", chain_repr)]
+
+
+(** 수식된 chain들의 array를 만든다. *)
+let make_complete_representation (wrapped_chains:json list) : json =
+  `List wrapped_chains
+
+
+(* Main Method ============================= *)
+(* ========================================= *)
 
 
 (** interface with the driver *)

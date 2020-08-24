@@ -539,15 +539,12 @@ let rec compute_chain_inner (current_methname:Procname.t) (current_astate_set:S.
                 let new_chain = new_slice::current_chain in
                 compute_chain_inner current_methname current_astate_set new_state new_chain 3 end
   | _ -> (* 현재 astate의 aliasset을 청소해서 불필요한 pvar를 없애고 재시도 *)
-      (* try *)
         let (a, b, c, aliasset) = current_astate in
         let current_aliasset_cleaned_up = cleanup_aliasset aliasset current_vardef in
         let current_astate_cleaned_up = (a, b, c, current_aliasset_cleaned_up) in
-        if not @@ Int.equal retry 0 then
-        compute_chain_inner current_methname (current_astate_set) current_astate_cleaned_up current_chain (retry-1)
-      (* with _ -> *) else
-        (current_methname, Dead)::current_chain (* unsoundness introduced *)
-        (* L.die InternalError "compute_chain_inner failed (2), current_methname: %a, current_astate: %a, current_chain: %a@." Procname.pp current_methname T.pp current_astate pp_chain (List.rev current_chain) *)
+        if not @@ Int.equal retry 0
+        then compute_chain_inner current_methname (current_astate_set) current_astate_cleaned_up current_chain (retry-1)
+        else (current_methname, Dead)::current_chain (* unsoundness introduced *)
 
 
 (** 콜 그래프와 분석 결과를 토대로 체인 (Define -> ... -> Dead)을 계산해 낸다 *)
@@ -647,7 +644,7 @@ let make_complete_representation (wrapped_chains:json list) : json =
 
 
 let write_json (json:json) : unit = 
-  let out_channel = Out_channel.create "hello_world.json" in
+  let out_channel = Out_channel.create "Chain.json" in
   to_channel out_channel json;
   Out_channel.flush out_channel;
   Out_channel.close out_channel

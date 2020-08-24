@@ -21,10 +21,13 @@ module MyAccessPath = struct
       List.iter list ~f:(fun access -> F.fprintf fmt "%a, " AccessPath.pp_access access);
       F.fprintf fmt "])"
 
-  let equal (x:t) (y:t) =
+  let equal (x:t) (y:t) : bool =
     let xvar, xlist = x in
     let yvar, ylist = y in
     Var.equal xvar yvar && List.equal AccessPath.equal_access xlist ylist
+
+  let to_string (x:t) : string =
+    F.asprintf "%a" pp x
 end
 
 (** AccessPath (with either Logical or Program Vars) Definitions. *)

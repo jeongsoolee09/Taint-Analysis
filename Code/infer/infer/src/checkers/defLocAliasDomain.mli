@@ -14,6 +14,7 @@ module MyAccessPath : sig
   type t = Var.t * AccessPath.access list [@@deriving compare]
   val pp: F.formatter -> t -> unit
   val equal: t -> t -> bool
+  val to_string: t -> string
 end
 
 (** AccessPath (with either Logical or Program Vars) Definitions. **)

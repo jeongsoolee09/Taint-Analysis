@@ -4,7 +4,7 @@
 #     2. If a pair of methods start with a same prefix: +10 to the pair
 #     3. If a pair of methods have a similar return type: +10 to the pair
 #     4. If a pair of methods have a similar input type: +10 to the pair
-# If the score is equal to 20, connect the pair with an edge.
+# If the score is more than 20, connect the pair with an edge.
 
 import pandas as pd
 import time
@@ -88,12 +88,6 @@ setofallmethods = populate_sofallm()
 def write_to_csv():
     """Randomly select 100 methods from the set of all methods,
        or just use the set of all methods if possible and save them to csv"""
-    # write_list = []
-    # if len(setofallmethods) < 100:
-    #     write_list = setofallmethods
-    # else:
-    #     for i in random.sample(range(0, len(setofallmethods)), 100):
-    #         write_list.append(setofallmethods[i])
     write_list = setofallmethods
     write_list = pd.DataFrame(write_list, columns=["pkg", "rtntype",
                                                    "name", "intype", "id"],

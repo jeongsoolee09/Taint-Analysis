@@ -1,6 +1,7 @@
 import modin.pandas as pd
 import time
 import os
+import json
 from multiprocessing import Pool
 from main import process
 
@@ -36,6 +37,9 @@ def make_dataframes():
     return methodInfo1, methodInfo2, carPro
 
 
+methodInfo1, methodInfo2, carPro = make_dataframes()
+
+
 def filtermethod(string):
     return "__" not in string and\
         "<init>" not in string and\
@@ -44,44 +48,59 @@ def filtermethod(string):
         "Lambda" not in string
 
 
-def tuple_string_to_tuple(tuple_string):
-    string_list = tuple_string.split(", ")
-    if len(string_list) > 3:  # not sure about the number 3...
-        method, *rest = string_list
-        activity = ""
-        for s in string_list:
-            activity = activity + s
-        string_list = [method, activity]
-    if len(string_list) == 3:
-        string_list = [string_list[0], string_list[1]+", "+string_list[2]]
-    string_list[0] = string_list[0].lstrip('(')
-    string_list[1] = string_list[1].rstrip(')')
-    string_list[1] = string_list[1]+')'
-    return (string_list[0], string_list[1])
-
-
-def parse_chain(var_and_chain):
-    var = var_and_chain[0]
-    chain = var_and_chain[1]
-    chain = chain.split(" -> ")
-    chain = list(filter(lambda string: string != "", chain))
-    chain = list(map(lambda item: item.lstrip(), chain))
-    chain = list(map(lambda string: tuple_string_to_tuple(string), chain))
-    return [var, chain]
-
-
-def make_chain():
+def load_chain_json():
+    """Chain.json을 통째로 파싱해 파이썬 자료구조에 담는다. 결과값은 리스트이다."""
     path = os.path.abspath("..")
-    path = os.path.join(path, "benchmarks", "realworld", "sagan", "Chain.txt")
-    with open(path, "r+") as chainfile:
-        lines = chainfile.readlines()
-        lines = list(filter(lambda line: not line.endswith(': \n'), lines))
-        lines = list(filter(lambda line: 'noparam' not in line, lines))  # 왜 생기는지 모르는 희한한 파라미터
-        var_to_chain = list(filter(lambda line: line != "\n", lines))
-        var_to_chain = list(map(lambda line: line.rstrip(), var_to_chain))
-        var_and_chain = list(map(lambda line: line.split(": "), var_to_chain))
-        var_and_chain = list(map(lambda lst: parse_chain(lst), var_and_chain))
-    return var_and_chain
+    path = os.path.join(path, "benchmarks", "realworld", "sagan", "Chain.json")
+    with open(path, "r+") as chainjson:
+        wrapped_chain_list = json.load(chainjson)
+    return wrapped_chain_list
+
+
+def process_wrapped_chain(wrapped_chain):
+    """각 리스트 안에 들어 있는, defining method와 access_path로 chain"""
+    defining_method_tup, access_path_tup, chain_tup = wrapped_chain.items()
+    defining_method = defining_method_tup[1]
+    access_path = access_path_tup[1]
+    chain = chain_tup[1]
+    
+    return "("+defining_method+", "+access_path+")"
+
+
+def process_chain_slice(chain_slice):
+    """json의 chain attribute의 값으로 들어 있던 리스트 안에 들어 있는 chain slice를 처리"""
+    # chain slice는 dict임
+    if chain_slice["status"] == "Define":
+        current_method_tup, status_tup,\
+            access_path_tup, using_tup = chain_slice.items()
+        current_method = current_method_tup[1]
+        status = status_tup[1]
+        access_path = access_path_tup[1]
+        using = using_tup[1]
+        msg = status + " (" + access_path + " using " + callee + ")"
+        return (current_method, msg)
+    elif chain_slice["status"] == "Call":
+        current_method_tup, status_tup,\
+            callee_tup, ap_tup = chain_slice.items()
+        current_method = current_method_tup[1]
+        status = status_tup[1]
+        callee = callee_tup[1]
+        ap = ap_tup[1]
+        msg = status + " (" + callee + " with " + ap
+        return (current_method, msg)
+    elif chain_slice["status"] == "Redefine":
+        current_method_tup, status_tup, access_path_tup = chain_slice.items()
+        current_method = current_method_tup[1]
+        status = status_tup[1]
+        access_path = access_path_tup[1]
+        msg = status + " ("+access_path  # sigh... an unmatched parens..
+        return (current_method, msg)
+    elif chain_slice["status"] == "Dead":
+        current_method_tup, status_tup = chain_slice.items()
+        current_method = current_method_tup[1]
+        status = status_tup[1]
+        msg = status
+        return (current_method, msg)
 
 
 def make_calledges():
@@ -185,6 +204,7 @@ def find_that_edge_between(row1, row2, edgelist):
         return (row2, row1)
 
 
+# 이중 for loop 타도하자!!
 def add_edges(methodInfo1, methodInfo2, dataflow_edges, call_edges):
     edgelist = []
     for row1 in methodInfo1.itertuples(index=False):
@@ -202,12 +222,6 @@ def add_edges(methodInfo1, methodInfo2, dataflow_edges, call_edges):
                     if scoring_function(row1, row2) > 20:
                         edgelist.append((row1, row2))
     return edgelist
-
-
-def add_edges2(carPro):
-    i = 0
-    for row in carPro.iterrows():
-        i += 1
 
 
 def make_multicolumn(methodInfo1, methodInfo2, edge1, edge2):
@@ -256,6 +270,7 @@ def test_reflexive(dataframe):
 
 def main():
     methodInfo1, methodInfo2, carPro = make_dataframes() # the main data we are manipulating
+    wrapped_chain_list = load_chain_json()
     var_and_chain = dict(make_chain())
     dataflow_edges = detect_dataflow(var_and_chain)
     call_edges = make_calledges()

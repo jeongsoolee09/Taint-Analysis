@@ -57,19 +57,26 @@ def load_chain_json():
     return wrapped_chain_list
 
 
-def process_wrapped_chain(wrapped_chain):
+def make_wrapped_chains():
+    """Chain.json을 읽고, toplevel list에 있는 각 json 객체를 처리한다."""
+    raw_wrapped_chain_list = load_chain_json
+    wrapped_chains = list(map(process_wrapped_chain_slice, raw_wrapped_chain_list))
+    return wrapped_chains
+
+
+def process_wrapped_chain_slice(wrapped_chain):
     """각 리스트 안에 들어 있는, defining method와 access_path로 chain"""
     defining_method_tup, access_path_tup, chain_tup = wrapped_chain.items()
     defining_method = defining_method_tup[1]
     access_path = access_path_tup[1]
-    chain = chain_tup[1]
+    chain = chain_tup[1]  # this is a list
+    dm_ap_mangled = "("+defining_method+", "+access_path+")"
+    chain = list(map(process_bare_chain_slice, chain))  # use multiprocessing.map!
+    return (dm_ap_mangled, chain)
     
-    return "("+defining_method+", "+access_path+")"
 
-
-def process_chain_slice(chain_slice):
+def process_bare_chain_slice(chain_slice):
     """json의 chain attribute의 값으로 들어 있던 리스트 안에 들어 있는 chain slice를 처리"""
-    # chain slice는 dict임
     if chain_slice["status"] == "Define":
         current_method_tup, status_tup,\
             access_path_tup, using_tup = chain_slice.items()

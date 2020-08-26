@@ -231,19 +231,23 @@ def find_that_edge_between(row1, row2, edgelist):
 #     return edgelist
 
 
-def make_df_dataframe():
-    pass
+def make_df_dataframe(methodInfo1, methodInfo2):
+    """edges.csv에서의 data flow row를 만든다."""
+    mapfunc = lambda edge: there_is_dataflow(edge, wmethodInfo1, methodInfo2)
 
 
 def make_call_dataframe():
+    """edges.csv에서의 call row를 만든다."""
     pass
 
 
 def make_sim_dataframe():
+    """edges.csv에서의 similarity row를 만든다."""
     pass
 
 
 def merge_dataframes():
+    """df, call, sim dataframe 세 개를 하나로 합친다."""
     pass
 
 

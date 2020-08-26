@@ -59,7 +59,7 @@ def load_chain_json():
 
 def make_wrapped_chains():
     """Chain.json을 읽고, toplevel list에 있는 각 json 객체를 처리한다."""
-    raw_wrapped_chain_list = load_chain_json
+    raw_wrapped_chain_list = load_chain_json()
     wrapped_chains = list(map(process_wrapped_chain_slice, raw_wrapped_chain_list))
     return wrapped_chains
 
@@ -79,11 +79,11 @@ def process_bare_chain_slice(chain_slice):
     """json의 chain attribute의 값으로 들어 있던 리스트 안에 들어 있는 chain slice를 처리"""
     if chain_slice["status"] == "Define":
         current_method_tup, status_tup,\
-            access_path_tup, using_tup = chain_slice.items()
+            access_path_tup, callee_tup = chain_slice.items()
         current_method = current_method_tup[1]
         status = status_tup[1]
         access_path = access_path_tup[1]
-        using = using_tup[1]
+        callee = callee_tup[1]
         msg = status + " (" + access_path + " using " + callee + ")"
         return (current_method, msg)
     elif chain_slice["status"] == "Call":
@@ -278,7 +278,7 @@ def test_reflexive(dataframe):
 def main():
     methodInfo1, methodInfo2, carPro = make_dataframes() # the main data we are manipulating
     wrapped_chain_list = load_chain_json()
-    var_and_chain = dict(make_chain())
+    var_and_chain = dict(make_wrapped_chains())
     dataflow_edges = detect_dataflow(var_and_chain)
     call_edges = make_calledges()
     output_alledges(dataflow_edges, call_edges)

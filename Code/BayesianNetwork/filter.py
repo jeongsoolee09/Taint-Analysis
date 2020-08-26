@@ -212,23 +212,39 @@ def find_that_edge_between(row1, row2, edgelist):
 
 
 # 이중 for loop 타도하자!!
-def add_edges(methodInfo1, methodInfo2, dataflow_edges, call_edges):
-    edgelist = []
-    for row1 in methodInfo1.itertuples(index=False):
-        for row2 in methodInfo2.itertuples(index=False):
-            if there_is_dataflow(dataflow_edges, row1, row2):
-                if there_is_already_an_edge_between(row1, row2, edgelist):
-                    # edge = find_that_edge_between(row1, row2, edgelist)
-                    # edgelist.remove(edge)
-                    continue
-                edgelist.append((row1, row2))
-            else:
-                if there_is_calledge(call_edges, row1, row2):
-                    edgelist.append((row1, row2))
-                else:
-                    if scoring_function(row1, row2) > 20:
-                        edgelist.append((row1, row2))
-    return edgelist
+# def add_edges(methodInfo1, methodInfo2, dataflow_edges, call_edges):
+#     edgelist = []
+#     for row1 in methodInfo1.itertuples(index=False):
+#         for row2 in methodInfo2.itertuples(index=False):
+#             if there_is_dataflow(dataflow_edges, row1, row2):
+#                 if there_is_already_an_edge_between(row1, row2, edgelist):
+#                     # edge = find_that_edge_between(row1, row2, edgelist)
+#                     # edgelist.remove(edge)
+#                     continue
+#                 edgelist.append((row1, row2))
+#             else:
+#                 if there_is_calledge(call_edges, row1, row2):
+#                     edgelist.append((row1, row2))
+#                 else:
+#                     if scoring_function(row1, row2) > 20:
+#                         edgelist.append((row1, row2))
+#     return edgelist
+
+
+def make_df_dataframe():
+    pass
+
+
+def make_call_dataframe():
+    pass
+
+
+def make_sim_dataframe():
+    pass
+
+
+def merge_dataframes():
+    pass
 
 
 def make_multicolumn(methodInfo1, methodInfo2, edge1, edge2):

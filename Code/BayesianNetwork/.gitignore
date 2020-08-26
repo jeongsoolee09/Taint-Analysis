@@ -3,3 +3,4 @@
 __pycache__/
 array.py
 *.pyc
+dask-worker-space/

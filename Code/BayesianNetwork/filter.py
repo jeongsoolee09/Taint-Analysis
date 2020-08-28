@@ -4,6 +4,7 @@ import os
 import json
 from multiprocessing import Pool
 from main import process
+from itertools import repeat
 
 
 def make_dataframes():
@@ -35,9 +36,6 @@ def make_dataframes():
                                               'rtntype2':'rtntype', 'name2':'name',
                                               'intype2':'intype'})
     return methodInfo1, methodInfo2, carPro
-
-
-methodInfo1, methodInfo2, carPro = make_dataframes()
 
 
 def filtermethod(string):
@@ -144,6 +142,8 @@ def detect_dataflow(var_and_chain):  # method1, method2
     for chain in var_and_chain.values():
         for tup in chain:
             caller_name, activity = tup
+            print(caller_name)
+            print(activity)
             if "Call" in activity:
                 tmplst = activity.split(" with ")[0].split("(")
                 callee_name = tmplst[1]+"("+tmplst[2].rstrip()
@@ -211,27 +211,7 @@ def find_that_edge_between(row1, row2, edgelist):
         return (row2, row1)
 
 
-# 이중 for loop 타도하자!!
-# def add_edges(methodInfo1, methodInfo2, dataflow_edges, call_edges):
-#     edgelist = []
-#     for row1 in methodInfo1.itertuples(index=False):
-#         for row2 in methodInfo2.itertuples(index=False):
-#             if there_is_dataflow(dataflow_edges, row1, row2):
-#                 if there_is_already_an_edge_between(row1, row2, edgelist):
-#                     # edge = find_that_edge_between(row1, row2, edgelist)
-#                     # edgelist.remove(edge)
-#                     continue
-#                 edgelist.append((row1, row2))
-#             else:
-#                 if there_is_calledge(call_edges, row1, row2):
-#                     edgelist.append((row1, row2))
-#                 else:
-#                     if scoring_function(row1, row2) > 20:
-#                         edgelist.append((row1, row2))
-#     return edgelist
-
-
-def make_df_dataframe():
+def make_df_dataframe(carPro):
     pass
 
 
@@ -247,16 +227,21 @@ def merge_dataframes():
     pass
 
 
-def make_multicolumn(methodInfo1, methodInfo2, edge1, edge2):
-    edge1 = list(edge1)
-    edge2 = list(edge2)
-    edge1 = pd.DataFrame(edge1, columns=methodInfo1.columns)
-    edge2 = pd.DataFrame(edge2, columns=methodInfo2.columns)
-    edges = pd.merge(edge1, edge2, left_index=True, right_index=True)
-    edges.columns = pd.MultiIndex.from_product([['edge1', 'edge2'],
-                                                methodInfo1.columns])
-    return edges
-
+def multiindex_carPro(carPro):
+    """carPro dataframe이 주어졌을 때, 그 dataframe을 multiindex로 바꾼다."""
+    edge1_high = list(repeat('edge1', 5))
+    edge2_high = list(repeat('edge2', 5))
+    high_edges = edge1_high + edge2_high
+    edge1_index = list(carPro.columns)[0:5]
+    edge1_index = list(map(lambda index: index[0:len(index)-1], edge1_index))
+    edge2_index = list(carPro.columns)[5:10]
+    edge2_index = list(map(lambda index: index[0:len(index)-1], edge2_index))
+    low_edges = edge1_index + edge2_index
+    tuples = list(zip(high_edges, low_edges))
+    index = pd.MultiIndex.from_tuples(tuples)
+    carPro.columns = index
+    return carPro
+    
 
 def no_symmetric(dataframe):
     dataframe['temp'] = dataframe.index * 2
@@ -264,6 +249,22 @@ def no_symmetric(dataframe):
     dataframe2.columns = dataframe.columns
     dataframe2['temp'] = dataframe2.index * 2 + 1
     out = pd.concat([dataframe, dataframe2])
+    out = out.sort_values(by='temp')
+    out = out.set_index('temp')
+    out = out.drop_duplicates()
+    out = out[out.index % 2 == 0]
+    out = out.reset_index()[['edge1', 'edge2']]
+    return out
+
+
+def no_symmetric_carPro(carPro):
+    carPro['temp'] = carPro.index * 2
+    carPro2 = carPro.iloc[:, [5, 6, 7, 8, 9, 0, 1, 2, 3, 4, 10]]
+    carPro2.columns = carPro.columns
+    carPro2['temp'] = carPro2.index * 2 + 1
+    out = pd.concat([carPro, carPro2])
+
+    # 밑에부터가 문제
     out = out.sort_values(by='temp')
     out = out.set_index('temp')
     out = out.drop_duplicates()
@@ -284,8 +285,7 @@ def no_reflexive(dataframe):
 def test_reflexive(dataframe):
     reflex1 = dataframe[('edge1', 'index')] == dataframe[('edge2', 'index')]
     reflex2 = dataframe[('edge1', 'pkg')] == dataframe[('edge2', 'pkg')]
-    reflex3 = dataframe[('edge1', 'rtntype')] == dataframe[('edge2',
-                                                            'rtntype')]
+    reflex3 = dataframe[('edge1', 'rtntype')] == dataframe[('edge2', 'rtntype')]
     reflex4 = dataframe[('edge1', 'name')] == dataframe[('edge2', 'name')]
     reflex5 = dataframe[('edge1', 'intype')] == dataframe[('edge2', 'intype')]
     return dataframe[reflex1 & reflex2 & reflex3 & reflex4 & reflex5]

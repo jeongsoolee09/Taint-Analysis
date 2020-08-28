@@ -154,7 +154,7 @@ def make_sim_dataframe(carPro):
     bool_df = carPro.apply(mapfunc, axis=1)
     carPro['leave'] = bool_df
     carPro = carPro[carPro.leave != False]
-    carPro = carPro.drop(columns=['leave'])
+    carPro = carPro.drop(columns=['index1', 'index2', 'leave'])
     return carPro
 
 
@@ -210,21 +210,19 @@ def no_symmetric_carPro(carPro):
 
 
 def no_reflexive(dataframe):
-    cond1 = dataframe[('edge1', 'index')] != dataframe[('edge2', 'index')]
-    cond2 = dataframe[('edge1', 'pkg')] != dataframe[('edge2', 'pkg')]
-    cond3 = dataframe[('edge1', 'rtntype')] != dataframe[('edge2', 'rtntype')]
-    cond4 = dataframe[('edge1', 'name')] != dataframe[('edge2', 'name')]
-    cond5 = dataframe[('edge1', 'intype')] != dataframe[('edge2', 'intype')]
-    return dataframe[cond1 | cond2 | cond3 | cond4 | cond5]
+    cond1 = dataframe[('edge1', 'pkg')] != dataframe[('edge2', 'pkg')]
+    cond2 = dataframe[('edge1', 'rtntype')] != dataframe[('edge2', 'rtntype')]
+    cond3 = dataframe[('edge1', 'name')] != dataframe[('edge2', 'name')]
+    cond4 = dataframe[('edge1', 'intype')] != dataframe[('edge2', 'intype')]
+    return dataframe[cond1 | cond2 | cond3 | cond4]
 
 
 def test_reflexive(dataframe):
-    reflex1 = dataframe[('edge1', 'index')] == dataframe[('edge2', 'index')]
-    reflex2 = dataframe[('edge1', 'pkg')] == dataframe[('edge2', 'pkg')]
-    reflex3 = dataframe[('edge1', 'rtntype')] == dataframe[('edge2', 'rtntype')]
-    reflex4 = dataframe[('edge1', 'name')] == dataframe[('edge2', 'name')]
-    reflex5 = dataframe[('edge1', 'intype')] == dataframe[('edge2', 'intype')]
-    return dataframe[reflex1 & reflex2 & reflex3 & reflex4 & reflex5]
+    reflex1 = dataframe[('edge1', 'pkg')] == dataframe[('edge2', 'pkg')]
+    reflex2 = dataframe[('edge1', 'rtntype')] == dataframe[('edge2', 'rtntype')]
+    reflex3 = dataframe[('edge1', 'name')] == dataframe[('edge2', 'name')]
+    reflex4 = dataframe[('edge1', 'intype')] == dataframe[('edge2', 'intype')]
+    return dataframe[reflex1 & reflex2 & reflex3 & reflex4]
 
 
 def main():
@@ -248,4 +246,3 @@ def main():
     output_alledges(dataflow_edges, call_edges)
 
     print("elapsed time: ", time.time()-start)
-

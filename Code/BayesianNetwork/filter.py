@@ -55,66 +55,12 @@ def load_chain_json():
     return wrapped_chain_list
 
 
-def make_wrapped_chains():
-    """Chain.json을 읽고, toplevel list에 있는 각 json 객체를 처리한다."""
-    raw_wrapped_chain_list = load_chain_json()
-    wrapped_chains = list(map(process_wrapped_chain_slice, raw_wrapped_chain_list))
-    return wrapped_chains
-
-
-def process_wrapped_chain_slice(wrapped_chain):
-    """각 리스트 안에 들어 있는, defining method와 access_path로 chain"""
-    defining_method_tup, access_path_tup, chain_tup = wrapped_chain.items()
-    defining_method = defining_method_tup[1]
-    access_path = access_path_tup[1]
-    chain = chain_tup[1]  # this is a list
-    dm_ap_mangled = "("+defining_method+", "+access_path+")"
-    chain = list(map(process_bare_chain_slice, chain))  # use multiprocessing.map!
-    return (dm_ap_mangled, chain)
-    
-
-def process_bare_chain_slice(chain_slice):
-    """json의 chain attribute의 값으로 들어 있던 리스트 안에 들어 있는 chain slice를 처리"""
-    if chain_slice["status"] == "Define":
-        current_method_tup, status_tup,\
-            access_path_tup, callee_tup = chain_slice.items()
-        current_method = current_method_tup[1]
-        status = status_tup[1]
-        access_path = access_path_tup[1]
-        callee = callee_tup[1]
-        msg = status + " (" + access_path + " using " + callee + ")"
-        return (current_method, msg)
-    elif chain_slice["status"] == "Call":
-        current_method_tup, status_tup,\
-            callee_tup, ap_tup = chain_slice.items()
-        current_method = current_method_tup[1]
-        status = status_tup[1]
-        callee = callee_tup[1]
-        ap = ap_tup[1]
-        msg = status + " (" + callee + " with " + ap
-        return (current_method, msg)
-    elif chain_slice["status"] == "Redefine":
-        current_method_tup, status_tup, access_path_tup = chain_slice.items()
-        current_method = current_method_tup[1]
-        status = status_tup[1]
-        access_path = access_path_tup[1]
-        msg = status + " ("+access_path  # sigh... an unmatched parens..
-        return (current_method, msg)
-    elif chain_slice["status"] == "Dead":
-        current_method_tup, status_tup = chain_slice.items()
-        current_method = current_method_tup[1]
-        status = status_tup[1]
-        msg = status
-        return (current_method, msg)
-
-
 def make_calledges():
     path = os.path.abspath("..")
     path = os.path.join(path, "benchmarks", "realworld", "sagan", "Callgraph.txt")
     with open(path, "r+") as callgraphfile:
         lines = callgraphfile.readlines()
-        lines = list(filter(lambda line: "__new" not in line
-                            and "<init>" not in line, lines))
+        lines = list(filter(filtermethod, lines))
         lines = list(map(lambda line: line.rstrip(), lines))
         lines = list(map(lambda line: line.split(" -> "), lines))
         call_edges = list(map(lambda lst: tuple(lst), lines))
@@ -122,37 +68,34 @@ def make_calledges():
     return call_edges
 
 
-def scoring_function(info1, info2):
+def scoring_function(pkg1, rtntype1, name1, intype1, pkg2, rtntype2, name2, intype2):
     score = 0
-    if info1[1] == info2[1]:  # The two methods belong to the same package
+    if pkg1 == pkg2:  # The two methods belong to the same package
         score += 10
-    if info1[2] == info2[2]:  # The two methods have a same return type
+    if rtntype1 == rtntype2:  # The two methods have a same return type
         score += 10
-    if (info1[3] in info2[3]) or (info2[3] in info1[3]) or\
-       (info1[3][0:2] == info2[3][0:2]) or (info1[3][0:2] == info2[3][0:2]):
+    if (name1 in name2) or (name2 in name1) or\
+       (name1[0:2] == name2[0:2]) or (name1[0:2] == name2[0:2]):
         # The two methods start with a same prefix
         score += 10
-    if info1[4] == info2[4]:  # The two methods have a same input type
+    if intype1 == intype2:  # The two methods have a same input type
         score += 10
-    return score
+    return score > 20
 
 
-def detect_dataflow(var_and_chain):  # method1, method2
+def detect_dataflow(json_obj_list):
     dataflow_edges = []
-    for chain in var_and_chain.values():
-        for tup in chain:
-            caller_name, activity = tup
-            print(caller_name)
-            print(activity)
-            if "Call" in activity:
-                tmplst = activity.split(" with ")[0].split("(")
-                callee_name = tmplst[1]+"("+tmplst[2].rstrip()
+    for wrapped_chain in json_obj_list:
+        for activity_repr in wrapped_chain['chain']:
+            if activity_repr['status'] == 'Call':
+                caller_name = activity_repr['current_method']
+                callee_name = activity_repr['callee']
                 dataflow_edges.append((caller_name, callee_name))
-            if "Define" in activity:
-                callee_name = activity.split("using")[1]
-                callee_name = callee_name.lstrip(" ")
+            if activity_repr['status'] == 'Define':
+                caller_name = activity_repr['current_method']
+                callee_name = activity_repr['using']
                 dataflow_edges.append((caller_name, callee_name))
-    dataflow_edges = list(filter(lambda tup: None not in tup, dataflow_edges))
+    dataflow_edges = list(filter(lambda tup: '' not in tup, dataflow_edges))
     dataflow_edges = list(filter(lambda tup: filtermethod(tup[0]) and filtermethod(tup[1]), dataflow_edges))
     dataflow_edges = list(map(lambda tup: (process(tup[0]), process(tup[1])), dataflow_edges))
     return dataflow_edges
@@ -175,60 +118,55 @@ def output_alledges(dataflow_edges, call_edges):
     output_calledges(call_edges)
 
 
-def there_is_dataflow(dataflow_edges, info1, info2):
-    intype1 = "()" if info1[4] == "void" else "("+info1[4]+")"
-    id1 = info1[2]+" "+info1[1]+"."+info1[3]+intype1
-    intype2 = "()" if info2[4] == "void" else "("+info2[4]+")"
-    id2 = info2[2]+" "+info2[1]+"."+info2[3]+intype2
-    if (id1, id2) in dataflow_edges:
-        return True
-    else:
-        return False
+def make_df_dataframe(dataflow_edges):
+    """edges.csv에서의 data flow row를 만든다: tuple list를 dataframe으로 변환."""
+    pkg1, rtntype1, name1, intype1, pkg2, rtntype2, name2, intype2 = tuple(repeat([], 8))
+    for df_edge in dataflow_edges:
+       parent = df_edge[0]
+       child = df_edge[1]
+       pkg1.append(parent[0])
+       rtntype1.append(parent[1])
+       name1.append(parent[2])
+       intype1.append(parent[3])
+       pkg2.append(parent[0])
+       rtntype2.append(parent[1])
+       name2.append(parent[2])
+       intype2.append(parent[3])
+    return pd.DataFrame({'pkg1': pkg1, 'rtntype1': rtntype1, 'name1': name1, 'intype1': intype1,
+                         'pkg2': pkg2, 'rtntype2': rtntype2, 'name2': name2, 'intype2': intype2})
+       
+
+def make_call_dataframe(call_edges):
+    """edges.csv에서의 call row를 만든다: tuple list를 dataframe으로 변환."""
+    pkg1, rtntype1, name1, intype1, pkg2, rtntype2, name2, intype2 = tuple(repeat([], 8))
+    for call_edge in call_edges:
+       parent = call_edge[0]
+       child = call_edge[1]
+       pkg1.append(parent[0])
+       rtntype1.append(parent[1])
+       name1.append(parent[2])
+       intype1.append(parent[3])
+       pkg2.append(parent[0])
+       rtntype2.append(parent[1])
+       name2.append(parent[2])
+       intype2.append(parent[3])
+    return pd.DataFrame({'pkg1': pkg1, 'rtntype1': rtntype1, 'name1': name1, 'intype1': intype1,
+                         'pkg2': pkg2, 'rtntype2': rtntype2, 'name2': name2, 'intype2': intype2})
 
 
-def there_is_calledge(call_edges, info1, info2):
-    intype1 = "()" if info1[4] == "void" else "("+info1[4]+")"
-    id1 = info1[2]+" "+info1[1]+"."+info1[3]+intype1
-    intype2 = "()" if info2[4] == "void" else "("+info2[4]+")"
-    id2 = info2[2]+" "+info2[1]+"."+info2[3]+intype2
-    if (id1, id2) in call_edges:
-        return True
-    else:
-        return False
+def make_sim_dataframe(carPro):
+    """edges.csv에서의 similarity row를 만든다: cartesian product 중 조건에 일치하는 것만 dataframe으로 변환."""
+    mapfunc = lambda row: scoring_function(row['pkg1'], row['rtntype1'], row['name1'], row['intype1'],
+                                           row['pkg2'], row['rtntype2'], row['name2'], row['intype2'])
+    bool_df = carPro.apply(mapfunc, axis=1)
+    carPro['leave'] = bool_df
+    carPro = carPro[carPro.leave != False]
+    return carPro
 
 
-def there_is_already_an_edge_between(row1, row2, edgelist):
-    if (row1, row2) in edgelist or (row2, row1) in edgelist:
-        return True
-    else:
-        return False
-
-
-def find_that_edge_between(row1, row2, edgelist):
-    if (row1, row2) in edgelist:
-        return (row1, row2)
-    elif (row2, row1) in edgelist:
-        return (row2, row1)
-
-
-def make_df_dataframe(methodInfo1, methodInfo2):
-    """edges.csv에서의 data flow row를 만든다."""
-    pass
-
-
-def make_call_dataframe():
-    """edges.csv에서의 call row를 만든다."""
-    pass
-
-
-def make_sim_dataframe():
-    """edges.csv에서의 similarity row를 만든다."""
-    pass
-
-
-def merge_dataframes():
+def merge_dataframes(df_dataframe, call_dataframe, sim_dataframe):
     """df, call, sim dataframe 세 개를 하나로 합친다."""
-    pass
+    return df_dataframe.append(call_dataframe).append(sim_dataframe)
 
 
 def multiindex_carPro(carPro):
@@ -297,21 +235,16 @@ def test_reflexive(dataframe):
 
 def main():
     methodInfo1, methodInfo2, carPro = make_dataframes() # the main data we are manipulating
-    wrapped_chain_list = load_chain_json()
-    var_and_chain = dict(make_wrapped_chains())
-    dataflow_edges = detect_dataflow(var_and_chain)
+    json_obj_list = load_chain_json()
+    dataflow_edges = detect_dataflow(json_obj_list)
     call_edges = make_calledges()
+    dataflow_dataframe = make_df_dataframe(dataflow_edges)
+    call_dataframe = make_call_dataframe(call_edges)
+    sim_dataframe = make_sim_dataframe(carPro)
+    edges_dataframe = merge_dataframes(dataflow_dataframe, call_dataframe, sim_dataframe)
+
     output_alledges(dataflow_edges, call_edges)
-    return dataflow_edges, call_edges, methodInfo1, methodInfo2, carPro
 
-
-if __name__ == "__main__":
-    start = time.time()
-    dataflow_edges, call_edges, methodInfo1, methodInfo2, carPro = main()
-    
-    edgelist = add_edges(methodInfo1, methodInfo2, dataflow_edges, call_edges)
-    print('done multiprocessing')
-    [edge1, edge2] = zip(*edgelist)
     make_multicolumn(methodInfo1, methodInfo2, edge1, edge2)
     edges_new = no_reflexive(no_symmetric(edges))
     edges_new.to_csv("edges.csv", mode='w')

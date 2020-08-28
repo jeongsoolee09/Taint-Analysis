@@ -44,7 +44,6 @@ def filtermethod(string):
 
 def process(info):
     """splits a method id into (classname, rtntype, methodname, intype, id)"""
-    # print("processing:", info)
     space_index = info.index(' ')
     split_on_open_paren = info.split('(')
     last_dot_index = split_on_open_paren[0].rindex('.')

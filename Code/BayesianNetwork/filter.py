@@ -10,25 +10,18 @@ from itertools import repeat
 def make_dataframes():
     methodInfo1 = pd.read_csv("raw_data.csv", index_col=0)
     methodInfo2 = pd.read_csv("raw_data.csv", index_col=0)
-
     methodInfo1 = methodInfo1.drop('id', axis=1)
     methodInfo2 = methodInfo2.drop('id', axis=1)
-
-    # renaming columns for producing cartesian product by merging
     methodInfo1 = methodInfo1.rename(columns={'index':'index1', 'pkg':'pkg1',
                                               'rtntype':'rtntype1', 'name':'name1',
                                               'intype':'intype1'})
     methodInfo2 = methodInfo2.rename(columns={'index':'index2', 'pkg':'pkg2',
                                               'rtntype':'rtntype2', 'name':'name2',
                                               'intype':'intype2'})
-    # Creating a key column for merging
     methodInfo1['key'] = 1
     methodInfo2['key'] = 1
-
     carPro = pd.merge(methodInfo1, methodInfo2, how='outer')
     carPro = carPro.drop('key', axis=1)
-
-    # restoring column names
     methodInfo1 = methodInfo1.rename(columns={'index1':'index', 'pkg1':'pkg',
                                               'rtntype1':'rtntype', 'name1':'name',
                                               'intype1':'intype'})
@@ -161,6 +154,7 @@ def make_sim_dataframe(carPro):
     bool_df = carPro.apply(mapfunc, axis=1)
     carPro['leave'] = bool_df
     carPro = carPro[carPro.leave != False]
+    carPro = carPro.drop(columns=['leave'])
     return carPro
 
 
@@ -169,20 +163,20 @@ def merge_dataframes(df_dataframe, call_dataframe, sim_dataframe):
     return df_dataframe.append(call_dataframe).append(sim_dataframe)
 
 
-def multiindex_carPro(carPro):
-    """carPro dataframe이 주어졌을 때, 그 dataframe을 multiindex로 바꾼다."""
+def multiindex_edges(edges):
+    """edges dataframe이 주어졌을 때, 그 dataframe을 multiindex로 바꾼다."""
     edge1_high = list(repeat('edge1', 5))
     edge2_high = list(repeat('edge2', 5))
     high_edges = edge1_high + edge2_high
-    edge1_index = list(carPro.columns)[0:5]
+    edge1_index = list(edges.columns)[0:5]
     edge1_index = list(map(lambda index: index[0:len(index)-1], edge1_index))
-    edge2_index = list(carPro.columns)[5:10]
+    edge2_index = list(edges.columns)[5:10]
     edge2_index = list(map(lambda index: index[0:len(index)-1], edge2_index))
     low_edges = edge1_index + edge2_index
     tuples = list(zip(high_edges, low_edges))
     index = pd.MultiIndex.from_tuples(tuples)
-    carPro.columns = index
-    return carPro
+    edges.columns = index
+    return edges
     
 
 def no_symmetric(dataframe):
@@ -239,14 +233,19 @@ def main():
     dataflow_edges = detect_dataflow(json_obj_list)
     call_edges = make_calledges()
     dataflow_dataframe = make_df_dataframe(dataflow_edges)
+    print("dataflow_dataframe columns:", dataflow_dataframe.columns)
     call_dataframe = make_call_dataframe(call_edges)
+    print("call_dataframe columns:", call_dataframe.columns)
     sim_dataframe = make_sim_dataframe(carPro)
+    print("sim_dataframe columns:", sim_dataframe.columns)
     edges_dataframe = merge_dataframes(dataflow_dataframe, call_dataframe, sim_dataframe)
+    print("edges_dataframe columns:", edges_dataframe.columns)
+    edges_dataframe = multiindex_edges(edges_dataframe)
+
+    edges_dataframe = no_reflexive(no_symmetric(edges_dataframe))
+    edges_dataframe.to_csv("edges.csv", mode='w')
 
     output_alledges(dataflow_edges, call_edges)
 
-    make_multicolumn(methodInfo1, methodInfo2, edge1, edge2)
-    edges_new = no_reflexive(no_symmetric(edges))
-    edges_new.to_csv("edges.csv", mode='w')
     print("elapsed time: ", time.time()-start)
 

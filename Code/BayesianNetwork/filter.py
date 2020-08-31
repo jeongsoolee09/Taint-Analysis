@@ -165,8 +165,8 @@ def merge_dataframes(df_dataframe, call_dataframe, sim_dataframe):
 
 def multiindex_edges(edges):
     """edges dataframe이 주어졌을 때, 그 dataframe을 multiindex로 바꾼다."""
-    edge1_high = list(repeat('edge1', 5))
-    edge2_high = list(repeat('edge2', 5))
+    edge1_high = list(repeat('edge1', 4))
+    edge2_high = list(repeat('edge2', 4))
     high_edges = edge1_high + edge2_high
     edge1_index = list(edges.columns)[0:5]
     edge1_index = list(map(lambda index: index[0:len(index)-1], edge1_index))
@@ -181,31 +181,15 @@ def multiindex_edges(edges):
 
 def no_symmetric(dataframe):
     dataframe['temp'] = dataframe.index * 2
-    dataframe2 = dataframe.iloc[:, [5, 6, 7, 8, 9, 0, 1, 2, 3, 4, 10]]
+    dataframe2 = dataframe.iloc[:, [4, 5, 6, 7, 0, 1, 2, 3, 8]]
     dataframe2.columns = dataframe.columns
     dataframe2['temp'] = dataframe2.index * 2 + 1
     out = pd.concat([dataframe, dataframe2])
     out = out.sort_values(by='temp')
-    out = out.set_index('temp')
+    out = out.set_index(('temp', ''))
     out = out.drop_duplicates()
     out = out[out.index % 2 == 0]
-    out = out.reset_index()[['edge1', 'edge2']]
-    return out
-
-
-def no_symmetric_carPro(carPro):
-    carPro['temp'] = carPro.index * 2
-    carPro2 = carPro.iloc[:, [5, 6, 7, 8, 9, 0, 1, 2, 3, 4, 10]]
-    carPro2.columns = carPro.columns
-    carPro2['temp'] = carPro2.index * 2 + 1
-    out = pd.concat([carPro, carPro2])
-
-    # 밑에부터가 문제
-    out = out.sort_values(by='temp')
-    out = out.set_index('temp')
-    out = out.drop_duplicates()
-    out = out[out.index % 2 == 0]
-    out = out.reset_index()[['edge1', 'edge2']]
+    out = out.reset_index().drop(columns=[('temp', '')])
     return out
 
 
@@ -226,23 +210,19 @@ def test_reflexive(dataframe):
 
 
 def main():
+    start = time.time()
     methodInfo1, methodInfo2, carPro = make_dataframes() # the main data we are manipulating
     json_obj_list = load_chain_json()
     dataflow_edges = detect_dataflow(json_obj_list)
     call_edges = make_calledges()
     dataflow_dataframe = make_df_dataframe(dataflow_edges)
-    print("dataflow_dataframe columns:", dataflow_dataframe.columns)
     call_dataframe = make_call_dataframe(call_edges)
-    print("call_dataframe columns:", call_dataframe.columns)
     sim_dataframe = make_sim_dataframe(carPro)
-    print("sim_dataframe columns:", sim_dataframe.columns)
     edges_dataframe = merge_dataframes(dataflow_dataframe, call_dataframe, sim_dataframe)
-    print("edges_dataframe columns:", edges_dataframe.columns)
     edges_dataframe = multiindex_edges(edges_dataframe)
-
+    edges_dataframe = edges_dataframe.reset_index().drop(columns=[('index', '')])
     edges_dataframe = no_reflexive(no_symmetric(edges_dataframe))
     edges_dataframe.to_csv("edges.csv", mode='w')
 
     output_alledges(dataflow_edges, call_edges)
-
-    print("elapsed time: ", time.time()-start)
+    print("elapsed time:", time.time()-start)

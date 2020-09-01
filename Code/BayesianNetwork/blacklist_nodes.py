@@ -6,7 +6,6 @@ import glob
 PROJECT_ROOT = os.path.join('..', 'benchmarks', 'realworld', 'sagan')
 
 def create_whitelist_blacklist():
-    """주석"""
     whitelist_files, blacklist_files = [], []
     for current_dir, directories, files in os.walk(PROJECT_ROOT):
         if 'tests' in current_dir or 'test' in current_dir:

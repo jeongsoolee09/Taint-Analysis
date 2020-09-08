@@ -10,70 +10,18 @@ import networkx as nx
 import itertools as it
 import os
 import random
+import make_BN
+
 from solutions import *
 from scrape_oracle_docs import *
 from toolz import valmap
-from make_CPT import *
 from matplotlib.ticker import MaxNLocator
-
-start = time.time()
-
-# readers ============================================
-# ====================================================
-
-# lazy loading csvs
-edges = pd.read_csv("edges.csv", index_col=0, header=[0, 1])
-edge_targets = edges.iloc[:, edges.columns.get_level_values(1) == "name"]
-
-raw_data = open("raw_data.csv", "r+")
-data_reader = csv.reader(raw_data)
-
-edges_data = open("edges.csv", "r+")
-edges_reader = csv.reader(edges_data)
-
-skip_func_data = open("skip_func.csv", "r+")
-skip_func_reader = csv.reader(skip_func_data)
-
-# oracle doc urls
-java_lang_url = 'https://docs.oracle.com/javase/7/docs/api/java/lang/package-summary.html'
-java_utils_url = 'https://docs.oracle.com/javase/8/docs/api/java/util/package-summary.html'
-
-# eagerly loading txts
-def df_reader():
-    with open("df.txt", "r+") as df:
-        lines = df.readlines()
-        lines = list(map(lambda line: line.rstrip(), lines))
-        lines = list(map(lambda line: line.split(", "), lines))
-        lines = list(map(lambda line: tuple(line), lines))
-    return lines
-
-
-def call_reader():
-    with open("callg.txt", "r+") as callg:
-        lines = callg.readlines()
-        lines = list(map(lambda line: line.rstrip(), lines))
-        lines = list(map(lambda line: line.split(", "), lines))
-        lines = list(map(lambda line: tuple(line), lines))
-    return lines
-
-
-def skip_func_reader():
-    """skip_func.txt를 읽은 다음, 그 안에 있는 함수들 중 java.lang과 java.utils의 메소드만을 골라낸다."""
-    path = os.path.abspath("..")
-    path = os.path.join(path, "benchmarks", "realworld", "sagan", "skip_func.txt")
-    with open(path, "r+") as skip_func:
-        lines = skip_func.readlines()
-        lines = list(map(lambda line: line.rstrip(), lines))
-    return lines
-
-
-# eagerly loaded (line by line) txts
-df_edges = df_reader()
-call_edges = call_reader()
-skip_funcs = skip_func_reader()
+from create_node import process
+from make_underlying_graph import find_edge_labels
+from make_CPT import *
 
 # Exceptions ========================================
-# ====================================================
+# ===================================================
 
 class ThisIsImpossible(Exception):
     pass
@@ -81,203 +29,11 @@ class ThisIsImpossible(Exception):
 class TooManyEdges(Exception):
     pass
 
-# Methods for Graphs ================================
-# ===================================================
-
-
-def add_node_to_graph(G):
-    """creates a graph for identifying root nodes"""
-    next(data_reader)  # Headers don't taste good
-    for data in data_reader:
-        G.add_node(data[6])
-
-
-def find_root(G):
-    roots = []
-    for node in G.nodes:
-        if G.in_degree(node) == 0:
-            roots.append(node)
-    return roots
-
-
-def add_edge_to_graph(G):
-    """adds edges to `reference graph` G"""
-    next(edges_reader)
-    next(edges_reader)
-    for row in edges_reader:
-        pkg1 = row[2]
-        rtntype1 = row[3]
-        name1 = row[4]
-        intype1 = "()" if row[5] == "void" else "("+row[5]+")"
-        pkg2 = row[7]
-        rtntype2 = row[8]
-        name2 = row[9]
-        intype2 = "()" if row[10] == "void" else "("+row[10]+")"
-        firstNodeID = rtntype1+" "+pkg1+"."+name1+intype1
-        secondNodeID = rtntype2+" "+pkg2+"."+name2+intype2
-        G.add_edge(firstNodeID, secondNodeID)
-
-
-def filter_edges_from_graph(G):
-    """filters less important edges from `reference graph` G"""
-    for node_name in G.nodes:
-        # print("filtering " + node_name)
-        in_edges = list(G.in_edges(nbunch=node_name))
-        # print("in_edges: ", in_edges)
-        can_be_removed_edges = []
-        for parent, child in in_edges:
-            if parent in skip_funcs and len(list(G.out_edges(nbunch=parent))) > 1:
-                can_be_removed_edges.append((parent, child))
-        if len(can_be_removed_edges) > 0:  # 없앨 수 있는 엣지가 있다면
-            while len(in_edges) > 6:
-                print("iteration")
-                if len(can_be_removed_edges) == 0:
-                    break
-                random_edge = random.choice(can_be_removed_edges)
-                G.remove_edge(*random_edge)
-                can_be_removed_edges.remove(random_edge)
-                in_edges.remove(random_edge)
-
-
-def find_edges_of(node_name):
-    """주어진 node_name을 갖는 노드의 모든 incoming edge를 찾아낸다."""
-    global graph_for_reference
-    lookup_edges = graph_for_reference.edges
-    out = []
-    for (m1, m2) in lookup_edges:
-        if m2 == node_name:
-            out.append((m1, m2))
-    return out
-
-
-def find_edge_labels(node_name):
-    """하나의 node를 받아 그 node가 속한 모든 엣지의 각 종류(df, call, sim)를 판별한다."""
-    edges = find_edges_of(node_name)
-    out = []
-    for edge in edges:
-        if edge in df_edges:
-            out.append((edge[0], "df"))
-        elif edge in call_edges:
-            out.append((edge[0], "call"))
-        else:
-            out.append((edge[0], "sim"))
-    return out
-
-
-def init_graph():
-    """Initialize a (directed acyclic) graph for reference."""
-    G = nx.DiGraph()
-    add_node_to_graph(G)
-    add_edge_to_graph(G)
-    filter_edges_from_graph(G)
-    return G
-
-
-# def graph_statistics(G):
-#     for node_name in nodes:
-#         node_name
-
-
-# Methods for BNs ====================================
-# ====================================================
-
-
-def create_roots_for_BN(G, BN):
-    """identifies roots nodes from G and adds them to BN"""
-    out = []
-    for root in find_root(G):
-        new_node = State(DiscreteDistribution({1.0: 0.25, 2.0: 0.25, 3.0: 0.25, 4.0: 0.25}), name=root)
-        BN.add_state(new_node)
-        out.append(new_node)
-    return out
-
-
-def find_nodes_matching_names(states, names):
-    """state들 중에서 이름이 names와 매칭되는 state를 names의 index대로 리턴한다."""
-    out = []
-    for name in names:
-        for state in states:
-            if state.name == name:
-                out.append(state)
-    return out
-
-
-def create_internal_node_for_BN(node_name, BN, prev_states):
-    """BN에 internal node를 만들어 추가한다."""
-    print("making a new node_name, # of incoming edges: ", len(list(graph_for_reference.in_edges(nbunch=node_name))))
-    labels = [1, 2, 3, 4]       # src, sin, san, non
-    parents_and_edges = find_edge_labels(node_name)
-    parents = list(map(lambda tup: tup[0], parents_and_edges)) 
-    edges = list(map(lambda tup: tup[1], parents_and_edges))
-    parent_dist = list(map(lambda state: state.distribution, prev_states))
-    probs = create_CPT(edges).transpose().flatten()
-    cond_prob_table_width = len(list(graph_for_reference.predecessors(node_name)))
-    cond_prob_table_gen = it.repeat(labels, cond_prob_table_width+1)
-    cond_prob_table = list(cond_prob_table_gen)
-    cond_prob_table = it.product(*cond_prob_table)
-    cond_prob_table = it.chain.from_iterable(cond_prob_table)
-    cond_prob_table = np.fromiter(cond_prob_table, float).reshape(-1, cond_prob_table_width+1)
-    cond_prob_table = np.c_[cond_prob_table, probs]
-    cond_prob_table = cond_prob_table.tolist()
-    cond_prob_table = ConditionalProbabilityTable(cond_prob_table, parent_dist)
-    new_node = State(cond_prob_table, name=node_name)
-    BN.add_state(new_node)
-    return new_node
-
-
-def find_BN_state(node_name, currently_defined_states):
-    """node_name이 주어졌을 때, 지금까지 정의된 BN의 state들 중에서 이름이 node_name이랑 같은 노드를 내놓는다."""
-    for state in currently_defined_states:
-        if state.name == node_name:
-            return state
-
-
-def create_internal_nodes_for_BN(BN, currently_defined_states):
-    """initialize the internal nodes using topological sort on graph_for_reference"""
-    for node_name in list(nx.topological_sort(graph_for_reference)):
-        if node_name in find_root(graph_for_reference):
-            continue
-        else:
-            predecessor_names = list(graph_for_reference.predecessors(node_name))
-            predecessor_nodes = list(map(lambda pred_name: find_BN_state(pred_name, currently_defined_states), predecessor_names))
-            # print(list(map(lambda node: node.name, predecessor_nodes)))
-            new_state = create_internal_node_for_BN(node_name, BN, predecessor_nodes)
-            currently_defined_states.append(new_state)
-    return currently_defined_states
-
-
-def state_lookup(node_name, currently_defined_states):
-    for state in currently_defined_states:
-        if state.name == node_name:
-            return state
-
-
-def add_edge_to_BN(BN, currently_defined_states):
-    """adds edges to BN"""
-    for edge in graph_for_reference.edges:
-        node1, node2 = edge
-        state1 = state_lookup(node1, currently_defined_states)
-        state2 = state_lookup(node2, currently_defined_states)
-        BN.add_edge(state1, state2)
-
-
-def init_BN():
-    BN = BayesianNetwork("Interactive Inference of Taint Method Specifications")
-    root_states = create_roots_for_BN(graph_for_reference, BN) 
-    states = create_internal_nodes_for_BN(BN, root_states)
-    add_edge_to_BN(BN, states)
-    BN.bake()
-    return BN
-
-
-graph_for_reference = init_graph()
-BN_for_inference = init_BN()
-
 
 # simple loops ============================================
 # ========================================================
 
-def random_loop(current_asked, current_evidence, prev_snapshot, precision_list, stability_list):
+def random_loop(graph_for_reference, current_asked, current_evidence, prev_snapshot, precision_list, stability_list):
     """the main interaction functionality, asking randomly"""
     i = random.randint(0, len(BN_for_inference.states)-1)
     state_names = list(map(lambda node: node.name, BN_for_inference.states))
@@ -293,59 +49,59 @@ def random_loop(current_asked, current_evidence, prev_snapshot, precision_list, 
         current_evidence[query] = 1
         # snapshot은 distribution object들의 nparray이다.
         new_snapshot = BN_for_inference.predict_proba(current_evidence)
-        visualize_snapshot(new_snapshot, [])
+        visualize_snapshot(graph_for_reference, new_snapshot, [])
         current_precision_list = calculate_precision(new_snapshot)
         current_stability_list = calculate_stability(prev_snapshot, new_snapshot)
-        return random_loop(current_asked+[query], current_evidence, new_snapshot,  precision_list+[current_precision_list], stability_list+[current_stability_list])
+        return random_loop(graph_for_reference, current_asked+[query], current_evidence, new_snapshot,  precision_list+[current_precision_list], stability_list+[current_stability_list])
     elif oracle_response == 'sin':
         current_evidence[query] = 2
         new_snapshot = BN_for_inference.predict_proba(current_evidence)
-        visualize_snapshot(new_snapshot, [])
+        visualize_snapshot(graph_for_reference, new_snapshot, [])
         current_precision_list = calculate_precision(new_snapshot)
         current_stability_list = calculate_stability(prev_snapshot, new_snapshot)
-        return random_loop(current_asked+[query], current_evidence, new_snapshot,  precision_list+[current_precision_list], stability_list+[current_stability_list])
+        return random_loop(graph_for_reference, current_asked+[query], current_evidence, new_snapshot,  precision_list+[current_precision_list], stability_list+[current_stability_list])
     elif oracle_response == 'san':
         current_evidence[query] = 3
         new_snapshot = BN_for_inference.predict_proba(current_evidence)
-        visualize_snapshot(new_snapshot, [])
+        visualize_snapshot(graph_for_reference, new_snapshot, [])
         current_precision_list = calculate_precision(new_snapshot)
         current_stability_list = calculate_stability(prev_snapshot, new_snapshot)
-        return random_loop(current_asked+[query], current_evidence, new_snapshot,  precision_list+[current_precision_list], stability_list+[current_stability_list])
+        return random_loop(graph_for_reference, current_asked+[query], current_evidence, new_snapshot,  precision_list+[current_precision_list], stability_list+[current_stability_list])
     elif oracle_response == 'non':
         current_evidence[query] = 4
         new_snapshot = BN_for_inference.predict_proba(current_evidence)
-        visualize_snapshot(new_snapshot, [])
+        visualize_snapshot(graph_for_reference, new_snapshot, [])
         current_precision_list = calculate_precision(new_snapshot)
         current_stability_list = calculate_stability(prev_snapshot, new_snapshot)
-        return random_loop(current_asked+[query], current_evidence, new_snapshot,  precision_list+[current_precision_list], stability_list+[current_stability_list])
+        return random_loop(graph_for_reference, current_asked+[query], current_evidence, new_snapshot,  precision_list+[current_precision_list], stability_list+[current_stability_list])
 
-
+    
 def single_loop(query):
     oracle_response = input("What label does <" + query + "> bear? [src/sin/san/non]: ")
     current_evidence = {}
     if oracle_response == 'src':
         current_evidence[query] = 1
         new_snapshot = BN_for_inference.predict_proba(current_evidence)
-        visualize_snapshot(new_snapshot, [])
+        visualize_snapshot(graph_for_reference, new_snapshot, [])
     elif oracle_response == 'sin':
         current_evidence[query] = 2
         new_snapshot = BN_for_inference.predict_proba(current_evidence)
-        visualize_snapshot(new_snapshot, [])
+        visualize_snapshot(graph_for_reference, new_snapshot, [])
     elif oracle_response == 'san':
         current_evidence[query] = 3
         new_snapshot = BN_for_inference.predict_proba(current_evidence)
-        visualize_snapshot(new_snapshot, [])
+        visualize_snapshot(graph_for_reference, new_snapshot, [])
     elif oracle_response == 'non':
         current_evidence[query] = 4
         new_snapshot = BN_for_inference.predict_proba(current_evidence)
-        visualize_snapshot(new_snapshot, [])
+        visualize_snapshot(graph_for_reference, new_snapshot, [])
 
 
 
 # tactical loop and its calculations ====================
 # ========================================================
 
-def tactical_loop(interaction_number, current_asked, current_evidence, updated_nodes, prev_snapshot, precision_list, stability_list, precision_inferred_list, **config):
+def tactical_loop(graph_for_reference, interaction_number, current_asked, current_evidence, updated_nodes, prev_snapshot, precision_list, stability_list, precision_inferred_list, **config):
     """the main interaction functionality (loops via recursion), asking tactically using d-separation
        parameters:
             - interaction_number: number of interactions performed so far.
@@ -410,7 +166,7 @@ def tactical_loop(interaction_number, current_asked, current_evidence, updated_n
         raise ThisIsImpossible
 
     oracle_response = input("What label does <" + query + "> bear? [src/sin/san/non]: ")
-    updated_nodes = updated_nodes + list(d_connected(query, current_asked, graph_for_reference.nodes))
+    updated_nodes = updated_nodes + list(d_connected(graph_for_reference, query, current_asked, graph_for_reference.nodes))
     current_asked = current_asked + [query]
     if oracle_response == 'src':
         current_evidence[query] = 1
@@ -430,25 +186,18 @@ def tactical_loop(interaction_number, current_asked, current_evidence, updated_n
     draw_precision_graph(list(range(1, len(BN_for_inference.states)+1)), precision_list)
     draw_stability_graph(list(range(1, len(BN_for_inference.states)+1)), stability_list)
     draw_precision_inferred_graph(range(1, len(BN_for_inference.states)+1), precision_inferred_list)
-    visualize_snapshot(new_snapshot, dependent_nodes)
+    visualize_snapshot(graph_for_reference, new_snapshot, dependent_nodes)
     plt.show(block=False)
-    return tactical_loop(interaction_number+1, current_asked, current_evidence, updated_nodes, new_snapshot, precision_list, stability_list, precision_inferred_list, **config)
+    return tactical_loop(graph_for_reference, interaction_number+1, current_asked, current_evidence, updated_nodes, new_snapshot, precision_list, stability_list, precision_inferred_list, **config)
 
 
-def d_connected(node, current_asked, pool):
+def d_connected(graph_for_reference, node, current_asked, pool):
     """현재까지 물어본 노드들이 주어졌을 때, node와 조건부 독립인 노드들의 set을 찾아낸다. Complexity: O(n)."""
     out = set()
     for other_node in graph_for_reference.nodes:
         if nx.d_separated(graph_for_reference, {node}, {other_node}, set(current_asked)):
             out.add(other_node)
     return set(graph_for_reference.nodes) - out
-
-
-def remove_elem(lst, elem):
-    """remove the given element from list without any side-effect."""
-    lst_ = lst[:]
-    lst_.remove(elem)
-    return lst_
 
 
 def remove_sublist(lst, sublst):
@@ -504,20 +253,20 @@ def find_max_d_con(current_asked, updated_nodes, list_of_all_node, **kwargs):  #
         number_of_sets_sorted.sort(reverse=True)  # now sorted!
         nth_largest_node_names = []
         nth_largest_cardinality = number_of_sets_sorted[nth]
-        print("nth_largest_cardinality:", nth_largest_cardinality)
-        print("d_connected_len_dict:", d_connected_len_dict)
+        # print("nth_largest_cardinality:", nth_largest_cardinality)
+        # print("d_connected_len_dict:", d_connected_len_dict)
 
         for node_name, cardinality in d_connected_len_dict.items():
             if nth_largest_cardinality == cardinality and\
                node_name not in current_asked and\
                node_name not in to_prune:
                 nth_largest_node_names.append(node_name)
-        print("nth_largest_node_names:",  nth_largest_node_names)
+        # print("nth_largest_node_names:",  nth_largest_node_names)
         if nth_largest_node_names == []:
             while nth_largest_node_names == []:
                 number_of_sets_sorted.remove(number_of_sets_sorted[0])
                 nth_largest_cardinality = number_of_sets_sorted[nth]
-                print("nth_largest_cardinality:", nth_largest_cardinality)
+                # print("nth_largest_cardinality:", nth_largest_cardinality)
                 for node_name, cardinality in d_connected_len_dict.items():
                     if nth_largest_cardinality == cardinality and\
                        node_name not in current_asked and\
@@ -588,7 +337,7 @@ def find_max_val(stats):
 
 node_colordict = {"src": "red", "sin": "orange", "san": "yellow", "non": "green"}
 
-def visualize_snapshot(snapshot, dependent_nodes):
+def visualize_snapshot(graph_for_reference, snapshot, dependent_nodes):
     """한번 iteration 돌 때마다, 전체 BN의 snapshot을 가시화한다. 이 때, confident node들 위에는 `conf`라는 문구를 띄운다."""
     network_figure = plt.figure("Bayesian Network")
     network_figure.clf()
@@ -646,7 +395,7 @@ def draw_precision_graph(x, y):
     precision_figure.canvas.draw()
 
 
-def draw_stability_graph(x, y):
+def draw_stability_graph(graph_for_reference, x, y):
     """stability graph를 그리는 함수. NOTE: x와 y의 input 길이를 맞춰줘야 함."""
     plt.ion()
     stability_figure = plt.figure("Stability")
@@ -665,7 +414,7 @@ def draw_stability_graph(x, y):
     stability_figure.canvas.draw()
 
 
-def draw_precision_inferred_graph(x, y):
+def draw_precision_inferred_graph(graph_for_reference, x, y):
     """stability graph를 그리는 함수. NOTE: x와 y의 input 길이를 맞춰줘야 함."""
     plt.ion()
     stability_figure = plt.figure("Inferred Precision")
@@ -720,15 +469,6 @@ def make_names_and_params(snapshot):
     return names_and_params
 
 
-def find_confident_node_names(names_and_params):
-    """노드 이름과 그 parameters의 짝 리스트를 받아서, 이 중에서 confident한 parameter를 가지고 있는 노드의 이름들 (str list)을 내놓는다."""
-    confident_node_names = []
-    for name, param in names_and_params:
-        if is_confident(param):
-           confident_node_names.append(name)
-    return confident_node_names
-
-
 def report_results(final_snapshot):
     initial_snapshot = BN_for_inference.predict_proba({})
     names_and_dists_initial = make_names_and_params(initial_snapshot)
@@ -752,24 +492,16 @@ def save_data_as_csv(final_snapshot):
     out_df.to_csv("inferred.csv", mode='w')
         
 
-def report_meta_statistics():
+def report_meta_statistics(graph_for_reference, BN_for_inference):
     """meta-functionality for debugging"""
     print("# of nodes: ", len(list(BN_for_inference.states)))
     print("# of edges: ", len(list(BN_for_inference.edges)))
+    nodes = list(graph_for_reference.nodes)
+    max_num_of_in_edges = max(list(map(lambda node: graph_for_reference.in_edges(nbunch=node), nodes)))
+    max_num_of_out_edges = max(list(map(lambda node: graph_for_reference.out_edges(nbunch=node), nodes)))
+    print("maximum # of in-edges:", max_num_of_in_edges)
+    print("maximum # of out-edges:", max_num_of_out_edges)
     print("elapsed time: ", time.time() - start)
-
-
-def plot_underlying_graph():
-    """단순하게 underlying graph만 출력한다."""
-    # plt.clf()
-    edge_colormap = create_edge_colormap()
-    circular = nx.circular_layout(graph_for_reference)  # 노드 이름과 그래프 상에서의 좌표를 엮은 dict
-    nx.draw(graph_for_reference,
-            font_size=8,
-            with_labels=True,
-            edge_color=edge_colormap,
-            pos=circular)
-    plt.show(block=False)
 
 
 # Methods for calculating graph values ====================
@@ -816,15 +548,18 @@ def calculate_precision_inferred(current_snapshot, number_of_interaction):
 # main ====================================================
 # ========================================================
 
-
 def main():
-    initial_snapshot = BN_for_inference.predict_proba({})
+    start = time.time()
+
+    BN_for_inference = make_BN.main()
+
+    initial_snapshot = BN_for_inference.predict_proba({}, n_jobs=-1)
     number_of_states = len(BN_for_inference.states)
     initial_precision_list = [np.nan for _ in range(len(BN_for_inference.states))]
     initial_stability_list = [np.nan for _ in range(len(BN_for_inference.states))]
     initial_precision_inferred_list = [np.nan for _ in range(len(BN_for_inference.states))]
     print()  # for aesthetics in the REPL
-    final_snapshot, precision_list, stability_list = tactical_loop(0, list(), dict(), list(), initial_snapshot, initial_precision_list, initial_stability_list, initial_precision_inferred_list, skip_call_sim_heur=False)
+    final_snapshot, precision_list, stability_list = tactical_loop(graph_for_reference, 0, list(), dict(), list(), initial_snapshot, initial_precision_list, initial_stability_list, initial_precision_inferred_list, skip_call_sim_heur=False)
     # final_snapshot, precision_list, stability_list = random_loop(list(), dict(), initial_snapshot, list(), list())
     report_results(final_snapshot)
     save_data_as_csv(final_snapshot)

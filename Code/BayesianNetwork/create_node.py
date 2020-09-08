@@ -11,20 +11,13 @@ import time
 import re
 import random
 import os
+import os.path
+import glob
 
-start = time.time()
 
 regex = r'\((.*)\)'
 regex = re.compile(regex)
-
-# let's read the files created by static analysis
-upper_path = os.path.abspath("..")
-methodfile = os.path.join(upper_path, 'benchmarks',
-                          'realworld', 'sagan', 'Methods.txt')
-callmethodfile = os.path.join(upper_path, 'benchmarks',
-                              'realworld', 'sagan', 'Callgraph.txt')
-skipfuncfile = os.path.join(upper_path, 'benchmarks',
-                              'realworld', 'sagan', 'skip_func.txt')
+    
 
 def flatten(ll):
     flat_list = []
@@ -35,29 +28,30 @@ def flatten(ll):
 
 
 def filtermethod(string):
-    return "__" not in string and\
-        "<init>" not in string and\
-        "<clinit>" not in string and\
-        "lambda" not in string and\
-        "Lambda" not in string
+    return "$" not in string and\
+           "__" not in string and\
+           "<init>" not in string and\
+           "<clinit>" not in string and\
+           "lambda" not in string and\
+           "Lambda" not in string
 
 
-def process(info):
+def process(method_id):
     """splits a method id into (classname, rtntype, methodname, intype, id)"""
-    space_index = info.index(' ')
-    split_on_open_paren = info.split('(')
+    space_index = method_id.index(' ')
+    split_on_open_paren = method_id.split('(')
     last_dot_index = split_on_open_paren[0].rindex('.')
-    open_paren_index = info.index('(')
-    rtntype = info[:space_index]
-    pkg = info[space_index+1:last_dot_index]
-    name = info[last_dot_index+1:open_paren_index]
-    intype = regex.findall(info)[0]
+    open_paren_index = method_id.index('(')
+    rtntype = method_id[:space_index]
+    class_ = method_id[space_index+1:last_dot_index]
+    name = method_id[last_dot_index+1:open_paren_index]
+    intype = regex.findall(method_id)[0]
     if intype == '':
         intype = 'void'
-    return (pkg, rtntype, name, intype, info)
+    return (class_, rtntype, name, intype, method_id)
 
 
-def populate_sofallm():
+def populate_sofallm(methodfile, callgraphfile):
     setofallmethods = []
     methods = []
     callmethods = []
@@ -67,7 +61,7 @@ def populate_sofallm():
             methods.append(line.rstrip())
     methods = list(filter(filtermethod, methods))
     methods = set(methods)
-    with open(callmethodfile, "r+") as g:
+    with open(callgraphfile, "r+") as g:
         for line in g.readlines():
             callmethods.append(line.rstrip())
     callmethods = list(filter(filtermethod, callmethods))
@@ -81,10 +75,7 @@ def populate_sofallm():
     return setofallmethods
 
 
-setofallmethods = populate_sofallm()
-
-
-def write_to_csv():
+def write_to_csv(setofallmethods):
     """Randomly select 100 methods from the set of all methods,
        or just use the set of all methods if possible and save them to csv"""
     write_list = setofallmethods
@@ -97,11 +88,18 @@ def write_to_csv():
 
 
 def main():
-    populate_sofallm()
-    write_to_csv()
+    start = time.time()
 
+    # let's read the files created by static analysis
+    upper_path = os.path.abspath("..")
+    methodfile = os.path.join(upper_path, 'benchmarks',
+                              'realworld', 'sagan', 'Methods.txt')
+    callgraphfile = os.path.join(upper_path, 'benchmarks',
+                                  'realworld', 'sagan', 'Callgraph.txt')
+    skipfuncfile = os.path.join(upper_path, 'benchmarks',
+                                'realworld', 'sagan', 'skip_func.txt')
 
-main()
+    setofallmethods = populate_sofallm(methodfile, callgraphfile)
+    write_to_csv(setofallmethods)
 
-
-print("elapsed time :", time.time() - start)
+    print("elapsed time :", time.time() - start)

@@ -3,7 +3,7 @@ import time
 import os
 import json
 from multiprocessing import Pool
-from main import process
+from create_node import process
 from itertools import repeat
 
 
@@ -32,11 +32,12 @@ def make_dataframes():
 
 
 def filtermethod(string):
-    return "__" not in string and\
-        "<init>" not in string and\
-        "<clinit>" not in string and\
-        "lambda" not in string and\
-        "Lambda" not in string
+    return "$" not in string and\
+           "__" not in string and\
+           "<init>" not in string and\
+           "<clinit>" not in string and\
+           "lambda" not in string and\
+           "Lambda" not in string
 
 
 def load_chain_json():
@@ -96,14 +97,18 @@ def detect_dataflow(json_obj_list):
 
 def output_dfedges(dataflow_edges):
     with open("df.txt", "w+") as df:
-        for (dfsend, dfrcv) in dataflow_edges:
-            df.write(dfsend + ", " + dfrcv + "\n")
+        for (parent_tup, child_tup) in dataflow_edges:
+            parent_id = parent_tup[4]
+            child_id = child_tup[4]
+            df.write(parent_id + ", " + child_id + "\n")
 
 
 def output_calledges(call_edges):
     with open("callg.txt", "w+") as call:
-        for (caller, callee) in call_edges:
-            call.write(caller + ", " + callee + "\n")
+        for (caller_tup, callee_tup) in call_edges:
+            caller_id = caller_tup[4]
+            callee_id = callee_tup[4]
+            call.write(caller_id + ", " + callee_id + "\n")
 
 
 def output_alledges(dataflow_edges, call_edges):
@@ -114,17 +119,18 @@ def output_alledges(dataflow_edges, call_edges):
 def make_df_dataframe(dataflow_edges):
     """edges.csv에서의 data flow row를 만든다: tuple list를 dataframe으로 변환."""
     pkg1, rtntype1, name1, intype1, pkg2, rtntype2, name2, intype2 = tuple(repeat([], 8))
-    for df_edge in dataflow_edges:
-       parent = df_edge[0]
-       child = df_edge[1]
+    for parent, child in dataflow_edges:
+
        pkg1.append(parent[0])
        rtntype1.append(parent[1])
        name1.append(parent[2])
        intype1.append(parent[3])
-       pkg2.append(parent[0])
-       rtntype2.append(parent[1])
-       name2.append(parent[2])
-       intype2.append(parent[3])
+
+       pkg2.append(child[0])
+       rtntype2.append(child[1])
+       name2.append(child[2])
+       intype2.append(child[3])
+
     return pd.DataFrame({'pkg1': pkg1, 'rtntype1': rtntype1, 'name1': name1, 'intype1': intype1,
                          'pkg2': pkg2, 'rtntype2': rtntype2, 'name2': name2, 'intype2': intype2})
        
@@ -132,17 +138,18 @@ def make_df_dataframe(dataflow_edges):
 def make_call_dataframe(call_edges):
     """edges.csv에서의 call row를 만든다: tuple list를 dataframe으로 변환."""
     pkg1, rtntype1, name1, intype1, pkg2, rtntype2, name2, intype2 = tuple(repeat([], 8))
-    for call_edge in call_edges:
-       parent = call_edge[0]
-       child = call_edge[1]
+    for parent, child in call_edges:
+
        pkg1.append(parent[0])
        rtntype1.append(parent[1])
        name1.append(parent[2])
        intype1.append(parent[3])
-       pkg2.append(parent[0])
-       rtntype2.append(parent[1])
-       name2.append(parent[2])
-       intype2.append(parent[3])
+
+       pkg2.append(child[0])
+       rtntype2.append(child[1])
+       name2.append(child[2])
+       intype2.append(child[3])
+
     return pd.DataFrame({'pkg1': pkg1, 'rtntype1': rtntype1, 'name1': name1, 'intype1': intype1,
                          'pkg2': pkg2, 'rtntype2': rtntype2, 'name2': name2, 'intype2': intype2})
 
@@ -177,7 +184,17 @@ def multiindex_edges(edges):
     index = pd.MultiIndex.from_tuples(tuples)
     edges.columns = index
     return edges
-    
+
+
+test = pd.DataFrame({('edge1', 'pkg'):[1,2,3,4,5],
+                     ('edge1', 'rtntype'):[1,4,3,2,5],
+                     ('edge1', 'name'):[5,4,3,2,1],
+                     ('edge1', 'intype'):[5,4,3,2,1],
+                     ('edge2', 'pkg'):[5,2,3,4,1],
+                     ('edge2', 'rtntype'):[5,4,3,2,1],
+                     ('edge2', 'name'):[1,4,3,2,5],
+                     ('edge2', 'intype'):[1,4,3,2,5]})
+
 
 def no_symmetric(dataframe):
     dataframe['temp'] = dataframe.index * 2
@@ -222,7 +239,7 @@ def main():
     edges_dataframe = multiindex_edges(edges_dataframe)
     edges_dataframe = edges_dataframe.reset_index().drop(columns=[('index', '')])
     edges_dataframe = no_reflexive(no_symmetric(edges_dataframe))
-    edges_dataframe.to_csv("edges.csv", mode='w')
+    edges_dataframe.to_csv("edges.csv", mode='w+')
 
     output_alledges(dataflow_edges, call_edges)
     print("elapsed time:", time.time()-start)

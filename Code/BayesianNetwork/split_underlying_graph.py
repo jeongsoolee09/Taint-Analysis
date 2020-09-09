@@ -13,8 +13,6 @@ upper_path = os.path.abspath("..")
 
 SAGAN_SITE_PATH = os.path.join(upper_path, 'benchmarks',
                                'realworld', 'sagan', 'sagan-site')
-SAGAN_CLIENT_PATH = os.path.join(upper_path, 'benchmarks',
-                                 'realworld', 'sagan', 'sagan-client')
 SAGAN_RENDERER_PATH = os.path.join(upper_path, 'benchmarks',
                                    'realworld', 'sagan', 'sagan-renderer')
 
@@ -48,7 +46,10 @@ def collect_root_methods(path):
 def collect_callees(G, root_methods):
     callees = []
     for root_node in root_methods:
-        callees += nx.dfs_preorder_nodes(graph_for_reference, source=root_node)
+        try:  # TODO: 디버깅
+            callees += nx.dfs_preorder_nodes(graph_for_reference, source=root_node)
+        except:
+            continue
     callees = list(set(callees))
     return callees
 
@@ -65,17 +66,13 @@ def main():
     graph_for_reference = nx.read_gpickle("graph_for_reference")
 
     sagan_site_root_methods = collect_root_methods(SAGAN_SITE_PATH)['id']
-    sagan_client_root_methods = collect_root_methods(SAGAN_CLIENT_PATH)['id']
     sagan_renderer_root_methods = collect_root_methods(SAGAN_RENDERER_PATH)['id']
     
     sagan_site_methods = collect_callees(graph_for_reference, sagan_site_root_methods)
-    sagan_client_methods = collect_callees(graph_for_reference, sagan_client_root_methods)
     sagan_renderer_methods = collect_callees(graph_for_reference, sagan_renderer_root_methods)
     
     sagan_site_graph = mask_graph(graph_for_reference, sagan_site_methods)
-    sagan_client_graph = mask_graph(graph_for_reference, sagan_client_methods)
     sagan_renderer_graph = mask_graph(graph_for_reference, sagan_renderer_methods)
 
     nx.write_gpickle(sagan_site_graph, "sagan_site_graph")
-    nx.write_gpickle(sagan_client_graph, "sagan_client_graph")
     nx.write_gpickle(sagan_renderer_graph, "sagan_renderer_graph")

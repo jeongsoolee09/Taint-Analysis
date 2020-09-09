@@ -251,7 +251,7 @@ def flip_sim_edges(G):
     for node_name in list(G.nodes):
         in_edges = list(G.in_edges(nbunch=node_name, data=True))
         remaining_sim_edges = list(filter(lambda edge: edge[2]['kind'] == 'sim', in_edges))
-        while len(in_edges) > 9:
+        while len(in_edges) > 4:
             try:
                 parent, child, kind = remaining_sim_edges.pop()
             except IndexError:

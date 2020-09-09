@@ -17,8 +17,16 @@ from scrape_oracle_docs import *
 from toolz import valmap
 from matplotlib.ticker import MaxNLocator
 from create_node import process
-from make_underlying_graph import find_edge_labels
+from make_underlying_graph import find_edge_labels, df_reader, call_reader
 from make_CPT import *
+
+
+# Constants ========================================
+# ==================================================
+
+graph_for_reference = nx.read_gpickle("sagan_site_graph")
+df_edges = df_reader()
+call_edges = call_reader()
 
 # Exceptions ========================================
 # ===================================================
@@ -33,7 +41,7 @@ class TooManyEdges(Exception):
 # simple loops ============================================
 # ========================================================
 
-def random_loop(graph_for_reference, current_asked, current_evidence, prev_snapshot, precision_list, stability_list):
+def random_loop(BN_for_inference, graph_for_reference, current_asked, current_evidence, prev_snapshot, precision_list, stability_list):
     """the main interaction functionality, asking randomly"""
     i = random.randint(0, len(BN_for_inference.states)-1)
     state_names = list(map(lambda node: node.name, BN_for_inference.states))
@@ -52,28 +60,28 @@ def random_loop(graph_for_reference, current_asked, current_evidence, prev_snaps
         visualize_snapshot(graph_for_reference, new_snapshot, [])
         current_precision_list = calculate_precision(new_snapshot)
         current_stability_list = calculate_stability(prev_snapshot, new_snapshot)
-        return random_loop(graph_for_reference, current_asked+[query], current_evidence, new_snapshot,  precision_list+[current_precision_list], stability_list+[current_stability_list])
+        return random_loop(BN_for_inference, graph_for_reference, current_asked+[query], current_evidence, new_snapshot,  precision_list+[current_precision_list], stability_list+[current_stability_list])
     elif oracle_response == 'sin':
         current_evidence[query] = 2
         new_snapshot = BN_for_inference.predict_proba(current_evidence)
         visualize_snapshot(graph_for_reference, new_snapshot, [])
         current_precision_list = calculate_precision(new_snapshot)
         current_stability_list = calculate_stability(prev_snapshot, new_snapshot)
-        return random_loop(graph_for_reference, current_asked+[query], current_evidence, new_snapshot,  precision_list+[current_precision_list], stability_list+[current_stability_list])
+        return random_loop(BN_for_inference, graph_for_reference, current_asked+[query], current_evidence, new_snapshot,  precision_list+[current_precision_list], stability_list+[current_stability_list])
     elif oracle_response == 'san':
         current_evidence[query] = 3
         new_snapshot = BN_for_inference.predict_proba(current_evidence)
         visualize_snapshot(graph_for_reference, new_snapshot, [])
         current_precision_list = calculate_precision(new_snapshot)
         current_stability_list = calculate_stability(prev_snapshot, new_snapshot)
-        return random_loop(graph_for_reference, current_asked+[query], current_evidence, new_snapshot,  precision_list+[current_precision_list], stability_list+[current_stability_list])
+        return random_loop(BN_for_inference, graph_for_reference, current_asked+[query], current_evidence, new_snapshot,  precision_list+[current_precision_list], stability_list+[current_stability_list])
     elif oracle_response == 'non':
         current_evidence[query] = 4
         new_snapshot = BN_for_inference.predict_proba(current_evidence)
         visualize_snapshot(graph_for_reference, new_snapshot, [])
         current_precision_list = calculate_precision(new_snapshot)
         current_stability_list = calculate_stability(prev_snapshot, new_snapshot)
-        return random_loop(graph_for_reference, current_asked+[query], current_evidence, new_snapshot,  precision_list+[current_precision_list], stability_list+[current_stability_list])
+        return random_loop(BN_for_inference, graph_for_reference, current_asked+[query], current_evidence, new_snapshot,  precision_list+[current_precision_list], stability_list+[current_stability_list])
 
     
 def single_loop(query):
@@ -117,8 +125,7 @@ def tactical_loop(graph_for_reference, interaction_number, current_asked, curren
     # some variables to make our code resemble English
     if config["skip_call_sim_heur"]:  # now we prune the pool with non_nodes_to_skip
         pruneable_nodes = non_nodes_to_skip(graph_for_reference.nodes)
-        # print(pruneable_nodes)
-        there_are_nodes_left = find_max_d_con(current_asked, updated_nodes, graph_for_reference.nodes, prune=pruneable_nodes, nth=0)
+        there_are_nodes_left = find_max_d_con(graph_fore_reference, current_asked, updated_nodes, graph_for_reference.nodes, prune=pruneable_nodes, nth=0)
         there_are_nodes_left = there_are_nodes_left
         there_are_no_nodes_left = not there_are_nodes_left
         its_time_to_terminate = time_to_terminate(BN_for_inference, current_evidence)
@@ -133,15 +140,21 @@ def tactical_loop(graph_for_reference, interaction_number, current_asked, curren
             dependent_nodes = maybe_query_tuple[1]
             # i = 0
             # while query in pruneable_nodes:
-            #     query, dependent_nodes = find_max_d_con(current_asked, updated_nodes, graph_for_reference.nodes, prune=pruneable_nodes, nth=i)
+            #     query, dependent_nodes = find_max_d_con(graph_for_reference, current_asked, updated_nodes, graph_for_reference.nodes, prune=pruneable_nodes, nth=i)
             #     i += 1
     else:  # vanilla
-        there_are_nodes_left = find_max_d_con(current_asked, updated_nodes, graph_for_reference.nodes, nth=0)
+        print("1")
+        there_are_nodes_left = find_max_d_con(graph_for_reference, current_asked, updated_nodes, graph_for_reference.nodes, nth=0)
+        print("2")
         there_are_no_nodes_left = not there_are_nodes_left
+        print("3")
         its_time_to_terminate = time_to_terminate(BN_for_inference, current_evidence)
+        print("4")
         not_yet_time_to_terminate = not its_time_to_terminate
+        print("5")
 
-        maybe_query_tuple = find_max_d_con(current_asked, updated_nodes, graph_for_reference.nodes, nth=0)
+        maybe_query_tuple = find_max_d_con(graph_for_reference, current_asked, updated_nodes, graph_for_reference.nodes, nth=0)
+        print("6")
         if maybe_query_tuple == None:
             query = None
             dependent_nodes = []
@@ -155,9 +168,9 @@ def tactical_loop(graph_for_reference, interaction_number, current_asked, curren
             return prev_snapshot, precision_list, stability_list
         else:
             if config["skip_call_sim_heur"]:
-                query, dependent_nodes = find_max_d_con([], [], remove_sublist(graph_for_reference.nodes, current_asked), nth=0, prune=pruneable_nodes)
+                query, dependent_nodes = find_max_d_con(graph_for_reference, [], [], remove_sublist(graph_for_reference.nodes, current_asked), nth=0, prune=pruneable_nodes)
             else: # vanilla
-                query, dependent_nodes = find_max_d_con([], [], remove_sublist(graph_for_reference.nodes, current_asked), nth=0)
+                query, dependent_nodes = find_max_d_con(graph_for_reference, [], [], remove_sublist(graph_for_reference.nodes, current_asked), nth=0)
     elif there_are_no_nodes_left and its_time_to_terminate:
         return prev_snapshot, precision_list, stability_list
     elif there_are_nodes_left and not_yet_time_to_terminate:
@@ -194,7 +207,9 @@ def tactical_loop(graph_for_reference, interaction_number, current_asked, curren
 def d_connected(graph_for_reference, node, current_asked, pool):
     """현재까지 물어본 노드들이 주어졌을 때, node와 조건부 독립인 노드들의 set을 찾아낸다. Complexity: O(n)."""
     out = set()
+    print(len(graph_for_reference.nodes))
     for other_node in graph_for_reference.nodes:
+        # print("가")
         if nx.d_separated(graph_for_reference, {node}, {other_node}, set(current_asked)):
             out.add(other_node)
     return set(graph_for_reference.nodes) - out
@@ -235,18 +250,21 @@ def non_nodes_to_skip(snapshot):
     return set(can_be_excluded)
 
 
-def find_max_d_con(current_asked, updated_nodes, list_of_all_node, **kwargs):  # 전체 node pool을 제한할 수 있음
+def find_max_d_con(graph_for_reference, current_asked, updated_nodes, list_of_all_node, **kwargs):  # 전체 node pool을 제한할 수 있음
     """graph_for_reference의 node들 중에서 가장 d_connected node가 가장 많은 노드를 찾아낸다."""
     d_connected_set_dict = dict()
+    print("a")
     for node in list_of_all_node:
-        d_connected_set_dict[node] = d_connected(node, current_asked, list_of_all_node)
+        d_connected_set_dict[node] = d_connected(graph_for_reference, node, current_asked, list_of_all_node)
     d_connected_set_dict = valmap(lambda set_: set_-set(current_asked)-set(updated_nodes), d_connected_set_dict)
+    print("b")
     if forall(lambda set_: set_ == set(), d_connected_set_dict.values()):  # no more to ask
         return None
     d_connected_len_dict = valmap(lambda set_: len(set_), d_connected_set_dict)
     nth = kwargs['nth']
     # print("nth:", nth)
     # dictionary에서 value만을 추출해 내림차순으로 정렬한다.
+    print("b")
     if 'prune' in kwargs.keys():
         to_prune = kwargs['prune']
         number_of_sets_sorted = list(set(d_connected_len_dict.values()))  # not yet sorted..
@@ -459,7 +477,7 @@ def create_edge_colormap():
 def make_names_and_params(snapshot):
     """snapshot을 읽어서, 랜덤변수 별 확률값의 dict인 parameters만을 빼낸 다음 node의 이름과 짝지어서 list에 담아 낸다."""
     dists = []
-    node_name_list = list(map(lambda node: node.name, BN_for_inference.states))
+    node_name_list = list(graph_for_reference.nodes)
     for dist in snapshot:
         if type(dist) == int:  # oracle에 의해 고정된 경우!
             dists.append(normalize_dist(dist))
@@ -469,7 +487,7 @@ def make_names_and_params(snapshot):
     return names_and_params
 
 
-def report_results(final_snapshot):
+def report_results(BN_for_inference, final_snapshot):
     initial_snapshot = BN_for_inference.predict_proba({})
     names_and_dists_initial = make_names_and_params(initial_snapshot)
     names_and_labels_initial = list(map(lambda tup: (tup[0], find_max_val(tup[1])), names_and_dists_initial))
@@ -553,16 +571,18 @@ def main():
 
     BN_for_inference = make_BN.main()
 
+    initial_prediction_time = time.time()
     initial_snapshot = BN_for_inference.predict_proba({}, n_jobs=-1)
+    print("initial predicition_time:", time.time() - initial_prediction_time)
     number_of_states = len(BN_for_inference.states)
     initial_precision_list = [np.nan for _ in range(len(BN_for_inference.states))]
     initial_stability_list = [np.nan for _ in range(len(BN_for_inference.states))]
     initial_precision_inferred_list = [np.nan for _ in range(len(BN_for_inference.states))]
     print()  # for aesthetics in the REPL
-    final_snapshot, precision_list, stability_list = tactical_loop(graph_for_reference, 0, list(), dict(), list(), initial_snapshot, initial_precision_list, initial_stability_list, initial_precision_inferred_list, skip_call_sim_heur=False)
-    # final_snapshot, precision_list, stability_list = random_loop(list(), dict(), initial_snapshot, list(), list())
-    report_results(final_snapshot)
-    save_data_as_csv(final_snapshot)
+    # final_snapshot, precision_list, stability_list = tactical_loop(graph_for_reference, 0, list(), dict(), list(), initial_snapshot, initial_precision_list, initial_stability_list, initial_precision_inferred_list, skip_call_sim_heur=False)
+    final_snapshot, precision_list, stability_list = random_loop(BN_for_inference, graph_for_reference, list(), dict(), initial_snapshot, list(), list())
+    report_results(initial_snapshot, final_snapshot)
+    # save_data_as_csv(final_snapshot)
 
     raw_data.close()
     edges_data.close()

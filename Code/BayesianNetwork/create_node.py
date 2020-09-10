@@ -9,8 +9,6 @@
 import pandas as pd
 import time
 import re
-import random
-import os
 import os.path
 import glob
 
@@ -76,15 +74,13 @@ def populate_sofallm(methodfile, callgraphfile):
 
 
 def write_to_csv(setofallmethods):
-    """Randomly select 100 methods from the set of all methods,
-       or just use the set of all methods if possible and save them to csv"""
     write_list = setofallmethods
     write_list = pd.DataFrame(write_list, columns=["pkg", "rtntype",
                                                    "name", "intype", "id"],
                               dtype="str")
     # embed the index into a separate column
     write_list = write_list.reset_index()
-    write_list.to_csv("raw_data.csv", mode='w+')
+    write_list.to_csv("nodes.csv", mode='w+')
 
 
 def main():
@@ -95,7 +91,7 @@ def main():
     methodfile = os.path.join(upper_path, 'benchmarks',
                               'realworld', 'sagan', 'Methods.txt')
     callgraphfile = os.path.join(upper_path, 'benchmarks',
-                                  'realworld', 'sagan', 'Callgraph.txt')
+                                 'realworld', 'sagan', 'Callgraph.txt')
     skipfuncfile = os.path.join(upper_path, 'benchmarks',
                                 'realworld', 'sagan', 'skip_func.txt')
 
@@ -103,3 +99,7 @@ def main():
     write_to_csv(setofallmethods)
 
     print("elapsed time :", time.time() - start)
+
+
+if __name__ == "__main__":
+    main()

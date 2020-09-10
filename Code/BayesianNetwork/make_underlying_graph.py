@@ -19,7 +19,7 @@ PROJECT_ROOT = os.path.join('..', 'benchmarks', 'realworld', 'sagan')
 edges = pd.read_csv("edges.csv", index_col=0, header=[0, 1])
 edge_targets = edges.iloc[:, edges.columns.get_level_values(1) == "name"]
 
-raw_data = open("raw_data.csv", "r+")
+raw_data = open("nodes.csv", "r+")
 data_reader = csv.reader(raw_data)
 
 edges_data = open("edges.csv", "r+")
@@ -28,24 +28,6 @@ edges_reader = csv.reader(edges_data)
 skip_func_data = open("skip_func.csv", "r+")
 skip_func_reader = csv.reader(skip_func_data)
 
-
-# eagerly loading txts
-def df_reader():
-    with open("df.txt", "r+") as df:
-        lines = df.readlines()
-        lines = list(map(lambda line: line.rstrip(), lines))
-        lines = list(map(lambda line: line.split(", "), lines))
-        lines = list(map(lambda line: tuple(line), lines))
-    return lines
-
-
-def call_reader():
-    with open("callg.txt", "r+") as callg:
-        lines = callg.readlines()
-        lines = list(map(lambda line: line.rstrip(), lines))
-        lines = list(map(lambda line: line.split(", "), lines))
-        lines = list(map(lambda line: tuple(line), lines))
-    return lines
 
 
 def skip_func_reader():
@@ -66,8 +48,14 @@ def is_java_builtin(method_id):
 
 
 # eagerly loaded (line by line) txts
-df_edges = df_reader()
-call_edges = call_reader()
+df_data = open("df.csv", "r+")
+df_reader = csv.reader(df_data)
+
+call_data = open("callg.csv", "r+")
+call_reader = csv.reader(call_data)
+
+df_edges = list(df_reader)
+call_edges = list(call_reader)
 skip_funcs = skip_func_reader()
 
 
@@ -213,9 +201,8 @@ def init_graph(built_in_classes):
     G = nx.DiGraph()
     add_node_to_graph(G)
     add_edge_to_graph(G)
-    filter_edges_from_graph(G, built_in_classes)
+    # filter_edges_from_graph(G, built_in_classes)
     flip_sim_edges(G)
-    decycle(G)
     return G
 
 
@@ -231,19 +218,6 @@ def label_edges(G):
         else:
             attr_dict[edge] = {'kind': 'sim'}
     nx.set_edge_attributes(G, attr_dict)
-
-
-# bottleneck! TODO: 나중에 divide & conquer 스타일로 바꿔줘야 함.
-def decycle(G):
-    print('decycling (this may take some time)..')
-    while True:
-        try:
-            cycle_path_edges = nx.find_cycle(G)
-            random_edge = random.choice(cycle_path_edges)
-            G.remove_edge(*random_edge)
-        except:
-            print("decycling done")
-            return
 
 
 def flip_sim_edges(G):
@@ -293,3 +267,7 @@ def main():
     nx.write_gpickle(graph_for_reference, "graph_for_reference")
 
     print("elapsed time:", time.time()-start)
+
+
+if __name__ == "__main__":
+    main()

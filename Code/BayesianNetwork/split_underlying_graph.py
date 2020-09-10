@@ -3,6 +3,8 @@ import networkx as nx
 import os.path
 import glob
 import copy
+import csv
+import random
 
 from make_underlying_graph import df_reader, call_reader, extract_filename
 
@@ -16,12 +18,32 @@ SAGAN_SITE_PATH = os.path.join(upper_path, 'benchmarks',
 SAGAN_RENDERER_PATH = os.path.join(upper_path, 'benchmarks',
                                    'realworld', 'sagan', 'sagan-renderer')
 
-NODE_DATA = pd.read_csv("raw_data.csv", index_col=0, header=0)
-EDGES_DATA = pd.read_csv("edges.csv", index_col=0, header=[0,1])
+NODE_DATA = pd.read_csv("nodes.csv", index_col=0, header=0)
 
+edges_data = open("callg.csv", "r+")
+edges_reader = csv.reader(edges_data)
 
 # Collecting subgraphs ====================================================
 # =========================================================================
+
+
+def draw_callgraph():
+    next(edges_reader)
+    callgraph = nx.DiGraph()
+    for row in edges_reader:
+        class1 = row[1]
+        rtntype1 = row[2]
+        name1 = row[3]
+        intype1 = "()" if row[4] == "void" else "("+row[4]+")"
+        class2 = row[5]
+        rtntype2 = row[6]
+        name2 = row[7]
+        intype2 = "()" if row[8] == "void" else "("+row[8]+")"
+        firstNodeID = rtntype1+" "+class1+"."+name1+intype1
+        secondNodeID = rtntype2+" "+class2+"."+name2+intype2
+        callgraph.add_edge(firstNodeID, secondNodeID, kind="call")
+    return callgraph
+
 
 def collect_root_methods(path):
     # collecting root methods' classes
@@ -46,10 +68,10 @@ def collect_root_methods(path):
 def collect_callees(G, root_methods):
     callees = []
     for root_node in root_methods:
-        try:  # TODO: 디버깅
-            callees += nx.dfs_preorder_nodes(graph_for_reference, source=root_node)
+        try:
+            callees += nx.dfs_preorder_nodes(G, source=root_node)
         except:
-            continue
+            pass
     callees = list(set(callees))
     return callees
 
@@ -62,17 +84,37 @@ def mask_graph(G, methods):
     return masked_graph
 
 
+# bottleneck! TODO: 나중에 divide & conquer 스타일로 바꿔줘야 함.
+def decycle(G):
+    print('decycling (this may take some time)..')
+    while True:
+        try:
+            cycle_path_edges = nx.find_cycle(G)
+        except:
+            print("decycling done")
+            return G
+        random_edge = random.choice(cycle_path_edges)
+        G.remove_edge(*random_edge)
+
+
 def main():
     graph_for_reference = nx.read_gpickle("graph_for_reference")
-
+    callgraph = draw_callgraph()
     sagan_site_root_methods = collect_root_methods(SAGAN_SITE_PATH)['id']
     sagan_renderer_root_methods = collect_root_methods(SAGAN_RENDERER_PATH)['id']
     
-    sagan_site_methods = collect_callees(graph_for_reference, sagan_site_root_methods)
-    sagan_renderer_methods = collect_callees(graph_for_reference, sagan_renderer_root_methods)
-    
+    sagan_site_methods = collect_callees(callgraph, sagan_site_root_methods)
+    sagan_renderer_methods = collect_callees(callgraph, sagan_renderer_root_methods)
+
     sagan_site_graph = mask_graph(graph_for_reference, sagan_site_methods)
     sagan_renderer_graph = mask_graph(graph_for_reference, sagan_renderer_methods)
 
+    sagan_site_graph = decycle(sagan_site_graph)
+    sagan_renderer_graph = decycle(sagan_renderer_graph)
+
     nx.write_gpickle(sagan_site_graph, "sagan_site_graph")
     nx.write_gpickle(sagan_renderer_graph, "sagan_renderer_graph")
+
+
+if __name__ == "__main__":
+    main()

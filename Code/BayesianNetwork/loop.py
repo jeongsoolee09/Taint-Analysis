@@ -25,8 +25,11 @@ from make_CPT import *
 # ==================================================
 
 graph_for_reference = nx.read_gpickle("sagan_site_graph")
-df_edges = df_reader()
-call_edges = call_reader()
+print(len(graph_for_reference.nodes))
+BN_for_inference = make_BN.main()
+
+df_edges = list(df_reader)
+call_edges = list(call_reader)
 
 # Exceptions ========================================
 # ===================================================
@@ -56,31 +59,47 @@ def random_loop(BN_for_inference, graph_for_reference, current_asked, current_ev
     if oracle_response == 'src':
         current_evidence[query] = 1
         # snapshot은 distribution object들의 nparray이다.
+        inference_time = time.time()
         new_snapshot = BN_for_inference.predict_proba(current_evidence)
-        visualize_snapshot(graph_for_reference, new_snapshot, [])
-        current_precision_list = calculate_precision(new_snapshot)
+        print("inference took ", time.time()-inference_time, "seconds")
+        # visualize_snapshot(graph_for_reference, new_snapshot, [])
+        # current_precision_list = calculate_precision(new_snapshot)
+        current_precision_list = [] # TODO
         current_stability_list = calculate_stability(prev_snapshot, new_snapshot)
+        print("# of changed nodes (stability):", current_stability_list)
         return random_loop(BN_for_inference, graph_for_reference, current_asked+[query], current_evidence, new_snapshot,  precision_list+[current_precision_list], stability_list+[current_stability_list])
     elif oracle_response == 'sin':
         current_evidence[query] = 2
+        inference_time = time.time()
         new_snapshot = BN_for_inference.predict_proba(current_evidence)
-        visualize_snapshot(graph_for_reference, new_snapshot, [])
-        current_precision_list = calculate_precision(new_snapshot)
+        print("inference took ", time.time()-inference_time, "seconds")
+        # visualize_snapshot(graph_for_reference, new_snapshot, [])
+        # current_precision_list = calculate_precision(new_snapshot)
+        current_precision_list = [] # TODO
         current_stability_list = calculate_stability(prev_snapshot, new_snapshot)
+        print("# of changed nodes (stability):", current_stability_list)
         return random_loop(BN_for_inference, graph_for_reference, current_asked+[query], current_evidence, new_snapshot,  precision_list+[current_precision_list], stability_list+[current_stability_list])
     elif oracle_response == 'san':
         current_evidence[query] = 3
+        inference_time = time.time()
         new_snapshot = BN_for_inference.predict_proba(current_evidence)
-        visualize_snapshot(graph_for_reference, new_snapshot, [])
-        current_precision_list = calculate_precision(new_snapshot)
+        print("inference took ", time.time()-inference_time, "seconds")
+        # visualize_snapshot(graph_for_reference, new_snapshot, [])
+        # current_precision_list = calculate_precision(new_snapshot)
+        current_precision_list = [] # TODO
         current_stability_list = calculate_stability(prev_snapshot, new_snapshot)
+        print("# of changed nodes (stability):", current_stability_list)
         return random_loop(BN_for_inference, graph_for_reference, current_asked+[query], current_evidence, new_snapshot,  precision_list+[current_precision_list], stability_list+[current_stability_list])
     elif oracle_response == 'non':
         current_evidence[query] = 4
+        inference_time = time.time()
         new_snapshot = BN_for_inference.predict_proba(current_evidence)
-        visualize_snapshot(graph_for_reference, new_snapshot, [])
-        current_precision_list = calculate_precision(new_snapshot)
+        print("inference took ", time.time()-inference_time, "seconds")
+        # visualize_snapshot(graph_for_reference, new_snapshot, [])
+        # current_precision_list = calculate_precision(new_snapshot)
+        current_precision_list = [] # TODO
         current_stability_list = calculate_stability(prev_snapshot, new_snapshot)
+        print("# of changed nodes (stability):", current_stability_list)
         return random_loop(BN_for_inference, graph_for_reference, current_asked+[query], current_evidence, new_snapshot,  precision_list+[current_precision_list], stability_list+[current_stability_list])
 
     
@@ -89,19 +108,27 @@ def single_loop(query):
     current_evidence = {}
     if oracle_response == 'src':
         current_evidence[query] = 1
+        inference_time = time.time()
         new_snapshot = BN_for_inference.predict_proba(current_evidence)
+        print("inference took ", time.time()-inference_time, "seconds")
         visualize_snapshot(graph_for_reference, new_snapshot, [])
     elif oracle_response == 'sin':
         current_evidence[query] = 2
+        inference_time = time.time()
         new_snapshot = BN_for_inference.predict_proba(current_evidence)
+        print("inference took ", time.time()-inference_time, "seconds")
         visualize_snapshot(graph_for_reference, new_snapshot, [])
     elif oracle_response == 'san':
         current_evidence[query] = 3
+        inference_time = time.time()
         new_snapshot = BN_for_inference.predict_proba(current_evidence)
+        print("inference took ", time.time()-inference_time, "seconds")
         visualize_snapshot(graph_for_reference, new_snapshot, [])
     elif oracle_response == 'non':
         current_evidence[query] = 4
+        inference_time = time.time()
         new_snapshot = BN_for_inference.predict_proba(current_evidence)
+        print("inference took ", time.time()-inference_time, "seconds")
         visualize_snapshot(graph_for_reference, new_snapshot, [])
 
 
@@ -143,18 +170,12 @@ def tactical_loop(graph_for_reference, interaction_number, current_asked, curren
             #     query, dependent_nodes = find_max_d_con(graph_for_reference, current_asked, updated_nodes, graph_for_reference.nodes, prune=pruneable_nodes, nth=i)
             #     i += 1
     else:  # vanilla
-        print("1")
         there_are_nodes_left = find_max_d_con(graph_for_reference, current_asked, updated_nodes, graph_for_reference.nodes, nth=0)
-        print("2")
         there_are_no_nodes_left = not there_are_nodes_left
-        print("3")
         its_time_to_terminate = time_to_terminate(BN_for_inference, current_evidence)
-        print("4")
         not_yet_time_to_terminate = not its_time_to_terminate
-        print("5")
 
         maybe_query_tuple = find_max_d_con(graph_for_reference, current_asked, updated_nodes, graph_for_reference.nodes, nth=0)
-        print("6")
         if maybe_query_tuple == None:
             query = None
             dependent_nodes = []
@@ -198,7 +219,7 @@ def tactical_loop(graph_for_reference, interaction_number, current_asked, curren
     precision_inferred_list[interaction_number] = current_precision_inferred
     draw_precision_graph(list(range(1, len(BN_for_inference.states)+1)), precision_list)
     draw_stability_graph(list(range(1, len(BN_for_inference.states)+1)), stability_list)
-    draw_precision_inferred_graph(range(1, len(BN_for_inference.states)+1), precision_inferred_list)
+    # draw_precision_inferred_graph(range(1, len(BN_for_inference.states)+1), precision_inferred_list)
     visualize_snapshot(graph_for_reference, new_snapshot, dependent_nodes)
     plt.show(block=False)
     return tactical_loop(graph_for_reference, interaction_number+1, current_asked, current_evidence, updated_nodes, new_snapshot, precision_list, stability_list, precision_inferred_list, **config)
@@ -207,9 +228,8 @@ def tactical_loop(graph_for_reference, interaction_number, current_asked, curren
 def d_connected(graph_for_reference, node, current_asked, pool):
     """현재까지 물어본 노드들이 주어졌을 때, node와 조건부 독립인 노드들의 set을 찾아낸다. Complexity: O(n)."""
     out = set()
-    print(len(graph_for_reference.nodes))
+    # print(len(graph_for_reference.nodes))
     for other_node in graph_for_reference.nodes:
-        # print("가")
         if nx.d_separated(graph_for_reference, {node}, {other_node}, set(current_asked)):
             out.add(other_node)
     return set(graph_for_reference.nodes) - out
@@ -253,18 +273,15 @@ def non_nodes_to_skip(snapshot):
 def find_max_d_con(graph_for_reference, current_asked, updated_nodes, list_of_all_node, **kwargs):  # 전체 node pool을 제한할 수 있음
     """graph_for_reference의 node들 중에서 가장 d_connected node가 가장 많은 노드를 찾아낸다."""
     d_connected_set_dict = dict()
-    print("a")
     for node in list_of_all_node:
         d_connected_set_dict[node] = d_connected(graph_for_reference, node, current_asked, list_of_all_node)
     d_connected_set_dict = valmap(lambda set_: set_-set(current_asked)-set(updated_nodes), d_connected_set_dict)
-    print("b")
     if forall(lambda set_: set_ == set(), d_connected_set_dict.values()):  # no more to ask
         return None
     d_connected_len_dict = valmap(lambda set_: len(set_), d_connected_set_dict)
     nth = kwargs['nth']
     # print("nth:", nth)
     # dictionary에서 value만을 추출해 내림차순으로 정렬한다.
-    print("b")
     if 'prune' in kwargs.keys():
         to_prune = kwargs['prune']
         number_of_sets_sorted = list(set(d_connected_len_dict.values()))  # not yet sorted..
@@ -384,8 +401,12 @@ def visualize_snapshot(graph_for_reference, snapshot, dependent_nodes):
     for dependent_node in dependent_nodes:
         coord_lists.append(node_posmap[dependent_node])
     coord_lists = np.asarray(coord_lists)
-    # polygon = ptch.Polygon(coord_lists, closed=True, alpha=0.4)
-    # ax.add_patch(polygon)
+    polygon = ptch.Polygon(coord_lists, closed=True, alpha=0.4)
+    ax.add_patch(polygon)
+
+    # print(node_colormap)
+    # print(edge_colormap)
+    # print(node_posmap)
 
     nx.draw(graph_for_reference,
             node_color=node_colormap, edge_color=edge_colormap,
@@ -413,7 +434,7 @@ def draw_precision_graph(x, y):
     precision_figure.canvas.draw()
 
 
-def draw_stability_graph(graph_for_reference, x, y):
+def draw_stability_graph(x, y):
     """stability graph를 그리는 함수. NOTE: x와 y의 input 길이를 맞춰줘야 함."""
     plt.ion()
     stability_figure = plt.figure("Stability")
@@ -432,7 +453,7 @@ def draw_stability_graph(graph_for_reference, x, y):
     stability_figure.canvas.draw()
 
 
-def draw_precision_inferred_graph(graph_for_reference, x, y):
+def draw_precision_inferred_graph(x, y):
     """stability graph를 그리는 함수. NOTE: x와 y의 input 길이를 맞춰줘야 함."""
     plt.ion()
     stability_figure = plt.figure("Inferred Precision")
@@ -487,8 +508,7 @@ def make_names_and_params(snapshot):
     return names_and_params
 
 
-def report_results(BN_for_inference, final_snapshot):
-    initial_snapshot = BN_for_inference.predict_proba({})
+def report_results(initial_snapshot, final_snapshot):
     names_and_dists_initial = make_names_and_params(initial_snapshot)
     names_and_labels_initial = list(map(lambda tup: (tup[0], find_max_val(tup[1])), names_and_dists_initial))
 
@@ -545,7 +565,7 @@ def calculate_stability(prev_snapshot, current_snapshot):
     names_and_dists_current = make_names_and_params(current_snapshot)
     names_and_labels_current = dict(map(lambda tup: (tup[0], find_max_val(tup[1])), names_and_dists_current))
     changed_nodes = []
-    for node_name in graph_for_reference.nodes:
+    for node_name in names_and_labels_current.keys():
         if names_and_labels_prev[node_name] != names_and_labels_current[node_name]:
             changed_nodes.append(node_name)
     return len(changed_nodes)
@@ -569,8 +589,6 @@ def calculate_precision_inferred(current_snapshot, number_of_interaction):
 def main():
     start = time.time()
 
-    BN_for_inference = make_BN.main()
-
     initial_prediction_time = time.time()
     initial_snapshot = BN_for_inference.predict_proba({}, n_jobs=-1)
     print("initial predicition_time:", time.time() - initial_prediction_time)
@@ -584,5 +602,6 @@ def main():
     report_results(initial_snapshot, final_snapshot)
     # save_data_as_csv(final_snapshot)
 
-    raw_data.close()
-    edges_data.close()
+
+if __name__ == "__main__":
+    main()

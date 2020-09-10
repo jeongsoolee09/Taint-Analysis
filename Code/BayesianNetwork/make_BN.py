@@ -115,7 +115,7 @@ def exclude_rich(G):
     """incoming edge가 너무 많은 노드들을 그래프에서 삭제한다."""
     riches = []
     for node_name in G.nodes:
-        if len(G.in_edges(nbunch=node_name)) > 5:
+        if len(G.in_edges(nbunch=node_name)) > 6:
             riches.append(node_name)
     for rich in riches:
         try:
@@ -123,11 +123,11 @@ def exclude_rich(G):
         except:  # 이미 없넹
             pass
 
+
 def main():
     start = time.time()
-
-    print("reading pickled data")
     graph_for_reference = nx.read_gpickle("sagan_site_graph")
+
     print("preprocessing...")
     exclude_rich(graph_for_reference)
     exclude_poor(graph_for_reference)
@@ -135,12 +135,10 @@ def main():
     BN_for_inference = init_BN(graph_for_reference)
     print("BN initialized")
 
-    # dumping = time.time()
-    # json_BN = BN_for_inference.to_json()
-    # with open('BN.txt', 'w+') as BN_out:
-    #     print("dumping to json...")
-    #     json.dump(json_BN, BN_out)
-    #     print("dumping took", time.time()-dumping, "sec")
-
+    nx.write_gpickle(graph_for_reference, "sagan_site_graph")
     print("elapsed time:", time.time()-start)
     return BN_for_inference
+
+
+if __name__ == "__main__":
+    main()

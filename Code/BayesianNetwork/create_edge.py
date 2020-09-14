@@ -105,24 +105,6 @@ def detect_dataflow(json_obj_list):
     return dataflow_edges
 
 
-# DEPR
-def output_dfedges(dataflow_edges):
-    with open("df.txt", "w+") as df:
-        for (parent_tup, child_tup) in dataflow_edges:
-            parent_id = parent_tup[4]
-            child_id = child_tup[4]
-            df.write(parent_id + ", " + child_id + "\n")
-
-
-# DEPR
-def output_calledges(call_edges):
-    with open("callg.csv", "w+") as call:
-        for (caller_tup, callee_tup) in call_edges:
-            caller_id = caller_tup[4]
-            callee_id = callee_tup[4]
-            call.write(caller_id + ", " + callee_id + "\n")
-
-
 def output_alledges(dataflow_dataframe, call_dataframe):
     dataflow_dataframe.to_csv("df.csv", mode='w+')
     call_dataframe.to_csv("callg.csv", mode='w+')

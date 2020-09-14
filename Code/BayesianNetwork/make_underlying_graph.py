@@ -5,12 +5,20 @@ import time
 import glob
 import random
 import os.path
+import json
 
 from create_node import process
 from scrape_oracle_docs import scrape_class_names
 
-# parameterizable
-PROJECT_ROOT = os.path.join('..', 'benchmarks', 'realworld', 'sagan')
+def retrieve_path():
+    """paths.json을 읽고 path를 가져온다."""
+    with open("paths.json", "r+") as pathjson:
+        pathdict = json.load(pathjson)
+    return pathdict["project_root_directory"]
+
+
+PROJECT_ROOT_DIR = retrieve_path()
+
 
 # readers ============================================
 # ====================================================
@@ -29,11 +37,10 @@ skip_func_data = open("skip_func.csv", "r+")
 skip_func_reader = csv.reader(skip_func_data)
 
 
-
 def skip_func_reader():
     """skip_func.txt를 단순히 읽어 낸다."""
     path = os.path.abspath("..")
-    path = os.path.join(path, "benchmarks", "realworld", "sagan", "skip_func.txt")
+    path = os.path.join(PROJECT_ROOT_DIR, "skip_func.txt")
     with open(path, "r+") as skip_func:
         lines = skip_func.readlines()
         lines = list(map(lambda line: line.rstrip(), lines))
@@ -64,7 +71,7 @@ skip_funcs = skip_func_reader()
 
 def create_whitelist_blacklist_files():
     whitelist_files, blacklist_files = [], []
-    for current_dir, directories, files in os.walk(PROJECT_ROOT):
+    for current_dir, directories, files in os.walk(PROJECT_ROOT_DIR):
         if 'tests' in current_dir or 'test' in current_dir:
             blacklist_files += glob.glob(os.path.join(current_dir, "*.java"))
         if 'tests' not in current_dir and 'test' not in current_dir:

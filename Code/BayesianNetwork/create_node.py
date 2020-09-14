@@ -11,11 +11,21 @@ import time
 import re
 import os.path
 import glob
-
+import json
 
 regex = r'\((.*)\)'
 regex = re.compile(regex)
     
+
+def retrieve_path():
+    """paths.json을 읽고 path를 가져온다."""
+    with open("paths.json", "r+") as pathjson:
+        pathdict = json.load(pathjson)
+    return pathdict["project_root_directory"]
+
+
+PROJECT_ROOT_DIR = retrieve_path()
+
 
 def flatten(ll):
     flat_list = []
@@ -75,11 +85,9 @@ def populate_sofallm(methodfile, callgraphfile):
 
 def write_to_csv(setofallmethods):
     write_list = setofallmethods
-    write_list = pd.DataFrame(write_list, columns=["pkg", "rtntype",
-                                                   "name", "intype", "id"],
-                              dtype="str")
-    # embed the index into a separate column
-    write_list = write_list.reset_index()
+    columns = ["class", "rtntype", "name", "intype", "id"]
+    write_list = pd.DataFrame(write_list, columns=columns, dtype="str")
+    write_list = write_list.reset_index() # embed the index into a separate column
     write_list.to_csv("nodes.csv", mode='w+')
 
 
@@ -87,13 +95,9 @@ def main():
     start = time.time()
 
     # let's read the files created by static analysis
-    upper_path = os.path.abspath("..")
-    methodfile = os.path.join(upper_path, 'benchmarks',
-                              'realworld', 'sagan', 'Methods.txt')
-    callgraphfile = os.path.join(upper_path, 'benchmarks',
-                                 'realworld', 'sagan', 'Callgraph.txt')
-    skipfuncfile = os.path.join(upper_path, 'benchmarks',
-                                'realworld', 'sagan', 'skip_func.txt')
+    methodfile = os.path.join(PROJECT_ROOT_DIR, 'Methods.txt')
+    callgraphfile = os.path.join(PROJECT_ROOT_DIR, 'Callgraph.txt')
+    skipfuncfile = os.path.join(PROJECT_ROOT_DIR, 'skip_func.txt')
 
     setofallmethods = populate_sofallm(methodfile, callgraphfile)
     write_to_csv(setofallmethods)

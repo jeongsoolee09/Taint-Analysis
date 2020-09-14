@@ -5,18 +5,29 @@ import glob
 import copy
 import csv
 import random
+import json
 
 from make_underlying_graph import df_reader, call_reader, extract_filename
+from community_detection import bisect
+from find_jar import real_jar_paths
+
 
 # Paths and constants ======================================================
 # ==========================================================================
 
+def retrieve_path():
+    """paths.json을 읽고 path를 가져온다."""
+    with open("paths.json", "r+") as pathjson:
+        pathdict = json.load(pathjson)
+    return pathdict["project_root_directory"]
+
+
+PROJECT_ROOT_PATH = retrieve_path()
+
 upper_path = os.path.abspath("..")
 
-SAGAN_SITE_PATH = os.path.join(upper_path, 'benchmarks',
-                               'realworld', 'sagan', 'sagan-site')
-SAGAN_RENDERER_PATH = os.path.join(upper_path, 'benchmarks',
-                                   'realworld', 'sagan', 'sagan-renderer')
+SAGAN_SITE_PATH = os.path.join(PROJECT_ROOT_PATH, 'sagan-site')
+SAGAN_RENDERER_PATH = os.path.join(PROJECT_ROOT_PATH, 'sagan-renderer')
 
 NODE_DATA = pd.read_csv("nodes.csv", index_col=0, header=0)
 
@@ -25,7 +36,6 @@ edges_reader = csv.reader(edges_data)
 
 # Collecting subgraphs ====================================================
 # =========================================================================
-
 
 def draw_callgraph():
     next(edges_reader)
@@ -92,7 +102,7 @@ def decycle(G):
             cycle_path_edges = nx.find_cycle(G)
         except:
             print("decycling done")
-            return G
+            return
         random_edge = random.choice(cycle_path_edges)
         G.remove_edge(*random_edge)
 
@@ -109,8 +119,8 @@ def main():
     sagan_site_graph = mask_graph(graph_for_reference, sagan_site_methods)
     sagan_renderer_graph = mask_graph(graph_for_reference, sagan_renderer_methods)
 
-    sagan_site_graph = decycle(sagan_site_graph)
-    sagan_renderer_graph = decycle(sagan_renderer_graph)
+    decycle(sagan_site_graph)
+    decycle(sagan_renderer_graph)
 
     nx.write_gpickle(sagan_site_graph, "sagan_site_graph")
     nx.write_gpickle(sagan_renderer_graph, "sagan_renderer_graph")

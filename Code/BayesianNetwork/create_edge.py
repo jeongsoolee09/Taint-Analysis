@@ -9,25 +9,35 @@ from create_node import process
 from itertools import repeat
 
 
+def retrieve_path():
+    """paths.json을 읽고 path를 가져온다."""
+    with open("paths.json", "r+") as pathjson:
+        pathdict = json.load(pathjson)
+    return pathdict["project_root_directory"]
+
+
+PROJECT_ROOT_PATH = retrieve_path()
+
+
 def make_dataframes():
     methodInfo1 = pd.read_csv("nodes.csv", index_col=0)
     methodInfo2 = pd.read_csv("nodes.csv", index_col=0)
     methodInfo1 = methodInfo1.drop('id', axis=1)
     methodInfo2 = methodInfo2.drop('id', axis=1)
-    methodInfo1 = methodInfo1.rename(columns={'index':'index1', 'pkg':'pkg1',
+    methodInfo1 = methodInfo1.rename(columns={'index':'index1', 'class':'class1',
                                               'rtntype':'rtntype1', 'name':'name1',
                                               'intype':'intype1'})
-    methodInfo2 = methodInfo2.rename(columns={'index':'index2', 'pkg':'pkg2',
+    methodInfo2 = methodInfo2.rename(columns={'index':'index2', 'class':'class2',
                                               'rtntype':'rtntype2', 'name':'name2',
                                               'intype':'intype2'})
     methodInfo1['key'] = 1
     methodInfo2['key'] = 1
     carPro = pd.merge(methodInfo1, methodInfo2, how='outer')
     carPro = carPro.drop('key', axis=1)
-    methodInfo1 = methodInfo1.rename(columns={'index1':'index', 'pkg1':'pkg',
+    methodInfo1 = methodInfo1.rename(columns={'index1':'index', 'class1':'class',
                                               'rtntype1':'rtntype', 'name1':'name',
                                               'intype1':'intype'})
-    methodInfo2 = methodInfo2.rename(columns={'index2':'index', 'pkg2':'pkg',
+    methodInfo2 = methodInfo2.rename(columns={'index2':'index', 'class2':'class',
                                               'rtntype2':'rtntype', 'name2':'name',
                                               'intype2':'intype'})
     return methodInfo1, methodInfo2, carPro
@@ -44,16 +54,14 @@ def filtermethod(string):
 
 def load_chain_json():
     """Chain.json을 통째로 파싱해 파이썬 자료구조에 담는다. 결과값은 리스트이다."""
-    path = os.path.abspath("..")
-    path = os.path.join(path, "benchmarks", "realworld", "sagan", "Chain.json")
+    path = os.path.join(PROJECT_ROOT_PATH, "Chain.json")
     with open(path, "r+") as chainjson:
         wrapped_chain_list = json.load(chainjson)
     return wrapped_chain_list
 
 
 def make_calledges():
-    path = os.path.abspath("..")
-    path = os.path.join(path, "benchmarks", "realworld", "sagan", "Callgraph.txt")
+    path = os.path.join(PROJECT_ROOT_PATH, "Callgraph.txt")
     with open(path, "r+") as callgraphfile:
         lines = callgraphfile.readlines()
         lines = list(filter(filtermethod, lines))
@@ -64,9 +72,9 @@ def make_calledges():
     return call_edges
 
 
-def scoring_function(pkg1, rtntype1, name1, intype1, pkg2, rtntype2, name2, intype2):
+def scoring_function(class1, rtntype1, name1, intype1, class2, rtntype2, name2, intype2):
     score = 0
-    if pkg1 == pkg2:  # The two methods belong to the same package
+    if class1 == class2:  # The two methods belong to the same package
         score += 10
     if rtntype1 == rtntype2:  # The two methods have a same return type
         score += 10
@@ -122,45 +130,45 @@ def output_alledges(dataflow_dataframe, call_dataframe):
 
 def make_df_dataframe(dataflow_edges):
     """edges.csv에서의 data flow row를 만든다: tuple list를 dataframe으로 변환."""
-    pkg1, rtntype1, name1, intype1, pkg2, rtntype2, name2, intype2 = [], [], [], [], [], [], [], []
+    class1, rtntype1, name1, intype1, class2, rtntype2, name2, intype2 = [], [], [], [], [], [], [], []
     for parent, child in dataflow_edges:
 
-       pkg1.append(parent[0])
+       class1.append(parent[0])
        rtntype1.append(parent[1])
        name1.append(parent[2])
        intype1.append(parent[3])
 
-       pkg2.append(child[0])
+       class2.append(child[0])
        rtntype2.append(child[1])
        name2.append(child[2])
        intype2.append(child[3])
 
-    return pd.DataFrame({'pkg1': pkg1, 'rtntype1': rtntype1, 'name1': name1, 'intype1': intype1,
-                         'pkg2': pkg2, 'rtntype2': rtntype2, 'name2': name2, 'intype2': intype2})
+    return pd.DataFrame({'class1': class1, 'rtntype1': rtntype1, 'name1': name1, 'intype1': intype1,
+                         'class2': class2, 'rtntype2': rtntype2, 'name2': name2, 'intype2': intype2})
        
 
 def make_call_dataframe(call_edges):
     """edges.csv에서의 call row를 만든다: tuple list를 dataframe으로 변환."""
-    pkg1, rtntype1, name1, intype1, pkg2, rtntype2, name2, intype2 = [], [], [], [], [], [], [], []
+    class1, rtntype1, name1, intype1, class2, rtntype2, name2, intype2 = [], [], [], [], [], [], [], []
     for parent, child in call_edges:
-       pkg1.append(parent[0])
+       class1.append(parent[0])
        rtntype1.append(parent[1])
        name1.append(parent[2])
        intype1.append(parent[3])
 
-       pkg2.append(child[0])
+       class2.append(child[0])
        rtntype2.append(child[1])
        name2.append(child[2])
        intype2.append(child[3])
 
-    return pd.DataFrame({'pkg1': pkg1, 'rtntype1': rtntype1, 'name1': name1, 'intype1': intype1,
-                         'pkg2': pkg2, 'rtntype2': rtntype2, 'name2': name2, 'intype2': intype2})
+    return pd.DataFrame({'class1': class1, 'rtntype1': rtntype1, 'name1': name1, 'intype1': intype1,
+                         'class2': class2, 'rtntype2': rtntype2, 'name2': name2, 'intype2': intype2})
 
 
 def make_sim_dataframe(carPro):
     """edges.csv에서의 similarity row를 만든다: cartesian product 중 조건에 일치하는 것만 dataframe으로 변환."""
-    mapfunc = lambda row: scoring_function(row['pkg1'], row['rtntype1'], row['name1'], row['intype1'],
-                                           row['pkg2'], row['rtntype2'], row['name2'], row['intype2'])
+    mapfunc = lambda row: scoring_function(row['class1'], row['rtntype1'], row['name1'], row['intype1'],
+                                           row['class2'], row['rtntype2'], row['name2'], row['intype2'])
     bool_df = carPro.apply(mapfunc, axis=1)
     carPro['leave'] = bool_df
     carPro = carPro[carPro.leave != False]
@@ -189,11 +197,11 @@ def multiindex_edges(edges):
     return edges
 
 
-test = pd.DataFrame({('edge1', 'pkg'):[1,2,3,4,5],
+test = pd.DataFrame({('edge1', 'class'):[1,2,3,4,5],
                      ('edge1', 'rtntype'):[1,4,3,2,5],
                      ('edge1', 'name'):[5,4,3,2,1],
                      ('edge1', 'intype'):[5,4,3,2,1],
-                     ('edge2', 'pkg'):[5,2,3,4,1],
+                     ('edge2', 'class'):[5,2,3,4,1],
                      ('edge2', 'rtntype'):[5,4,3,2,1],
                      ('edge2', 'name'):[1,4,3,2,5],
                      ('edge2', 'intype'):[1,4,3,2,5]})
@@ -214,7 +222,7 @@ def no_symmetric(dataframe):
 
 
 def no_reflexive(dataframe):
-    cond1 = dataframe[('edge1', 'pkg')] != dataframe[('edge2', 'pkg')]
+    cond1 = dataframe[('edge1', 'class')] != dataframe[('edge2', 'class')]
     cond2 = dataframe[('edge1', 'rtntype')] != dataframe[('edge2', 'rtntype')]
     cond3 = dataframe[('edge1', 'name')] != dataframe[('edge2', 'name')]
     cond4 = dataframe[('edge1', 'intype')] != dataframe[('edge2', 'intype')]
@@ -222,7 +230,7 @@ def no_reflexive(dataframe):
 
 
 def test_reflexive(dataframe):
-    reflex1 = dataframe[('edge1', 'pkg')] == dataframe[('edge2', 'pkg')]
+    reflex1 = dataframe[('edge1', 'class')] == dataframe[('edge2', 'class')]
     reflex2 = dataframe[('edge1', 'rtntype')] == dataframe[('edge2', 'rtntype')]
     reflex3 = dataframe[('edge1', 'name')] == dataframe[('edge2', 'name')]
     reflex4 = dataframe[('edge1', 'intype')] == dataframe[('edge2', 'intype')]
@@ -231,6 +239,7 @@ def test_reflexive(dataframe):
 
 def main():
     start = time.time()
+
     methodInfo1, methodInfo2, carPro = make_dataframes() # the main data we are manipulating
     json_obj_list = load_chain_json()
     dataflow_edges = detect_dataflow(json_obj_list)

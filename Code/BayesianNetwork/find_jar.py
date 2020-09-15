@@ -17,9 +17,9 @@ def retrieve_path():
 PROJECT_ROOT = retrieve_path()
 
 
-def find_jar_paths():
+def find_jar_paths(project_root):
     jar_files = []
-    for current_dir, directories, files in os.walk(PROJECT_ROOT):
+    for current_dir, directories, files in os.walk(project_root):
         if "test" in current_dir:
             continue
         jar_files += glob.glob(os.path.join(current_dir, "*.jar"))
@@ -52,9 +52,9 @@ def has_java_file(directory):
     return java_files != []
     
 
-def real_jar_paths():
+def real_jar_paths(project_root):
     """.jar로 컴파일되는 path의 목록을 찾아 낸다."""
-    all_jar_full_paths = find_jar_paths()
+    all_jar_full_paths = find_jar_paths(project_root)
     all_jar_paths = list(map(take_jar_dir, all_jar_full_paths))
     return list(filter(has_java_file, all_jar_paths))
 

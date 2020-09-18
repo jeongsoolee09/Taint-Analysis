@@ -8,11 +8,11 @@ import pandas as pd
 import csv
 import networkx as nx
 import itertools as it
-import os
 import random
 import make_BN
+import solutions
+import json
 
-from solutions import *
 from scrape_oracle_docs import *
 from toolz import valmap
 from matplotlib.ticker import MaxNLocator
@@ -24,21 +24,18 @@ from make_CPT import *
 # Constants ========================================
 # ==================================================
 
-graph_for_reference = nx.read_gpickle("sagan_site_graph")
-BN_for_inference = make_BN.main()
+graph_for_reference = nx.read_gpickle("sagan-renderer_graph_0")
+BN_for_inference = make_BN.main("sagan-renderer_graph_0")
 DF_EDGES = list(df_reader)
 CALL_EDGES = list(call_reader)
-SOLUTION = correct_solution_relational
+with open("solution_sagan.json", "r+") as saganjson:
+    SOLUTION = json.load(saganjson)
 
 # Exceptions ========================================
 # ===================================================
 
 class ThisIsImpossible(Exception):
     pass
-
-class TooManyEdges(Exception):
-    pass
-
 
 # Random loop ========================================
 # ====================================================
@@ -76,9 +73,11 @@ def random_loop(BN_for_inference, graph_for_reference, interaction_number,
 
     # the new snapshot after the observation and its inference time
     inference_start = time.time()
-    new_snapshot = BN_for_inference.predict_proba(current_evidence)
+    new_snapshot = BN_for_inference.predict_proba(current_evidence, n_jobs=-1)
     current_inference_time = time.time()-inference_start
     inference_time_list.append(current_inference_time)
+
+    print(interaction_number)
 
     # the new precision after the observation
     current_precision = calculate_precision(new_snapshot)
@@ -168,9 +167,11 @@ def tactical_loop(graph_for_reference, interaction_number,
 
     # the new snapshot after the observation and its inference time
     inference_start = time.time()
-    new_snapshot = BN_for_inference.predict_proba(current_evidence)
+    new_snapshot = BN_for_inference.predict_proba(current_evidence, n_jobs=-1)
     current_inference_time = time.time()-inference_start
     inference_time_list.append(current_inference_time)
+
+    print(interaction_number)
 
     # the new precision after the observation
     current_precision = calculate_precision(new_snapshot)
@@ -295,7 +296,7 @@ def is_confident(parameters):
 
 def time_to_terminate(BN, current_evidence):
     # the distribution across random variables' values
-    names_and_params = make_names_and_params(BN_for_inference.predict_proba(current_evidence))
+    names_and_params = make_names_and_params(BN_for_inference.predict_proba(current_evidence, n_jobs=-1))
     params = list(map(lambda tup: tup[1], names_and_params))
     # list of lists of the probabilities across random variables' values, extracted from dist_dicts
     dist_probs = list(map(lambda dist: list(dist.values()), params))
@@ -330,10 +331,12 @@ def find_max_val(stats):
 # visualizing functions and their dependencies ============
 # =========================================================
 
-def draw_n_save(precision_list, stability_list, **kwargs):
+def draw_n_save(precision_list, stability_list, precision_inferred_list, **kwargs):
     """available kwargs: random, tactical"""
-    draw_precision_graph(*precision_list[len(precision_list)-1], kwargs[loop_type])
-    draw_stability_list(*stability_list[len(stability_list)-1], kwargs[loop_type])
+    interaction_number = len(precision_list)
+    draw_precision_graph(range(interaction_number), precision_list, kwargs["loop_type"])
+    draw_stability_graph(range(interaction_number), stability_list, kwargs["loop_type"])
+    draw_precision_inferred_graph(range(interaction_number), precision_inferred_list, kwargs["loop_type"])
 
 
 def draw_precision_graph(x, y, loop_type):
@@ -442,8 +445,10 @@ def calculate_precision(current_snapshot):
     names_and_params = make_names_and_params(current_snapshot)
     names_and_labels = dict(map(lambda tup: (tup[0], find_max_val(tup[1])), names_and_params))
     correct_nodes = []
-    for node_name in graph_for_reference.nodes:
-        if names_and_labels[node_name] == correct_solution_relational[node_name]:
+    BN_state_names = list(map(lambda state: state.name, BN_for_inference.states))
+    for node_name in BN_state_names:
+        assert(names_and_labels[node_name])
+        if names_and_labels[node_name] == SOLUTION[node_name]:
             correct_nodes.append(node_name)
     return len(correct_nodes)
 
@@ -468,8 +473,9 @@ def calculate_precision_inferred(current_snapshot, number_of_interaction):
     names_and_params = make_names_and_params(current_snapshot)
     names_and_labels = dict(map(lambda tup: (tup[0], find_max_val(tup[1])), names_and_params))
     correct_nodes = []
-    for node_name in graph_for_reference.nodes:
-        if names_and_labels[node_name] == correct_solution_relational[node_name]:
+    BN_state_names = list(map(lambda state: state.name, BN_for_inference.states))
+    for node_name in BN_state_names:
+        if names_and_labels[node_name] == SOLUTION[node_name]:
             correct_nodes.append(node_name)
     return len(correct_nodes) - number_of_interaction
 
@@ -489,19 +495,24 @@ def main():
     initial_precision_inferred_list = [np.nan for _ in range(len(BN_for_inference.states))]
 
     # random loop
-    final_snapshot, precision_list, stability_list =\
+    final_snapshot, precision_list, stability_list, precision_inferred_list =\
         random_loop(BN_for_inference, graph_for_reference, 0,
                     list(), dict(), initial_snapshot,
-                    list(), list())
-    draw_n_save(precision_list, stability_list, loop_type='random')
+                    initial_precision_list, initial_stability_list, initial_precision_inferred_list, list())
+    draw_n_save(precision_list, stability_list, initial_precision_inferred_list, loop_type='random')
+
+    # argument reinitialization
+    initial_precision_list = [np.nan for _ in range(len(BN_for_inference.states))]
+    initial_stability_list = [np.nan for _ in range(len(BN_for_inference.states))]
+    initial_precision_inferred_list = [np.nan for _ in range(len(BN_for_inference.states))]
 
     # tactical loop
-    final_snapshot, precision_list, stability_list =\
+    final_snapshot, precision_list, stability_list, precision_inferred_list=\
         tactical_loop(graph_for_reference, 0,
                       list(), dict(), list(),
                       initial_snapshot, initial_precision_list, initial_stability_list,
-                      initial_precision_inferred_list)
-    draw_n_save(precision_list, stability_list, loop_type='tactical')
+                      initial_precision_inferred_list, list())
+    draw_n_save(precision_list, stability_list, precision_inferred_list, loop_type='tactical')
 
 
 if __name__ == "__main__":

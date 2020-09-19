@@ -24,11 +24,12 @@ from make_CPT import *
 # Constants ========================================
 # ==================================================
 
-graph_for_reference = nx.read_gpickle("sagan-renderer_graph_0")
-BN_for_inference = make_BN.main("sagan-renderer_graph_0")
+graph_for_reference = nx.read_gpickle("graph_for_reference")
+BN_for_inference = make_BN.main("graph_for_reference")
 DF_EDGES = list(df_reader)
 CALL_EDGES = list(call_reader)
-with open("solution_sagan.json", "r+") as saganjson:
+STATE_NAMES = list(map(lambda node: node.name, BN_for_inference.states))
+with open("solution_relational.json", "r+") as saganjson:
     SOLUTION = json.load(saganjson)
 
 # Exceptions ========================================
@@ -46,8 +47,7 @@ def random_loop(BN_for_inference, graph_for_reference, interaction_number,
     """the main interaction functionality, asking randomly"""
 
     random_index = random.randint(0, len(BN_for_inference.states)-1)
-    state_names = list(map(lambda node: node.name, BN_for_inference.states))
-    query = state_names[random_index]
+    query = STATE_NAMES[random_index]
     while query in current_asked:
         random_index = random.randint(0, len(BN_for_inference.states)-1)
         query = BN_for_inference.states[random_index].name
@@ -57,6 +57,8 @@ def random_loop(BN_for_inference, graph_for_reference, interaction_number,
     # exit the function based on confidence.
     if its_time_to_terminate:
         return prev_snapshot, precision_list, stability_list, precision_inferred_list
+
+    print("asking", query, "...")
 
     oracle_response = SOLUTION[query]
 
@@ -71,17 +73,18 @@ def random_loop(BN_for_inference, graph_for_reference, interaction_number,
 
     current_asked.append(query)
 
+    print(current_evidence)
+
     # the new snapshot after the observation and its inference time
     inference_start = time.time()
-    new_snapshot = BN_for_inference.predict_proba(current_evidence, n_jobs=-1)
+    new_snapshot = BN_for_inference.predict_proba(current_evidence)
     current_inference_time = time.time()-inference_start
     inference_time_list.append(current_inference_time)
-
-    print(interaction_number)
 
     # the new precision after the observation
     current_precision = calculate_precision(new_snapshot)
     precision_list[interaction_number] = current_precision
+    print(interaction_number, ":", current_precision)
 
     # the new stability after the observation
     current_stability = calculate_stability(prev_snapshot, new_snapshot)
@@ -119,14 +122,14 @@ def tactical_loop(graph_for_reference, interaction_number,
 
     # some variables to make our code resemble English
     there_are_nodes_left = find_max_d_con(graph_for_reference, current_asked,
-                                          updated_nodes, graph_for_reference.nodes, nth=0)
+                                          updated_nodes, STATE_NAMES, nth=0)
     there_are_no_nodes_left = not there_are_nodes_left
     its_time_to_terminate = time_to_terminate(BN_for_inference, current_evidence)
     not_yet_time_to_terminate = not its_time_to_terminate
 
     # pick a method to ask by finding one with the maximum number of D-connected nodes
     maybe_query_tuple = find_max_d_con(graph_for_reference, current_asked, updated_nodes,
-                                       graph_for_reference.nodes, nth=0)
+                                       STATE_NAMES, nth=0)
     if maybe_query_tuple == None:
         query = None
         dependent_nodes = []
@@ -136,12 +139,12 @@ def tactical_loop(graph_for_reference, interaction_number,
 
     # exit the function based on various termination measures.
     if there_are_no_nodes_left and not_yet_time_to_terminate:
-        if set(graph_for_reference.nodes) == set(current_asked):
+        if set(STATE_NAMES) == set(current_asked):
             print("\nWarning: some distributions are not fully determined.\n")
             return prev_snapshot, precision_list, stability_list, precision_inferred_list
         else:
             query, dependent_nodes = find_max_d_con(graph_for_reference, [], [],
-                                                    remove_sublist(graph_for_reference.nodes,
+                                                    remove_sublist(STATE_NAMES,
                                                                    current_asked), nth=0)
     elif there_are_no_nodes_left and its_time_to_terminate:
         return prev_snapshot, precision_list, stability_list, precision_inferred_list
@@ -152,7 +155,7 @@ def tactical_loop(graph_for_reference, interaction_number,
 
     # ask the chosen method and fetch the answer from the solutions
     oracle_response = SOLUTION[query]
-    updated_nodes += list(d_connected(graph_for_reference, query, current_asked, graph_for_reference.nodes))
+    updated_nodes += list(d_connected(graph_for_reference, query, current_asked, STATE_NAMES))
 
     if oracle_response == 'src':
         current_evidence[query] = 1
@@ -167,14 +170,13 @@ def tactical_loop(graph_for_reference, interaction_number,
 
     # the new snapshot after the observation and its inference time
     inference_start = time.time()
-    new_snapshot = BN_for_inference.predict_proba(current_evidence, n_jobs=-1)
+    new_snapshot = BN_for_inference.predict_proba(current_evidence)
     current_inference_time = time.time()-inference_start
     inference_time_list.append(current_inference_time)
 
-    print(interaction_number)
-
     # the new precision after the observation
     current_precision = calculate_precision(new_snapshot)
+    print(interaction_number, ":", current_precision)
     precision_list[interaction_number] = current_precision
 
     # the new stability after the observation
@@ -195,10 +197,10 @@ def tactical_loop(graph_for_reference, interaction_number,
 def d_connected(graph_for_reference, node, current_asked, pool):
     """현재까지 물어본 노드들이 주어졌을 때, node와 조건부 독립인 노드들의 set을 찾아낸다. Complexity: O(n)."""
     out = set()
-    for other_node in graph_for_reference.nodes:
+    for other_node in STATE_NAMES:
         if nx.d_separated(graph_for_reference, {node}, {other_node}, set(current_asked)):
             out.add(other_node)
-    return set(graph_for_reference.nodes) - out
+    return set(STATE_NAMES) - out
 
 
 def remove_sublist(lst, sublst):
@@ -220,7 +222,7 @@ def non_nodes_to_skip(snapshot):
          1. non으로 고정되었고,
          2. 맞고 있는/쏘고 있는 화살표가 non/sim밖에 없다."""
     can_be_excluded = []
-    for node_name in graph_for_reference.nodes:
+    for node_name in STATE_NAMES:
         parents = graph_for_reference.predecessors(node_name)
         children = graph_for_reference.successors(node_name)
         from_parents_edges = []
@@ -296,7 +298,7 @@ def is_confident(parameters):
 
 def time_to_terminate(BN, current_evidence):
     # the distribution across random variables' values
-    names_and_params = make_names_and_params(BN_for_inference.predict_proba(current_evidence, n_jobs=-1))
+    names_and_params = make_names_and_params(BN_for_inference.predict_proba(current_evidence))
     params = list(map(lambda tup: tup[1], names_and_params))
     # list of lists of the probabilities across random variables' values, extracted from dist_dicts
     dist_probs = list(map(lambda dist: list(dist.values()), params))
@@ -346,7 +348,7 @@ def draw_precision_graph(x, y, loop_type):
     ax.xaxis.set_major_locator(MaxNLocator(integer=True))
     ax.yaxis.set_major_locator(MaxNLocator(integer=True))
     precision_figure.clf()
-    num_of_states = len(graph_for_reference.nodes)
+    num_of_states = len(STATE_NAMES)
     plt.xlim(1, num_of_states)
     plt.ylim(0, num_of_states)
     plt.xlabel('# of interactions')
@@ -363,7 +365,7 @@ def draw_stability_graph(x, y, loop_type):
     ax.xaxis.set_major_locator(MaxNLocator(integer=True))
     ax.yaxis.set_major_locator(MaxNLocator(integer=True))
     stability_figure.clf()
-    num_of_states = len(graph_for_reference.nodes)
+    num_of_states = len(STATE_NAMES)
     plt.xlim(1, num_of_states)
     plt.ylim(0, num_of_states)
     plt.xlabel("# of interactions")
@@ -380,7 +382,7 @@ def draw_precision_inferred_graph(x, y, loop_type):
     ax.xaxis.set_major_locator(MaxNLocator(integer=True))
     ax.yaxis.set_major_locator(MaxNLocator(integer=True))
     stability_figure.clf()
-    num_of_states = len(graph_for_reference.nodes)
+    num_of_states = len(STATE_NAMES)
     plt.xlim(1, num_of_states)
     plt.ylim(0, num_of_states)
     plt.xlabel("# of interactions")
@@ -393,7 +395,7 @@ def draw_precision_inferred_graph(x, y, loop_type):
 def make_names_and_params(snapshot):
     """snapshot을 읽어서, 랜덤변수 별 확률값의 dict인 parameters만을 빼낸 다음 node의 이름과 짝지어서 list에 담아 낸다."""
     dists = []
-    node_name_list = list(graph_for_reference.nodes)
+    node_name_list = list(STATE_NAMES)
     for dist in snapshot:
         if type(dist) == int:  # oracle에 의해 고정된 경우!
             dists.append(normalize_dist(dist))
@@ -428,7 +430,7 @@ def report_meta_statistics(graph_for_reference, BN_for_inference):
     """meta-functionality for debugging"""
     print("# of nodes: ", len(list(BN_for_inference.states)))
     print("# of edges: ", len(list(BN_for_inference.edges)))
-    nodes = list(graph_for_reference.nodes)
+    nodes = list(STATE_NAMES)
     max_num_of_in_edges = max(list(map(lambda node: graph_for_reference.in_edges(nbunch=node), nodes)))
     max_num_of_out_edges = max(list(map(lambda node: graph_for_reference.out_edges(nbunch=node), nodes)))
     print("maximum # of in-edges:", max_num_of_in_edges)
@@ -444,10 +446,9 @@ def calculate_precision(current_snapshot):
     # current_snapshot의 타입은? np.array of Distribution.
     names_and_params = make_names_and_params(current_snapshot)
     names_and_labels = dict(map(lambda tup: (tup[0], find_max_val(tup[1])), names_and_params))
+    # print(names_and_labels)
     correct_nodes = []
-    BN_state_names = list(map(lambda state: state.name, BN_for_inference.states))
-    for node_name in BN_state_names:
-        assert(names_and_labels[node_name])
+    for node_name in STATE_NAMES:
         if names_and_labels[node_name] == SOLUTION[node_name]:
             correct_nodes.append(node_name)
     return len(correct_nodes)
@@ -473,8 +474,7 @@ def calculate_precision_inferred(current_snapshot, number_of_interaction):
     names_and_params = make_names_and_params(current_snapshot)
     names_and_labels = dict(map(lambda tup: (tup[0], find_max_val(tup[1])), names_and_params))
     correct_nodes = []
-    BN_state_names = list(map(lambda state: state.name, BN_for_inference.states))
-    for node_name in BN_state_names:
+    for node_name in STATE_NAMES:
         if names_and_labels[node_name] == SOLUTION[node_name]:
             correct_nodes.append(node_name)
     return len(correct_nodes) - number_of_interaction
@@ -488,7 +488,7 @@ def main():
 
     # argument initialization
     initial_prediction_time = time.time()
-    initial_snapshot = BN_for_inference.predict_proba({}, n_jobs=-1)
+    initial_snapshot = BN_for_inference.predict_proba({})
     number_of_states = len(BN_for_inference.states)
     initial_precision_list = [np.nan for _ in range(len(BN_for_inference.states))]
     initial_stability_list = [np.nan for _ in range(len(BN_for_inference.states))]

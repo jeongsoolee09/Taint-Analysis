@@ -124,9 +124,9 @@ def exclude_rich(G):
             pass
 
 
-def main():
+def main(graph_name):
     start = time.time()
-    graph_for_reference = nx.read_gpickle("sagan_site_graph")
+    graph_for_reference = nx.read_gpickle(graph_name)
 
     print("preprocessing...")
     exclude_rich(graph_for_reference)
@@ -135,7 +135,7 @@ def main():
     BN_for_inference = init_BN(graph_for_reference)
     print("BN initialized")
 
-    nx.write_gpickle(graph_for_reference, "sagan_site_graph")
+    nx.write_gpickle(graph_for_reference, graph_name)
     print("elapsed time:", time.time()-start)
     return BN_for_inference
 

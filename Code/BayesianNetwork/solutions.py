@@ -33,7 +33,6 @@ correct_solution_relational = dict([
     ("List JdbcTemplate.query(String,java.lang.Object[],RowMapper)", "src")
 ])
 
-
 correct_solution_sagan = dict([
     ("Set GuideHeader.getProjects()", "non"),
     ("List AbstractGuide.getImages()", "non"),
@@ -132,7 +131,7 @@ correct_solution_sagan = dict([
     ("boolean File.isDirectory()", "sin"),
     ("Page PostRepository.findByDraftFalseAndAuthorAndPublishAtBeforeOrderByPublishAtDesc(MemberProfile,Date,Pageable)", "src"),
     ("void PwsGuideContentContributor.contribute(GuideContentResource,File)", "non"),
-    ("void GettingStartedGuide.setTypeLabel(String)", "nonsan"),
+    ("void GettingStartedGuide.setTypeLabel(String)", "san"),
     ("String StringBuffer.toString()", "non"),
     ("String Matcher.group(int)", "non"),
     ("void Map.forEach(BiConsumer)", "non"),
@@ -146,8 +145,8 @@ correct_solution_sagan = dict([
     ("boolean List.contains(Object)", "non"),
     ("Charset Charset.forName(String)", "non"),
     ("Long Post.getId()", "non"),
-    ("String Psrcroject.getParentId()", "non"),
-    ("String Tnonnot sureeamAdminController.saveProfile(Principal,MemberProfile)", "src"),
+    ("String Project.getParentId()", "non"),
+    ("String TeamAdminController.saveProfile(Principal,MemberProfile)", "src"),
     ("Object LinkedHashMap.get(Object)", "non"),
     ("boolean StringUtils.isEmpty(Object)", "non"),
     ("void SecurityConfig.configureHeaders(HeadersConfigurer)", "non"),

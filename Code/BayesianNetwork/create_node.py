@@ -1,11 +1,3 @@
-# Spec Inference with real Bayesian Networks.
-# Graph Construction Criteria:
-#     1. If a pair of methods belong to the same package: +10 to the pair
-#     2. If a pair of methods start with a same prefix: +10 to the pair
-#     3. If a pair of methods have a similar return type: +10 to the pair
-#     4. If a pair of methods have a similar input type: +10 to the pair
-# If the score is more than 20, connect the pair with an edge.
-
 import pandas as pd
 import time
 import re
@@ -78,7 +70,7 @@ def populate_sofallm(methodfile, callgraphfile):
     callmethods = set(flatten(callmethods))
     setofallmethods = list(methods.union(callmethods))
     setofallmethods = list(filter(lambda meth: ' ' in meth, setofallmethods))
-    # process에서 모든 heavy lifting 담당
+    
     setofallmethods = list(map(process, setofallmethods))
     return setofallmethods
 

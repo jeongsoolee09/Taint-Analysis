@@ -125,14 +125,12 @@ def tactical_loop(graph_for_reference, interaction_number,
     not_yet_time_to_terminate = not its_time_to_terminate
 
     # pick a method to ask by finding one with the maximum number of D-connected nodes
-
     if there_are_no_nodes_left:
         query = None
         dependent_nodes = []
     else:
         query = there_are_nodes_left[0]
         dependent_nodes = there_are_nodes_left[1]
-    
 
     # exit the function based on various termination measures.
     if there_are_no_nodes_left and not_yet_time_to_terminate:

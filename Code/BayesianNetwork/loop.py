@@ -24,11 +24,9 @@ from make_CPT import *
 # Constants ========================================
 # ==================================================
 
-graph_for_reference = nx.read_gpickle("sagan_site_graph")
-BN_for_inference = make_BN.main()
+graph_for_reference = nx.read_gpickle("sagan-site_graph_3")
+BN_for_inference = make_BN.main("sagan-site_graph_3")
 
-df_edges = list(df_reader)
-call_edges = list(call_reader)
 DF_EDGES = list(df_reader)
 CALL_EDGES = list(call_reader)
 STATE_NAMES = list(map(lambda node: node.name, BN_for_inference.states))
@@ -234,8 +232,8 @@ def non_nodes_to_skip(snapshot):
         for child in children:
             to_children_edges.append((node_name, child))
         # 이제 엣지의 레이블을 포착해야 한다.
-        if forall(lambda edge: edge not in df_edges, from_parents_edges) and\
-           forall(lambda edge: edge not in df_edges, to_children_edges):
+        if forall(lambda edge: edge not in DF_EDGES, from_parents_edges) and\
+           forall(lambda edge: edge not in DF_EDGES, to_children_edges):
             can_be_excluded.append(node_name)
     return set(can_be_excluded)
 
@@ -444,9 +442,9 @@ def create_edge_colormap():
     out = list(graph_for_reference.edges)[:]
     for edge in out:
         index = out.index(edge)
-        if edge in df_edges:      # df
+        if edge in DF_EDGES:      # df
             out[index] = "red"
-        elif edge in call_edges:  # call
+        elif edge in CALL_EDGES:  # call
             out[index] = "green"
         else:                     # sim
             out[index] = "blue"

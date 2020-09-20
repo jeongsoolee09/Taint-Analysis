@@ -1,4 +1,4 @@
-import modin.pandas as pd
+import pandas as pd
 import time
 import os.path
 import json
@@ -196,7 +196,7 @@ def no_symmetric(dataframe):
     dataframe2['temp'] = dataframe2.index * 2 + 1
     out = pd.concat([dataframe, dataframe2])
     out = out.sort_values(by='temp')
-    out = out.set_index(('temp', ''))
+    out = out.set_index('temp')
     out = out.drop_duplicates()
     out = out[out.index % 2 == 0]
     out = out.reset_index().drop(columns=[('temp', '')])
@@ -226,13 +226,18 @@ def main():
     json_obj_list = load_chain_json()
     dataflow_edges = detect_dataflow(json_obj_list)
     call_edges = make_calledges()
+
     dataflow_dataframe = make_df_dataframe(dataflow_edges)
     call_dataframe = make_call_dataframe(call_edges)
     sim_dataframe = make_sim_dataframe(carPro)
+
     edges_dataframe = merge_dataframes(dataflow_dataframe, call_dataframe, sim_dataframe)
     edges_dataframe = multiindex_edges(edges_dataframe)
     edges_dataframe = edges_dataframe.reset_index().drop(columns=[('index', '')])
-    edges_dataframe = no_reflexive(no_symmetric(edges_dataframe))
+
+    edges_dataframe = no_symmetric(edges_dataframe)
+    edges_dataframe = no_reflexive(edges_dataframe)
+
     edges_dataframe.to_csv("edges.csv", mode='w+')
  
     output_alledges(dataflow_dataframe, call_dataframe)

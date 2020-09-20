@@ -3,8 +3,8 @@ import time
 
 start = time.time()
 
-methodInfo1 = pd.read_csv("raw_data.csv", index_col=0)
-methodInfo2 = pd.read_csv("raw_data.csv", index_col=0)
+methodInfo1 = pd.read_csv("nodes.csv", index_col=0)
+methodInfo2 = pd.read_csv("nodes.csv", index_col=0)
 methodInfo1 = methodInfo1.drop('id', axis=1)
 methodInfo2 = methodInfo2.drop('id', axis=1)
 
@@ -59,7 +59,7 @@ def no_symmetric(dataframe):
 
 def no_reflexive(dataframe):
     cond1 = dataframe[('edge1', 'index')] != dataframe[('edge2', 'index')]
-    cond2 = dataframe[('edge1', 'pkg')] != dataframe[('edge2', 'pkg')]
+    cond2 = dataframe[('edge1', 'class')] != dataframe[('edge2', 'class')]
     cond3 = dataframe[('edge1', 'rtntype')] != dataframe[('edge2', 'rtntype')]
     cond4 = dataframe[('edge1', 'name')] != dataframe[('edge2', 'name')]
     cond5 = dataframe[('edge1', 'intype')] != dataframe[('edge2', 'intype')]
@@ -69,7 +69,7 @@ def no_reflexive(dataframe):
 
 def test_reflexive(dataframe):
     reflex1 = dataframe[('edge1', 'index')] == dataframe[('edge2', 'index')]
-    reflex2 = dataframe[('edge1', 'pkg')] == dataframe[('edge2', 'pkg')]
+    reflex2 = dataframe[('edge1', 'class')] == dataframe[('edge2', 'class')]
     reflex3 = dataframe[('edge1', 'rtntype')] == dataframe[('edge2',
                                                             'rtntype')]
     reflex4 = dataframe[('edge1', 'name')] == dataframe[('edge2', 'name')]

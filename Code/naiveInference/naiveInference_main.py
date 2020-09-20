@@ -21,14 +21,14 @@ regex = re.compile(regex)
 def process(info):
     info_ = info
     info = info.strip("<>")
-    pkg = info.split(":")[0]
+    class_ = info.split(":")[0]
     rtntype = info.split(" ")[1]
     name = info.split(" ")[2]
     intype = regex.findall(name)[0]
     if intype == '':
         intype = 'void'
     name = name.split("(")[0]
-    return (pkg, rtntype, name, intype, info_)
+    return (class_, rtntype, name, intype, info_)
 
 
 # Open and parse
@@ -46,10 +46,10 @@ writeList = []
 for i in random.sample(range(0, len(factList)), 75):
     writeList.append(factList[i])
 
-writeList = pd.DataFrame(writeList, columns=["pkg", "rtntype", "name",
+writeList = pd.DataFrame(writeList, columns=["class", "rtntype", "name",
                                              "intype", "id"], dtype="str")
 writeList = writeList.reset_index()  # embed the index into a separate column
-writeList.to_csv("raw_data.csv", mode='w')
+writeList.to_csv("nodes.csv", mode='w')
 
 idList = list(map(lambda x: x.split(">")[0]+'>', factList_original))
 idList = pd.DataFrame(idList, columns=["id"])

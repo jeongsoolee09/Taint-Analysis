@@ -4,7 +4,6 @@ import numpy as np
 import matplotlib.pyplot as plt
 import matplotlib.patches as ptch
 import matplotlib.axes as axes
-import pandas as pd
 import csv
 import networkx as nx
 import itertools as it
@@ -20,16 +19,18 @@ from create_node import process
 from make_underlying_graph import find_edge_labels, df_reader, call_reader
 from make_CPT import *
 
+import modin.pandas as pd
+
 
 # Constants ========================================
 # ==================================================
 
-graph_for_reference = nx.read_gpickle("graph_for_reference")
-BN_for_inference = make_BN.main("graph_for_reference")
+graph_for_reference = nx.read_gpickle("sagan-site_graph_0")
+BN_for_inference = make_BN.main("sagan-site_graph_0")
 DF_EDGES = list(df_reader)
 CALL_EDGES = list(call_reader)
 STATE_NAMES = list(map(lambda node: node.name, BN_for_inference.states))
-with open("solution_relational.json", "r+") as saganjson:
+with open("solution_sagan.json", "r+") as saganjson:
     SOLUTION = json.load(saganjson)
 
 # Exceptions ========================================
@@ -58,8 +59,6 @@ def random_loop(BN_for_inference, graph_for_reference, interaction_number,
     if its_time_to_terminate:
         return prev_snapshot, precision_list, stability_list, precision_inferred_list
 
-    print("asking", query, "...")
-
     oracle_response = SOLUTION[query]
 
     if oracle_response == 'src':
@@ -73,18 +72,15 @@ def random_loop(BN_for_inference, graph_for_reference, interaction_number,
 
     current_asked.append(query)
 
-    print(current_evidence)
-
     # the new snapshot after the observation and its inference time
     inference_start = time.time()
-    new_snapshot = BN_for_inference.predict_proba(current_evidence)
+    new_snapshot = BN_for_inference.predict_proba(current_evidence, n_jobs=-1)
     current_inference_time = time.time()-inference_start
     inference_time_list.append(current_inference_time)
 
     # the new precision after the observation
     current_precision = calculate_precision(new_snapshot)
     precision_list[interaction_number] = current_precision
-    print(interaction_number, ":", current_precision)
 
     # the new stability after the observation
     current_stability = calculate_stability(prev_snapshot, new_snapshot)
@@ -120,22 +116,23 @@ def tactical_loop(graph_for_reference, interaction_number,
             - precision_inferred_list: accumulated precision values purely inferred by the BN
             - inference_time_list: accumulated times took in belief propagation"""
 
+    inference_start = time.time()
+
     # some variables to make our code resemble English
-    there_are_nodes_left = find_max_d_con(graph_for_reference, current_asked,
-                                          updated_nodes, STATE_NAMES, nth=0)
+    there_are_nodes_left = find_max_d_con(current_asked, updated_nodes, STATE_NAMES)
     there_are_no_nodes_left = not there_are_nodes_left
     its_time_to_terminate = time_to_terminate(BN_for_inference, current_evidence)
     not_yet_time_to_terminate = not its_time_to_terminate
 
     # pick a method to ask by finding one with the maximum number of D-connected nodes
-    maybe_query_tuple = find_max_d_con(graph_for_reference, current_asked, updated_nodes,
-                                       STATE_NAMES, nth=0)
-    if maybe_query_tuple == None:
+
+    if there_are_no_nodes_left:
         query = None
         dependent_nodes = []
     else:
-        query = maybe_query_tuple[0]
-        dependent_nodes = maybe_query_tuple[1]
+        query = there_are_nodes_left[0]
+        dependent_nodes = there_are_nodes_left[1]
+    
 
     # exit the function based on various termination measures.
     if there_are_no_nodes_left and not_yet_time_to_terminate:
@@ -143,9 +140,7 @@ def tactical_loop(graph_for_reference, interaction_number,
             print("\nWarning: some distributions are not fully determined.\n")
             return prev_snapshot, precision_list, stability_list, precision_inferred_list
         else:
-            query, dependent_nodes = find_max_d_con(graph_for_reference, [], [],
-                                                    remove_sublist(STATE_NAMES,
-                                                                   current_asked), nth=0)
+            query, dependent_nodes = find_max_d_con([], [], remove_sublist(STATE_NAMES, current_asked))
     elif there_are_no_nodes_left and its_time_to_terminate:
         return prev_snapshot, precision_list, stability_list, precision_inferred_list
     elif there_are_nodes_left and not_yet_time_to_terminate:
@@ -155,7 +150,7 @@ def tactical_loop(graph_for_reference, interaction_number,
 
     # ask the chosen method and fetch the answer from the solutions
     oracle_response = SOLUTION[query]
-    updated_nodes += list(d_connected(graph_for_reference, query, current_asked, STATE_NAMES))
+    updated_nodes += list(d_connected(query, current_asked, STATE_NAMES))
 
     if oracle_response == 'src':
         current_evidence[query] = 1
@@ -170,14 +165,15 @@ def tactical_loop(graph_for_reference, interaction_number,
 
     # the new snapshot after the observation and its inference time
     inference_start = time.time()
-    new_snapshot = BN_for_inference.predict_proba(current_evidence)
+    new_snapshot = BN_for_inference.predict_proba(current_evidence, n_jobs=-1)
     current_inference_time = time.time()-inference_start
     inference_time_list.append(current_inference_time)
 
     # the new precision after the observation
     current_precision = calculate_precision(new_snapshot)
-    print(interaction_number, ":", current_precision)
     precision_list[interaction_number] = current_precision
+
+    print(interaction_number, ":", current_precision)
 
     # the new stability after the observation
     current_stability = calculate_stability(prev_snapshot, new_snapshot)
@@ -187,6 +183,8 @@ def tactical_loop(graph_for_reference, interaction_number,
     current_precision_inferred = calculate_precision_inferred(new_snapshot, interaction_number)
     precision_inferred_list[interaction_number] = current_precision_inferred
 
+    print("loop took: ", time.time()-inference_start)
+
     # loop!
     return tactical_loop(graph_for_reference, interaction_number+1,
                          current_asked, current_evidence, updated_nodes,
@@ -194,7 +192,7 @@ def tactical_loop(graph_for_reference, interaction_number,
                          precision_inferred_list, inference_time_list)
 
 
-def d_connected(graph_for_reference, node, current_asked, pool):
+def d_connected(node, current_asked, pool):
     """현재까지 물어본 노드들이 주어졌을 때, node와 조건부 독립인 노드들의 set을 찾아낸다. Complexity: O(n)."""
     out = set()
     for other_node in STATE_NAMES:
@@ -216,70 +214,28 @@ def forall(unary_pred, collection):
     return reduce(lambda acc, elem: unary_pred(elem) and acc, collection, True)
 
 
-def non_nodes_to_skip(snapshot):
-    """현재 스냅샷으로 계산된 names_and_labels를 받아서, 다음을 만족하는 노드 n을 모은다:
-       n과 연결된 이웃 (parent 혹은 child)이
-         1. non으로 고정되었고,
-         2. 맞고 있는/쏘고 있는 화살표가 non/sim밖에 없다."""
-    can_be_excluded = []
-    for node_name in STATE_NAMES:
-        parents = graph_for_reference.predecessors(node_name)
-        children = graph_for_reference.successors(node_name)
-        from_parents_edges = []
-        to_children_edges = []
-        for parent in parents:
-            from_parents_edges.append((parent, node_name))
-        for child in children:
-            to_children_edges.append((node_name, child))
-        # 이제 엣지의 레이블을 포착해야 한다.
-        if forall(lambda edge: edge not in DF_EDGES, from_parents_edges) and\
-           forall(lambda edge: edge not in DF_EDGES, to_children_edges):
-            can_be_excluded.append(node_name)
-    return set(can_be_excluded)
-
-
-def find_max_d_con(graph_for_reference, current_asked, updated_nodes, list_of_all_node, **kwargs):
+def find_max_d_con_depr(current_asked, updated_nodes, list_of_all_nodes):
     """graph_for_reference의 node들 중에서 가장 d_connected node가 가장 많은 노드를 찾아낸다."""
     d_connected_set_dict = dict()
-    for node in list_of_all_node:
-        d_connected_set_dict[node] = d_connected(graph_for_reference, node, current_asked, list_of_all_node)
+    for node in list_of_all_nodes:
+        d_connected_set_dict[node] = d_connected(node, current_asked, list_of_all_nodes)
     d_connected_set_dict = valmap(lambda set_: set_-set(current_asked)-set(updated_nodes), d_connected_set_dict)
     if forall(lambda set_: set_ == set(), d_connected_set_dict.values()):  # no more to ask
         return None
     d_connected_len_dict = valmap(lambda set_: len(set_), d_connected_set_dict)
-    nth = kwargs['nth']
-    # dictionary에서 value만을 추출해 내림차순으로 정렬한다.
-    if 'prune' in kwargs.keys():
-        to_prune = kwargs['prune']
-        number_of_sets_sorted = list(set(d_connected_len_dict.values()))  # not yet sorted..
-        number_of_sets_sorted.sort(reverse=True)  # now sorted!
-        nth_largest_node_names = []
-        nth_largest_cardinality = number_of_sets_sorted[nth]
+    max_key = max(d_connected_len_dict, key=lambda key: d_connected_len_dict[key]) # dictionary에서 value만을 추출해 내림차순으로 정렬한다.
+    return max_key, d_connected_set_dict[max_key]
 
-        for node_name, cardinality in d_connected_len_dict.items():
-            if nth_largest_cardinality == cardinality and\
-               node_name not in current_asked and\
-               node_name not in to_prune:
-                nth_largest_node_names.append(node_name)
-        if nth_largest_node_names == []:
-            while nth_largest_node_names == []:
-                number_of_sets_sorted.remove(number_of_sets_sorted[0])
-                nth_largest_cardinality = number_of_sets_sorted[nth]
-                for node_name, cardinality in d_connected_len_dict.items():
-                    if nth_largest_cardinality == cardinality and\
-                       node_name not in current_asked and\
-                       node_name not in to_prune:
-                        nth_largest_node_names.append(node_name)
-                if nth_largest_node_names == []:
-                    for node_name, cardinality in d_connected_len_dict.items():
-                        if nth_largest_cardinality == cardinality and\
-                           node_name not in current_asked:
-                            nth_largest_node_names.append(node_name)
-        out = nth_largest_node_names[0]
-        return out, d_connected_set_dict[out]
-    else:
-        max_key = max(d_connected_len_dict, key=lambda key: d_connected_len_dict[key])
-        return max_key, d_connected_set_dict[max_key]
+
+def find_max_d_con(current_asked, updated_nodes, list_of_all_nodes):
+    node_dataframe = pd.DataFrame(list_of_all_nodes, columns=['nodes'])
+    mapfunc = lambda row: len(d_connected(row['nodes'], current_asked, list_of_all_nodes)-set(current_asked)-set(updated_nodes))
+    d_con_set_len = node_dataframe.apply(mapfunc, axis=1)
+    if d_con_set_len.mask(d_con_set_len == 0).dropna().empty:
+        return None
+    node_dataframe["d_con_set_len"] = d_con_set_len
+    node_dataframe.sort_values(by=["d_con_set_len"], inplace=True, ascending=False)
+    return node_dataframe.iloc[0].nodes, node_dataframe.iloc[0].d_con_set_len
 
 
 def is_confident(parameters):
@@ -298,7 +254,7 @@ def is_confident(parameters):
 
 def time_to_terminate(BN, current_evidence):
     # the distribution across random variables' values
-    names_and_params = make_names_and_params(BN_for_inference.predict_proba(current_evidence))
+    names_and_params = make_names_and_params(BN_for_inference.predict_proba(current_evidence, n_jobs=-1))
     params = list(map(lambda tup: tup[1], names_and_params))
     # list of lists of the probabilities across random variables' values, extracted from dist_dicts
     dist_probs = list(map(lambda dist: list(dist.values()), params))
@@ -446,7 +402,6 @@ def calculate_precision(current_snapshot):
     # current_snapshot의 타입은? np.array of Distribution.
     names_and_params = make_names_and_params(current_snapshot)
     names_and_labels = dict(map(lambda tup: (tup[0], find_max_val(tup[1])), names_and_params))
-    # print(names_and_labels)
     correct_nodes = []
     for node_name in STATE_NAMES:
         if names_and_labels[node_name] == SOLUTION[node_name]:
@@ -488,18 +443,18 @@ def main():
 
     # argument initialization
     initial_prediction_time = time.time()
-    initial_snapshot = BN_for_inference.predict_proba({})
+    initial_snapshot = BN_for_inference.predict_proba({}, n_jobs=-1)
     number_of_states = len(BN_for_inference.states)
     initial_precision_list = [np.nan for _ in range(len(BN_for_inference.states))]
     initial_stability_list = [np.nan for _ in range(len(BN_for_inference.states))]
     initial_precision_inferred_list = [np.nan for _ in range(len(BN_for_inference.states))]
 
     # random loop
-    final_snapshot, precision_list, stability_list, precision_inferred_list =\
-        random_loop(BN_for_inference, graph_for_reference, 0,
-                    list(), dict(), initial_snapshot,
-                    initial_precision_list, initial_stability_list, initial_precision_inferred_list, list())
-    draw_n_save(precision_list, stability_list, initial_precision_inferred_list, loop_type='random')
+    # final_snapshot, precision_list, stability_list, precision_inferred_list =\
+    #     random_loop(BN_for_inference, graph_for_reference, 0,
+    #                 list(), dict(), initial_snapshot,
+    #                 initial_precision_list, initial_stability_list, initial_precision_inferred_list, list())
+    # draw_n_save(precision_list, stability_list, initial_precision_inferred_list, loop_type='random')
 
     # argument reinitialization
     initial_precision_list = [np.nan for _ in range(len(BN_for_inference.states))]

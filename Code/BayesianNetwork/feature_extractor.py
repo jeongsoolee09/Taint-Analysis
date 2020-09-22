@@ -12,24 +12,50 @@ def camel_case_split(identifier):
     return [m.group(0) for m in matches]
 
 
-def find_frequent_words():
-    node_names = NODE_DATA["name"]  # 원본이랑 구조를 공유 안함: 새로운 카피를 만듦
-    splitted_names = node_names.apply(camel_case_split, axis=1)
-    splitted_names = [value for _, value in splitted_names.iteritems()]
-    words_withdup = reduce(lambda acc, elem: acc+elem, splitted_names, [])
-    words_withdup = list(map(lambda name: name.lower(), words_withdup))
-    words_nodup = set(words_withdup)
-    acc = []
-    for name in words_nodup:
-        acc.append((name, words_withdup.count(name)))
-    return sorted(acc, key=lambda x: x[1], reverse=True)
-
 # Constants ============================
 # ======================================
 
+with open("java_builtin_types.txt", "r+") as builtintypes:
+    JAVA_BUILTIN_TYPES = list(map(lambda string: string.rstrip(), builtintypes.readlines()))
+
+
+def find_frequent_words(**kwargs):
+    """available kwargs:
+       - target: 'name', 'rtntype'"""
+    if kwargs["target"] == 'name':
+        node_names = NODE_DATA[kwargs["target"]]
+        splitted_names = node_names.apply(camel_case_split, axis=1)
+        splitted_names = [value for _, value in splitted_names.iteritems()]
+        words_withdup = reduce(lambda acc, elem: acc+elem, splitted_names, [])
+        words_withdup = list(map(lambda name: name.lower(), words_withdup))
+        words_nodup = set(words_withdup)
+        acc = []
+        for name in words_nodup:
+            acc.append((name, words_withdup.count(name)))
+        return sorted(acc, key=lambda x: x[1], reverse=True)
+
+    elif kwargs["target"] == 'rtntype':
+        node_rtntypes = NODE_DATA[kwargs["target"]]
+        splitted_rtntypes = node_rtntypes.apply(camel_case_split, axis=1)
+        splitted_rtntypes = [value for _, value in splitted_rtntypes.iteritems()]
+        words_withdup = reduce(lambda acc, elem: acc+elem, splitted_rtntypes, [])
+        words_withdup = list(map(lambda name: name.lower(), words_withdup))
+        words_withdup = list(filter(lambda name: name not in JAVA_BUILTIN_TYPES, words_withdup))
+        words_nodup = set(words_withdup)
+        acc = []
+        for name in words_nodup:
+            acc.append((name, words_withdup.count(name)))
+        return sorted(acc, key=lambda x: x[1], reverse=True)
+
+# More Constants =======================
+# ======================================
+
 NODE_DATA = pd.read_csv("nodes.csv", index_col=0)
-TOP_FREQ_N = 10  # 상위 몇 순위까지 할 거냐?
-TOP_FREQS = list(map(lambda tup: tup[0], find_frequent_words()[:TOP_FREQ_N]))
+TOP_FREQ_N_NAME = 10  # 상위 몇 순위까지 할 거냐?
+TOP_FREQ_NAME_WORDS = list(map(lambda tup: tup[0], find_frequent_words(target="name")[:TOP_FREQ_N_NAME]))
+TOP_FREQ_N_RTNTYPE = 10
+TOP_FREQ_RTNTYPE_WORDS = list(map(lambda tup: tup[0],
+                                  find_frequent_words(target="rtntype")[:TOP_FREQ_N_RTNTYPE]))
 
 # Feature Extractors =====================
 # ========================================
@@ -48,25 +74,37 @@ def has_return_type(node):
 
 # F14
 def method_name_starts_with(node):
-    return some boolean dict    # key: word, val: boolean
+    prefix = camel_case_split(node.name)[0]
+    out = dict()
+    for word in TOP_FREQ_NAME_WORDS:
+        out[word] = prefix == word
+    return out    # key: word, val: boolean
 
 
 # F15
 def method_name_equals(node):
-    return some boolean dict    # key: word, val: boolean
+    out = dict()
+    for freq_word in TOP_FREQ_NAME_WORDS:
+        out[freq_word] = freq_word == node.name
+    return out    # key: word, val: boolean
 
 
 # F16
 def method_name_contains(node):
-    TOP_FREQS
-    return some boolean dict    # key: word, val: boolean
+    words = camel_case_split(node.name)
+    out = dict()
+    for freq_word in TOP_FREQ_NAME_WORDS:
+        out[freq_word] = freq_word in words
+    return out    # key: word, val: boolean
 
 
 # F22
 def return_type_contains_name(node):
-    TOP_FREQS
-    return some boolean dict    # key: word, val: boolean
-
+    words = camel_case_split(node.rtntype)
+    out = dict()
+    for freq_word in TOP_FREQ_NAME_WORDS:
+        out[freq_word] = freq_word in words
+    return out    # key: word, val: boolean
 
 # Batch run ==========================
 # ====================================

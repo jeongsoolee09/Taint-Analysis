@@ -11,6 +11,7 @@ import itertools as it
 import os
 import random
 import make_BN
+import json
 
 from solutions import *
 from scrape_oracle_docs import *
@@ -30,7 +31,9 @@ BN_for_inference = make_BN.main("sagan-site_graph_3")
 DF_EDGES = list(df_reader)
 CALL_EDGES = list(call_reader)
 STATE_NAMES = list(map(lambda node: node.name, BN_for_inference.states))
-with open("solution_sagan.json", "r+") as saganjson:
+with open("paths.json", "r+") as pathjson:
+    SOLUTION_PATH = json.load(pathjson)["solution_directory"]
+with open(SOLUTION_PATH, "r+") as saganjson:
     SOLUTION = json.load(saganjson)
 
 # Exceptions ========================================
@@ -44,8 +47,21 @@ class ThisIsImpossible(Exception):
 
 def random_loop(BN_for_inference, graph_for_reference, interaction_number,
                 current_asked, current_evidence, prev_snapshot,
-                precision_list, stability_list, precision_inferred_list, inference_time_list):
-    """the main interaction functionality, asking randomly"""
+                precision_list, stability_list, precision_inferred_list,
+                inference_time_list, **kwargs):
+    """The main interaction functionality, asking randomly
+       Parameters:
+            - BN_for_inference: the Bayesian Network.
+            - graph_for_reference: the underlying graph.
+            - interaction_number: number of interactions performed so far.
+            - current_asked: names of currently asked nodes.
+            - current_evidence: dict of given evidences accumulated so far
+            - prev_snapshot: snapshot from the previous call
+            - precision_list: accumulated precision values
+            - stability_list: accumulated stability values
+            - precision_inferred_list: accumulated precision values purely inferred by the BN
+            - inference_time_list: accumulated times took in belief propagation
+       Available kwargs: have_solution [True|False]: Do you have the complete solution for the benchmark?"""
 
     random_index = random.randint(0, len(BN_for_inference.states)-1)
     state_names = list(map(lambda node: node.name, BN_for_inference.states))
@@ -60,7 +76,7 @@ def random_loop(BN_for_inference, graph_for_reference, interaction_number,
     if its_time_to_terminate:
         return prev_snapshot, precision_list, stability_list, precision_inferred_list
 
-    oracle_response = input("What label does <" + query + "> bear? [src/sin/san/non]: ")
+    oracle_response = input("What label does <" + query + "> bear? [src|sin|san|non]: ")
 
     if oracle_response == 'src':
         current_evidence[query] = 1
@@ -70,6 +86,8 @@ def random_loop(BN_for_inference, graph_for_reference, interaction_number,
         current_evidence[query] = 3
     elif oracle_response == 'non':
         current_evidence[query] = 4
+    elif oracle_response == 'exit':
+        return prev_snapshot, precision_list, stability_list, precision_inferred_list
 
     current_asked.append(query)
 
@@ -102,9 +120,9 @@ def random_loop(BN_for_inference, graph_for_reference, interaction_number,
 def tactical_loop(graph_for_reference, interaction_number,
                   current_asked, current_evidence, updated_nodes,
                   prev_snapshot, precision_list, stability_list,
-                  precision_inferred_list, inference_time_list):
-    """the main interaction functionality (loops via recursion), asking tactically using d-separation
-       parameters:
+                  precision_inferred_list, inference_time_list, **kwargs):
+    """The main interaction functionality (loops via recursion), asking tactically using d-separation
+       Parameters:
             - graph_for_reference: the underlying graph.
             - interaction_number: number of interactions performed so far.
             - current_asked: names of currently asked nodes.
@@ -114,7 +132,8 @@ def tactical_loop(graph_for_reference, interaction_number,
             - precision_list: accumulated precision values
             - stability_list: accumulated stability values
             - precision_inferred_list: accumulated precision values purely inferred by the BN
-            - inference_time_list: accumulated times took in belief propagation"""
+            - inference_time_list: accumulated times took in belief propagation
+       Available kwargs: have_solution [True|False]: Do you have the complete solution for the benchmark?"""
 
     inference_start = time.time()
 
@@ -147,7 +166,7 @@ def tactical_loop(graph_for_reference, interaction_number,
         raise ThisIsImpossible
 
     # ask the chosen method and fetch the answer from the solutions
-    oracle_response = input("What label does <" + query + "> bear? [src/sin/san/non]: ")
+    oracle_response = input("What label does <" + query + "> bear? [src|sin|san|non]: ")
     updated_nodes += list(d_connected(query, current_asked, STATE_NAMES))
 
     if oracle_response == 'src':
@@ -158,6 +177,8 @@ def tactical_loop(graph_for_reference, interaction_number,
         current_evidence[query] = 3
     elif oracle_response == 'non':
         current_evidence[query] = 4
+    elif oracle_response == 'exit':
+        return prev_snapshot, precision_list, stability_list, precision_inferred_list
 
     current_asked.append(query)
 
@@ -170,8 +191,6 @@ def tactical_loop(graph_for_reference, interaction_number,
     # the new precision after the observation
     current_precision = calculate_precision(new_snapshot)
     precision_list[interaction_number] = current_precision
-
-    print(interaction_number, ":", current_precision)
 
     # the new stability after the observation
     current_stability = calculate_stability(prev_snapshot, new_snapshot)
@@ -496,12 +515,14 @@ def main():
     print()  # for aesthetics in the REPL
 
     # random loop
+    # print("\nEntering random loop.\nPress 'exit' on the prompt to exit the loop.\n")
     # final_snapshot, precision_list, stability_list, precision_inferred_list =\
     #     random_loop(BN_for_inference, graph_for_reference, 0,
     #                 list(), dict(), initial_snapshot,
     #                 initial_precision_list, initial_stability_list, initial_precision_inferred_list, list())
 
     # tactical loop
+    print("\nEntering tactical loop.\nPress 'exit' on the prompt to exit the loop.\n")
     final_snapshot, precision_list, stability_list, precision_inferred_list=\
         tactical_loop(graph_for_reference, 0,
                       list(), dict(), list(),

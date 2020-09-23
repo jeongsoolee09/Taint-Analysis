@@ -25,11 +25,12 @@ import modin.pandas as pd
 # Constants ========================================
 # ==================================================
 
-graph_for_reference = nx.read_gpickle("sagan-site_graph_0")
-BN_for_inference = make_BN.main("sagan-site_graph_0")
+graph_for_reference = nx.read_gpickle("sagan-site_graph_2")
+BN_for_inference = make_BN.main("sagan-site_graph_2")
 DF_EDGES = list(df_reader)
 CALL_EDGES = list(call_reader)
 STATE_NAMES = list(map(lambda node: node.name, BN_for_inference.states))
+print("BN has", len(STATE_NAMES), "states")
 with open("solution_sagan.json", "r+") as saganjson:
     SOLUTION = json.load(saganjson)
 
@@ -116,7 +117,7 @@ def tactical_loop(graph_for_reference, interaction_number,
             - precision_inferred_list: accumulated precision values purely inferred by the BN
             - inference_time_list: accumulated times took in belief propagation"""
 
-    inference_start = time.time()
+    loop_start = time.time()
 
     # some variables to make our code resemble English
     there_are_nodes_left = find_max_d_con(current_asked, updated_nodes, STATE_NAMES)
@@ -181,7 +182,7 @@ def tactical_loop(graph_for_reference, interaction_number,
     current_precision_inferred = calculate_precision_inferred(new_snapshot, interaction_number)
     precision_inferred_list[interaction_number] = current_precision_inferred
 
-    print("loop took: ", time.time()-inference_start)
+    print("loop took: ", time.time()-loop_start, "seconds")
 
     # loop!
     return tactical_loop(graph_for_reference, interaction_number+1,
@@ -212,22 +213,10 @@ def forall(unary_pred, collection):
     return reduce(lambda acc, elem: unary_pred(elem) and acc, collection, True)
 
 
-def find_max_d_con_depr(current_asked, updated_nodes, list_of_all_nodes):
-    """graph_for_reference의 node들 중에서 가장 d_connected node가 가장 많은 노드를 찾아낸다."""
-    d_connected_set_dict = dict()
-    for node in list_of_all_nodes:
-        d_connected_set_dict[node] = d_connected(node, current_asked, list_of_all_nodes)
-    d_connected_set_dict = valmap(lambda set_: set_-set(current_asked)-set(updated_nodes), d_connected_set_dict)
-    if forall(lambda set_: set_ == set(), d_connected_set_dict.values()):  # no more to ask
-        return None
-    d_connected_len_dict = valmap(lambda set_: len(set_), d_connected_set_dict)
-    max_key = max(d_connected_len_dict, key=lambda key: d_connected_len_dict[key]) # dictionary에서 value만을 추출해 내림차순으로 정렬한다.
-    return max_key, d_connected_set_dict[max_key]
-
-
 def find_max_d_con(current_asked, updated_nodes, list_of_all_nodes):
     node_dataframe = pd.DataFrame(list_of_all_nodes, columns=['nodes'])
-    mapfunc = lambda row: len(d_connected(row['nodes'], current_asked, list_of_all_nodes)-set(current_asked)-set(updated_nodes))
+    mapfunc = lambda row: len(d_connected(row['nodes'], current_asked,
+                                          list_of_all_nodes)-set(current_asked)-set(updated_nodes))
     d_con_set_len = node_dataframe.apply(mapfunc, axis=1)
     if d_con_set_len.mask(d_con_set_len == 0).dropna().empty:
         return None

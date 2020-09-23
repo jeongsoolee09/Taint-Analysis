@@ -11,7 +11,6 @@ def camel_case_split(identifier):
     matches = re.finditer('.+?(?:(?<=[a-z])(?=[A-Z])|(?<=[A-Z])(?=[A-Z][a-z])|$)', identifier)
     return [m.group(0) for m in matches]
 
-
 # Constants ============================
 # ======================================
 
@@ -76,8 +75,8 @@ def has_return_type(node):
 def method_name_starts_with(node):
     prefix = camel_case_split(node.name)[0]
     out = dict()
-    for word in TOP_FREQ_NAME_WORDS:
-        out[word] = prefix == word
+    for freq_word in TOP_FREQ_NAME_WORDS:
+        out[("F14", freq_word)] = prefix == freq_word
     return out    # key: word, val: boolean
 
 
@@ -85,7 +84,7 @@ def method_name_starts_with(node):
 def method_name_equals(node):
     out = dict()
     for freq_word in TOP_FREQ_NAME_WORDS:
-        out[freq_word] = freq_word == node.name
+        out[("F15", freq_word)] = freq_word == node.name
     return out    # key: word, val: boolean
 
 
@@ -94,7 +93,7 @@ def method_name_contains(node):
     words = camel_case_split(node.name)
     out = dict()
     for freq_word in TOP_FREQ_NAME_WORDS:
-        out[freq_word] = freq_word in words
+        out[("F16", freq_word)] = freq_word in words
     return out    # key: word, val: boolean
 
 
@@ -103,7 +102,7 @@ def return_type_contains_name(node):
     words = camel_case_split(node.rtntype)
     out = dict()
     for freq_word in TOP_FREQ_NAME_WORDS:
-        out[freq_word] = freq_word in words
+        out[("F22", freq_word)] = freq_word in words
     return out    # key: word, val: boolean
 
 # Batch run ==========================
@@ -111,8 +110,20 @@ def return_type_contains_name(node):
 
 def run_all_extractors(node):
     """batch run the feature extractors on a method"""
-    pass
+    F06 = has_parameters(node)  # bool: 바로 append
+    F07 = has_return_type(node)  # bool: 바로 append
+    F14 = method_name_starts_with(node)  # dict: pd.dataframe
+    F15 = method_name_equals(node)       # dict: pd.dataframe
+    F16 = method_name_contains(node)     # dict: pd.dataframe
+    F22 = return_type_contain_name(node)  # dict: pd.dataframe
+    
+    F15_df = pd.DataFrame(F15, index=[0])
+    F16_df = pd.DataFrame(F16, index=[0])
+    F22_df = pd.DataFrame(F22, index=[0])
+    
+    vector = pd.concat([F15_df, F16_df, F22_df], axis=1)
 
+    return vector
 
 # main ================================
 # =====================================
@@ -120,6 +131,5 @@ def run_all_extractors(node):
 
 def main():
     # batch run the feature extractors on all methods (or maybe we can use modin.pandas.apply)
-    for node_name in NODE_DATA:
-        pass
     # and then write to csv
+    pass

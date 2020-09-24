@@ -9,10 +9,12 @@ import csv
 import networkx as nx
 import itertools as it
 import os
+import os.path
 import random
 import make_BN
 import json
 
+from datetime import datetime
 from solutions import *
 from scrape_oracle_docs import *
 from toolz import valmap
@@ -25,8 +27,10 @@ from make_CPT import *
 # Constants ========================================
 # ==================================================
 
-graph_for_reference = nx.read_gpickle("sagan-site_graph_3")
-BN_for_inference = make_BN.main("sagan-site_graph_3")
+NOW = datetime.now().strftime("%Y-%m-%d-%H:%M:%S")
+GRAPH_FILE_NAME = "sagan-site_graph_3"
+graph_for_reference = nx.read_gpickle(GRAPH_FILE_NAME)
+BN_for_inference = make_BN.main(GRAPH_FILE_NAME)
 
 DF_EDGES = list(df_reader)
 CALL_EDGES = list(call_reader)
@@ -68,7 +72,7 @@ def random_loop(BN_for_inference, graph_for_reference, interaction_number,
     query = state_names[random_index]
     while query in current_asked:
         random_index = random.randint(0, len(BN_for_inference.states)-1)
-        query = BN_for_inference.states[random_index].name
+        query = STATE_NAMES[random_index].name
 
     its_time_to_terminate = time_to_terminate(BN_for_inference, current_evidence)
 
@@ -108,6 +112,13 @@ def random_loop(BN_for_inference, graph_for_reference, interaction_number,
     # the new precision purely inferred by the BN, after the observation
     current_precision_inferred = calculate_precision_inferred(new_snapshot, interaction_number)
     precision_inferred_list[interaction_number] = current_precision_inferred
+
+    # visualize the current status if necessary
+    if kwargs["have_solution"]:
+        visualize_snapshot(new_snapshot, [])
+        draw_precision_graph(list(range(1, len(BN_for_inference.states)+1)), precision_list)
+        draw_stability_graph(list(range(1, len(BN_for_inference.states)+1)), stability_list)
+        draw_precision_inferred_graph(list(range(1, len(BN_for_inference.states)+1)), stability_list)
 
     # loop!
     return random_loop(BN_for_inference, graph_for_reference, interaction_number+1,
@@ -199,6 +210,13 @@ def tactical_loop(graph_for_reference, interaction_number,
     # the new precision purely inferred by the BN, after the observation
     current_precision_inferred = calculate_precision_inferred(new_snapshot, interaction_number)
     precision_inferred_list[interaction_number] = current_precision_inferred
+
+    # visualize the current status if necessary
+    if kwargs["have_solution"]:
+        visualize_snapshot(new_snapshot, [])
+        draw_precision_graph(list(range(1, len(BN_for_inference.states)+1)), precision_list)
+        draw_stability_graph(list(range(1, len(BN_for_inference.states)+1)), stability_list)
+        draw_precision_inferred_graph(list(range(1, len(BN_for_inference.states)+1)), stability_list)
 
     # loop!
     return tactical_loop(graph_for_reference, interaction_number+1,
@@ -295,7 +313,7 @@ def find_max_val(stats):
 
 node_colordict = {"src": "red", "sin": "orange", "san": "yellow", "non": "green"}
 
-def visualize_snapshot(graph_for_reference, snapshot, dependent_nodes):
+def visualize_snapshot(snapshot, dependent_nodes):
     """한번 iteration 돌 때마다, 전체 BN의 snapshot을 가시화한다. 이 때, confident node들 위에는 `conf`라는 문구를 띄운다."""
     network_figure = plt.figure("Bayesian Network")
     network_figure.clf()
@@ -334,8 +352,11 @@ def visualize_snapshot(graph_for_reference, snapshot, dependent_nodes):
             with_labels=True, node_size=100)
 
 
-def draw_precision_graph(x, y):
-    """precision graph를 그리는 함수. NOTE: x와 y의 input 길이를 맞춰줘야 함."""
+def draw_precision_graph(x, y, **kwargs):
+    """precision graph를 그리는 함수. NOTE: x와 y의 input 길이를 맞춰줘야 함.
+       Available kwargs:
+           - interactive [True|False]: Interactively show & update vs. save as png file"""
+
     plt.ion()
     precision_figure = plt.figure("Precision")
     ax = precision_figure.gca()
@@ -349,11 +370,20 @@ def draw_precision_graph(x, y):
     plt.ylabel('# of correct nodes')
     plt.title("Precision development during interaction")
     plt.plot(x, y, 'b-')
-    precision_figure.canvas.draw()
 
+    if kwargs["interactive"]:
+        precision_figure.canvas.draw()
+    else:
+        if not os.path.isdir(GRAPH_FILE_NAME):
+            os.mkdir(GRAPH_FILE_NAME)
+        plt.savefig(GRAPH_FILE_NAME+os.sep+"precision_graph_"+NOW+"_"loop_type+".png")
+    
 
-def draw_stability_graph(x, y):
-    """stability graph를 그리는 함수. NOTE: x와 y의 input 길이를 맞춰줘야 함."""
+def draw_stability_graph(x, y, **kwargs):
+    """stability graph를 그리는 함수. NOTE: x와 y의 input 길이를 맞춰줘야 함.
+       Available kwargs:
+           - interactive [True|False]: Interactively show & update vs. save as png file"""
+
     plt.ion()
     stability_figure = plt.figure("Stability")
     ax = stability_figure.gca()
@@ -367,11 +397,20 @@ def draw_stability_graph(x, y):
     plt.ylabel('# of changed nodes')
     plt.title("Stability development during interaction")
     plt.plot(x, y, 'b-')
-    stability_figure.canvas.draw()
+    
+    if kwargs["interactive"]:
+        precision_figure.canvas.draw()
+    else:
+        if not os.path.isdir(GRAPH_FILE_NAME):
+            os.mkdir(GRAPH_FILE_NAME)
+        plt.savefig(GRAPH_FILE_NAME+os.sep+"stability_inferred_graph_"+NOW+"_"loop_type+".png")
 
 
 def draw_precision_inferred_graph(x, y):
-    """stability graph를 그리는 함수. NOTE: x와 y의 input 길이를 맞춰줘야 함."""
+    """stability graph를 그리는 함수. NOTE: x와 y의 input 길이를 맞춰줘야 함.
+       Available kwargs:
+           - interactive [True|False]: Interactively show & update vs. save as png file"""
+
     plt.ion()
     stability_figure = plt.figure("Inferred Precision")
     ax = stability_figure.gca()
@@ -385,8 +424,15 @@ def draw_precision_inferred_graph(x, y):
     plt.ylabel('# of correctly inferred nodes')
     plt.title("Inferred precision development during interaction")
     plt.plot(x, y, 'b-')
-    stability_figure.canvas.draw()
-
+    
+    if kwargs["interactive"]:
+        precision_figure.canvas.draw()
+    else:
+        if not os.path.isdir(GRAPH_FILE_NAME):
+            os.mkdir(GRAPH_FILE_NAME)
+        plt.savefig(GRAPH_FILE_NAME+os.sep+"precision_inferred_graph_"+NOW+"_"loop_type+".png")
+        
+        
 
 def create_node_colormap(names_and_labels):
     """BN을 기준으로 계산된 names_and_labels를 받아서 graph_for_reference를 기준으로 한 colormap을 만든다."""
@@ -503,8 +549,6 @@ def calculate_precision_inferred(current_snapshot, number_of_interaction):
 # =========================================================
 
 def main():
-    start = time.time()
-
     initial_prediction_time = time.time()
     initial_snapshot = BN_for_inference.predict_proba({}, n_jobs=-1)
     print("initial predicition_time:", time.time() - initial_prediction_time)
@@ -519,7 +563,8 @@ def main():
     # final_snapshot, precision_list, stability_list, precision_inferred_list =\
     #     random_loop(BN_for_inference, graph_for_reference, 0,
     #                 list(), dict(), initial_snapshot,
-    #                 initial_precision_list, initial_stability_list, initial_precision_inferred_list, list())
+    #                 initial_precision_list, initial_stability_list,
+    #                 initial_precision_inferred_list, list(), have_solution=True)
 
     # tactical loop
     print("\nEntering tactical loop.\nPress 'exit' on the prompt to exit the loop.\n")
@@ -527,7 +572,7 @@ def main():
         tactical_loop(graph_for_reference, 0,
                       list(), dict(), list(),
                       initial_snapshot, initial_precision_list, initial_stability_list,
-                      initial_precision_inferred_list, list())
+                      initial_precision_inferred_list, list(), have_solution=True)
 
     # save the data
     save_data_as_csv(final_snapshot)

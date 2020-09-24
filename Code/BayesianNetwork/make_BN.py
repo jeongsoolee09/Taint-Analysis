@@ -93,6 +93,19 @@ def init_BN(graph_for_reference):
 # Methods for Graphs =================================
 # ====================================================
 
+def exclude_rich(G):
+    """incoming edge가 너무 많은 노드들을 그래프에서 삭제한다."""
+    riches = []
+    for node_name in G.nodes:
+        if len(G.in_edges(nbunch=node_name)) > 6:
+            riches.append(node_name)
+    for rich in riches:
+        try:
+            G.remove_node(rich)
+        except:  # 이미 없넹
+            pass
+    return len(riches)
+
 
 def exclude_poor(G):
     """고립된 노드들을 그래프에서 삭제한다."""
@@ -109,28 +122,21 @@ def exclude_poor(G):
                 G.remove_node(poor)
             except:  # 이미 없넹
                 pass
-
-
-def exclude_rich(G):
-    """incoming edge가 너무 많은 노드들을 그래프에서 삭제한다."""
-    riches = []
-    for node_name in G.nodes:
-        if len(G.in_edges(nbunch=node_name)) > 6:
-            riches.append(node_name)
-    for rich in riches:
-        try:
-            G.remove_node(rich)
-        except:  # 이미 없넹
-            pass
+    return len(poors)
 
 
 def main(graph_name):
     start = time.time()
     graph_for_reference = nx.read_gpickle(graph_name)
+    print("graph has", len(graph_for_reference), "nodes")
 
     print("preprocessing...")
-    exclude_rich(graph_for_reference)
-    exclude_poor(graph_for_reference)
+    
+    num_of_riches = exclude_rich(graph_for_reference)
+    print("lost", num_of_riches, "rich nodes")
+    num_of_poors = exclude_poor(graph_for_reference)
+    print("lost", num_of_riches, "poor nodes")
+
     print("initializing BN...")
     BN_for_inference = init_BN(graph_for_reference)
     print("BN initialized")

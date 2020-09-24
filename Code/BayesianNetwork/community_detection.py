@@ -6,8 +6,11 @@ def bisect(large_graph):
     node_set_A, node_set_B = community.kernighan_lin_bisection(large_graph.to_undirected())
     naively_recovered_A = naive_recover_graph(node_set_A, large_graph)
     naively_recovered_B = naive_recover_graph(node_set_B, large_graph)
-    recovered_A, recovered_B = minimize_isolated(naively_recovered_A, naively_recovered_B, large_graph)
-    return recovered_A, recovered_B
+
+    return naively_recovered_A, naively_recovered_B
+
+    # recovered_A, recovered_B = minimize_isolated(naively_recovered_A, naively_recovered_B, large_graph)
+    # return recovered_A, recovered_B
 
 
 def naive_recover_graph(small_node_set, original_graph):
@@ -22,52 +25,60 @@ def naive_recover_graph(small_node_set, original_graph):
     return G
 
 
-def number_of_isolated_nodes(G):
+def isolated_nodes(G):
     acc = []
     for node_name in G.nodes:
         if len(G.in_edges(nbunch=node_name)) == 0 and len(G.out_edges(nbunch=node_name)) == 0:
             acc.append(node_name)
-    return len(acc)
+    return acc
 
 
 def minimize_isolated(graph1, graph2, original_graph):
     graph1_isolated = []
-    for node_name in graph1.nodes:
-        if len(graph1.in_edges(nbunch=node_name)) == 0 and\
-           len(graph1.out_edges(nbunch=node_name)) == 0:
-            graph1_isolated.append(node_name)
+    for node in isolated_nodes(graph1):
+        graph1_isolated.append(node)
 
     graph2_isolated = []
-    for node_name in graph2.nodes:
-        if len(graph2.in_edges(nbunch=node_name)) == 0 and\
-           len(graph2.out_edges(nbunch=node_name)) == 0:
-            graph2_isolated.append(node_name)
+    for node in isolated_nodes(graph2):
+        graph2_isolated.append(node)
         
     original_edges = original_graph.edges
 
     for isolated1 in graph1_isolated:
         for node1, node2 in original_edges:
             if isolated1 == node1:
-                graph1.remove_node(isolated1)
-                graph2.add_node(isolated1)
-                graph2.add_edge(isolated1, node2)
+                try:
+                    graph1.remove_node(node1)
+                    graph2.add_node(node1)
+                    graph2.add_edge(node1, node2)
+                except:
+                    pass        # 이미 지웠네
             elif isolated1 == node2:
-                graph1.remove_node(isolated1)
-                graph2.add_node(isolated1)
-                graph2.add_edge(node2, isolated1)
+                try:
+                    graph1.remove_node(isolated1)
+                    graph2.add_node(isolated1)
+                    graph2.add_edge(node2, isolated1)
+                except:
+                    pass
             else:
                 pass
 
     for isolated2 in graph2_isolated:
         for node1, node2 in original_edges:
             if isolated2 == node1:
-                graph2.remove_node(isolated2)
-                graph1.add_node(isolated2)
-                graph1.add_edge(isolated2, node2)
+                try:
+                    graph2.remove_node(isolated2)
+                    graph1.add_node(isolated2)
+                    graph1.add_edge(isolated2, node2)
+                except:
+                    pass
             elif isolated2 == node2:
-                graph2.remove_node(isolated2)
-                graph1.add_node(isolated2)
-                graph1.add_edge(node2, isolated2)
+                try:
+                    graph2.remove_node(isolated2)
+                    graph1.add_node(isolated2)
+                    graph1.add_edge(node2, isolated2)
+                except:
+                    pass
             else:
                 pass
 

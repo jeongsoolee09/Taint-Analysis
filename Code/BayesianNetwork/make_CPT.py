@@ -39,9 +39,9 @@ def make_call_sim_mag_table(N):
     arr = np.ones((4, 4**N)).astype(int)
     for (i,j), value in np.ndenumerate(arr):  # for efficient looping
         if label_identical(i, j, N):
-            arr[i,j] = 2
-        else:
             arr[i,j] = 4
+        else:
+            arr[i,j] = 1
     return arr
 
 
@@ -53,17 +53,17 @@ def make_df_mag_table(N):
         parent_labels = list(map(lambda tup: tup[1], parent_labels))
         child_label = parent_labels.pop()
         if 2 in parent_labels:
-            arr[i, j] = 4
+            arr[i, j] = 1
         elif 3 in parent_labels:
             if child_label == 1 or child_label == 3:
-                arr[i, j] = 4
+                arr[i, j] = 1
             else:
-                arr[i, j] = 2
+                arr[i, j] = 3
         else:
             if child_label == 1:
-                arr[i, j] = 4
+                arr[i, j] = 1
             else:
-                arr[i, j] = 2
+                arr[i, j] = 3
     return arr
 
 
@@ -93,10 +93,10 @@ def make_call_df_mag_table(edges):
     for (i,j), value in np.ndenumerate(df_CPT):
         cell_labels = labels_of(i, j, N)
         if to_be_mutated(cell_labels, call_sim_parents):
-            if df_CPT[i,j] == 4:  # White였다면, Green으로 바꿔 줌
-                df_CPT[i,j] = 3
+            if df_CPT[i,j] == 1:  # White였다면, Green으로 바꿔 줌
+                df_CPT[i,j] = 2
             else:  # Yellow였다면, Yellow-Green으로 바꿔 줌
-                df_CPT[i,j] = 1
+                df_CPT[i,j] = 4
     return df_CPT
 
 

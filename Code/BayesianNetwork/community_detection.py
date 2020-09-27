@@ -7,10 +7,8 @@ def bisect(large_graph):
     naively_recovered_A = naive_recover_graph(node_set_A, large_graph)
     naively_recovered_B = naive_recover_graph(node_set_B, large_graph)
 
-    return naively_recovered_A, naively_recovered_B
-
-    # recovered_A, recovered_B = minimize_isolated(naively_recovered_A, naively_recovered_B, large_graph)
-    # return recovered_A, recovered_B
+    recovered_A, recovered_B = minimize_isolated(naively_recovered_A, naively_recovered_B, large_graph)
+    return recovered_A, recovered_B
 
 
 def naive_recover_graph(small_node_set, original_graph):

@@ -7,11 +7,14 @@ import matplotlib.axes as axes
 import csv
 import networkx as nx
 import itertools as it
+import os
+import os.path
 import random
 import make_BN
 import solutions
 import json
 
+from datetime import datetime
 from scrape_oracle_docs import *
 from toolz import valmap
 from matplotlib.ticker import MaxNLocator
@@ -21,12 +24,14 @@ from make_CPT import *
 
 import modin.pandas as pd
 
-
 # Constants ========================================
 # ==================================================
 
-graph_for_reference = nx.read_gpickle("sagan-site_graph_2")
-BN_for_inference = make_BN.main("sagan-site_graph_2")
+NOW = datetime.now().strftime("%Y-%m-%d-%H:%M:%S")
+GRAPH_FILE_NAME = "sagan-site_graph_0"
+graph_for_reference = nx.read_gpickle(GRAPH_FILE_NAME)
+BN_for_inference = make_BN.main(GRAPH_FILE_NAME)
+
 DF_EDGES = list(df_reader)
 CALL_EDGES = list(call_reader)
 STATE_NAMES = list(map(lambda node: node.name, BN_for_inference.states))
@@ -46,7 +51,19 @@ class ThisIsImpossible(Exception):
 def random_loop(BN_for_inference, graph_for_reference, interaction_number,
                 current_asked, current_evidence, prev_snapshot,
                 precision_list, stability_list, precision_inferred_list, inference_time_list):
-    """the main interaction functionality, asking randomly"""
+    """The main interaction functionality, asking randomly
+       Parameters:
+            - BN_for_inference: the Bayesian Network.
+            - graph_for_reference: the underlying graph.
+            - interaction_number: number of interactions performed so far.
+            - current_asked: names of currently asked nodes.
+            - current_evidence: dict of given evidences accumulated so far
+            - prev_snapshot: snapshot from the previous call
+            - precision_list: accumulated precision values
+            - stability_list: accumulated stability values
+            - precision_inferred_list: accumulated precision values purely inferred by the BN
+            - inference_time_list: accumulated times took in belief propagation
+       Available kwargs: have_solution [True|False]: Do you have the complete solution for the benchmark?"""
 
     random_index = random.randint(0, len(BN_for_inference.states)-1)
     query = STATE_NAMES[random_index]
@@ -90,6 +107,8 @@ def random_loop(BN_for_inference, graph_for_reference, interaction_number,
     # the new precision purely inferred by the BN, after the observation
     current_precision_inferred = calculate_precision_inferred(new_snapshot, interaction_number)
     precision_inferred_list[interaction_number] = current_precision_inferred
+
+    print(interaction_number, ":", (current_precision/len(STATE_NAMES))*100, "%")
 
     # loop!
     return random_loop(BN_for_inference, graph_for_reference, interaction_number+1,
@@ -172,7 +191,7 @@ def tactical_loop(graph_for_reference, interaction_number,
     current_precision = calculate_precision(new_snapshot)
     precision_list[interaction_number] = current_precision
 
-    print(interaction_number, ":", current_precision)
+    print(interaction_number, ":", (current_precision/len(STATE_NAMES))*100, "%")
 
     # the new stability after the observation
     current_stability = calculate_stability(prev_snapshot, new_snapshot)
@@ -298,7 +317,10 @@ def draw_precision_graph(x, y, loop_type):
     plt.ylabel('# of correct nodes')
     plt.title("Precision development during interaction ("+loop_type+")")
     plt.plot(x, y, 'b-')
-    plt.savefig("precision_graph_"+loop_type+".svg")
+    if not os.path.isdir(GRAPH_FILE_NAME+"_stats"):
+        os.mkdir(GRAPH_FILE_NAME+"_stats")
+    plt.savefig(GRAPH_FILE_NAME+"_stats"+os.sep+\
+                "precision_graph_"+NOW+"_"+loop_type+".png")
 
 
 def draw_stability_graph(x, y, loop_type):
@@ -315,7 +337,10 @@ def draw_stability_graph(x, y, loop_type):
     plt.ylabel('# of changed nodes')
     plt.title("Stability development during interaction ("+loop_type+")")
     plt.plot(x, y, 'b-')
-    plt.savefig("stability_graph_"+loop_type+".svg")
+    if not os.path.isdir(GRAPH_FILE_NAME+"_stats"):
+        os.mkdir(GRAPH_FILE_NAME+"_stats")
+    plt.savefig(GRAPH_FILE_NAME+"_stats"+os.sep+\
+                "stability__graph_"+NOW+"_"+loop_type+".png")
 
 
 def draw_precision_inferred_graph(x, y, loop_type):
@@ -332,7 +357,10 @@ def draw_precision_inferred_graph(x, y, loop_type):
     plt.ylabel('# of correctly inferred nodes')
     plt.title("Inferred precision development during interaction ("+loop_type+")")
     plt.plot(x, y, 'b-')
-    plt.savefig("precision_inferred_graph_"+loop_type+".svg")
+    if not os.path.isdir(GRAPH_FILE_NAME+"_stats"):
+        os.mkdir(GRAPH_FILE_NAME+"_stats")
+    plt.savefig(GRAPH_FILE_NAME+"_stats"+os.sep+\
+                "precision_inferred_graph_"+NOW+"_"+loop_type+".png")
 
 
 def make_names_and_params(snapshot):

@@ -115,7 +115,7 @@ def split_large_graph(G):
         if worklist == []:
             return acc
         target = worklist.pop()
-        if len(target.nodes) <= 400:
+        if len(target.nodes) <= 200:
             acc.append(target)
         else:
             small1, small2 = bisect(target)
@@ -134,6 +134,7 @@ def main():
         root_methods = collect_root_methods(jar_path)['id']
         all_methods = collect_callees(callgraph, root_methods)
         masked_graph = mask_graph(graph_for_reference, all_methods)
+        nx.write_gpickle(masked_graph, graph_name+"_graph")
         small_graphs = split_large_graph(masked_graph)
         i = 0
         for small_graph in small_graphs:

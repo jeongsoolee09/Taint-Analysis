@@ -24,7 +24,6 @@ def create_roots_for_BN(G, BN):
 
 def create_internal_node_for_BN(graph_for_reference, node_name, BN, prev_states):
     """BN에 internal node를 만들어 추가한다."""
-    # print("making node {}, # of incoming edges: {}".format(node_name, len(list(graph_for_reference.in_edges(nbunch=node_name)))))
     labels = [1, 2, 3, 4]       # src, sin, san, non
     parents_and_edges = find_edge_labels(graph_for_reference, node_name)
     parents = list(map(lambda tup: tup[0], parents_and_edges)) 
@@ -99,6 +98,7 @@ def exclude_rich(G):
     for node_name in G.nodes:
         if len(G.in_edges(nbunch=node_name)) > 6:
             riches.append(node_name)
+    print("lost", len(riches), "rich nodes")
     for rich in riches:
         try:
             G.remove_node(rich)
@@ -115,6 +115,7 @@ def exclude_poor(G):
             if len(G.in_edges(nbunch=node_name)) == 0 and\
                len(G.out_edges(nbunch=node_name)) == 0:
                 poors.append(node_name)
+        print("lost", len(poors), "poor nodes")
         if poors == []:
             return
         for poor in poors:
@@ -133,9 +134,7 @@ def main(graph_name):
     print("preprocessing...")
     
     num_of_riches = exclude_rich(graph_for_reference)
-    print("lost", num_of_riches, "rich nodes")
     num_of_poors = exclude_poor(graph_for_reference)
-    print("lost", num_of_riches, "poor nodes")
 
     print("initializing BN...")
     BN_for_inference = init_BN(graph_for_reference)

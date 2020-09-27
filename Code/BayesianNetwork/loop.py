@@ -4,7 +4,6 @@ import numpy as np
 import matplotlib.pyplot as plt
 import matplotlib.patches as ptch
 import matplotlib.axes as axes
-import pandas as pd
 import csv
 import networkx as nx
 import itertools as it
@@ -20,17 +19,24 @@ from scrape_oracle_docs import *
 from toolz import valmap
 from matplotlib.ticker import MaxNLocator
 from create_node import process
-from make_underlying_graph import find_edge_labels, df_reader, call_reader
+from make_underlying_graph import find_edge_labels
 from make_CPT import *
 
+import modin.pandas as pd
 
 # Constants ========================================
 # ==================================================
 
 NOW = datetime.now().strftime("%Y-%m-%d-%H:%M:%S")
-GRAPH_FILE_NAME = "sagan-site_graph_3"
+GRAPH_FILE_NAME = "sagan-site_graph_0"
 graph_for_reference = nx.read_gpickle(GRAPH_FILE_NAME)
 BN_for_inference = make_BN.main(GRAPH_FILE_NAME)
+
+df_data = open("df.csv", "r+")
+df_reader = csv.reader(df_data)
+
+call_data = open("callg.csv", "r+")
+call_reader = csv.reader(call_data)
 
 DF_EDGES = list(df_reader)
 CALL_EDGES = list(call_reader)
@@ -68,7 +74,6 @@ def random_loop(BN_for_inference, graph_for_reference, interaction_number,
        Available kwargs: have_solution [True|False]: Do you have the complete solution for the benchmark?"""
 
     random_index = random.randint(0, len(BN_for_inference.states)-1)
-    state_names = list(map(lambda node: node.name, BN_for_inference.states))
     query = state_names[random_index]
     while query in current_asked:
         random_index = random.randint(0, len(BN_for_inference.states)-1)
@@ -78,6 +83,13 @@ def random_loop(BN_for_inference, graph_for_reference, interaction_number,
 
     # exit the function based on confidence.
     if its_time_to_terminate:
+        if not kwargs["have_solution"]:
+            draw_precision_graph(list(range(1, len(BN_for_inference.states)+1)),
+                                 precision_list, interactive=False, loop_type="random")
+            draw_stability_graph(list(range(1, len(BN_for_inference.states)+1)),
+                                 stability_list, interactive=False, loop_type="random")
+            draw_precision_inferred_graph(list(range(1, len(BN_for_inference.states)+1)),
+                                          stability_list, interactive=False, loop_type="random")
         return prev_snapshot, precision_list, stability_list, precision_inferred_list
 
     oracle_response = input("What label does <" + query + "> bear? [src|sin|san|non]: ")
@@ -91,6 +103,13 @@ def random_loop(BN_for_inference, graph_for_reference, interaction_number,
     elif oracle_response == 'non':
         current_evidence[query] = 4
     elif oracle_response == 'exit':
+        if not kwargs["have_solution"]:
+            draw_precision_graph(list(range(1, len(BN_for_inference.states)+1)),
+                                 precision_list, interactive=False, loop_type="random")
+            draw_stability_graph(list(range(1, len(BN_for_inference.states)+1)),
+                                 stability_list, interactive=False, loop_type="random")
+            draw_precision_inferred_graph(list(range(1, len(BN_for_inference.states)+1)),
+                                          stability_list, interactive=False, loop_type="random")
         return prev_snapshot, precision_list, stability_list, precision_inferred_list
 
     current_asked.append(query)
@@ -113,17 +132,23 @@ def random_loop(BN_for_inference, graph_for_reference, interaction_number,
     current_precision_inferred = calculate_precision_inferred(new_snapshot, interaction_number)
     precision_inferred_list[interaction_number] = current_precision_inferred
 
+    # print the number of confident nodes
+    print("# of confident nodes: ", count_confident_nodes(new_snapshot))
+
     # visualize the current status if necessary
     if kwargs["have_solution"]:
         visualize_snapshot(new_snapshot, [])
-        draw_precision_graph(list(range(1, len(BN_for_inference.states)+1)), precision_list)
-        draw_stability_graph(list(range(1, len(BN_for_inference.states)+1)), stability_list)
-        draw_precision_inferred_graph(list(range(1, len(BN_for_inference.states)+1)), stability_list)
+        draw_precision_graph(list(range(1, len(BN_for_inference.states)+1)),
+                             precision_list, interactive=True, loop_type="random")
+        draw_stability_graph(list(range(1, len(BN_for_inference.states)+1)),
+                             stability_list, interactive=True, loop_type="random")
+        draw_precision_inferred_graph(list(range(1, len(BN_for_inference.states)+1)),
+                                      stability_listinteractive=True, loop_type="random")
 
     # loop!
     return random_loop(BN_for_inference, graph_for_reference, interaction_number+1,
                        current_asked, current_evidence, new_snapshot,
-                       precision_list, stability_list, precision_inferred_list, inference_time_list)
+                       precision_list, stability_list, precision_inferred_list, inference_time_list, **kwargs)
     
 # tactical loop and its calculations ====================
 # ========================================================
@@ -146,7 +171,7 @@ def tactical_loop(graph_for_reference, interaction_number,
             - inference_time_list: accumulated times took in belief propagation
        Available kwargs: have_solution [True|False]: Do you have the complete solution for the benchmark?"""
 
-    inference_start = time.time()
+    loop_start = time.time()
 
     # some variables to make our code resemble English
     there_are_nodes_left = find_max_d_con(current_asked, updated_nodes, STATE_NAMES)
@@ -166,10 +191,24 @@ def tactical_loop(graph_for_reference, interaction_number,
     if there_are_no_nodes_left and not_yet_time_to_terminate:
         if set(STATE_NAMES) == set(current_asked):
             print("\nWarning: some distributions are not fully determined.\n")
-            return prev_snapshot, precision_list, stability_list, precision_inferred_list
+            if not kwargs["have_solution"]:
+                draw_precision_graph(list(range(1, len(BN_for_inference.states)+1)),
+                                     precision_list, interactive=False, loop_type="tactical")
+                draw_stability_graph(list(range(1, len(BN_for_inference.states)+1)),
+                                     stability_list, interactive=False, loop_type="tactical")
+                draw_precision_inferred_graph(list(range(1, len(BN_for_inference.states)+1)),
+                                              stability_list, interactive=False, loop_type="tactical")
+                return prev_snapshot, precision_list, stability_list, precision_inferred_list
         else:
             query, dependent_nodes = find_max_d_con([], [], remove_sublist(STATE_NAMES, current_asked))
     elif there_are_no_nodes_left and its_time_to_terminate:
+        if not kwargs["have_solution"]:
+            draw_precision_graph(list(range(1, len(BN_for_inference.states)+1)),
+                                 precision_list, interactive=False, loop_type="tactical")
+            draw_stability_graph(list(range(1, len(BN_for_inference.states)+1)),
+                                 stability_list, interactive=False, loop_type="tactical")
+            draw_precision_inferred_graph(list(range(1, len(BN_for_inference.states)+1)),
+                                          stability_list, interactive=False, loop_type="tactical")
         return prev_snapshot, precision_list, stability_list, precision_inferred_list
     elif there_are_nodes_left and not_yet_time_to_terminate:
         pass
@@ -189,6 +228,12 @@ def tactical_loop(graph_for_reference, interaction_number,
     elif oracle_response == 'non':
         current_evidence[query] = 4
     elif oracle_response == 'exit':
+        draw_precision_graph(list(range(1, len(BN_for_inference.states)+1)),
+                             precision_list, interactive=False, loop_type="tactical")
+        draw_stability_graph(list(range(1, len(BN_for_inference.states)+1)),
+                             stability_list, interactive=False, loop_type="tactical")
+        draw_precision_inferred_graph(list(range(1, len(BN_for_inference.states)+1)),
+                                      stability_list, interactive=False, loop_type="tactical")
         return prev_snapshot, precision_list, stability_list, precision_inferred_list
 
     current_asked.append(query)
@@ -211,24 +256,29 @@ def tactical_loop(graph_for_reference, interaction_number,
     current_precision_inferred = calculate_precision_inferred(new_snapshot, interaction_number)
     precision_inferred_list[interaction_number] = current_precision_inferred
 
+    # print the number of confident nodes
+    print("# of confident nodes: ", count_confident_nodes(new_snapshot))
+
     # visualize the current status if necessary
     if kwargs["have_solution"]:
         visualize_snapshot(new_snapshot, [])
-        draw_precision_graph(list(range(1, len(BN_for_inference.states)+1)), precision_list)
-        draw_stability_graph(list(range(1, len(BN_for_inference.states)+1)), stability_list)
-        draw_precision_inferred_graph(list(range(1, len(BN_for_inference.states)+1)), stability_list)
+        draw_precision_graph(list(range(1, len(BN_for_inference.states)+1)),
+                             precision_list, interactive=True, loop_type="tactical")
+        draw_stability_graph(list(range(1, len(BN_for_inference.states)+1)),
+                             stability_list, interactive=True, loop_type="tactical")
+        draw_precision_inferred_graph(list(range(1, len(BN_for_inference.states)+1)),
+                                      stability_list, interactive=True, loop_type="tactical")
 
     # loop!
     return tactical_loop(graph_for_reference, interaction_number+1,
                          current_asked, current_evidence, updated_nodes,
                          new_snapshot, precision_list, stability_list,
-                         precision_inferred_list, inference_time_list)
+                         precision_inferred_list, inference_time_list, **kwargs)
 
 
 def d_connected(node, current_asked, pool):
     """현재까지 물어본 노드들이 주어졌을 때, node와 조건부 독립인 노드들의 set을 찾아낸다. Complexity: O(n)."""
     out = set()
-    # print(len(STATE_NAMES))
     for other_node in STATE_NAMES:
         if nx.d_separated(graph_for_reference, {node}, {other_node}, set(current_asked)):
             out.add(other_node)
@@ -274,9 +324,23 @@ def is_confident(parameters):
         return True
 
 
+def count_confident_nodes(snapshot):
+    # the distribution across random variables' values
+    names_and_params = make_names_and_params(snapshot)
+    params = list(map(lambda tup: tup[1], names_and_params))
+    # list of lists of the probabilities across random variables' values, extracted from dist_dicts
+    dist_probs = list(map(lambda dist: list(dist.values()), params))
+    # Do all the nodes' probability lists satisfy is_confident()?
+    acc = 0
+    for lst in dist_probs:
+        if is_confident(lst):
+            acc += 1
+    return acc
+
+
 def time_to_terminate(BN, current_evidence):
     # the distribution across random variables' values
-    names_and_params = make_names_and_params(BN_for_inference.predict_proba(current_evidence))
+    names_and_params = make_names_and_params(BN_for_inference.predict_proba(current_evidence, n_jobs=-1))
     params = list(map(lambda tup: tup[1], names_and_params))
     # list of lists of the probabilities across random variables' values, extracted from dist_dicts
     dist_probs = list(map(lambda dist: list(dist.values()), params))
@@ -338,18 +402,20 @@ def visualize_snapshot(snapshot, dependent_nodes):
         plt.text(x, y+0.1, s='conf', bbox=dict(facecolor='blue', alpha=0.5), horizontalalignment='center')
     
     # dependent node들 다각형으로 그리기
-    coord_lists = []
-    for dependent_node in dependent_nodes:
-        coord_lists.append(node_posmap[dependent_node])
-    coord_lists = np.asarray(coord_lists)
-    polygon = ptch.Polygon(coord_lists, closed=True, alpha=0.4)
-    ax.add_patch(polygon)
+    # coord_lists = []
+    # for dependent_node in dependent_nodes:
+    #     coord_lists.append(node_posmap[dependent_node])
+    # coord_lists = np.asarray(coord_lists)
+    # polygon = ptch.Polygon(coord_lists, closed=True, alpha=0.4)
+    # ax.add_patch(polygon)
 
     nx.draw(graph_for_reference,
             node_color=node_colormap, edge_color=edge_colormap,
             pos=node_posmap,
             ax=ax,
             with_labels=True, node_size=100)
+
+    plt.show()
 
 
 def draw_precision_graph(x, y, **kwargs):
@@ -374,9 +440,10 @@ def draw_precision_graph(x, y, **kwargs):
     if kwargs["interactive"]:
         precision_figure.canvas.draw()
     else:
-        if not os.path.isdir(GRAPH_FILE_NAME):
-            os.mkdir(GRAPH_FILE_NAME)
-        plt.savefig(GRAPH_FILE_NAME+os.sep+"precision_graph_"+NOW+"_"loop_type+".png")
+        if not os.path.isdir(GRAPH_FILE_NAME+"_stats"):
+            os.mkdir(GRAPH_FILE_NAME+"_stats")
+        plt.savefig(GRAPH_FILE_NAME+"_stats"+os.sep+\
+                    "precision_graph_"+NOW+"_"+kwargs["loop_type"]+".png")
     
 
 def draw_stability_graph(x, y, **kwargs):
@@ -399,24 +466,25 @@ def draw_stability_graph(x, y, **kwargs):
     plt.plot(x, y, 'b-')
     
     if kwargs["interactive"]:
-        precision_figure.canvas.draw()
+        stability_figure.canvas.draw()
     else:
-        if not os.path.isdir(GRAPH_FILE_NAME):
-            os.mkdir(GRAPH_FILE_NAME)
-        plt.savefig(GRAPH_FILE_NAME+os.sep+"stability_inferred_graph_"+NOW+"_"loop_type+".png")
+        if not os.path.isdir(GRAPH_FILE_NAME+"_stats"):
+            os.mkdir(GRAPH_FILE_NAME+"_stats")
+        plt.savefig(GRAPH_FILE_NAME+"_stats"+os.sep+\
+                    "stability__graph_"+NOW+"_"+kwargs["loop_type"]+".png")
 
 
-def draw_precision_inferred_graph(x, y):
+def draw_precision_inferred_graph(x, y, **kwargs):
     """stability graph를 그리는 함수. NOTE: x와 y의 input 길이를 맞춰줘야 함.
        Available kwargs:
            - interactive [True|False]: Interactively show & update vs. save as png file"""
 
     plt.ion()
-    stability_figure = plt.figure("Inferred Precision")
-    ax = stability_figure.gca()
+    precision_inferred_figure = plt.figure("Inferred Precision")
+    ax = precision_inferred_figure.gca()
     ax.xaxis.set_major_locator(MaxNLocator(integer=True))
     ax.yaxis.set_major_locator(MaxNLocator(integer=True))
-    stability_figure.clf()
+    precision_inferred_figure.clf()
     num_of_states = len(STATE_NAMES)
     plt.xlim(1, num_of_states)
     plt.ylim(0, num_of_states)
@@ -426,11 +494,12 @@ def draw_precision_inferred_graph(x, y):
     plt.plot(x, y, 'b-')
     
     if kwargs["interactive"]:
-        precision_figure.canvas.draw()
+        precision_inferred_figure.canvas.draw()
     else:
-        if not os.path.isdir(GRAPH_FILE_NAME):
-            os.mkdir(GRAPH_FILE_NAME)
-        plt.savefig(GRAPH_FILE_NAME+os.sep+"precision_inferred_graph_"+NOW+"_"loop_type+".png")
+        if not os.path.isdir(GRAPH_FILE_NAME+"_stats"):
+            os.mkdir(GRAPH_FILE_NAME+"_stats")
+        plt.savefig(GRAPH_FILE_NAME+"_stats"+os.sep+\
+                    "precision_inferred_graph_"+NOW+"_"+kwargs["loop_type"]+".png")
         
         
 
@@ -572,7 +641,7 @@ def main():
         tactical_loop(graph_for_reference, 0,
                       list(), dict(), list(),
                       initial_snapshot, initial_precision_list, initial_stability_list,
-                      initial_precision_inferred_list, list(), have_solution=True)
+                      initial_precision_inferred_list, list(), have_solution=False)
 
     # save the data
     save_data_as_csv(final_snapshot)

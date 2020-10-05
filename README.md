@@ -22,11 +22,11 @@ Repository 책임자: 이정수
 
 ### Dependency
 
-1. Java 11 (Oracle)
+1. Java 8 (Oracle)
 2. 최신 Gradle
-3. 최신 opam과 OCaml 4.08.1
+3. 최신 opam
 4. Python 3.8.5
-5. `pip install numpy matplotlib networkx toolz pandas pomegranate ray dask modin[all] bs4` 
+5. `pip install numpy matplotlib networkx toolz pandas pomegranate ray dask modin[all] bs4 z3` 
 
 ### Infer 설치하기
 
@@ -259,3 +259,7 @@ shell configuration file에 `infer` 명령어에 대한 alias를 다음으로 �
 ### infer 실행 시 Internal Error가 발생하는 경우
 
 infer로 작성된 정적분석기가 다루지 못하는 케이스를 맞닥뜨린 경우입니다. 이는 현재 한계로 남아 있습니다.
+
+### `./build-infer.sh java` 시 `conf-gmp` 빌드에 실패하는 경우
+
+Clang 12를 쓰고 계신가요? Clang 11로 다운그레이드하시면 해결될 것 같습니다.

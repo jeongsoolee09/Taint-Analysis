@@ -50,11 +50,10 @@ def has_java_file(directory):
             continue
         java_files += glob.glob(os.path.join(current_dir, "*.java"))
     return java_files != []
-    
+
 
 def real_jar_paths(project_root):
     """.jar로 컴파일되는 path의 목록을 찾아 낸다."""
     all_jar_full_paths = find_jar_paths(project_root)
     all_jar_paths = list(map(take_jar_dir, all_jar_full_paths))
     return list(filter(has_java_file, all_jar_paths))
-

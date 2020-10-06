@@ -6,9 +6,11 @@ import glob
 import random
 import os.path
 import json
+import matplotlib.pyplot as plt
 
 from create_node import process
 from scrape_oracle_docs import scrape_class_names
+
 
 def retrieve_path():
     """paths.json을 읽고 path를 가져온다."""
@@ -33,22 +35,23 @@ data_reader = csv.reader(raw_data)
 edges_data = open("edges.csv", "r+")
 edges_reader = csv.reader(edges_data)
 
-skip_func_data = open("skip_func.csv", "r+")
-skip_func_reader = csv.reader(skip_func_data)
+# skip_func_data = open("skip_func.csv", "r+")
+# skip_func_reader = csv.reader(skip_func_data)
 
 
-def skip_func_reader():
-    """skip_func.txt를 단순히 읽어 낸다."""
-    path = os.path.abspath("..")
-    path = os.path.join(PROJECT_ROOT_DIR, "skip_func.txt")
-    with open(path, "r+") as skip_func:
-        lines = skip_func.readlines()
-        lines = list(map(lambda line: line.rstrip(), lines))
-    return lines
+# def skip_func_reader():
+#     """skip_func.txt를 단순히 읽어 낸다."""
+#     path = os.path.abspath("..")
+#     path = os.path.join(PROJECT_ROOT_DIR, "skip_func.txt")
+#     with open(path, "r+") as skip_func:
+#         lines = skip_func.readlines()
+#         lines = list(map(lambda line: line.rstrip(), lines))
+#     return lines
 
 
-def is_java_builtin(method_id):
-    """주어진 method가 java.lang 혹은 java.utils에 속하는지를 판별하는 predicate. class 이름을 보고 판단."""
+def is_java_builtin(method_id, built_in_classes):
+    """주어진 method가 java.lang 혹은 java.utils에 속하는지를 판별하는 predicate:
+       class 이름을 보고 판단."""
     # oracle doc urls
     method_class = process(method_id)[0]
     return method_class in built_in_classes
@@ -63,7 +66,7 @@ call_reader = csv.reader(call_data)
 
 df_edges = list(df_reader)
 call_edges = list(call_reader)
-skip_funcs = skip_func_reader()
+# skip_funcs = skip_func_reader()
 
 
 # Blacklisting and Whitelisting ======================

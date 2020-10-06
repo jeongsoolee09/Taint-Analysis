@@ -340,7 +340,7 @@ def draw_stability_graph(x, y, loop_type):
     if not os.path.isdir(GRAPH_FILE_NAME+"_stats"):
         os.mkdir(GRAPH_FILE_NAME+"_stats")
     plt.savefig(GRAPH_FILE_NAME+"_stats"+os.sep+\
-                "stability__graph_"+NOW+"_"+loop_type+".png")
+                "stability_graph_"+NOW+"_"+loop_type+".png")
 
 
 def draw_precision_inferred_graph(x, y, loop_type):

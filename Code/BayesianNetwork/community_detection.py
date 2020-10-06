@@ -1,6 +1,26 @@
 import networkx as nx
 from networkx.algorithms import community
 
+
+def compute_error(original_graph, graph_A, graph_B):
+    original_number_of_nodes = len(original_graph.nodes)
+    error_A = abs(len(graph_A.nodes) - original_number_of_nodes//2)
+    error_B = abs(len(graph_B.nodes) - original_number_of_nodes//2)
+    return error_A+error_B
+
+
+def bisect_optimal(large_graph):
+    acc = []
+    for _ in range(100):
+        A, B = bisect(large_graph)
+        error = compute_error(large_graph, A, B)
+        acc.append((A, B, error))
+    best_pair = min(acc, key=lambda tup: tup[2])
+    best_A = best_pair[0]
+    best_B = best_pair[1]
+    return best_A, best_B
+
+
 def bisect(large_graph):
     """bisect the given graph"""
     node_set_A, node_set_B = community.kernighan_lin_bisection(large_graph.to_undirected())
@@ -39,7 +59,7 @@ def minimize_isolated(graph1, graph2, original_graph):
     graph2_isolated = []
     for node in isolated_nodes(graph2):
         graph2_isolated.append(node)
-        
+
     original_edges = original_graph.edges
 
     for isolated1 in graph1_isolated:

@@ -8,7 +8,7 @@ import random
 import json
 
 from make_underlying_graph import df_reader, call_reader, extract_filename
-from community_detection import bisect
+from community_detection import bisect_optimal
 from find_jar import real_jar_paths, take_jar_dir
 
 
@@ -108,7 +108,7 @@ def take_direct_subdirectory(jar_path):
     full_jar_path = take_jar_dir(jar_path)
     splitted = full_jar_path.split(os.sep)
     return splitted[len(splitted)-1]
-        
+
 
 def split_large_graph(G):
     def split_large_graph_inner(acc, worklist):
@@ -118,7 +118,7 @@ def split_large_graph(G):
         if len(target.nodes) <= 200:
             acc.append(target)
         else:
-            small1, small2 = bisect(target)
+            small1, small2 = bisect_optimal(target)
             worklist.append(small1)
             worklist.append(small2)
         return split_large_graph_inner(acc, worklist)

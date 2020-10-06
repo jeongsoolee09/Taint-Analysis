@@ -2,12 +2,11 @@ import pandas as pd
 import time
 import re
 import os.path
-import glob
 import json
 
 regex = r'\((.*)\)'
 regex = re.compile(regex)
-    
+
 
 def retrieve_path():
     """paths.json을 읽고 path를 가져온다."""
@@ -56,7 +55,6 @@ def populate_sofallm(methodfile, callgraphfile):
     methods = []
     callmethods = []
     with open(methodfile, "r+") as f:
-        lines = f.readlines()
         for line in f.readlines():
             methods.append(line.rstrip())
     methods = list(filter(filtermethod, methods))
@@ -70,7 +68,7 @@ def populate_sofallm(methodfile, callgraphfile):
     callmethods = set(flatten(callmethods))
     setofallmethods = list(methods.union(callmethods))
     setofallmethods = list(filter(lambda meth: ' ' in meth, setofallmethods))
-    
+
     setofallmethods = list(map(process, setofallmethods))
     return setofallmethods
 
@@ -79,7 +77,7 @@ def write_to_csv(setofallmethods):
     write_list = setofallmethods
     columns = ["class", "rtntype", "name", "intype", "id"]
     write_list = pd.DataFrame(write_list, columns=columns, dtype="str")
-    write_list = write_list.reset_index() # embed the index into a separate column
+    write_list = write_list.reset_index()  # embed the index into a separate column
     write_list.to_csv("nodes.csv", mode='w+')
 
 
@@ -89,7 +87,6 @@ def main():
     # let's read the files created by static analysis
     methodfile = os.path.join(PROJECT_ROOT_DIR, 'Methods.txt')
     callgraphfile = os.path.join(PROJECT_ROOT_DIR, 'Callgraph.txt')
-    skipfuncfile = os.path.join(PROJECT_ROOT_DIR, 'skip_func.txt')
 
     setofallmethods = populate_sofallm(methodfile, callgraphfile)
     write_to_csv(setofallmethods)

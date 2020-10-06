@@ -1213,5 +1213,7 @@
   "int MockHttpServletResponse.getStatus()": "non",
   "List Project.getNonMostCurrentReleases()": "non",
   "String GettingStartedGuide.getSshUrl()": "src",
-  "ResourceHandlerRegistration ResourceHandlerRegistration.addResourceLocations(java.lang.String[])": "non"
+  "ResourceHandlerRegistration ResourceHandlerRegistration.addResourceLocations(java.lang.String[])": "non",
+  "void TeamLocation.setName(String)": "non",
+  "void TeamLocation.setLatitude(float)": "non"
 }

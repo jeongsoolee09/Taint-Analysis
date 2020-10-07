@@ -1254,5 +1254,10 @@
     "String Project.getCategory()": "non",
     "String GuideContent.getContent()": "non",
     "boolean ProjectRelease.isCurrent()": "non",
-    "ResponseEntity GuidesController.resourceNotFound()": "non"
+    "ResponseEntity GuidesController.resourceNotFound()": "non",
+    "void RedisCacheManager.setUsePrefix(boolean)": "non",
+    "void Project.setDisplayOrder(int)": "non",
+    "void GeoLocation.setLongitude(float)": "non",
+    "long PaginationInfo.getPreviousPageNumber()": "non",
+    "long PaginationInfo.getNextPageNumber()": "non"
 }

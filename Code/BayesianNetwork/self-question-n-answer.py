@@ -28,7 +28,7 @@ import modin.pandas as pd
 # ==================================================
 
 NOW = datetime.now().strftime("%Y-%m-%d-%H:%M:%S")
-GRAPH_FILE_NAME = "sagan-site_graph_2"
+GRAPH_FILE_NAME = "sagan-renderer_graph_1"
 graph_for_reference = nx.read_gpickle(GRAPH_FILE_NAME)
 BN_for_inference = make_BN.main(GRAPH_FILE_NAME)
 

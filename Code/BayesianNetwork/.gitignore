@@ -5,3 +5,5 @@ array.py
 *.pyc
 dask-worker-space/
 graph_for_reference
+*_stats/
+*_graph*

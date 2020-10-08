@@ -140,7 +140,7 @@ def main(graph_name):
     BN_for_inference = init_BN(graph_for_reference)
     print("BN initialized")
 
-    nx.write_gpickle(graph_for_reference, graph_name)
+    # nx.write_gpickle(graph_for_reference, graph_name)
     print("elapsed time:", time.time()-start)
     return BN_for_inference
 

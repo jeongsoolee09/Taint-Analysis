@@ -1,28 +1,27 @@
-from pomegranate import *
-import time
-import numpy as np
-import matplotlib.pyplot as plt
-import matplotlib.patches as ptch
-import matplotlib.axes as axes
 import csv
-import networkx as nx
 import itertools as it
+import json
 import os
 import os.path
 import random
-import make_BN
-import solutions
-import json
-
+import time
 from datetime import datetime
+
+import make_BN
+import matplotlib.axes as axes
+import matplotlib.patches as ptch
+import matplotlib.pyplot as plt
+import modin.pandas as pd
+import networkx as nx
+import numpy as np
+import solutions
+from create_node import process
+from make_CPT import *
+from make_underlying_graph import call_reader, df_reader, find_edge_labels
+from matplotlib.ticker import MaxNLocator
+from pomegranate import *
 from scrape_oracle_docs import *
 from toolz import valmap
-from matplotlib.ticker import MaxNLocator
-from create_node import process
-from make_underlying_graph import find_edge_labels, df_reader, call_reader
-from make_CPT import *
-
-import modin.pandas as pd
 
 # Constants ========================================
 # ==================================================
@@ -50,7 +49,7 @@ class ThisIsImpossible(Exception):
 
 def random_loop(BN_for_inference, graph_for_reference, interaction_number,
                 current_asked, current_evidence, prev_snapshot,
-                precision_list, stability_list, precision_inferred_list, inference_time_list):
+                precision_list, stability_list, precision_inferred_list, inference_time_list, window):
     """The main interaction functionality, asking randomly
        Parameters:
             - BN_for_inference: the Bayesian Network.
@@ -108,21 +107,27 @@ def random_loop(BN_for_inference, graph_for_reference, interaction_number,
     current_precision_inferred = calculate_precision_inferred(new_snapshot, interaction_number)
     precision_inferred_list[interaction_number] = current_precision_inferred
 
+    # slide the window
+    window = window[1:]     # dequeue the oldest one
+    window.append(new_snapshot)  # and enqueue the newest one
+
     print(interaction_number, ":", (current_precision/len(STATE_NAMES))*100, "%")
+
+    visualize_snapshot(new_snapshot)
 
     # loop!
     return random_loop(BN_for_inference, graph_for_reference, interaction_number+1,
                        current_asked, current_evidence, new_snapshot,
-                       precision_list, stability_list, precision_inferred_list, inference_time_list)
+                       precision_list, stability_list, precision_inferred_list, inference_time_list, window)
 
-    
+
 # tactical loop and its calculations =====================
 # ========================================================
 
 def tactical_loop(graph_for_reference, interaction_number,
                   current_asked, current_evidence, updated_nodes,
                   prev_snapshot, precision_list, stability_list,
-                  precision_inferred_list, inference_time_list):
+                  precision_inferred_list, inference_time_list, window):
     """the main interaction functionality (loops via recursion), asking tactically using d-separation
        parameters:
             - graph_for_reference: the underlying graph.
@@ -138,10 +143,12 @@ def tactical_loop(graph_for_reference, interaction_number,
 
     loop_start = time.time()
 
+    initial = np.ndarray([0])
+
     # some variables to make our code resemble English
     there_are_nodes_left = find_max_d_con(current_asked, updated_nodes, STATE_NAMES)
     there_are_no_nodes_left = not there_are_nodes_left
-    its_time_to_terminate = time_to_terminate(BN_for_inference, current_evidence)
+    its_time_to_terminate = time_to_terminate(BN_for_inference, current_evidence, window, criteria='plateau')
     not_yet_time_to_terminate = not its_time_to_terminate
 
     # pick a method to ask by finding one with the maximum number of D-connected nodes
@@ -165,6 +172,7 @@ def tactical_loop(graph_for_reference, interaction_number,
         pass
     elif there_are_nodes_left and its_time_to_terminate:
         raise ThisIsImpossible
+
 
     # ask the chosen method and fetch the answer from the solutions
     oracle_response = SOLUTION[query]
@@ -201,13 +209,17 @@ def tactical_loop(graph_for_reference, interaction_number,
     current_precision_inferred = calculate_precision_inferred(new_snapshot, interaction_number)
     precision_inferred_list[interaction_number] = current_precision_inferred
 
+    # slide the window
+    window = window[1:]     # dequeue the oldest one
+    window.append(new_snapshot)  # and enqueue the newest one
+
     print("loop took: ", time.time()-loop_start, "seconds")
 
     # loop!
     return tactical_loop(graph_for_reference, interaction_number+1,
                          current_asked, current_evidence, updated_nodes,
                          new_snapshot, precision_list, stability_list,
-                         precision_inferred_list, inference_time_list)
+                         precision_inferred_list, inference_time_list, window)
 
 
 def d_connected(node, current_asked, pool):
@@ -258,14 +270,91 @@ def is_confident(parameters):
         return True
 
 
-def time_to_terminate(BN, current_evidence):
-    # the distribution across random variables' values
-    names_and_params = make_names_and_params(BN_for_inference.predict_proba(current_evidence, n_jobs=-1))
+def visualize_snapshot(snapshot):
+    """한번 iteration 돌 때마다, 전체 BN의 snapshot을 가시화한다. 이 때, confident node들 위에는 `conf`라는 문구를 띄운다."""
+    network_figure = plt.figure("Bayesian Network")
+    network_figure.clf()
+    plt.ion()
+    ax = network_figure.add_subplot()
+    names_and_params = make_names_and_params(snapshot)
     params = list(map(lambda tup: tup[1], names_and_params))
-    # list of lists of the probabilities across random variables' values, extracted from dist_dicts
-    dist_probs = list(map(lambda dist: list(dist.values()), params))
-    # Do all the nodes' probability lists satisfy is_confident()?
-    return reduce(lambda acc, lst: is_confident(lst) and acc, dist_probs, True)
+    names_and_labels = list(map(lambda tup: (tup[0], find_max_val(tup[1])), names_and_params))
+    node_colormap = create_node_colormap(names_and_labels)
+    edge_colormap = create_edge_colormap()
+
+    node_posmap = nx.circular_layout(graph_for_reference)
+
+    # confident node들 위에 문구 띄우기
+    confident_node_indices = []
+    for i, param in enumerate(params):
+        if is_confident(param):
+            confident_node_indices.append(i)
+    confident_nodes = list(map(lambda index: names_and_params[index][0], confident_node_indices))
+    for confident_node in confident_nodes:
+        x, y = node_posmap[confident_node]
+        plt.text(x, y+0.1, s='conf', bbox=dict(facecolor='blue', alpha=0.5), horizontalalignment='center')
+    
+    # dependent node들 다각형으로 그리기
+    # coord_lists = []
+    # for dependent_node in dependent_nodes:
+    #     coord_lists.append(node_posmap[dependent_node])
+    # coord_lists = np.asarray(coord_lists)
+    # polygon = ptch.Polygon(coord_lists, closed=True, alpha=0.4)
+    # ax.add_patch(polygon)
+
+    nx.draw(graph_for_reference,
+            node_color=node_colormap, edge_color=edge_colormap,
+            pos=node_posmap,
+            ax=ax,
+            with_labels=True, node_size=100)
+
+    plt.show()
+
+
+def time_to_terminate(BN, current_evidence, window, **kwargs):
+    """determine if it's time to terminate, based on different measures
+       - Available kwargs:
+           - 'plateau': terminate loop if the precision seems to be plateauing
+           - 'confidence': terminate loop if all nodes' are confidently updated"""
+    if kwargs['criteria'] == 'confidence':
+        # the distribution across random variables' values
+        names_and_params = make_names_and_params(BN_for_inference.predict_proba(current_evidence, n_jobs=-1))
+        params = list(map(lambda tup: tup[1], names_and_params))
+        # list of lists of the probabilities across random variables' values, extracted from dist_dicts
+        dist_probs = list(map(lambda dist: list(dist.values()), params))
+        # Do all the nodes' probability lists satisfy is_confident()?
+        return reduce(lambda acc, lst: is_confident(lst) and acc, dist_probs, True)
+    elif kwargs['criteria'] == 'plateau':
+        # take a look at the contents of the window
+        acc = ()
+        for snapshot in window:
+            names_and_params = make_names_and_params(snapshot)
+            params = list(map(lambda tup: tup[1], names_and_params))
+            names_and_labels = list(map(lambda tup: (tup[0], find_max_val(tup[1])), names_and_params))
+            acc += (names_and_labels,)
+
+        a, b, c, d = acc
+
+        initial = np.ndarray([0])
+
+        all_4_are_equal = np.array_equal(a, b) and np.array_equal(b, c) and np.array_equal(c, d)
+
+        any_of_4_are_initial = np.array_equal(a, initial) or\
+            np.array_equal(b, initial) or\
+            np.array_equal(c, initial) or\
+            np.array_equal(d, initial)
+
+        there_is_a_pothole = (np.array_equal(a, c) or np.array_equal(a, d)) and\
+            not np.array_equal(a, initial) and\
+            not np.array_equal(c, initial) and\
+            not np.array_equal(d, initial)
+
+        if all_4_are_equal and not any_of_4_are_initial:
+            return True
+        elif there_is_a_pothole:
+            return True
+        else:
+            return False
 
 
 def normalize_dist(oracle_response):
@@ -468,20 +557,21 @@ def main():
     # final_snapshot, precision_list, stability_list, precision_inferred_list =\
     #     random_loop(BN_for_inference, graph_for_reference, 0,
     #                 list(), dict(), initial_snapshot,
-    #                 initial_precision_list, initial_stability_list, initial_precision_inferred_list, list())
+    #                 initial_precision_list, initial_stability_list, initial_precision_inferred_list, list(), list())
     # draw_n_save(precision_list, stability_list, initial_precision_inferred_list, loop_type='random')
 
     # argument reinitialization
     initial_precision_list = [np.nan for _ in range(len(BN_for_inference.states))]
     initial_stability_list = [np.nan for _ in range(len(BN_for_inference.states))]
     initial_precision_inferred_list = [np.nan for _ in range(len(BN_for_inference.states))]
+    initial_window = [np.ndarray([0]) for _ in range(4)]
 
     # tactical loop
     final_snapshot, precision_list, stability_list, precision_inferred_list=\
         tactical_loop(graph_for_reference, 0,
                       list(), dict(), list(),
                       initial_snapshot, initial_precision_list, initial_stability_list,
-                      initial_precision_inferred_list, list())
+                      initial_precision_inferred_list, list(), initial_window)
     draw_n_save(precision_list, stability_list, precision_inferred_list, loop_type='tactical')
 
 

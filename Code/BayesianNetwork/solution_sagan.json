@@ -1259,5 +1259,8 @@
     "void Project.setDisplayOrder(int)": "non",
     "void GeoLocation.setLongitude(float)": "non",
     "long PaginationInfo.getPreviousPageNumber()": "non",
-    "long PaginationInfo.getNextPageNumber()": "non"
+    "long PaginationInfo.getNextPageNumber()": "non",
+    "void Project.setRepoUrl(String)": "non",
+    "void Project.setId(String)": "non",
+    "int ProjectSample.getDisplayOrder()": "non"
 }

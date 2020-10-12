@@ -6,10 +6,12 @@ import copy
 import csv
 import random
 import json
+import hashlib                  # for making time.time() digest
 
 from make_underlying_graph import df_reader, call_reader, extract_filename
-from community_detection import bisect_optimal, bisect, dumb_bisect
+from community_detection import bisect_optimal, bisect
 from find_jar import real_jar_paths, take_jar_dir
+from functools import reduce
 
 # Paths and constants ======================================================
 # ==========================================================================
@@ -118,13 +120,15 @@ def exists(unary_pred, coll):
 def find_optimal_graph_size(G):
     max_graph_size = 200
     while True:
-        print(max_graph_size)
+        # print(max_graph_size)
         # for _ in range(5):
         small_graphs = split_large_graph(G, max_graph_size)
         if small_graphs == None:  # we have reached the lower bound
+            print("optimal graph size is", max_graph_size+1)
             return max_graph_size+1
         graph_num_of_nodes = list(map(lambda graph: len(graph.nodes), small_graphs))
-        if exists(lambda length: length < 40, graph_num_of_nodes):  # we are about to reach the lower bound
+        if exists(lambda length: length < 80, graph_num_of_nodes):  # we are about to reach the lower bound
+            print("optimal graph size is", max_graph_size+1)
             return max_graph_size+1
         max_graph_size -= 1
 
@@ -133,19 +137,143 @@ def split_large_graph(G, max_graph_size):
     worklist = [G]
     acc = []
     while worklist != []:
-        print(list(map(lambda graph: len(graph.nodes), worklist)))
+        # print(list(map(lambda graph: len(graph.nodes), worklist)))
         target = worklist.pop()
         if len(target.nodes) <= max_graph_size:
             acc.append(target)
         else:
             small1, small2 = bisect_optimal(target)
             if len(small1.nodes) == 0 or len(small2.nodes) == 0:
-                print("meh")
                 return None
             worklist.append(small1)
             worklist.append(small2)
     # print("acc: ", list(map(lambda graph: len(graph.nodes),acc)))
     return acc
+
+
+def collect_graph_by_mag_single(G):
+    """split_large_graph의 수정 버전, 그래프를 잘라 나가면서 구간별로 해당되는 그래프를 collect"""
+    worklist = [G]
+    acc = []
+
+    fifty_to_hundred = []
+    hundred_to_hundredfifty = []
+    hundredfifty_to_twohundred = []
+    twohundred_to_twohundredfifty = []
+    twohundredfifty_to_threehundred = []
+    threehundred_to_threehundredfifty = []
+
+    while worklist != []:
+        print(list(map(lambda graph: len(graph.nodes), worklist)))
+        target = worklist.pop()
+        
+        # match on target
+        if 300 <= len(target.nodes) < 350:
+            if target not in threehundred_to_threehundredfifty:
+                threehundred_to_threehundredfifty.append(target)
+        elif 250 <= len(target.nodes) < 300:
+            if target not in twohundredfifty_to_threehundred:
+                twohundredfifty_to_threehundred.append(target)
+        elif 200 <= len(target.nodes) < 250:
+            if target not in twohundred_to_twohundredfifty:
+                twohundred_to_twohundredfifty.append(target)
+        elif 150 <= len(target.nodes) < 200:
+            if target not in hundredfifty_to_twohundred:
+                hundredfifty_to_twohundred.append(target)
+        elif 100 <= len(target.nodes) < 150:
+            if target not in hundred_to_hundredfifty:
+                hundred_to_hundredfifty.append(target)
+        elif 50 <= len(target.nodes) < 100:
+            if target not in fifty_to_hundred:
+                fifty_to_hundred.append(target)
+
+        if len(target.nodes) <= 49:
+            acc.append(target)
+        else:
+            small1, small2 = bisect_optimal(target)
+
+            # match on small1
+            if 300 <= len(small1.nodes) < 350:
+                if small1 not in threehundred_to_threehundredfifty:
+                    threehundred_to_threehundredfifty.append(small1)
+            elif 250 <= len(small1.nodes) < 300:
+                if small1 not in twohundredfifty_to_threehundred:
+                    twohundredfifty_to_threehundred.append(small1)
+            elif 200 <= len(small1.nodes) < 250:
+                if small1 not in twohundred_to_twohundredfifty:
+                    twohundred_to_twohundredfifty.append(small1)
+            elif 150 <= len(small1.nodes) < 200:
+                if small1 not in hundredfifty_to_twohundred:
+                    hundredfifty_to_twohundred.append(small1)
+            elif 100 <= len(small1.nodes) < 150:
+                if small1 not in hundred_to_hundredfifty:
+                    hundred_to_hundredfifty.append(small1)
+            elif 50 <= len(small1.nodes) < 100:
+                if small1 not in fifty_to_hundred:
+                    fifty_to_hundred.append(small1)
+
+            # match on small2
+            if 300 <= len(small2.nodes) < 350:
+                if small2 not in threehundred_to_threehundredfifty:
+                    threehundred_to_threehundredfifty.append(small2)
+            elif 250 <= len(small2.nodes) < 300:
+                if small2 not in twohundredfifty_to_threehundred:
+                    twohundredfifty_to_threehundred.append(small2)
+            elif 200 <= len(small2.nodes) < 250:
+                if small2 not in twohundred_to_twohundredfifty:
+                    twohundred_to_twohundredfifty.append(small2)
+            elif 150 <= len(small2.nodes) < 200:
+                if small2 not in hundredfifty_to_twohundred:
+                    hundredfifty_to_twohundred.append(small2)
+            elif 100 <= len(small2.nodes) < 150:
+                if small2 not in hundred_to_hundredfifty:
+                    hundred_to_hundredfifty.append(small2)
+            elif 50 <= len(small2.nodes) < 100:
+                if small2 not in fifty_to_hundred:
+                    fifty_to_hundred.append(small2)
+
+            if len(small1.nodes) == 0:
+                acc.append(small2)
+                continue
+            elif len(small2.nodes) == 0:
+                acc.append(small1)
+                continue
+
+            worklist.append(small1)
+            worklist.append(small2)
+
+    return (fifty_to_hundred,
+            hundred_to_hundredfifty,
+            hundredfifty_to_twohundred,
+            twohundred_to_twohundredfifty,
+            twohundredfifty_to_threehundred,
+            threehundred_to_threehundredfifty)
+
+
+def collect_graphs_by_mag(G):
+    """위의 collect_graph_by_mag_single 함수를 여러 번 사용해 크기별 서브그래프들을 모음"""
+    fifty_to_hundred = []
+    hundred_to_hundredfifty = []
+    hundredfifty_to_twohundred = []
+    twohundred_to_twohundredfifty = []
+    twohundredfifty_to_threehundred = []
+    threehundred_to_threehundredfifty = []
+
+    while len(threehundred_to_threehundredfifty) < 10:
+        a, b, c, d, e = collect_graphs_by_mag_single(G)
+        fifty_to_hundred += a
+        hundred_to_hundredfifty += b
+        hundredfifty_to_twohundred += c
+        twohundred_to_twohundredfifty += d
+        twohundredfifty_to_threehundred += e
+        threehundred_to_threehundredfifty += f
+
+    return (fifty_to_hundred,
+            hundred_to_hundredfifty,
+            hundredfifty_to_twohundred,
+            twohundred_to_twohundredfifty,
+            twohundredfifty_to_threehundred,
+            threehundred_to_threehundredfifty)
 
 
 def main():

@@ -8,9 +8,8 @@ import random
 import json
 
 from make_underlying_graph import df_reader, call_reader, extract_filename
-from community_detection import bisect_optimal, bisect
+from community_detection import bisect_optimal, bisect, dumb_bisect
 from find_jar import real_jar_paths, take_jar_dir
-
 
 # Paths and constants ======================================================
 # ==========================================================================
@@ -27,6 +26,8 @@ PROJECT_ROOT_PATH = retrieve_path()
 JAR_PATHS = real_jar_paths(PROJECT_ROOT_PATH)
 
 NODE_DATA = pd.read_csv("nodes.csv", index_col=0, header=0)
+
+MAX_GRAPH_SIZE = 170
 
 edges_data = open("callg.csv", "r+")
 edges_reader = csv.reader(edges_data)
@@ -110,19 +111,41 @@ def take_direct_subdirectory(jar_path):
     return splitted[len(splitted)-1]
 
 
-def split_large_graph(G):
-    def split_large_graph_inner(acc, worklist):
-        if worklist == []:
-            return acc
+def exists(unary_pred, coll):
+    return reduce(lambda acc, elem: acc or unary_pred(elem), coll, False)
+
+
+def find_optimal_graph_size(G):
+    max_graph_size = 200
+    while True:
+        print(max_graph_size)
+        # for _ in range(5):
+        small_graphs = split_large_graph(G, max_graph_size)
+        if small_graphs == None:  # we have reached the lower bound
+            return max_graph_size+1
+        graph_num_of_nodes = list(map(lambda graph: len(graph.nodes), small_graphs))
+        if exists(lambda length: length < 40, graph_num_of_nodes):  # we are about to reach the lower bound
+            return max_graph_size+1
+        max_graph_size -= 1
+
+
+def split_large_graph(G, max_graph_size):
+    worklist = [G]
+    acc = []
+    while worklist != []:
+        print(list(map(lambda graph: len(graph.nodes), worklist)))
         target = worklist.pop()
-        if len(target.nodes) <= 200:
+        if len(target.nodes) <= max_graph_size:
             acc.append(target)
         else:
-            small1, small2 = bisect(target)
+            small1, small2 = bisect_optimal(target)
+            if len(small1.nodes) == 0 or len(small2.nodes) == 0:
+                print("meh")
+                return None
             worklist.append(small1)
             worklist.append(small2)
-        return split_large_graph_inner(acc, worklist)
-    return split_large_graph_inner([], [G])
+    # print("acc: ", list(map(lambda graph: len(graph.nodes),acc)))
+    return acc
 
 
 def main():
@@ -135,7 +158,8 @@ def main():
         all_methods = collect_callees(callgraph, root_methods)
         masked_graph = mask_graph(graph_for_reference, all_methods)
         nx.write_gpickle(masked_graph, graph_name+"_graph")
-        small_graphs = split_large_graph(masked_graph)
+        optimal_max_graph_size = find_optimal_graph_size(masked_graph)
+        small_graphs = split_large_graph(masked_graph, optimal_max_graph_size)
         i = 0
         for small_graph in small_graphs:
             decycle(small_graph)

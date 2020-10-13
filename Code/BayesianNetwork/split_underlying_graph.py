@@ -7,6 +7,8 @@ import csv
 import random
 import json
 import hashlib                  # for making time.time() digest
+import time
+import os
 
 from make_underlying_graph import df_reader, call_reader, extract_filename
 from community_detection import bisect_optimal, bisect
@@ -250,7 +252,7 @@ def collect_graph_by_mag_single(G):
             threehundred_to_threehundredfifty)
 
 
-def collect_graphs_by_mag(G):
+def collect_graphs_by_mag(G):   # NOTE: only use it on the REPL with sagan-site as input G
     """위의 collect_graph_by_mag_single 함수를 여러 번 사용해 크기별 서브그래프들을 모음"""
     fifty_to_hundred = []
     hundred_to_hundredfifty = []
@@ -260,7 +262,7 @@ def collect_graphs_by_mag(G):
     threehundred_to_threehundredfifty = []
 
     while len(threehundred_to_threehundredfifty) < 10:
-        a, b, c, d, e = collect_graphs_by_mag_single(G)
+        a, b, c, d, e, f = collect_graph_by_mag_single(G)
         fifty_to_hundred += a
         hundred_to_hundredfifty += b
         hundredfifty_to_twohundred += c
@@ -268,12 +270,21 @@ def collect_graphs_by_mag(G):
         twohundredfifty_to_threehundred += e
         threehundred_to_threehundredfifty += f
 
-    return (fifty_to_hundred,
-            hundred_to_hundredfifty,
-            hundredfifty_to_twohundred,
-            twohundred_to_twohundredfifty,
-            twohundredfifty_to_threehundred,
-            threehundred_to_threehundredfifty)
+        for dirname, range_list in [("100-149", fifty_to_hundred),
+                                    ("150-199", hundred_to_hundredfifty),
+                                    ("200-249", hundredfifty_to_twohundred),
+                                    ("250-299", twohundred_to_twohundredfifty),
+                                    ("300-349", twohundredfifty_to_threehundred),
+                                    ("350-399", threehundred_to_threehundredfifty)]:
+        
+            if not os.path.isdir(dirname):
+                os.mkdir(dirname)
+            for graph in range_list:
+                hashobj = hashlib.sha256()
+                now = str(time.time()).encode('UTF-8')
+                hashobj.update(now)
+                hashval = hashobj.hexdigest()
+                nx.write_gpickle(graph, dirname+os.sep+hashval)
 
 
 def main():

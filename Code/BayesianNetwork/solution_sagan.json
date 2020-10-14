@@ -340,7 +340,7 @@
     "OptionsBuilder OptionsBuilder.baseDir(File)": "non",
     "OptionsBuilder OptionsBuilder.headerFooter(boolean)": "non",
     "long Page.getTotalElements()": "non",
-    "String URL.getPath()": "non",
+    "String URL.getPath()": "src",
     "String FilterConfig.getInitParameter(String)": "non",
     "String Project.getRenderedBootConfig()": "non",
     "String Link.getRel()": "non",

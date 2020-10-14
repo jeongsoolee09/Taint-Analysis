@@ -2,20 +2,17 @@
 import modin.pandas as pd
 import re
 from functools import reduce
+import collections
 
 # Utility Funcs ========================
 # ======================================
+
+NODE_DATA = pd.read_csv("nodes.csv", index_col=0)
 
 # https://stackoverflow.com/questions/29916065/how-to-do-camelcase-split-in-python
 def camel_case_split(identifier):
     matches = re.finditer('.+?(?:(?<=[a-z])(?=[A-Z])|(?<=[A-Z])(?=[A-Z][a-z])|$)', identifier)
     return [m.group(0) for m in matches]
-
-# Constants ============================
-# ======================================
-
-with open("java_builtin_types.txt", "r+") as builtintypes:
-    JAVA_BUILTIN_TYPES = list(map(lambda string: string.rstrip(), builtintypes.readlines()))
 
 
 def find_frequent_words(**kwargs):
@@ -46,19 +43,40 @@ def find_frequent_words(**kwargs):
             acc.append((name, words_withdup.count(name)))
         return sorted(acc, key=lambda x: x[1], reverse=True)
 
-# More Constants =======================
+
+def find_frequents(**kwargs):
+    if kwargs["target"] == "rtntype":
+        node_rtntypes = NODE_DATA[kwargs["target"]]
+        counterobj = collections.Counter(node_rtntypes)
+        most_commons = counterobj.most_common(10)
+        return sorted(most_commons, key=lambda x: x[1], reverse=True)
+
+# Parameters =============================
+# ========================================
+
+TOP_FREQ_N_NAME_WORDS = 10            # name 낱말의 경우, 상위 몇 순위까지 고려할 거냐?
+TOP_FREQ_N_RTNTYPE_WORDS = 10         # rtntype 낱말의 경우, 상위 몇 순위까지 고려할 거냐?
+TOP_FREQ_N_CLASSNAME_WORDS = 10       # class 낱말의 경우, 상위 몇 순위까지 고려할 거냐?
+TOP_FREQ_N_RTNTYPES = 10                 # rtntype을 통째로 생각했을 때, 상위 몇 순위까지 고려할 거냐?
+
+# Constants ============================
 # ======================================
 
-NODE_DATA = pd.read_csv("nodes.csv", index_col=0)
-TOP_FREQ_N_NAME = 10            # name 낱말의 경우, 상위 몇 순위까지 고려할 거냐?
-TOP_FREQ_NAME_WORDS = list(map(lambda tup: tup[0], find_frequent_words(target="name")[:TOP_FREQ_N_NAME]))
-TOP_FREQ_N_RTNTYPE = 10         # rtntype 낱말의 경우, 상위 몇 순위까지 고려할 거냐?
+
+with open("java_builtin_types.txt", "r+") as builtintypes:
+    JAVA_BUILTIN_TYPES = list(map(lambda string: string.rstrip(),
+                                  builtintypes.readlines()))
+TOP_FREQ_NAME_WORDS = list(map(lambda tup: tup[0],
+                               find_frequent_words(target="name")[:TOP_FREQ_N_NAME_WORDS]))
 TOP_FREQ_RTNTYPE_WORDS = list(map(lambda tup: tup[0],
-                                  find_frequent_words(target="rtntype")[:TOP_FREQ_N_RTNTYPE]))
+                                  find_frequent_words(target="rtntype")[:TOP_FREQ_N_RTNTYPE_WORDS]))
+TOP_FREQ_CLASSNAME_WORDS = list(map(lambda tup: tup[0],
+                                    find_frequent_words(target="rtntype")[:TOP_FREQ_N_CLASSNAME_WORDS]))
+TOP_FREQ_RTNTYPES = list(map(lambda tup: tup[0],
+                             find_frequents(target="rtntype")[:TOP_FREQ_N_RTNTYPES]))
 
 # Feature Extractors =====================
 # ========================================
-
 # the parameter "node" stands for a row in NODE_DATA
 
 # F06
@@ -71,39 +89,66 @@ def has_return_type(node):
     return node.rtntype != "void"
 
 
-# F14
+# F10
 def method_name_starts_with(node):
     prefix = camel_case_split(node[3])[0]
     out = dict()
     for freq_word in TOP_FREQ_NAME_WORDS:
-        out[("F14", freq_word)] = prefix == freq_word
+        out[("F10", freq_word)] = prefix == freq_word
     return out    # key: word, val: boolean
 
 
-# F15
-def method_name_equals(node):
-    out = dict()
-    for freq_word in TOP_FREQ_NAME_WORDS:
-        out[("F15", freq_word)] = freq_word == node.name
-    return out    # key: word, val: boolean
-
-
-# F16
+# F12
 def method_name_contains(node):
     words = camel_case_split(node[3])
     out = dict()
     for freq_word in TOP_FREQ_NAME_WORDS:
-        out[("F16", freq_word)] = freq_word in words
+        out[("F12", freq_word)] = freq_word in words
     return out    # key: word, val: boolean
 
 
-# F22
+# F18
 def return_type_contains_name(node):
     words = camel_case_split(node[2])
     out = dict()
     for freq_word in TOP_FREQ_RTNTYPE_WORDS:
-        out[("F22", freq_word)] = freq_word in words
+        out[("F18", freq_word)] = freq_word in words
     return out    # key: word, val: boolean
+
+
+# F03
+def class_contains_name(node):
+    words = camel_case_split(node[1])
+    for freq_word in TOP_FREQ_CLASSNAME_WORDS:
+        out[("F03", freq_word)] = freq_word in words
+    return out    # key: word, val: boolean
+
+
+# F04
+def class_endswith_name(node):
+    words = camel_case_split(node[1])
+    suffix = camel_case_split(node[1])[len(words)-1]
+    out = dict()
+    for freq_word in TOP_FREQ_CLASSNAME_WORDS:
+        out[("F04", freq_word)] = suffix == freq_word
+    return out
+
+
+# F23
+def rtntype_equals(node):
+    rtntype = node[2]
+    out = dict()
+    for freq_rtntype in TOP_FREQ_RTNTYPES:
+        out[("F23", "")] = rtntype == freq_rtntype
+    return out
+
+
+# F17
+def intype_matches_rtntype(node):
+    intype = node[4]
+    rtntype = node[2]
+    return intype == rtntype
+
 
 # Batch run ==========================
 # ====================================
@@ -116,19 +161,16 @@ def run_all_extractors(node_row):
     F07 = has_return_type(node_row)  # bool
     F07_df = pd.DataFrame([F07], columns=pd.MultiIndex.from_tuples([("F07", "")]))
 
-    F14 = method_name_starts_with(node_row)  # dict
-    F14_df = pd.DataFrame(F14, index=[0])
+    F10 = method_name_starts_with(node_row)  # dict
+    F10_df = pd.DataFrame(F10, index=[0])
 
-    F15 = method_name_equals(node_row)       # dict
-    F15_df = pd.DataFrame(F15, index=[0])
+    F12 = method_name_contains(node_row)     # dict
+    F12_df = pd.DataFrame(F12, index=[0])
 
-    F16 = method_name_contains(node_row)     # dict
-    F16_df = pd.DataFrame(F16, index=[0])
-
-    F22 = return_type_contains_name(node_row)  # dict
-    F22_df = pd.DataFrame(F22, index=[0])
+    F18 = return_type_contains_name(node_row)  # dict
+    F18_df = pd.DataFrame(F18, index=[0])
     
-    vector = pd.concat([F06_df, F07_df, F15_df, F16_df, F22_df], axis=1)
+    vector = pd.concat([F06_df, F07_df, F10_df, F18_df], axis=1)
 
     return vector
 

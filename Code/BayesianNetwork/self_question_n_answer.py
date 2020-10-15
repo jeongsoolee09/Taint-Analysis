@@ -6,7 +6,6 @@ import os.path
 import random
 import time
 import glob
-from datetime import datetime
 
 import make_BN
 import matplotlib.axes as axes
@@ -16,6 +15,8 @@ import modin.pandas as pd
 import networkx as nx
 import numpy as np
 import solutions
+
+from datetime import datetime
 from create_node import process
 from make_CPT import *
 from make_underlying_graph import call_reader, df_reader, find_edge_labels
@@ -23,6 +24,7 @@ from matplotlib.ticker import MaxNLocator
 from pomegranate import *
 from scrape_oracle_docs import *
 from toolz import valmap
+from tabula_non_rasa import learn, make_evidence
 
 # Constants ========================================
 # ==================================================
@@ -46,7 +48,7 @@ class ThisIsImpossible(Exception):
 
 def random_loop(BN_for_inference, graph_for_reference, interaction_number,
                 current_asked, current_evidence, prev_snapshot,
-                precision_list, stability_list, precision_inferred_list, inference_time_list, window):
+                precision_list, stability_list, precision_inferred_list, loop_time_list, window):
     """The main interaction functionality, asking randomly
        Parameters:
             - BN_for_inference: the Bayesian Network.
@@ -58,8 +60,10 @@ def random_loop(BN_for_inference, graph_for_reference, interaction_number,
             - precision_list: accumulated precision values
             - stability_list: accumulated stability values
             - precision_inferred_list: accumulated precision values purely inferred by the BN
-            - inference_time_list: accumulated times took in belief propagation
-       Available kwargs: have_solution [True|False]: Do you have the complete solution for the benchmark?"""
+            - loop_time_list: accumulated times took in belief propagation
+            - window: sliding window with size 4"""
+
+    loop_start = time.time()
 
     random_index = random.randint(0, len(BN_for_inference.states)-1)
     state_names = list(map(lambda node: node.name, BN_for_inference.states))
@@ -72,7 +76,7 @@ def random_loop(BN_for_inference, graph_for_reference, interaction_number,
 
     # exit the function based on confidence.
     if its_time_to_terminate:
-        return prev_snapshot, precision_list, stability_list, precision_inferred_list
+        return prev_snapshot, precision_list, stability_list, precision_inferred_list, current_asked
 
     oracle_response = SOLUTION[query]
 
@@ -88,10 +92,8 @@ def random_loop(BN_for_inference, graph_for_reference, interaction_number,
     current_asked.append(query)
 
     # the new snapshot after the observation and its inference time
-    inference_start = time.time()
-    new_snapshot = BN_for_inference.predict_proba(current_evidence, n_jobs=-1)
-    current_inference_time = time.time()-inference_start
-    inference_time_list.append(current_inference_time)
+    new_raw_snapshot = BN_for_inference.predict_proba(current_evidence, n_jobs=-1)
+    new_snapshot = make_names_and_params(state_names, new_raw_snapshot)
 
     # the new precision after the observation
     current_precision = calculate_precision(state_names, new_snapshot)
@@ -111,10 +113,12 @@ def random_loop(BN_for_inference, graph_for_reference, interaction_number,
 
     print(interaction_number, ":", (current_precision/len(state_names))*100, "%")
 
+    loop_time_list.append(time.time()-loop_start)
+
     # loop!
     return random_loop(BN_for_inference, graph_for_reference, interaction_number+1,
                        current_asked, current_evidence, new_snapshot,
-                       precision_list, stability_list, precision_inferred_list, inference_time_list, window)
+                       precision_list, stability_list, precision_inferred_list, loop_time_list, window)
 
 
 # tactical loop and its calculations =====================
@@ -123,7 +127,7 @@ def random_loop(BN_for_inference, graph_for_reference, interaction_number,
 def tactical_loop(graph_for_reference, BN_for_inference, interaction_number,
                   current_asked, current_evidence, updated_nodes,
                   prev_snapshot, precision_list, stability_list,
-                  precision_inferred_list, inference_time_list, window):
+                  precision_inferred_list, loop_time_list, window):
     """the main interaction functionality (loops via recursion), asking tactically using d-separation
        parameters:
             - graph_for_reference: the underlying graph.
@@ -135,11 +139,11 @@ def tactical_loop(graph_for_reference, BN_for_inference, interaction_number,
             - precision_list: accumulated precision values
             - stability_list: accumulated stability values
             - precision_inferred_list: accumulated precision values purely inferred by the BN
-            - inference_time_list: accumulated times took in belief propagation"""
+            - loop_time_list: accumulated times took in belief propagation
+            - window: sliding window with size 4"""
 
     loop_start = time.time()
 
-    initial = np.ndarray([0])
     state_names = list(map(lambda node: node.name, BN_for_inference.states))
 
     # some variables to make our code resemble English
@@ -160,17 +164,18 @@ def tactical_loop(graph_for_reference, BN_for_inference, interaction_number,
     if there_are_no_nodes_left and not_yet_time_to_terminate:
         if set(state_names) == set(current_asked):
             print("\nWarning: some distributions are not fully determined.\n")
-            return prev_snapshot, precision_list, stability_list, precision_inferred_list
+            return (prev_snapshot, precision_list, stability_list,
+                    precision_inferred_list, loop_time_list, current_asked)
         else:
             query, dependent_nodes = find_max_d_con(graph_for_reference, BN_for_inference,
                                                     [], [], remove_sublist(state_names, current_asked))
     elif there_are_no_nodes_left and its_time_to_terminate:
-        return prev_snapshot, precision_list, stability_list, precision_inferred_list
+        return (prev_snapshot, precision_list, stability_list,
+                precision_inferred_list, loop_time_list, current_asked)
     elif there_are_nodes_left and not_yet_time_to_terminate:
         pass
     elif there_are_nodes_left and its_time_to_terminate:
         raise ThisIsImpossible
-
 
     # ask the chosen method and fetch the answer from the solutions
     oracle_response = SOLUTION[query]
@@ -188,11 +193,9 @@ def tactical_loop(graph_for_reference, BN_for_inference, interaction_number,
 
     current_asked.append(query)
 
-    # the new snapshot after the observation and its inference time
-    inference_start = time.time()
-    new_snapshot = BN_for_inference.predict_proba(current_evidence, n_jobs=-1)
-    current_inference_time = time.time()-inference_start
-    inference_time_list.append(current_inference_time)
+    # the new snapshot after the observation
+    new_raw_snapshot = BN_for_inference.predict_proba(current_evidence, n_jobs=-1)
+    new_snapshot = make_names_and_params(state_names, new_raw_snapshot)
 
     # the new precision after the observation
     current_precision = calculate_precision(state_names, new_snapshot)
@@ -212,13 +215,14 @@ def tactical_loop(graph_for_reference, BN_for_inference, interaction_number,
     window = window[1:]     # dequeue the oldest one
     window.append(new_snapshot)  # and enqueue the newest one
 
-    print("loop took: ", time.time()-loop_start, "seconds")
+    # record this loop's looping time
+    loop_time_list.append(time.time()-loop_start)
 
     # loop!
     return tactical_loop(graph_for_reference, BN_for_inference, interaction_number+1,
                          current_asked, current_evidence, updated_nodes,
                          new_snapshot, precision_list, stability_list,
-                         precision_inferred_list, inference_time_list, window)
+                         precision_inferred_list, loop_time_list, window)
 
 
 def d_connected(graph_for_reference, BN_for_inference, node, current_asked, pool):
@@ -283,16 +287,15 @@ def time_to_terminate(BN_for_inference, current_evidence, window, **kwargs):
         names_and_params = make_names_and_params(state_names, snapshot)
         params = list(map(lambda tup: tup[1], names_and_params))
         # list of lists of the probabilities across random variables' values, extracted from dist_dicts
-        dist_probs = list(map(lambda dist: list(dist.values()), params))
+        dist_probs = list(map(lambda distobj: list(distobj.values()), params))
         # Do all the nodes' probability lists satisfy is_confident()?
         return reduce(lambda acc, lst: is_confident(lst) and acc, dist_probs, True)
     elif kwargs['criteria'] == 'plateau':
         # take a look at the contents of the window
         acc = ()
         for snapshot in window:
-            names_and_params = make_names_and_params(state_names, snapshot)
-            params = list(map(lambda tup: tup[1], names_and_params))
-            names_and_labels = list(map(lambda tup: (tup[0], find_max_val(tup[1])), names_and_params))
+            params = list(map(lambda tup: tup[1], snapshot))
+            names_and_labels = list(map(lambda tup: (tup[0], find_max_val(tup[1])), snapshot))
             acc += (names_and_labels,)
 
         a, b, c, d = acc
@@ -421,13 +424,13 @@ def draw_precision_inferred_graph(graph_file, x, y, num_of_states, loop_type):
 
 def make_names_and_params(state_names, snapshot):
     """snapshot을 읽어서, 랜덤변수 별 확률값의 dict인 parameters만을 빼낸 다음 node의 이름과 짝지어서 list에 담아 낸다."""
-    dists = []
-    for dist in snapshot:
-        if type(dist) == int:  # oracle에 의해 고정된 경우!
-            dists.append(normalize_dist(dist))
+    distobjs = []
+    for distobj in snapshot:
+        if type(distobj) == int:  # oracle에 의해 고정된 경우!
+            distobjs.append(normalize_dist(distobj))
         else:
-            dists.append(dist.parameters[0])
-    names_and_params = list(zip(state_names, dists))
+            distobjs.append(distobj.parameters[0])
+    names_and_params = list(zip(state_names, distobjs))
     return names_and_params
 
 
@@ -437,7 +440,7 @@ def report_results(state_names, initial_snapshot, final_snapshot):
 
     names_and_dists_final = make_names_and_params(state_names, final_snapshot)
     names_and_labels_final = list(map(lambda tup: (tup[0], find_max_val(tup[1])), names_and_dists_final))
-    
+
     for tup1, tup2 in zip(names_and_labels_initial, names_and_labels_final):
         # if the label has changed after interaction
         if tup1[1] != tup2[1]:
@@ -450,7 +453,7 @@ def save_data_as_csv(state_names, final_snapshot):
     names_and_labels_final = list(map(lambda tup: (tup[0], find_max_val(tup[1])), names_and_dists_final))
     out_df = pd.DataFrame(names_and_labels_final, columns=["name", "label"])
     out_df.to_csv("inferred.csv", mode='w')
-        
+
 
 def report_meta_statistics(graph_for_reference, BN_for_inference):
     """meta-functionality for debugging"""
@@ -471,8 +474,7 @@ def report_meta_statistics(graph_for_reference, BN_for_inference):
 def calculate_precision(state_names, current_snapshot):
     """현재 확률분포 스냅샷의 정확도를 측정한다."""
     # current_snapshot의 타입은? np.array of Distribution.
-    names_and_params = make_names_and_params(state_names, current_snapshot)
-    names_and_labels = dict(map(lambda tup: (tup[0], find_max_val(tup[1])), names_and_params))
+    names_and_labels = dict(map(lambda tup: (tup[0], find_max_val(tup[1])), current_snapshot))
     correct_nodes = []
     for node_name in state_names:
         if names_and_labels[node_name] == SOLUTION[node_name]:
@@ -483,10 +485,8 @@ def calculate_precision(state_names, current_snapshot):
 def calculate_stability(state_names, prev_snapshot, current_snapshot):
     """직전 확률분포 스냅샷에 대한 현재 확률분포 스냅샷의 stability를 측정한다.
        stability: time t에서의 stability: time (t-1)에서의 스냅샷과 비교했을 때 time t에서의 스냅샷에서 레이블이 달라진 노드의 개수."""
-    names_and_dists_prev = make_names_and_params(state_names, prev_snapshot)
-    names_and_labels_prev = dict(map(lambda tup: (tup[0], find_max_val(tup[1])), names_and_dists_prev))
-    names_and_dists_current = make_names_and_params(state_names, current_snapshot)
-    names_and_labels_current = dict(map(lambda tup: (tup[0], find_max_val(tup[1])), names_and_dists_current))
+    names_and_labels_prev = dict(map(lambda tup: (tup[0], find_max_val(tup[1])), prev_snapshot))
+    names_and_labels_current = dict(map(lambda tup: (tup[0], find_max_val(tup[1])), current_snapshot))
     changed_nodes = []
     for node_name in names_and_labels_current.keys():
         if names_and_labels_prev[node_name] != names_and_labels_current[node_name]:
@@ -497,8 +497,7 @@ def calculate_stability(state_names, prev_snapshot, current_snapshot):
 def calculate_precision_inferred(state_names, current_snapshot, number_of_interaction):
     """현재 확률분포 스냅샷을 보고, BN이 순수하게 infer한 것들 중에 맞힌 레이블의 개수를 구한다."""
     # current_snapshot의 타입은? np.ndarray of Distribution.
-    names_and_params = make_names_and_params(state_names, current_snapshot)
-    names_and_labels = dict(map(lambda tup: (tup[0], find_max_val(tup[1])), names_and_params))
+    names_and_labels = dict(map(lambda tup: (tup[0], find_max_val(tup[1])), current_snapshot))
     correct_nodes = []
     for node_name in state_names:
         if names_and_labels[node_name] == SOLUTION[node_name]:
@@ -515,18 +514,18 @@ def find_pickled_graphs():
 # main ====================================================
 # =========================================================
 
-def single_loop(graph_file, graph_for_reference, BN_for_inference, **kwargs):
+def single_loop(graph_file, graph_for_reference, BN_for_inference, learned_evidence, **kwargs):
     """do a single loop on a given graph file
        - Available kwargs:
          - loop_type ([random|tactical]): whether we should use random/tactical loop for looping."""
-    start = time.time()
 
     # the list of names of all states
     state_names = list(map(lambda node: node.name, BN_for_inference.states))
 
     # argument initialization
     initial_prediction_time = time.time()
-    initial_snapshot = BN_for_inference.predict_proba({}, n_jobs=-1)
+    initial_raw_snapshot = BN_for_inference.predict_proba(learned_evidence, n_jobs=-1)
+    initial_snapshot = make_names_and_params(state_names, initial_raw_snapshot)
     number_of_states = len(BN_for_inference.states)
     initial_precision_list = [np.nan for _ in range(len(BN_for_inference.states))]
     initial_stability_list = [np.nan for _ in range(len(BN_for_inference.states))]
@@ -535,7 +534,8 @@ def single_loop(graph_file, graph_for_reference, BN_for_inference, **kwargs):
 
     # random loop
     if kwargs["loop_type"] == "random":
-        final_snapshot, precision_list, stability_list, precision_inferred_list =\
+        final_snapshot, precision_list, stability_list,\
+        precision_inferred_list, current_asked =\
             random_loop(BN_for_inference, graph_for_reference, 0,
                         list(), dict(), initial_snapshot,
                         initial_precision_list, initial_stability_list, initial_precision_inferred_list, list(), list())
@@ -543,7 +543,7 @@ def single_loop(graph_file, graph_for_reference, BN_for_inference, **kwargs):
 
     # tactical loop
     elif kwargs["loop_type"] == "tactical":
-        final_snapshot, precision_list, stability_list, precision_inferred_list=\
+        (final_snapshot, precision_list, stability_list, precision_inferred_list, loop_time_list, current_asked) =\
             tactical_loop(graph_for_reference, BN_for_inference, 0,
                           list(), dict(), list(),
                           initial_snapshot, initial_precision_list, initial_stability_list,
@@ -551,15 +551,23 @@ def single_loop(graph_file, graph_for_reference, BN_for_inference, **kwargs):
         draw_n_save(graph_file, BN_for_inference, precision_list, stability_list,
                     precision_inferred_list, loop_type='tactical')
 
+    return loop_time_list, final_snapshot, current_asked
+
 
 def main():
     graph_files = find_pickled_graphs()
+    lessons = {}
     for graph_file in graph_files:
+        print("# of lessons: ", len(lessons))
         graph_for_reference = nx.read_gpickle(graph_file)
         BN_for_inference = make_BN.main(graph_file)
         state_names = list(map(lambda node: node.name, BN_for_inference.states))
         print(graph_file, "has", len(state_names), "states")
-        single_loop(graph_file, graph_for_reference, BN_for_inference, loop_type="tactical")
+        learned_evidence = make_evidence(lessons, state_names)  # learn a new evidence from the lessons
+        loop_time_list, final_snapshot, current_asked =\
+            single_loop(graph_file, graph_for_reference,
+                        BN_for_inference, learned_evidence, loop_type="tactical")
+        lessons = learn(lessons, final_snapshot, current_asked)  # update the lessons
 
 
 if __name__ == "__main__":

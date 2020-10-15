@@ -297,8 +297,8 @@ def main():
         all_methods = collect_callees(callgraph, root_methods)
         masked_graph = mask_graph(graph_for_reference, all_methods)
         nx.write_gpickle(masked_graph, graph_name+"_graph")
-        optimal_max_graph_size = find_optimal_graph_size(masked_graph)
-        small_graphs = split_large_graph(masked_graph, optimal_max_graph_size)
+        # optimal_max_graph_size = find_optimal_graph_size(masked_graph)
+        small_graphs = split_large_graph(masked_graph, 180)
         i = 0
         for small_graph in small_graphs:
             decycle(small_graph)

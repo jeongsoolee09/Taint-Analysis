@@ -1,2 +1,15 @@
 .DS_Store
 infer-out
+/Code/BayesianNetwork/100-149/
+/Code/BayesianNetwork/150-199/
+/Code/BayesianNetwork/200-249/
+/Code/BayesianNetwork/300-349/
+/Code/BayesianNetwork/50-99/
+/Code/benchmarks/realworld/relational-data-access/.classpath
+/Code/benchmarks/realworld/relational-data-access/.project
+/Code/benchmarks/realworld/relational-data-access/.settings/
+/Code/benchmarks/realworld/relational-data-access/bin/
+/Code/benchmarks/realworld/sagan/Chain.json
+/Code/benchmarks/realworld/sagan/skip_func.txt
+/Code/infer/infer/annotations/
+/Code/infer/infer/tests/build_systems/codetoanalyze/

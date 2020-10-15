@@ -129,16 +129,8 @@ def add_edge_to_graph(G):
     next(edges_reader)
     next(edges_reader)
     for row in edges_reader:
-        class1 = row[1]
-        rtntype1 = row[2]
-        name1 = row[3]
-        intype1 = "()" if row[4] == "void" else "("+row[4]+")"
-        class2 = row[5]
-        rtntype2 = row[6]
-        name2 = row[7]
-        intype2 = "()" if row[8] == "void" else "("+row[8]+")"
-        firstNodeID = rtntype1+" "+class1+"."+name1+intype1
-        secondNodeID = rtntype2+" "+class2+"."+name2+intype2
+        firstNodeID = row[5]
+        secondNodeID = row[10]
         if (firstNodeID, secondNodeID) in df_edges:
             G.add_edge(firstNodeID, secondNodeID, kind="df")
         elif (firstNodeID, secondNodeID) in call_edges:

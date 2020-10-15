@@ -22,24 +22,22 @@ PROJECT_ROOT_PATH = retrieve_path()
 def make_dataframes():
     methodInfo1 = pd.read_csv("nodes.csv", index_col=0)
     methodInfo2 = pd.read_csv("nodes.csv", index_col=0)
-    methodInfo1 = methodInfo1.drop('id', axis=1)
-    methodInfo2 = methodInfo2.drop('id', axis=1)
     methodInfo1 = methodInfo1.rename(columns={'index':'index1', 'class':'class1',
                                               'rtntype':'rtntype1', 'name':'name1',
-                                              'intype':'intype1'})
+                                              'intype':'intype1', 'id':'id1'})
     methodInfo2 = methodInfo2.rename(columns={'index':'index2', 'class':'class2',
                                               'rtntype':'rtntype2', 'name':'name2',
-                                              'intype':'intype2'})
+                                              'intype':'intype2', 'id':'id2'})
     methodInfo1['key'] = 1
     methodInfo2['key'] = 1
     carPro = pd.merge(methodInfo1, methodInfo2, how='outer')
     carPro = carPro.drop('key', axis=1)
     methodInfo1 = methodInfo1.rename(columns={'index1':'index', 'class1':'class',
                                               'rtntype1':'rtntype', 'name1':'name',
-                                              'intype1':'intype'})
+                                              'intype1':'intype', 'id1':'id'})
     methodInfo2 = methodInfo2.rename(columns={'index2':'index', 'class2':'class',
                                               'rtntype2':'rtntype', 'name2':'name',
-                                              'intype2':'intype'})
+                                              'intype2':'intype', 'id2':'id'})
     return methodInfo1, methodInfo2, carPro
 
 
@@ -105,46 +103,51 @@ def detect_dataflow(json_obj_list):
     return dataflow_edges
 
 
-def output_alledges(dataflow_dataframe, call_dataframe):
+def output_alledges(dataflow_dataframe, call_dataframe, sim_dataframe):
     dataflow_dataframe.to_csv("df.csv", mode='w+')
     call_dataframe.to_csv("callg.csv", mode='w+')
+    sim_dataframe.to_csv("sim.csv", mode='w+')
 
 
 def make_df_dataframe(dataflow_edges):
     """edges.csv에서의 data flow row를 만든다: tuple list를 dataframe으로 변환."""
-    class1, rtntype1, name1, intype1, class2, rtntype2, name2, intype2 = [], [], [], [], [], [], [], []
+    class1, rtntype1, name1, intype1, id1, class2, rtntype2, name2, intype2, id2 = [], [], [], [], [], [], [], [], [], []
     for parent, child in dataflow_edges:
 
        class1.append(parent[0])
        rtntype1.append(parent[1])
        name1.append(parent[2])
        intype1.append(parent[3])
+       id1.append(parent[4])
 
        class2.append(child[0])
        rtntype2.append(child[1])
        name2.append(child[2])
        intype2.append(child[3])
+       id2.append(child[4])
 
-    return pd.DataFrame({'class1': class1, 'rtntype1': rtntype1, 'name1': name1, 'intype1': intype1,
-                         'class2': class2, 'rtntype2': rtntype2, 'name2': name2, 'intype2': intype2})
+    return pd.DataFrame({'class1': class1, 'rtntype1': rtntype1, 'name1': name1, 'intype1': intype1, 'id1': id1,
+                         'class2': class2, 'rtntype2': rtntype2, 'name2': name2, 'intype2': intype2, 'id2': id2})
        
 
 def make_call_dataframe(call_edges):
     """edges.csv에서의 call row를 만든다: tuple list를 dataframe으로 변환."""
-    class1, rtntype1, name1, intype1, class2, rtntype2, name2, intype2 = [], [], [], [], [], [], [], []
+    class1, rtntype1, name1, intype1, id1, class2, rtntype2, name2, intype2, id2 = [], [], [], [], [], [], [], [], [], []
     for parent, child in call_edges:
        class1.append(parent[0])
        rtntype1.append(parent[1])
        name1.append(parent[2])
        intype1.append(parent[3])
+       id1.append(parent[4])
 
        class2.append(child[0])
        rtntype2.append(child[1])
        name2.append(child[2])
        intype2.append(child[3])
+       id2.append(child[4])
 
-    return pd.DataFrame({'class1': class1, 'rtntype1': rtntype1, 'name1': name1, 'intype1': intype1,
-                         'class2': class2, 'rtntype2': rtntype2, 'name2': name2, 'intype2': intype2})
+    return pd.DataFrame({'class1': class1, 'rtntype1': rtntype1, 'name1': name1, 'intype1': intype1, 'id1': id1,
+                         'class2': class2, 'rtntype2': rtntype2, 'name2': name2, 'intype2': intype2, 'id2': id2})
 
 
 def make_sim_dataframe(carPro):
@@ -165,12 +168,12 @@ def merge_dataframes(df_dataframe, call_dataframe, sim_dataframe):
 
 def multiindex_edges(edges):
     """edges dataframe이 주어졌을 때, 그 dataframe을 multiindex로 바꾼다."""
-    edge1_high = list(repeat('edge1', 4))
-    edge2_high = list(repeat('edge2', 4))
+    edge1_high = list(repeat('edge1', 5))
+    edge2_high = list(repeat('edge2', 5))
     high_edges = edge1_high + edge2_high
-    edge1_index = list(edges.columns)[0:5]
+    edge1_index = list(edges.columns)[0:6]  # 0:5가 수상한데
     edge1_index = list(map(lambda index: index[0:len(index)-1], edge1_index))
-    edge2_index = list(edges.columns)[5:10]
+    edge2_index = list(edges.columns)[6:12]  # 5:10이 수상한데
     edge2_index = list(map(lambda index: index[0:len(index)-1], edge2_index))
     low_edges = edge1_index + edge2_index
     tuples = list(zip(high_edges, low_edges))
@@ -179,19 +182,9 @@ def multiindex_edges(edges):
     return edges
 
 
-test = pd.DataFrame({('edge1', 'class'):[1,2,3,4,5],
-                     ('edge1', 'rtntype'):[1,4,3,2,5],
-                     ('edge1', 'name'):[5,4,3,2,1],
-                     ('edge1', 'intype'):[5,4,3,2,1],
-                     ('edge2', 'class'):[5,2,3,4,1],
-                     ('edge2', 'rtntype'):[5,4,3,2,1],
-                     ('edge2', 'name'):[1,4,3,2,5],
-                     ('edge2', 'intype'):[1,4,3,2,5]})
-
-
 def no_symmetric(dataframe):
     dataframe['temp'] = dataframe.index * 2
-    dataframe2 = dataframe.iloc[:, [4, 5, 6, 7, 0, 1, 2, 3, 8]]
+    dataframe2 = dataframe.iloc[:, [4, 5, 6, 7, 8, 0, 1, 2, 3, 4, 10]]
     dataframe2.columns = dataframe.columns
     dataframe2['temp'] = dataframe2.index * 2 + 1
     out = pd.concat([dataframe, dataframe2])
@@ -240,7 +233,7 @@ def main():
 
     edges_dataframe.to_csv("edges.csv", mode='w+')
  
-    output_alledges(dataflow_dataframe, call_dataframe)
+    output_alledges(dataflow_dataframe, call_dataframe, sim_dataframe)
     print("elapsed time:", time.time()-start)
 
 

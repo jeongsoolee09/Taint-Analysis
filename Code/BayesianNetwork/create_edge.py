@@ -171,9 +171,9 @@ def multiindex_edges(edges):
     edge1_high = list(repeat('edge1', 5))
     edge2_high = list(repeat('edge2', 5))
     high_edges = edge1_high + edge2_high
-    edge1_index = list(edges.columns)[0:6]  # 0:5가 수상한데
+    edge1_index = list(edges.columns)[0:6]
     edge1_index = list(map(lambda index: index[0:len(index)-1], edge1_index))
-    edge2_index = list(edges.columns)[6:12]  # 5:10이 수상한데
+    edge2_index = list(edges.columns)[6:12]
     edge2_index = list(map(lambda index: index[0:len(index)-1], edge2_index))
     low_edges = edge1_index + edge2_index
     tuples = list(zip(high_edges, low_edges))

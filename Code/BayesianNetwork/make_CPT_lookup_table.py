@@ -21,7 +21,7 @@ def weight_mag(mag):
         elif i == 4:
             acc.append(i*FOURTH_WEIGHT)
     return acc
-        
+
 
 def make_weighted_mag_table():
     return ALL_POSSIBLE_CASES.apply(weight_mag, result_type="expand")

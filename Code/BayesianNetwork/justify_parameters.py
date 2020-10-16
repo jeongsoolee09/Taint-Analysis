@@ -32,7 +32,7 @@ def get_avg_times(directory):
 
     sampled_graph_names_and_graphs_and_BNs = list(map(lambda tup: tup+(init_BN(tup[1]),),
                                                       sampled_graph_names_and_graphs))
-    
+
     with Pool(20) as pool:
         loop_time_lists = pool.map(lambda tup: single_loop(*tup, loop_type="tactical"),
                                    sampled_graph_names_and_graphs_and_BNs)

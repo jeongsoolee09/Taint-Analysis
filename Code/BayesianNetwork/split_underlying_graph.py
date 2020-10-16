@@ -41,18 +41,11 @@ edges_reader = csv.reader(edges_data)
 
 def draw_callgraph():
     next(edges_reader)
+    next(edges_reader)
     callgraph = nx.DiGraph()
     for row in edges_reader:
-        class1 = row[1]
-        rtntype1 = row[2]
-        name1 = row[3]
-        intype1 = "()" if row[4] == "void" else "("+row[4]+")"
-        class2 = row[5]
-        rtntype2 = row[6]
-        name2 = row[7]
-        intype2 = "()" if row[8] == "void" else "("+row[8]+")"
-        firstNodeID = rtntype1+" "+class1+"."+name1+intype1
-        secondNodeID = rtntype2+" "+class2+"."+name2+intype2
+        firstNodeID = row[5]
+        secondNodeID = row[10]
         callgraph.add_edge(firstNodeID, secondNodeID, kind="call")
     return callgraph
 
@@ -304,6 +297,7 @@ def main():
             decycle(small_graph)
             nx.write_gpickle(small_graph, graph_name+"_graph_"+str(i))
             i += 1
+    nx.write_gpickle(callgraph, "callgraph")
 
 
 if __name__ == "__main__":

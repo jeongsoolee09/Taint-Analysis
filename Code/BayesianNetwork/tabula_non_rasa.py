@@ -1,15 +1,16 @@
 # 백지 상태에서 시작하지 않고, 이전 경험에서부터 배우도록 하자.
 import networkx as nx
-import pandas as pd
+import modin.pandas as pd
 
 from operator import itemgetter
 from split_underlying_graph import draw_callgraph
+from create_edge import scoring_function, no_symmetric
+from create_node import process
 
 # Constants ============================================
 # ======================================================
 
-CALLGRAPH = draw_callgraph()
-SIM_EDGES = pd.read_csv("sim.csv")
+CALLGRAPH = nx.read_gpickle("callgraph")
 
 # Functions ============================================
 # ======================================================
@@ -62,17 +63,105 @@ def learn(previous_lessons, final_snapshot, current_asked):
     return {**previous_lessons, **lessons}
 
 
-# lessons의 내용을 보고, state_names 중에서 충분히 닮은 것들, 그리고 1-call 관계에 있는 노드들을 찾아낸다.
+sample_lesson = {'MemberProfile SignInService.getOrCreateMemberProfile(Long,GitHub)': 4.0,
+                 'boolean Iterator.hasNext()': 4.0,
+                 'String SaganRendererClient.renderMarkdown(String)': 2.0,
+                 'void PostFormAdapter.updatePostFromPostForm(Post,PostForm)': 4.0,
+                 'void TeamLocation.setName(String)': 4.0,
+                 'List GuideContent.getImages()': 4.0,
+                 'String ProjectAdminController.edit(String,Model)': 2.0,
+                 'ProjectRepository ProjectRelease.getRepository()': 4.0,
+                 'void DefaultTeamImporter.importTeamMembers(GitHub)': 2.0,
+                 'void HttpHeaders.setAccept(List)': 4.0,
+                 'GitHub GitHubConfig.gitHubTemplate()': 4.0,
+                 'String PostCategoryFormatter.print(PostCategory,Locale)': 4.0,
+                 'Post BlogService.addPost(PostForm,String)': 2.0,
+                 'Optional Tutorials.findGuideHeaderByName(String)': 1.0,
+                 'String SaganRendererClient.renderAsciidoc(String)': 2.0,
+                 'GuideMetadata SaganRendererClient.fetchTutorialGuide(String)': 1.0,
+                 'Post PostFormAdapter.createPostFromPostForm(PostForm,String)': 4.0,
+                 'Set Collections.emptySet()': 4.0,
+                 'Page PostView.pageOf(Page,DateFactory)': 4.0,
+                 'org.springframework.social.github.api.GitHubUser[] DefaultTeamImporter.getGitHubUsers(GitHub)': 1.0,
+                 'String ProjectAdminController.edit(Project,Model)': 1.0,
+                 'Stream Collection.stream()': 4.0,
+                 'void TeamLocation.setLatitude(float)': 4.0,
+                 'void GeoLocation.setLongitude(float)': 4.0,
+                 'String SpringToolsAdminController.edit(String,Model)': 1.0,
+                 'String TeamAdminController.editTeamMemberForm(String,Model)': 2.0,
+                 'void BlogService.updatePost(Post,PostForm)': 2.0,
+                 'void PostFormAdapter.setPostProperties(PostForm,String,Post)': 4.0,
+                 'void PostFormAdapter.summarize(Post)': 4.0,
+                 'ProjectRelease ProjectMetadataController.releaseMetadata(String,String)': 4.0,
+                 'ProjectRelease Project.removeProjectRelease(String)': 2.0,
+                 'String SaganRendererClient.renderMarkup(String,MediaType)': 1.0,
+                 'Object RestTemplate.postForObject(String,Object,Class,java.lang.Object[])': 2.0,
+                 'Object RestOperations.postForObject(String,Object,Class,java.lang.Object[])': 1.0,
+                 'void HttpHeaders.setContentType(MediaType)': 4.0,
+                 'void Project.setDisplayOrder(int)': 4.0,
+                 'Hop Hop.rel(String)': 4.0,
+                 'String String.format(Locale,String,java.lang.Object[])': 4.0,
+                 'Float Float.valueOf(float)': 4.0,
+                 'AtomFeedView AtomFeedController.listPublishedPostsForCategory(PostCategory,Model,HttpServletResponse)': 1.0,
+                 'String BlogController.listPublishedPostsForDate(int,int,int,int,Model)': 2.0,
+                 'String Tutorial.getTypeLabel()': 4.0,
+                 'UserOperations GitHub.userOperations()': 4.0,
+                 'MemberProfile TeamService.createOrUpdateMemberProfile(Long,String,String,String)': 2.0,
+                 'void AtomFeedView.setAuthor(Post,Entry)': 4.0,
+                 'void AtomFeedView.setUpdatedDate(Map,Feed)': 4.0,
+                 'List Tutorial.getImages()': 4.0,
+                 'String BlogController.listPublishedBroadcasts(Model,int)': 2.0,
+                 'AtomFeedView AtomFeedController.listPublishedPosts(Model,HttpServletResponse)': 1.0,
+                 'String GeoLocationFormatter.print(GeoLocation,Locale)': 4.0,
+                 'ProjectRelease ProjectMetadataController.removeReleaseMetadata(String,String)': 4.0,
+                 'Optional BadgeController.getRelease(Collection,Predicate)': 4.0,
+                 'Set Tutorial.getProjects()': 4.0,
+                 'String BlogController.renderListOfPosts(Page,Model,String)': 4.0,
+                 'String BlogController.listPublishedPostsForCategory(PostCategory,Model,int)': 2.0,
+                 'List Collections.emptyList()': 4.0,
+                 'String LearnController.learn(Model)': 4.0,
+                 'String BlogController.listPublishedPosts(Model,int)': 2.0,
+                 'void AtomFeedView.setCategories(Post,Entry)': 4.0,
+                 'Optional Tutorials.findByName(String)': 1.0,
+                 'void BlogService.resummarizeAllPosts()': 4.0,
+                 'String PostCategoryFormatter.print(Object,Locale)': 4.0,
+                 'GitHubConnectionFactory GitHubConfig.gitHubConnectionFactory()': 4.0,
+                 'String ProjectRelease.getArtifactId()': 4.0,
+                 'String GuideContent.getContent()': 4.0,
+                 'boolean BindingResult.hasErrors()': 4.0}
+
 def make_evidence(lessons, state_names):
-    previous_lessons_nodes = pd.DataFrame(lessons.keys())
+    """lessons의 내용을 보고, state_names 중에서 충분히 닮은 것들, 그리고 1-call 관계에 있는 노드들을 찾아낸다."""
 
-    ### state_names 중에서 충분히 닮은 것들을 찾기: 기존의 similarity 기준 사용
-    state_names = pd.DataFrame(state_names)
+    ## 전처리: (class, rtntype, methodname, intype, id)의 튜플 리스트로 만들기
+    lessons = list(lessons.keys())
+    lessons = list(map(process, lessons))
 
+    state_names = list(map(process, state_names))
+
+    ## 두 개의 DF를 준비: 이전의 오라클 답변들과 현재 그래프의 노드 이름들
+    previous_lessons_nodes = pd.DataFrame(lessons)  # 이전의 오라클 답변들
+    state_names = pd.DataFrame(state_names)         # 다음에 갈아끼울 BN state 이름들
+
+    previous_lessons_nodes.columns = ['class', 'rtntype', 'name', 'intype', 'id']
+    state_names.columns = ['class', 'rtntype', 'name', 'intype', 'id']
+
+    ## 그 두 DF의 Cartesian Product를 제작
     previous_lessons_nodes['key'] = 1
     state_names['key'] = 1
-    carPro = pd.merge(previous_lessons_nodes, state_names, how="outer")
-    carPro = carPro.drop('key', axis=1)
+    carPro = pd.merge(previous_lessons_nodes, state_names, how='outer', on=['key'])
+    carPro = carPro.drop("key", axis=1)
+    carPro.columns = ['class1', 'rtntype1', 'name1', 'intype1', 'id1',
+                      'class2', 'rtntype2', 'name2', 'intype2', 'id2']
 
-    ### 1-call 관계에 있는 노드들 찾기
+    ## 아아..이런. 저는 그 동안 눈멀어 있었읍니다.
+    ## **carPro 내에서 scoring함으로써 row 걸러내기.**
+    mapfunc = lambda row: scoring_function(row['class1'], row['rtntype1'], row['name1'], row['intype1'],
+                                           row['class2'], row['rtntype2'], row['name2'], row['intype2'])
     
+    bool_df = carPro.apply(mapfunc, axis=1)
+    carPro['leave'] = bool_df
+    carPro = carPro[carPro.leave != False]
+    carPro = carPro.drop(columns=['leave'])
+
+    return carPro

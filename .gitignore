@@ -13,3 +13,4 @@ infer-out
 /Code/benchmarks/realworld/sagan/skip_func.txt
 /Code/infer/infer/annotations/
 /Code/infer/infer/tests/build_systems/codetoanalyze/
+/Code/BayesianNetwork/callgraph

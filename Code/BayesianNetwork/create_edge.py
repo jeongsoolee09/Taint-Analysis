@@ -4,7 +4,6 @@ import os.path
 import json
 import csv
 
-from multiprocessing import Pool
 from create_node import process
 from itertools import repeat
 

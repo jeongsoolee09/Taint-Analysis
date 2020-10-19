@@ -1262,5 +1262,7 @@
     "long PaginationInfo.getNextPageNumber()": "non",
     "void Project.setRepoUrl(String)": "non",
     "void Project.setId(String)": "non",
-    "int ProjectSample.getDisplayOrder()": "non"
+    "int ProjectSample.getDisplayOrder()": "non",
+    "List GuideContent.getImages()": "non",
+    "String ProjectRelease.getArtifactId()": "non"
 }

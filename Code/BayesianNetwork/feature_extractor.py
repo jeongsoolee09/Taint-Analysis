@@ -57,7 +57,7 @@ def find_frequents(**kwargs):
 TOP_FREQ_N_NAME_WORDS = 10            # name 낱말의 경우, 상위 몇 순위까지 고려할 거냐?
 TOP_FREQ_N_RTNTYPE_WORDS = 10         # rtntype 낱말의 경우, 상위 몇 순위까지 고려할 거냐?
 TOP_FREQ_N_CLASSNAME_WORDS = 10       # class 낱말의 경우, 상위 몇 순위까지 고려할 거냐?
-TOP_FREQ_N_RTNTYPES = 10                 # rtntype을 통째로 생각했을 때, 상위 몇 순위까지 고려할 거냐?
+TOP_FREQ_N_RTNTYPES = 10              # rtntype을 통째로 생각했을 때, 상위 몇 순위까지 고려할 거냐?
 
 # Constants ============================
 # ======================================
@@ -155,6 +155,9 @@ def intype_matches_rtntype(node):
 
 def run_all_extractors(node_row):
     """batch run the feature extractors on a method"""
+    node_id = [node_row[5]]  # the id of the method
+    id_df = pd.DataFrame([node_id], columns=pd.MultiIndex.from_tuples([("id", "")]))
+
     F06 = has_parameters(node_row)  # bool
     F06_df = pd.DataFrame([F06], columns=pd.MultiIndex.from_tuples([("F06", "")]))
 
@@ -170,7 +173,7 @@ def run_all_extractors(node_row):
     F18 = return_type_contains_name(node_row)  # dict
     F18_df = pd.DataFrame(F18, index=[0])
     
-    vector = pd.concat([F06_df, F07_df, F10_df, F18_df], axis=1)
+    vector = pd.concat([id_df, F06_df, F07_df, F10_df, F18_df], axis=1)
 
     return vector
 
@@ -179,7 +182,7 @@ def run_all_extractors(node_row):
 
 def main():
     sim_df = pd.DataFrame()
-    for tup in NODE_DATA.itertuples(index=False):
+    for tup in NODE_DATA.itertuples(index=False):  # 크기가 작으니까 가능한 거다
         vector = run_all_extractors(tup)
         sim_df = pd.concat([sim_df, vector])
     sim_df.to_csv("sim_vectors.csv", mode="w+")

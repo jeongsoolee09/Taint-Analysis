@@ -1,15 +1,16 @@
 # 백지 상태에서 시작하지 않고, 이전 경험에서부터 배우도록 하자.
 import networkx as nx
-import modin.pandas as pd
+import pandas as pd
 
 from operator import itemgetter
 from split_underlying_graph import draw_callgraph
-from create_edge import scoring_function, no_symmetric
+from create_edge import no_symmetric
 from create_node import process
 
 # Constants ============================================
 # ======================================================
 
+SIM_VECTORS = pd.read_csv("sim_vectors.csv", index_col=0)
 CALLGRAPH = nx.read_gpickle("callgraph")
 
 # Functions ============================================
@@ -130,6 +131,27 @@ sample_lesson = {'MemberProfile SignInService.getOrCreateMemberProfile(Long,GitH
                  'String GuideContent.getContent()': 4.0,
                  'boolean BindingResult.hasErrors()': 4.0}
 
+
+def scoring_function(node1, node2):
+    """cartesian product의 한 row를 받아서 두 node가 충분히 similar한지 판단하는 메소드"""
+    ## node1의 feature vector를 retrieve
+    node1_vector = SIM_VECTORS.loc[SIM_VECTORS['id'] == node1]
+    node1_vector = node1_vector.drop(columns=['id'])
+
+    ## node2의 feature vector를 retrieve
+    node2_vector = SIM_VECTORS.loc[SIM_VECTORS['id'] == node2]
+    node2_vector = node2_vector.drop(columns=['id'])
+    
+    node1_vector = node1_vector.astype(bool)
+    node2_vector = node2_vector.astype(bool)
+
+    elementwise_and = node1_vector & node2_vector
+
+    true_count = elementwise_and.sum().sum()
+
+    return True if true_count == 22 else False
+
+
 def make_evidence(lessons, state_names):
     """lessons의 내용을 보고, state_names 중에서 충분히 닮은 것들, 그리고 1-call 관계에 있는 노드들을 찾아낸다."""
 
@@ -154,14 +176,16 @@ def make_evidence(lessons, state_names):
     carPro.columns = ['class1', 'rtntype1', 'name1', 'intype1', 'id1',
                       'class2', 'rtntype2', 'name2', 'intype2', 'id2']
 
-    ## 아아..이런. 저는 그 동안 눈멀어 있었읍니다.
-    ## **carPro 내에서 scoring함으로써 row 걸러내기.**
-    mapfunc = lambda row: scoring_function(row['class1'], row['rtntype1'], row['name1'], row['intype1'],
-                                           row['class2'], row['rtntype2'], row['name2'], row['intype2'])
+    mapfunc = lambda row: scoring_function(row['id1'], row['id2'])
     
     bool_df = carPro.apply(mapfunc, axis=1)
     carPro['leave'] = bool_df
+
     carPro = carPro[carPro.leave != False]
     carPro = carPro.drop(columns=['leave'])
 
+    # print(carPro)
     return carPro
+
+# site1 = nx.read_gpickle('sagan-site_graph_1')
+# make_evidence(sample_lesson, site1)

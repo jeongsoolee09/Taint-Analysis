@@ -4,7 +4,7 @@ from itertools import product
 ALL_POSSIBLE_CASES = pd.DataFrame(list(product([1, 2, 3, 4], [1, 2, 3, 4], [1, 2, 3, 4], [1, 2, 3, 4])))
 FIRST_WEIGHT = 1
 SECOND_WEIGHT = 4
-THIRD_WEIGHT= 64
+THIRD_WEIGHT = 64
 FOURTH_WEIGHT = 256
 
 

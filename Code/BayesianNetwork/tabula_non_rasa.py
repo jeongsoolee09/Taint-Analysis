@@ -132,6 +132,14 @@ sample_lesson = {'MemberProfile SignInService.getOrCreateMemberProfile(Long,GitH
                  'boolean BindingResult.hasErrors()': 4.0}
 
 
+def convert_bool_to_int(df):
+    df = df.replace(['True'], [1])
+    df = df.replace([True], [1])
+    df = df.replace(['False'], [0])
+    df = df.replace([False], [0])
+    return df
+
+
 def scoring_function(node1, node2):
     """cartesian product의 한 row를 받아서 두 node가 충분히 similar한지 판단하는 메소드"""
     ## node1의 feature vector를 retrieve
@@ -141,15 +149,15 @@ def scoring_function(node1, node2):
     ## node2의 feature vector를 retrieve
     node2_vector = SIM_VECTORS.loc[SIM_VECTORS['id'] == node2]
     node2_vector = node2_vector.drop(columns=['id'])
-    
-    node1_vector = node1_vector.astype(bool)
-    node2_vector = node2_vector.astype(bool)
+
+    node1_vector = convert_bool_to_int(node1_vector)
+    node2_vector = convert_bool_to_int(node2_vector)
 
     elementwise_and = node1_vector & node2_vector
 
     true_count = elementwise_and.sum().sum()
 
-    return True if true_count == 22 else False
+    return True if true_count > 2 else False
 
 
 def make_evidence(lessons, state_names):
@@ -187,5 +195,6 @@ def make_evidence(lessons, state_names):
     # print(carPro)
     return carPro
 
-# site1 = nx.read_gpickle('sagan-site_graph_1')
-# make_evidence(sample_lesson, site1)
+
+site1 = nx.read_gpickle('sagan-site_graph_1')
+make_evidence(sample_lesson, site1.nodes)

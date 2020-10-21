@@ -1264,5 +1264,10 @@
     "void Project.setId(String)": "non",
     "int ProjectSample.getDisplayOrder()": "non",
     "List GuideContent.getImages()": "non",
-    "String ProjectRelease.getArtifactId()": "non"
+    "String ProjectRelease.getArtifactId()": "non",
+    "void Link.setLength(long)": "non",
+    "int Project.getDisplayOrder()": "non",
+    "String ProjectRepository.getId()": "non",
+    "Boolean ProjectRepository.getSnapshotsEnabled()": "non",
+    "void ProjectRepository.setUrl(String)": "non"
 }

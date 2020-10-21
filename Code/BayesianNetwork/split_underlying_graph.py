@@ -137,7 +137,7 @@ def split_large_graph(G, max_graph_size):
         if len(target.nodes) <= max_graph_size:
             acc.append(target)
         else:
-            small1, small2 = bisect_optimal(target)
+            small1, small2 = bisect(target)
             if len(small1.nodes) == 0 or len(small2.nodes) == 0:
                 return None
             worklist.append(small1)
@@ -185,7 +185,7 @@ def collect_graph_by_mag_single(G):
         if len(target.nodes) <= 49:
             acc.append(target)
         else:
-            small1, small2 = bisect_optimal(target)
+            small1, small2 = bisect(target)
 
             # match on small1
             if 300 <= len(small1.nodes) < 350:

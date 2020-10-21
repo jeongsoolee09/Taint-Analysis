@@ -426,7 +426,7 @@ def make_names_and_params(state_names, snapshot):
     """snapshot을 읽어서, 랜덤변수 별 확률값의 dict인 parameters만을 빼낸 다음 node의 이름과 짝지어서 list에 담아 낸다."""
     distobjs = []
     for distobj in snapshot:
-        if type(distobj) == int:  # oracle에 의해 고정된 경우!
+        if type(distobj) == int or type(distobj) == float:  # oracle에 의해 고정된 경우!
             distobjs.append(normalize_dist(distobj))
         else:
             distobjs.append(distobj.parameters[0])
@@ -554,16 +554,22 @@ def single_loop(graph_file, graph_for_reference, BN_for_inference, learned_evide
     return loop_time_list, final_snapshot, current_asked
 
 
+def test_drive():
+    """KeyError를 쥐잡듯이 잡아버리자"""
+    pass
+
+
 def main():
     graph_files = find_pickled_graphs()
     lessons = {}
     for graph_file in graph_files:
-        print("# of lessons: ", len(lessons))
+        print("# of lessons:", len(lessons))
         graph_for_reference = nx.read_gpickle(graph_file)
         BN_for_inference = make_BN.main(graph_file)
         state_names = list(map(lambda node: node.name, BN_for_inference.states))
         print(graph_file, "has", len(state_names), "states")
         learned_evidence = make_evidence(lessons, state_names)  # learn a new evidence from the lessons
+        print("# of learned evidence:", len(learned_evidence))
         loop_time_list, final_snapshot, current_asked =\
             single_loop(graph_file, graph_for_reference,
                         BN_for_inference, learned_evidence, loop_type="tactical")

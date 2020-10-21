@@ -60,8 +60,8 @@ def find_conf_sols(final_snapshot, current_asked):
 def learn(previous_lessons, final_snapshot, current_asked):
     oracle_response = dict(find_oracle_response(final_snapshot, current_asked))
     conf_sols = dict(find_conf_sols(final_snapshot, current_asked))
-    lessons = {**oracle_response, **conf_sols}
-    return {**previous_lessons, **lessons}
+    previous_lessons_nodes = {**oracle_response, **conf_sols}
+    return {**previous_lessons, **previous_lessons_nodes}
 
 
 sample_lesson = {'MemberProfile SignInService.getOrCreateMemberProfile(Long,GitHub)': 4.0,
@@ -160,17 +160,20 @@ def scoring_function(node1, node2):
     return True if true_count > 2 else False
 
 
-def make_evidence(lessons, state_names):
+def make_evidence(lessons_nodes, state_names):
     """lessons의 내용을 보고, state_names 중에서 충분히 닮은 것들, 그리고 1-call 관계에 있는 노드들을 찾아낸다."""
 
+    if lessons_nodes == dict():
+        return dict()
+
     ## 전처리: (class, rtntype, methodname, intype, id)의 튜플 리스트로 만들기
-    lessons = list(lessons.keys())
-    lessons = list(map(process, lessons))
+    previous_lessons_nodes = list(lessons_nodes.keys())
+    previous_lessons_nodes = list(map(process, previous_lessons_nodes))
 
     state_names = list(map(process, state_names))
 
     ## 두 개의 DF를 준비: 이전의 오라클 답변들과 현재 그래프의 노드 이름들
-    previous_lessons_nodes = pd.DataFrame(lessons)  # 이전의 오라클 답변들
+    previous_lessons_nodes = pd.DataFrame(previous_lessons_nodes)  # 이전의 오라클 답변들
     state_names = pd.DataFrame(state_names)         # 다음에 갈아끼울 BN state 이름들
 
     previous_lessons_nodes.columns = ['class', 'rtntype', 'name', 'intype', 'id']
@@ -184,17 +187,22 @@ def make_evidence(lessons, state_names):
     carPro.columns = ['class1', 'rtntype1', 'name1', 'intype1', 'id1',
                       'class2', 'rtntype2', 'name2', 'intype2', 'id2']
 
+    # make a label column
+    mapfunc = lambda row: lessons_nodes[row['id1']]
+    labels = carPro.apply(mapfunc, axis=1)
+    carPro['labels'] = labels
+
+    # filter rows without sufficient similarity
     mapfunc = lambda row: scoring_function(row['id1'], row['id2'])
-    
     bool_df = carPro.apply(mapfunc, axis=1)
     carPro['leave'] = bool_df
 
     carPro = carPro[carPro.leave != False]
     carPro = carPro.drop(columns=['leave'])
 
-    # print(carPro)
-    return carPro
+    carPro = carPro.drop(columns=['class1', 'rtntype1', 'name1', 'intype1', 'id1', 
+                                  'class2', 'rtntype2', 'name2', 'intype2'])
 
-
-site1 = nx.read_gpickle('sagan-site_graph_1')
-make_evidence(sample_lesson, site1.nodes)
+    out = carPro.to_dict('split')['data']
+    out = dict(out)
+    return out

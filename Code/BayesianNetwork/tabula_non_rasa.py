@@ -157,7 +157,7 @@ def scoring_function(node1, node2):
 
     true_count = elementwise_and.sum().sum()
 
-    return True if true_count > 2 else False
+    return True if true_count >= 2 else False
 
 
 def make_evidence(lessons_nodes, state_names):

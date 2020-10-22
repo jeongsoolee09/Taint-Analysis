@@ -142,11 +142,11 @@ def convert_bool_to_int(df):
 
 def scoring_function(node1, node2):
     """cartesian product의 한 row를 받아서 두 node가 충분히 similar한지 판단하는 메소드"""
-    ## node1의 feature vector를 retrieve
+    # node1의 feature vector를 retrieve
     node1_vector = SIM_VECTORS.loc[SIM_VECTORS['id'] == node1]
     node1_vector = node1_vector.drop(columns=['id'])
 
-    ## node2의 feature vector를 retrieve
+    # node2의 feature vector를 retrieve
     node2_vector = SIM_VECTORS.loc[SIM_VECTORS['id'] == node2]
     node2_vector = node2_vector.drop(columns=['id'])
 
@@ -163,23 +163,26 @@ def scoring_function(node1, node2):
 def make_evidence(lessons_nodes, state_names):
     """lessons의 내용을 보고, state_names 중에서 충분히 닮은 것들, 그리고 1-call 관계에 있는 노드들을 찾아낸다."""
 
+    # 맨 처음 loop을 돌 때는 lesson이 안 쌓여 있기 때문
     if lessons_nodes == dict():
         return dict()
 
-    ## 전처리: (class, rtntype, methodname, intype, id)의 튜플 리스트로 만들기
+    # 충분히 similar한 것들 찾아내기
+
+    # 전처리: (class, rtntype, methodname, intype, id)의 튜플 리스트로 만들기
     previous_lessons_nodes = list(lessons_nodes.keys())
     previous_lessons_nodes = list(map(process, previous_lessons_nodes))
 
     state_names = list(map(process, state_names))
 
-    ## 두 개의 DF를 준비: 이전의 오라클 답변들과 현재 그래프의 노드 이름들
+    # 두 개의 DF를 준비: 이전의 오라클 답변들과 현재 그래프의 노드 이름들
     previous_lessons_nodes = pd.DataFrame(previous_lessons_nodes)  # 이전의 오라클 답변들
     state_names = pd.DataFrame(state_names)         # 다음에 갈아끼울 BN state 이름들
 
     previous_lessons_nodes.columns = ['class', 'rtntype', 'name', 'intype', 'id']
     state_names.columns = ['class', 'rtntype', 'name', 'intype', 'id']
 
-    ## 그 두 DF의 Cartesian Product를 제작
+    # 그 두 DF의 Cartesian Product를 제작
     previous_lessons_nodes['key'] = 1
     state_names['key'] = 1
     carPro = pd.merge(previous_lessons_nodes, state_names, how='outer', on=['key'])
@@ -203,6 +206,21 @@ def make_evidence(lessons_nodes, state_names):
     carPro = carPro.drop(columns=['class1', 'rtntype1', 'name1', 'intype1', 'id1', 
                                   'class2', 'rtntype2', 'name2', 'intype2'])
 
-    out = carPro.to_dict('split')['data']
-    out = dict(out)
+    similars = carPro.to_dict('split')['data']
+    similars = dict(similars)
+
+    # 1-call 관계에 있는 노드들 찾아내기
+    # lesson에 있는 노드와 1-call 관계에 있으면서 state_names에 동시에 있는 노드들 찾아내기
+
+    one_call_nodes = []
+    for edge1, edge2 in list(CALLGRAPH.edges):
+        if edge2 in previous_lessons_nodes:
+            label = lesson_nodes[edge2]
+            if edge1 in state_names:
+                one_call_nodes.append((edge1, label))
+
+    one_call_nodes = dict(one_call_nodes)
+
+    out = {**similars, **one_call_nodes}
+
     return out

@@ -554,9 +554,24 @@ def single_loop(graph_file, graph_for_reference, BN_for_inference, learned_evide
     return loop_time_list, final_snapshot, current_asked
 
 
-def test_drive():
+def test_drive_single(graph):
     """KeyError를 쥐잡듯이 잡아버리자"""
-    pass
+    acc = []
+    state_names = list(graph.nodes)
+    for node_name in state_names:
+        if node_name not in SOLUTION:
+            acc.append(node_name)
+    return acc
+
+
+def test_drive():
+    graph_files = find_pickled_graphs()
+    acc = []
+    for graph_file in graph_files:
+        graph = nx.read_gpickle(graph_file)
+        ret = test_drive_single(graph)
+        acc += ret
+    return acc
 
 
 def main():
@@ -569,7 +584,7 @@ def main():
         state_names = list(map(lambda node: node.name, BN_for_inference.states))
         print(graph_file, "has", len(state_names), "states")
         learned_evidence = make_evidence(lessons, state_names)  # learn a new evidence from the lessons
-        print("# of learned evidence:", len(learned_evidence))
+        print("# of transferred evidence:", len(learned_evidence))
         loop_time_list, final_snapshot, current_asked =\
             single_loop(graph_file, graph_for_reference,
                         BN_for_inference, learned_evidence, loop_type="tactical")

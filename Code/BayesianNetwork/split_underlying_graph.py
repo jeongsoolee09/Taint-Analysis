@@ -6,7 +6,7 @@ import copy
 import csv
 import random
 import json
-import hashlib                  # for making time.time() digest
+import hashlib
 import time
 import os
 

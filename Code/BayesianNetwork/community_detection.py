@@ -51,6 +51,15 @@ def isolated_nodes(G):
     return acc
 
 
+def rich_nodes(G):
+    tmp = []
+
+    for node_name in G.nodes:
+        if len(G.in_edges(nbunch=node_name)) > 6:
+            tmp.append(node_name)
+    return tmp
+
+
 def minimize_isolated(graph1, graph2, original_graph):
     graph1_isolated = []
     for node in isolated_nodes(graph1):

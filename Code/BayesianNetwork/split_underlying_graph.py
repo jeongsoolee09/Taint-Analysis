@@ -11,7 +11,7 @@ import time
 import os
 
 from make_underlying_graph import df_reader, call_reader, extract_filename
-from community_detection import bisect_optimal, bisect
+from community_detection import bisect_optimal, bisect, isolated_nodes, rich_nodes
 from find_jar import real_jar_paths, take_jar_dir
 from functools import reduce
 
@@ -89,16 +89,41 @@ def mask_graph(G, methods):
     return masked_graph
 
 
-# TODO: 마구 지울 것이 아니라, sim edge 위주로 지우게 하기
+def is_vulnerable(G,node):
+    return (G.in_edges(nbunch=node) == 0 or G.out_edges(nbunch=node) == 1) or\
+           (G.in_edges(nbunch=node) == 1 or G.out_edges(nbunch=node) == 0)
+
+
+def find_edge_to_erase(G, cycle_path_edges):
+    nodes = dict(cycle_path_edges).keys()
+    erasable_nodes = []
+    for node in nodes:
+        # check if node is about to be poor
+        if not is_vulnerable(G, node):
+            erasable_nodes.append(node)
+    
+    # find an edge we can erase
+    erasable_edges = []
+    for node1, node2 in cycle_path_edges:
+        if node1 in erasable_nodes and node2 in erasable_nodes:
+            erasable_edges.append((node1, node2))
+    return random.choice(erasable_edges)
+
+
 def decycle(G):
     print('decycling (this may take some time)..')
+    print("# of nodes:", len(G.nodes))
+    print('# of rich nodes before decycling:', len(isolated_nodes(G)))
+    print('# of isolated nodes before decycling:', len(rich_nodes(G)))
     while True:
         try:
             cycle_path_edges = nx.find_cycle(G)
         except:
             print("decycling done")
+            print('# of rich nodes after decycling:', len(rich_nodes(G)))
+            print('# of isolated nodes after decycling:', len(isolated_nodes(G)))
             return
-        random_edge = random.choice(cycle_path_edges)
+        random_edge = find_edge_to_erase(G, cycle_path_edges)
         G.remove_edge(*random_edge)
 
 
@@ -138,6 +163,8 @@ def split_large_graph(G, max_graph_size):
             acc.append(target)
         else:
             small1, small2 = bisect(target)
+            print(len(isolated_nodes(small1)))
+            print(len(isolated_nodes(small2)))
             if len(small1.nodes) == 0 or len(small2.nodes) == 0:
                 return None
             worklist.append(small1)

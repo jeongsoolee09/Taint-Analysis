@@ -409,6 +409,12 @@ def visualize_snapshot(snapshot, dependent_nodes):
     # polygon = ptch.Polygon(coord_lists, closed=True, alpha=0.4)
     # ax.add_patch(polygon)
 
+    # graph_for_reference의 G에서 lost node를 차집합
+    acc = set()
+    for node_name in list(graph_for_reference.nodes):
+        if node_name not in STATE_NAMES:
+            graph_for_reference.remove_node(node_name)
+
     nx.draw(graph_for_reference,
             node_color=node_colormap, edge_color=edge_colormap,
             pos=node_posmap,
@@ -641,7 +647,7 @@ def main():
         tactical_loop(graph_for_reference, 0,
                       list(), dict(), list(),
                       initial_snapshot, initial_precision_list, initial_stability_list,
-                      initial_precision_inferred_list, list(), have_solution=False)
+                      initial_precision_inferred_list, list(), have_solution=True)
 
     # save the data
     save_data_as_csv(final_snapshot)

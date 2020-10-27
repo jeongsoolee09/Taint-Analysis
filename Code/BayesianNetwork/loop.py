@@ -28,7 +28,7 @@ import modin.pandas as pd
 # ==================================================
 
 NOW = datetime.now().strftime("%Y-%m-%d-%H:%M:%S")
-GRAPH_FILE_NAME = "sagan-site_graph_0"
+GRAPH_FILE_NAME = "graph_for_reference"
 graph_for_reference = nx.read_gpickle(GRAPH_FILE_NAME)
 BN_for_inference = make_BN.main(GRAPH_FILE_NAME)
 
@@ -649,8 +649,11 @@ def main():
                       initial_snapshot, initial_precision_list, initial_stability_list,
                       initial_precision_inferred_list, list(), have_solution=True)
 
+    print("Inference done.")
+
     # save the data
     save_data_as_csv(final_snapshot)
+    print("Data saved as inferred.csv")
 
 
 if __name__ == "__main__":

@@ -1,4 +1,4 @@
 {
-    "project_root_directory":"../benchmarks/realworld/sagan/",
-    "solution_directory":"solution_sagan.json"
+    "project_root_directory":"../benchmarks/realworld/relational-data-access/",
+    "solution_directory":"solution_relational.json"
 }

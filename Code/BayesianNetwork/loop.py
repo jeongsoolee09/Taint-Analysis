@@ -379,7 +379,7 @@ node_colordict = {"src": "red", "sin": "orange", "san": "yellow", "non": "green"
 
 def visualize_snapshot(snapshot, dependent_nodes):
     """한번 iteration 돌 때마다, 전체 BN의 snapshot을 가시화한다. 이 때, confident node들 위에는 `conf`라는 문구를 띄운다."""
-    network_figure = plt.figure("Bayesian Network")
+    network_figure = plt.figure("Bayesian Network", figsize=(30, 15))
     network_figure.clf()
     plt.ion()
     ax = network_figure.add_subplot()

@@ -410,7 +410,6 @@ def visualize_snapshot(snapshot, dependent_nodes):
     # ax.add_patch(polygon)
 
     # graph_for_reference의 G에서 lost node를 차집합
-    acc = set()
     for node_name in list(graph_for_reference.nodes):
         if node_name not in STATE_NAMES:
             graph_for_reference.remove_node(node_name)

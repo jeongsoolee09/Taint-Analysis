@@ -419,7 +419,7 @@ def visualize_snapshot(snapshot, dependent_nodes):
             node_color=node_colormap, edge_color=edge_colormap,
             pos=node_posmap,
             ax=ax,
-            with_labels=True, node_size=100)
+            with_labels=True, node_size=100, font_size=8)
 
     plt.show()
 

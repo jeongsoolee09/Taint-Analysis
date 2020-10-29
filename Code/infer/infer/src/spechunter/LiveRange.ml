@@ -655,7 +655,7 @@ let write_json (json:json) : unit =
 
 
 (** interface with the driver *)
-let run_lrm () =
+let main () =
   MyCallGraph.load_summary_from_disk_to callgraph_table;
   save_callgraph ();
   load_summary_from_disk_to summary_table;

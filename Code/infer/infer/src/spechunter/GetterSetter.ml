@@ -145,12 +145,34 @@ let collect_setter (meths:Procname.t list) : methods list =
       | _ -> false)
 
 
-(** Getter 또는 Setter로 label된 method들을 json 형식으로 찍어낸다. key: method name, attr: "getter" 혹은 "setter". *)
-let write_to_json (labelled_methods:methods) : json
-  
+(** Getter 또는 Setter로 label된 method 한 개를 json 형식으로 찍어낸다. key: method name, attr: "getter" 혹은 "setter". *)
+let json_repr (labelled_method:methods) : json =
+    match labelled_method with
+    | Getter name ->
+        `Assoc [(Procname.to_string name, `String "getter")]
+    | Setter name -> 
+        `Assoc [((Procname.to_string name, `String "setter"))]
+    | None -> L.die InternalError "trying to write a non-getter/setter method" 
 
-let write_json_to_file () : unit
 
+let batch_json_repr (labelled_methods:methods list) : json list =
+  List.map ~f:json_repr labelled_methods
+
+
+let write_json_to_file (json_list:json list) : unit =
+  let out_channel = Out_channel.create "GetterSetter.json" in
+  let iterfunc = fun json ->
+    to_channel out_channel json in
+  List.iter ~f:iterfunc json_list;
+  Out_channel.flush out_channel;
+  Out_channel.close out_channel
+ 
 
 let main () : unit =
-  load_summary_from_disk_to method_summary_table
+  load_summary_from_disk_to method_summary_table;
+  let meths = Hashtbl.fold (fun k _ acc -> k::acc) method_summary_table [] in
+  let getter_methods = collect_getter meths in
+  let setter_methods = collect_setter meths in
+  let labelled_methods = getter_methods @ setter_methods in
+  let json_list = batch_json_repr labelled_methods in
+  write_json_to_file json_list

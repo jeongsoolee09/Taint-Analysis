@@ -14,3 +14,4 @@ infer-out
 /Code/infer/infer/annotations/
 /Code/infer/infer/tests/build_systems/codetoanalyze/
 /Code/BayesianNetwork/callgraph
+/Code/benchmarks/realworld/sagan/GetterSetter.json

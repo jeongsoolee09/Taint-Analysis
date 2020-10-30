@@ -95,32 +95,79 @@ def scoring_function(node1, node2):
     return True if true_count >= 2 else False
 
 
-# Tentative rules ============================================
+# Tentative rule activator ===================================
 # ============================================================
 
 
-def rule_getter_setter():
+def activate_getter_setter(lessons):
     pass
 
 
-def hashCode_is_san():
+def activate_hashCode_is_san(lessons):
+    pass
+
+def activate_assert_is_san(lessons):
     pass
 
 
-def assert_is_san():
+def activate_to_is_non(lessons):
     pass
 
 
-def to_is_non():
+def activate_wrapping_primitives_is_non(lessons):
     pass
 
 
-def wrapping_primitives_is_non():
+def activate_builtin_collection_is_non(lessons):
     pass
 
 
-def builtin_collection_is_non():
-    pass
+# Tentative rules ============================================
+# ============================================================
+
+# A "tentative rule" is an [activated|non-activated] function from pd.DataFrame * Methnames -> Methnames.
+# A tentative rule gets activated only if the 
+
+def rule_getter_setter(df, **kwargs):
+    if kwargs["activated"]:
+        return df
+    else:
+        return df
+
+
+def hashCode_is_san(df, **kwargs):
+    if kwargs["activated"]:
+        return df
+    else:
+        return df
+
+
+def assert_is_san(df, **kwargs):
+    if kwargs["activated"]:
+        return df
+    else:
+        return df
+
+
+def to_is_non(df, **kwargs):
+    if kwargs["activated"]:
+        return df
+    else:
+        return df
+
+
+def wrapping_primitives_is_non(df, **kwargs):
+    if kwargs["activated"]:
+        return df
+    else:
+        return df
+
+
+def builtin_collection_is_non(df, **kwargs):
+    if kwargs["activated"]:
+        return df
+    else:
+        return df
 
 
 # ============================================================

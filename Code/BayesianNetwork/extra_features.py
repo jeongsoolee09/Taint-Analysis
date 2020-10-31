@@ -6,6 +6,8 @@ import json
 import modin.pandas as pd
 import networkx as nx
 
+from create_node import process
+from functools import partial
 
 def retrieve_path():
     """paths.json을 읽고 path를 가져온다."""
@@ -33,30 +35,64 @@ def getter_setter_mapfunc(row):
         return "nothing"
 
 
+def set_getter_setter(df):
+    """getter_setter 칼럼의 값을 ['getter'|'setter'|'nothing']으로 초기화"""
+    getter_setter_val_df = df.apply(getter_setter_mapfunc, axis=1)
+    df["getter_setter"] = getter_setter_val_df
+    return df
+
+
 # https://stackoverflow.com/questions/29916065/how-to-do-camelcase-split-in-python
 def camel_case_split(identifier):
     matches = re.finditer('.+?(?:(?<=[a-z])(?=[A-Z])|(?<=[A-Z])(?=[A-Z][a-z])|$)', identifier)
     return [m.group(0) for m in matches]
 
 
-def set_getter_setter(df):
-    """getter_setter 칼럼의 값을 [getter|setter|nothing]으로 초기화"""
-    # 1. df에 들어 있는 각 node name을 GETTER_SETTER에서 찾아내고
-    # 2. 해당되는 GETTER_SETTER의 value값을 그 row의 "getter_setter" 칼럼 값으로 한다.
-    getter_setter_val_df = df.apply(getter_setter_mapfunc, axis=1)
-    df["getter_setter"] = getter_setter_val_df
-    return df
+def is_assert_mapfunc(row):
+    if camel_case_split(row["name"])[0] == "is": 
+        return True
+    else:
+        return False
 
 
 def set_is_assert(df):
+    """is_assert 칼럼의 값을 [True|False]로 초기화"""
+    is_assert_val_df = df.apply(is_assert_mapfunc, axis=1)
+    df["is_assert"] = is_assert_val_df
     return df
+
+
+def is_to_mapfunc(row):
+    if camel_case_split(row["name"])[0] == "to": 
+        return True
+    else:
+        return False
 
 
 def set_is_to(df):
+    """is_to 칼럼의 값을 [True|False]로 초기화"""
+    is_to_val_df = df.apply(is_assert_mapfunc, axis=1)
+    df["is_to"] = is_to_val_df
     return df
 
 
+def is_wrapping_primitive_mapfunc(row, pool):
+    classname = process(row['name'])[0]
+    if classname in pool:
+        return True
+    else:
+        return False
+
+
 def set_is_wrapping_primitive(df):
+    with open("java_builtin_types", "r+") as f:
+        builtin_type_classes = f.readlines()
+        builtin_type_classes = list(filter(lambda x :\
+                                     '[' not in x and
+                                     ']' not in x), builtin_type_classes)
+    mapfunc = partial(is_wrapping_primitive_mapfunc, builtin_type_classes)
+    is_wrapping_primitive_val_df = df.apply(mapfunc, axis=1)
+    df["is_wrapping_primitive"] = is_wrapping_primitive_val_df
     return df
 
 

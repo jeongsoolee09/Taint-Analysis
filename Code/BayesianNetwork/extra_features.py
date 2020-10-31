@@ -6,8 +6,6 @@ import json
 import modin.pandas as pd
 import networkx as nx
 
-# Constants ================================
-# ==========================================
 
 def retrieve_path():
     """paths.json을 읽고 path를 가져온다."""
@@ -15,6 +13,9 @@ def retrieve_path():
         pathdict = json.load(pathjson)
     return pathdict["project_root_directory"]
 
+
+# Constants ================================
+# ==========================================
 
 PROJECT_ROOT_DIR = retrieve_path()
 
@@ -25,10 +26,25 @@ with open(os.path.join(PROJECT_ROOT_DIR, "GetterSetter.json"), "r+") as f:
 # feature value setters ========================
 # ==============================================
 
+def getter_setter_mapfunc(row):
+    try:
+        return GETTER_SETTER[row["name"]]
+    except:
+        return "nothing"
+
+
+# https://stackoverflow.com/questions/29916065/how-to-do-camelcase-split-in-python
+def camel_case_split(identifier):
+    matches = re.finditer('.+?(?:(?<=[a-z])(?=[A-Z])|(?<=[A-Z])(?=[A-Z][a-z])|$)', identifier)
+    return [m.group(0) for m in matches]
+
 
 def set_getter_setter(df):
     """getter_setter 칼럼의 값을 [getter|setter|nothing]으로 초기화"""
-    # df["getter_setter"] =
+    # 1. df에 들어 있는 각 node name을 GETTER_SETTER에서 찾아내고
+    # 2. 해당되는 GETTER_SETTER의 value값을 그 row의 "getter_setter" 칼럼 값으로 한다.
+    getter_setter_val_df = df.apply(getter_setter_mapfunc, axis=1)
+    df["getter_setter"] = getter_setter_val_df
     return df
 
 

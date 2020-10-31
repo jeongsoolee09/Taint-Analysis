@@ -56,7 +56,8 @@ let detect_getter (methname:Procname.t) : methods option =
         (tup, is_this_fieldname)::acc) summary [] in
 
     (* true flag와 결부된 튜플만 필터링 *)
-    let this_fieldname_tuples' = List.filter ~f:(fun tup -> Bool.equal true @@ snd tup) this_fieldname_tuples in
+    let this_fieldname_tuples' = List.filter ~f:(fun tup -> Bool.equal true @@ snd tup)
+        this_fieldname_tuples in
     let this_fieldname_tuple = 
       match this_fieldname_tuples' with
       | [tuple] -> fst tuple
@@ -92,39 +93,43 @@ let detect_getter (methname:Procname.t) : methods option =
     검출 방법: (this, [fieldName])이 vardef로 들어 있는 튜플이 파라미터인 fieldName을 가지고 있고,
     그 line number는 fieldName이 정의된 line number보다 크거나 같다. *)
 let detect_setter (methname:Procname.t) : methods option =
-  (* Phase 1: this.fieldName이 vardef로 들어 있는 튜플을 찾는다: 로직 재탕 *)
-  (* 우선 우리가 찾고자 하는 튜플에만 true flag를 세워 줌  *)
   let summary = get_summary methname in
-  let this_fieldname_tuples = S.fold (fun tup acc ->
-      let aliasset = fourth_of tup in
-      let is_this_fieldname = A.fold (fun aliastup acc ->
-          acc || (Var.is_this @@ fst aliastup) && (not @@ List.is_empty @@ snd aliastup)) aliasset false in
-      (tup, is_this_fieldname)::acc) summary [] in
+  match S.cardinal summary with
+  | 0 -> None
+  | _ ->
 
-  (* true flag와 결부된 튜플만 필터링 *)
-  let this_fieldname_tuples' = List.filter ~f:(fun tup -> Bool.equal true @@ snd tup)
-      this_fieldname_tuples in
-  let this_fieldname_tuple = 
-    match this_fieldname_tuples' with
-    | [tuple] -> fst tuple
-    | _       -> bottuple in  (* 나중에 false를 리턴하게 할 것 *)
+    (* Phase 1: this.fieldName이 vardef로 들어 있는 튜플을 찾는다: 로직 재탕 *)
+    (* 우선 우리가 찾고자 하는 튜플에만 true flag를 세워 줌  *)
+    let this_fieldname_tuples = S.fold (fun tup acc ->
+        let aliasset = fourth_of tup in
+        let is_this_fieldname = A.fold (fun aliastup acc ->
+            acc || (Var.is_this @@ fst aliastup) && (not @@ List.is_empty @@ snd aliastup)) aliasset false in
+        (tup, is_this_fieldname)::acc) summary [] in
 
-  (* sanity check: 발견된 튜플의 aliasset에 logicalvar, this.fieldName이 아닌 다른 튜플이 *하나만* 있는지를 확인한다. *)
-  let aliasset = fourth_of this_fieldname_tuple in
-  let alias_tuples = A.elements aliasset in
-  let sanity = List.fold_left ~f:(fun acc tup ->
-      if (is_logical_var @@ fst tup) && (Var.is_this @@ fst tup)
-      then acc
-      else tup::acc) ~init:[] alias_tuples in
-  let sanity_check = Int.equal 1 @@ List.length sanity in
-  if not sanity_check then Some Nothing else  (* 중간 sanity check 들어가실게요 *)
+    (* true flag와 결부된 튜플만 필터링 *)
+    let this_fieldname_tuples' = List.filter ~f:(fun tup -> Bool.equal true @@ snd tup)
+        this_fieldname_tuples in
+    let this_fieldname_tuple = 
+      match this_fieldname_tuples' with
+      | [tuple] -> fst tuple
+      | _       -> bottuple in  (* 나중에 false를 리턴하게 할 것 *)
 
-    (* Phase 2: *하나만* 있는 그 튜플 (파라미터)의 line number가 Phase 1에서 발견한 튜플의 line number 이전인지 확인한다. *)
-    let ap = List.nth_exn sanity 0 in
-    let target_tuple = search_target_tuple_by_vardef_ap ap methname summary in
-    let ap_linenum = List.nth_exn (LocSet.elements @@ third_of target_tuple) 0 in
-    let target_linenum = List.nth_exn (LocSet.elements @@ third_of target_tuple) 0 in
-    if ap_linenum.line >= target_linenum.line then Some (Setter methname) else Some Nothing
+    (* sanity check: 발견된 튜플의 aliasset에 logicalvar, this.fieldName이 아닌 다른 튜플이 *하나만* 있는지를 확인한다. *)
+    let aliasset = fourth_of this_fieldname_tuple in
+    let alias_tuples = A.elements aliasset in
+    let sanity = List.fold_left ~f:(fun acc tup ->
+        if (is_logical_var @@ fst tup) || (Var.is_this @@ fst tup)
+        then acc
+        else tup::acc) ~init:[] alias_tuples in
+    let sanity_check = Int.equal 1 @@ List.length sanity in
+    if not sanity_check then Some Nothing else  (* 중간 sanity check 들어가실게요 *)
+
+      (* Phase 2: *하나만* 있는 그 튜플 (파라미터)의 line number가 Phase 1에서 발견한 튜플의 line number 이전인지 확인한다. *)
+      let ap = List.nth_exn sanity 0 in
+      let target_tuple = search_target_tuple_by_vardef_ap ap methname summary in
+      let ap_linenum = List.nth_exn (LocSet.elements @@ third_of target_tuple) 0 in
+      let target_linenum = List.nth_exn (LocSet.elements @@ third_of target_tuple) 0 in
+      if ap_linenum.line >= target_linenum.line then Some (Setter methname) else Some Nothing
 
 
 let catMaybes (option_list: 'a option list) : 'a list =
@@ -153,24 +158,22 @@ let collect_setter (meths:Procname.t list) : methods list =
 
 
 (** Getter 또는 Setter로 label된 method 한 개를 json 형식으로 찍어낸다. key: method name, attr: "getter" 혹은 "setter". *)
-let json_repr (labelled_method:methods) : json =
+let to_json_repr (labelled_methods:methods list) : json =
+  let to_key_attr = fun labelled_method ->
     match labelled_method with
     | Getter name ->
-        `Assoc [(Procname.to_string name, `String "getter")]
+        (Procname.to_string name, `String "getter")
     | Setter name -> 
-        `Assoc [((Procname.to_string name, `String "setter"))]
-    | Nothing -> L.die InternalError "trying to write a non-getter/setter method" 
+        ((Procname.to_string name, `String "setter"))
+    | Nothing -> L.die InternalError "trying to write a non-getter/setter method\n" in
+  let key_attr_list = List.fold ~f:(fun acc labelled_method ->
+      (to_key_attr labelled_method)::acc) ~init:[] labelled_methods in
+  `Assoc key_attr_list
 
 
-let batch_json_repr (labelled_methods:methods list) : json list =
-  List.map ~f:json_repr labelled_methods
-
-
-let write_json_to_file (json_list:json list) : unit =
+let write_json_to_file (json_repr:json) : unit =
   let out_channel = Out_channel.create "GetterSetter.json" in
-  let iterfunc = fun json ->
-    to_channel out_channel json in
-  List.iter ~f:iterfunc json_list;
+  to_channel out_channel json_repr;
   Out_channel.flush out_channel;
   Out_channel.close out_channel
 
@@ -179,14 +182,13 @@ let write_json_to_file (json_list:json list) : unit =
 (* ========================================= *)
 
 
-(** interface with the driver *)
 let main () : unit =
-  L.progress "Determining feature value for all methods";
+  L.progress "Determining feature value for all methods\n";
   load_summary_from_disk_to method_summary_table;
   let meths = Hashtbl.fold (fun k _ acc -> k::acc) method_summary_table [] in
   let getter_methods = collect_getter meths in
   let setter_methods = collect_setter meths in
   let labelled_methods = getter_methods @ setter_methods in
-  let json_list = batch_json_repr labelled_methods in
-  write_json_to_file json_list;
-  L.progress "Determining feature value for all methods...done"
+  let json_repr = to_json_repr labelled_methods in
+  write_json_to_file json_repr;
+  L.progress "Determining feature value for all methods...done\n"

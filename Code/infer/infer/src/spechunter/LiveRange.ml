@@ -634,7 +634,7 @@ let represent_status (current_method:Procname.t) (status:status) : json =
 (** chain을 수식해서 ap에 관한 완전한 정보를 나타내는 Json object를 만든다. *)
 let wrap_chain_representation defining_method ap (chain_repr:json list) : json =
   `Assoc [("defining_method", `String (Procname.to_string defining_method));
-          ("acess_path", `String (MyAccessPath.to_string ap));
+          ("access_path", `String (MyAccessPath.to_string ap));
           ("chain", `List chain_repr)]
 
 

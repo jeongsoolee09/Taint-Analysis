@@ -12,6 +12,7 @@ from create_node import process
 
 SIM_VECTORS = pd.read_csv("sim_vectors.csv", index_col=0)
 CALLGRAPH = nx.read_gpickle("callgraph")
+EXTRA_FEATURES = pd.read_csv("extra_features.csv", index_col=0)
 
 # extra features
 
@@ -99,34 +100,78 @@ def scoring_function(node1, node2):
 # ============================================================
 
 
-def activate_getter_setter(lessons):
-    pass
+def activate_getter_setter(lessons, df):
+    """previous_lessons_nodes에 getter/setter가 포함되어 있는지, 확인"""
+    for node, label in lessons.items():
+        row = EXTRA_FEATURES[EXTRA_FEATURES['name']==node]
+        if row["getter_setter"] == "getter" or\
+           row["getter_setter"] == "setter":
+            if label == "non":
+                return True         # 거봐 내 말이 맞다니까
+        else:
+            continue                # 두고 봐 진짜라니까
 
 
-def activate_hashCode_is_san(lessons):
-    pass
-
-def activate_assert_is_san(lessons):
-    pass
-
-
-def activate_to_is_non(lessons):
-    pass
-
-
-def activate_wrapping_primitives_is_non(lessons):
-    pass
+def activate_hashCode_is_san(lessons, df):
+    """lessons에 hashCode가 포함되어 있는지를 확인"""
+    for node, label in lessons.items():
+        row = EXTRA_FEATURES[EXTRA_FEATURES['name']==node]
+        if row["is_hashCode"]:
+            if label == 'san':
+                return True     # 거봐 내 말이 맞다니까
+        else:
+            continue            # 두고 봐 진짜라니까
 
 
-def activate_builtin_collection_is_non(lessons):
-    pass
+def activate_assert_is_san(lessons, df):
+    """lessons에 assert*가 포함되어 있는지를 확인"""
+    for node, label in lessons.items():
+        row = EXTRA_FEATURES[EXTRA_FEATURES['name']==node]
+        if row["is_assert"]:
+            if label == 'san':
+                return True     # 거봐 내 말이 맞다니까
+        else:
+            continue            # 두고 봐 진짜라니까
+    
+
+def activate_to_is_non(lessons, df):
+    """# lessons에 is*가 포함되어 있는지를 확인"""
+    for node, label in lessons.items():
+        row = EXTRA_FEATURES[EXTRA_FEATURES['name']==node]
+        if row["is_to"]:
+            if label == "non":
+                return True
+        else:
+            continue
+
+
+def activate_wrapping_primitives_is_non(lessons, df):
+    """lessons에 primitive 타입을 wrapping하는 클래스 메소드가 포함되어 있는지를 확인"""
+    for node, label in lessons.items():
+        row = EXTRA_FEATURES[EXTRA_FEATURES['name']==node]
+        if row["is_wrapping_primitive"]:
+            if label == "non":
+                return True
+        else:
+            continue
+
+
+def activate_builtin_collection_is_non(lessons, df):
+    """lessons에 builtin collection 클래스 메소드가 포함되어 있는지를 확인"""
+    for node, label in lessons.items():
+        row = EXTRA_FEATURES[EXTRA_FEATURES['name']==node]
+        if row["is_builtin_coll"]:
+            if label == "non":
+                return True
+        else:
+            continue
 
 
 # Tentative rules ============================================
 # ============================================================
 
 # A "tentative rule" is an [activated|non-activated] function from pd.DataFrame * Methnames -> Methnames.
-# A tentative rule gets activated only if the 
+# A tentative rule gets activated only if the corresponding activator returns True
 
 def rule_getter_setter(df, **kwargs):
     if kwargs["activated"]:
@@ -169,7 +214,7 @@ def builtin_collection_is_non(df, **kwargs):
     else:
         return df
 
-
+# main =======================================================
 # ============================================================
 
 def make_evidence(lessons_nodes, state_names):

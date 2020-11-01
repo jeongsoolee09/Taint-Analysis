@@ -5,6 +5,7 @@
 import json
 import pandas as pd
 import networkx as nx
+import re
 
 from create_node import process
 
@@ -59,11 +60,25 @@ def camel_case_split(identifier):
     return [m.group(0) for m in matches]
 
 
+def is_hashCode_mapfunc(row):
+    if "hashCode" == process(row['name'])[2]:
+        return True
+    else:
+        return False
+
+
 def is_assert_mapfunc(row):
     if "assert" in camel_case_split(row["name"]): 
         return True
     else:
         return False
+
+
+def set_is_hashCode(df):
+    """is_hashCode 칼럼의 값을 [True|False]로 초기화"""
+    is_hashCode_val_df = df.apply(is_hashCode_mapfunc, axis=1)
+    df["is_hashCode"] = is_hashCode_val_df
+    return df
 
 
 def set_is_assert(df):
@@ -132,6 +147,9 @@ def main(graph_file_name):
     # "getter_setter" column을 만든다.
     df = set_getter_setter(df)
 
+    # "is_hashCode" column을 만든다.
+    df = set_is_hashCode(df)
+
     # "is_assert" column을 만든다.
     df = set_is_assert(df)
 
@@ -144,4 +162,4 @@ def main(graph_file_name):
     # "is_builtin_coll" column을 만든다.
     df = set_is_builtin_coll(df)
 
-    return df
+    df.to_csv("extra_features.csv", mode="w+")

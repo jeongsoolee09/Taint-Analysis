@@ -6,6 +6,7 @@ import json
 import pandas as pd
 import networkx as nx
 import re
+import os
 
 from create_node import process
 
@@ -39,6 +40,7 @@ with open("java_builtin_collections.txt", "r+") as f:
 
 # feature value setters ========================
 # ==============================================
+
 
 def getter_setter_mapfunc(row):
     try:
@@ -140,7 +142,7 @@ def main(graph_file_name):
     # name 칼럼에 들어갈 노드 이름들을 가져온다.
     graph = nx.read_gpickle(graph_file_name)
     node_names = list(graph.nodes)
-    
+
     # "name" columns부터 만든다.
     df = pd.DataFrame(node_names, columns=['name'])
 
@@ -158,8 +160,8 @@ def main(graph_file_name):
 
     # "is_wrapping_primitive" column을 만든다.
     df = set_is_wrapping_primitive(df)
-    
+
     # "is_builtin_coll" column을 만든다.
     df = set_is_builtin_coll(df)
 
-    df.to_csv("extra_features.csv", mode="w+")
+    return df

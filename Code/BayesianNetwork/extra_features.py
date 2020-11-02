@@ -137,14 +137,10 @@ def set_is_builtin_coll(df):
 # main =================================
 # ======================================
 
-def main(graph_file_name):
+def main(graph_nodes):
     """주어진 그래프에 대한 DataFrame을 초기화한다."""
-    # name 칼럼에 들어갈 노드 이름들을 가져온다.
-    graph = nx.read_gpickle(graph_file_name)
-    node_names = list(graph.nodes)
-
     # "name" columns부터 만든다.
-    df = pd.DataFrame(node_names, columns=['name'])
+    df = pd.DataFrame(list(graph_nodes), columns=['name'])
 
     # "getter_setter" column을 만든다.
     df = set_getter_setter(df)

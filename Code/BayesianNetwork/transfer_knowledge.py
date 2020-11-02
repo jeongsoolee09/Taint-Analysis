@@ -69,6 +69,7 @@ def find_conf_sols(final_snapshot, current_asked):
 
 
 def learn(previous_lessons, final_snapshot, current_asked):
+    """이전의 lesson들과 confident 노드들, 그리고 oracle response를 모두 모아 내놓는다."""
     oracle_response = dict(find_oracle_response(final_snapshot, current_asked))
     conf_sols = dict(find_conf_sols(final_snapshot, current_asked))
     previous_lessons_nodes = {**oracle_response, **conf_sols}
@@ -111,8 +112,10 @@ def activate_getter_setter(lessons):
     """previous_lessons_nodes에 getter/setter가 포함되어 있는지, 확인"""
     for node, label in lessons.items():
         row = EXTRA_FEATURES_PREV[EXTRA_FEATURES_PREV['name']==node]
-        if row["getter_setter"] == "getter" or\
-           row["getter_setter"] == "setter":
+        if row.empty:
+            continue
+        if row["getter_setter"].item() == "getter" or\
+           row["getter_setter"].item() == "setter":
             if label == "non":
                 return True         # 거봐 내 말이 맞다니까
         else:
@@ -123,7 +126,9 @@ def activate_hashCode_is_san(lessons):
     """lessons에 hashCode가 포함되어 있는지를 확인"""
     for node, label in lessons.items():
         row = EXTRA_FEATURES_PREV[EXTRA_FEATURES_PREV['name']==node]
-        if row["is_hashCode"]:
+        if row.empty:
+            continue
+        if row["is_hashCode"].item():
             if label == 'san':
                 return True     # 거봐 내 말이 맞다니까
         else:
@@ -134,7 +139,9 @@ def activate_assert_is_san(lessons):
     """lessons에 assert*가 포함되어 있는지를 확인"""
     for node, label in lessons.items():
         row = EXTRA_FEATURES_PREV[EXTRA_FEATURES_PREV['name']==node]
-        if row["is_assert"]:
+        if row.empty:
+            continue
+        if row["is_assert"].item():
             if label == 'san':
                 return True     # 거봐 내 말이 맞다니까
         else:
@@ -145,7 +152,9 @@ def activate_to_is_non(lessons):
     """# lessons에 is*가 포함되어 있는지를 확인"""
     for node, label in lessons.items():
         row = EXTRA_FEATURES_PREV[EXTRA_FEATURES_PREV['name']==node]
-        if row["is_to"]:
+        if row.empty:
+            continue
+        if row["is_to"].item():
             if label == "non":
                 return True
         else:
@@ -156,7 +165,9 @@ def activate_wrapping_primitives_is_non(lessons):
     """lessons에 primitive 타입을 wrapping하는 클래스 메소드가 포함되어 있는지를 확인"""
     for node, label in lessons.items():
         row = EXTRA_FEATURES_PREV[EXTRA_FEATURES_PREV['name']==node]
-        if row["is_wrapping_primitive"]:
+        if row.empty:
+            continue
+        if row["is_wrapping_primitive"].item():
             if label == "non":
                 return True
         else:
@@ -167,7 +178,9 @@ def activate_builtin_collection_is_non(lessons):
     """lessons에 builtin collection 클래스 메소드가 포함되어 있는지를 확인"""
     for node, label in lessons.items():
         row = EXTRA_FEATURES_PREV[EXTRA_FEATURES_PREV['name']==node]
-        if row["is_builtin_coll"]:
+        if row.empty:
+            continue
+        if row["is_builtin_coll"].item():
             if label == "non":
                 return True
         else:
@@ -335,9 +348,7 @@ def one_call_relation(lessons, state_names):
 
     one_call_nodes = dict(one_call_nodes)
 
-    out = {**similars, **one_call_nodes}
-
-    return out
+    return one_call_nodes
 
 
 def a_priori_rules(lessons, state_names):  #  여기서 state_names는 그 다음에 물어볼 그래프의 노드들의 이름들.
@@ -346,7 +357,7 @@ def a_priori_rules(lessons, state_names):  #  여기서 state_names는 그 다�
     getter_setter_dict = getter_setter_is_non(activated=activate_getter_setter(lessons))
     hashCode_dict = hashCode_is_san(activated=activate_hashCode_is_san(lessons))
     assert_dict = assert_is_san(activated=activate_assert_is_san(lessons))
-    to_dict = to_is_non(activated=activate_assert_is_non(lessons))
+    to_dict = to_is_non(activated=activate_to_is_non(lessons))
     wrapping_primitives_dict = wrapping_primitives_is_non(activated=activate_wrapping_primitives_is_non(lessons))
     builtin_collection_dict = builtin_collection_is_non(activated=activate_builtin_collection_is_non(lessons))
     return {**getter_setter_dict, **hashCode_dict, **assert_dict,
@@ -357,10 +368,19 @@ def a_priori_rules(lessons, state_names):  #  여기서 state_names는 그 다�
 # =========================================================
 
 
-def main(previous_graph, next_graph, lessons, state_names):
+def main(previous_graph_nodes, next_graph_nodes, lessons, state_names):
+    """앞으로 적용할 evidence를 내놓는다."""
+    # 처음이라면 그럴 수 있어
+
+    global EXTRA_FEATURES_PREV
+    global EXTRA_FEATURES_NEXT
+
+    if previous_graph_nodes == None:
+        return dict()
+
     # constant부터 초기화
-    EXTRA_FEATURES_PREV = extra_features.main(previous_graph)
-    EXTRA_FEATURES_NEXT = extra_features.main(next_graph)
+    EXTRA_FEATURES_PREV = extra_features.main(previous_graph_nodes)
+    EXTRA_FEATURES_NEXT = extra_features.main(next_graph_nodes)
 
     # 각각의 evidence들을 collect
     pairwise_similarity_dict = pairwise_similarity(lessons, state_names)

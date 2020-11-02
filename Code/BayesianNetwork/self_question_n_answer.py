@@ -14,7 +14,7 @@ import matplotlib.pyplot as plt
 import modin.pandas as pd
 import networkx as nx
 import numpy as np
-import solutions
+import transfer_knowledge
 
 from datetime import datetime
 from create_node import process
@@ -24,7 +24,7 @@ from matplotlib.ticker import MaxNLocator
 from pomegranate import *
 from scrape_oracle_docs import *
 from toolz import valmap
-from tabula_non_rasa import learn, make_evidence
+
 
 # Constants ========================================
 # ==================================================
@@ -175,7 +175,8 @@ def tactical_loop(graph_for_reference, BN_for_inference, interaction_number,
     elif there_are_nodes_left and not_yet_time_to_terminate:
         pass
     elif there_are_nodes_left and its_time_to_terminate:
-        raise ThisIsImpossible
+        return (prev_snapshot, precision_list, stability_list,
+                precision_inferred_list, loop_time_list, current_asked)
 
     # ask the chosen method and fetch the answer from the solutions
     oracle_response = SOLUTION[query]
@@ -212,7 +213,7 @@ def tactical_loop(graph_for_reference, BN_for_inference, interaction_number,
     precision_inferred_list[interaction_number] = current_precision_inferred
 
     # slide the window
-    window = window[1:]     # dequeue the oldest one
+    window = window[1:]          # dequeue the oldest one
     window.append(new_snapshot)  # and enqueue the newest one
 
     # record this loop's looping time
@@ -249,6 +250,7 @@ def forall(unary_pred, collection):
 
 
 def find_max_d_con(graph_for_reference, BN_for_inference, current_asked, updated_nodes, list_of_all_nodes):
+    """가장 d-connected 노드가 많은 노드를 리턴한다. 더 이상 고를 수 있는 노드가 없다면 None을 리턴한다."""
     node_dataframe = pd.DataFrame(list_of_all_nodes, columns=['nodes'])
     mapfunc = lambda row: len(d_connected(graph_for_reference, BN_for_inference,
                                           row['nodes'], current_asked,
@@ -531,21 +533,28 @@ def single_loop(graph_file, graph_for_reference, BN_for_inference, learned_evide
     initial_stability_list = [np.nan for _ in range(len(BN_for_inference.states))]
     initial_precision_inferred_list = [np.nan for _ in range(len(BN_for_inference.states))]
     initial_window = [np.ndarray([0]) for _ in range(WINDOW_SIZE)]
+    initial_asked = list(learned_evidence.keys())
+    
+    initial_updated_nodes = []
+    for initial_query in initial_asked:
+        initial_updated_nodes += list(set(d_connected(graph_for_reference, BN_for_inference,
+                                                      initial_query, initial_asked, state_names)))
 
     # random loop
     if kwargs["loop_type"] == "random":
         final_snapshot, precision_list, stability_list,\
         precision_inferred_list, current_asked =\
             random_loop(BN_for_inference, graph_for_reference, 0,
-                        list(), dict(), initial_snapshot,
-                        initial_precision_list, initial_stability_list, initial_precision_inferred_list, list(), list())
+                        initial_asked, learned_evidence, initial_snapshot,
+                        initial_precision_list, initial_stability_list,
+                        initial_precision_inferred_list, list(), list())
         draw_n_save(graph_file, precision_list, stability_list, initial_precision_inferred_list, loop_type='random')
 
     # tactical loop
     elif kwargs["loop_type"] == "tactical":
         (final_snapshot, precision_list, stability_list, precision_inferred_list, loop_time_list, current_asked) =\
             tactical_loop(graph_for_reference, BN_for_inference, 0,
-                          list(), dict(), list(),
+                          initial_asked, learned_evidence, initial_updated_nodes,
                           initial_snapshot, initial_precision_list, initial_stability_list,
                           initial_precision_inferred_list, list(), initial_window)
         draw_n_save(graph_file, BN_for_inference, precision_list, stability_list,
@@ -577,18 +586,20 @@ def test_drive():
 def main():
     graph_files = find_pickled_graphs()
     lessons = {}
+    prev_graph = None
     for graph_file in graph_files:
         print("# of lessons:", len(lessons))
         graph_for_reference = nx.read_gpickle(graph_file)
         BN_for_inference = make_BN.main(graph_file)
         state_names = list(map(lambda node: node.name, BN_for_inference.states))
         print(graph_file, "has", len(state_names), "states")
-        learned_evidence = make_evidence(lessons, state_names)  # learn a new evidence from the lessons
+        learned_evidence = transfer_knowledge.main(prev_graph, state_names, lessons, state_names)
         print("# of transferred evidence:", len(learned_evidence))
         loop_time_list, final_snapshot, current_asked =\
             single_loop(graph_file, graph_for_reference,
                         BN_for_inference, learned_evidence, loop_type="tactical")
-        lessons = learn(lessons, final_snapshot, current_asked)  # update the lessons
+        lessons = transfer_knowledge.learn(lessons, final_snapshot, current_asked)  # update the lessons
+        prev_graph = state_names
 
 
 if __name__ == "__main__":

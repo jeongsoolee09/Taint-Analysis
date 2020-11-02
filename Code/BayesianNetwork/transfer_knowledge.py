@@ -362,8 +362,10 @@ def main(previous_graph, next_graph, lessons, state_names):
     EXTRA_FEATURES_PREV = extra_features.main(previous_graph)
     EXTRA_FEATURES_NEXT = extra_features.main(next_graph)
 
-    ps_dict = pairwise_similarity(lessons, state_names)
+    # 각각의 evidence들을 collect
+    pairwise_similarity_dict = pairwise_similarity(lessons, state_names)
     one_call_dict = one_call_relation(lessons, state_names)
     a_priori_dict = a_priori_rules(lessons, state_names)
 
-    return {**ps_dict, **one_call_dict, **a_priori_dict}
+    # 그 evidence를 모두 합쳐서 내놓기
+    return {**pairwise_similarity_dict, **one_call_dict, **a_priori_dict}

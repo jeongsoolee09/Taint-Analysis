@@ -28,7 +28,7 @@ import modin.pandas as pd
 # ==================================================
 
 NOW = datetime.now().strftime("%Y-%m-%d-%H:%M:%S")
-GRAPH_FILE_NAME = "sagan-site_graph_0"
+GRAPH_FILE_NAME = "graph_for_reference"
 graph_for_reference = nx.read_gpickle(GRAPH_FILE_NAME)
 BN_for_inference = make_BN.main(GRAPH_FILE_NAME)
 
@@ -379,7 +379,7 @@ node_colordict = {"src": "red", "sin": "orange", "san": "yellow", "non": "green"
 
 def visualize_snapshot(snapshot, dependent_nodes):
     """한번 iteration 돌 때마다, 전체 BN의 snapshot을 가시화한다. 이 때, confident node들 위에는 `conf`라는 문구를 띄운다."""
-    network_figure = plt.figure("Bayesian Network")
+    network_figure = plt.figure("Bayesian Network", figsize=(30, 15))
     network_figure.clf()
     plt.ion()
     ax = network_figure.add_subplot()
@@ -419,7 +419,7 @@ def visualize_snapshot(snapshot, dependent_nodes):
             node_color=node_colormap, edge_color=edge_colormap,
             pos=node_posmap,
             ax=ax,
-            with_labels=True, node_size=100)
+            with_labels=True, node_size=100, font_size=8)
 
     plt.show()
 
@@ -649,8 +649,11 @@ def main():
                       initial_snapshot, initial_precision_list, initial_stability_list,
                       initial_precision_inferred_list, list(), have_solution=True)
 
+    print("Inference done.")
+
     # save the data
     save_data_as_csv(final_snapshot)
+    print("Data saved as inferred.csv")
 
 
 if __name__ == "__main__":

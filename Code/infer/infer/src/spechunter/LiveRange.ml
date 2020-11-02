@@ -475,7 +475,9 @@ let rec compute_chain_inner (current_methname:Procname.t) (current_astate_set:S.
   | [] -> (* either redefinition or dead end *)
       let states = S.elements (remove_duplicates_from current_astate_set) in
       let redefined_states = List.fold_left states ~init:[] ~f:(fun (acc:T.t list) (st:T.t) ->
-          if MyAccessPath.equal current_vardef (second_of st) then st::acc else acc) in
+          if MyAccessPath.equal current_vardef (second_of st)
+          then st::acc
+          else acc) in
       begin match redefined_states with
         | [_] -> (* 나 하나밖에 없네: Dead end *)
             (current_methname, Dead) :: current_chain
@@ -484,6 +486,7 @@ let rec compute_chain_inner (current_methname:Procname.t) (current_astate_set:S.
             let current_astate_cleanedup = remove_duplicates_from current_astate_set in
             let states_upto_current = select_up_to current_astate ~within:current_astate_cleanedup in
             let future_states = S.diff current_astate_cleanedup states_upto_current in
+            if S.equal future_states S.empty then (current_methname, Dead) :: current_chain else
             let new_state = find_earliest_astate_of_var_within @@ S.elements future_states in
             let new_chain = (current_methname, Redefine (current_vardef)) :: current_chain in
             compute_chain_inner current_methname current_astate_set new_state new_chain 3

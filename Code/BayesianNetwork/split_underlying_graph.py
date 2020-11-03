@@ -101,7 +101,7 @@ def find_edge_to_erase(G, cycle_path_edges):
         # check if node is about to be poor
         if not is_vulnerable(G, node):
             erasable_nodes.append(node)
-    
+
     # find an edge we can erase
     erasable_edges = []
     for node1, node2 in cycle_path_edges:

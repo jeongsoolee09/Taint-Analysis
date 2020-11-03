@@ -183,7 +183,7 @@ let write_json_to_file (json_repr:json) : unit =
 
 
 let main () : unit =
-  L.progress "Determining feature value for all methods\n";
+  L.progress "Determining feature value for all methods...\n";
   load_summary_from_disk_to method_summary_table;
   let meths = Hashtbl.fold (fun k _ acc -> k::acc) method_summary_table [] in
   let getter_methods = collect_getter meths in

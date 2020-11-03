@@ -155,7 +155,7 @@ def main():
         i = 0
         for small_graph in small_graphs:
             decycle(small_graph)
-            nx.write_gpickle(small_graph, graph_name+"_graph_"+str(i))
+            nx.write_gpickle(small_graph, "graph_"+str(i))
             i += 1
         nx.write_gpickle(callgraph, "callgraph")
 

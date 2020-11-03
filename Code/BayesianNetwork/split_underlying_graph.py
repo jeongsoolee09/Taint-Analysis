@@ -8,7 +8,7 @@ import random
 import json
 
 from make_underlying_graph import df_reader, call_reader, extract_filename
-from community_detection import bisect_optimal, bisect, isolated_nodes
+from community_detection import bisect_optimal, bisect, isolated_nodes, bisect_naive
 from find_jar import real_jar_paths, take_jar_dir
 
 
@@ -122,12 +122,12 @@ def split_large_graph(G, max_graph_size):
             small1, small2 = bisect(target)
             print(len(isolated_nodes(small1)))
             print(len(isolated_nodes(small2)))
-            # if len(small1.nodes) == 0 or len(small2.nodes) == 0:
-            #     return None
-            if len(small1.nodes) != 0:
-                worklist.append(small1)
-            if len(small2.nodes) != 0:
-                worklist.append(small2)
+            if len(small1.nodes) == 0 or len(small2.nodes) == 0:
+                small1, small2 = bisect_naive(target)  # give up minimizing isolated nodes
+                print(len(isolated_nodes(small1)))
+                print(len(isolated_nodes(small2)))
+            worklist.append(small1)
+            worklist.append(small2)
     # print("acc: ", list(map(lambda graph: len(graph.nodes),acc)))
     return acc
 

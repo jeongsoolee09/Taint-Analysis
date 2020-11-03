@@ -122,10 +122,12 @@ def split_large_graph(G, max_graph_size):
             small1, small2 = bisect(target)
             print(len(isolated_nodes(small1)))
             print(len(isolated_nodes(small2)))
-            if len(small1.nodes) == 0 or len(small2.nodes) == 0:
-                return None
-            worklist.append(small1)
-            worklist.append(small2)
+            # if len(small1.nodes) == 0 or len(small2.nodes) == 0:
+            #     return None
+            if len(small1.nodes) != 0:
+                worklist.append(small1)
+            if len(small2.nodes) != 0:
+                worklist.append(small2)
     # print("acc: ", list(map(lambda graph: len(graph.nodes),acc)))
     return acc
 

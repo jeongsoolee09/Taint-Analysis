@@ -8,7 +8,7 @@ import random
 import json
 
 from make_underlying_graph import df_reader, call_reader, extract_filename
-from community_detection import bisect_optimal, bisect, isolated_nodes, rich_nodes
+from community_detection import bisect_optimal, bisect, isolated_nodes
 from find_jar import real_jar_paths, take_jar_dir
 
 

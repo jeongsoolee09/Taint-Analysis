@@ -8,7 +8,7 @@ import random
 import json
 
 from make_underlying_graph import df_reader, call_reader, extract_filename
-from community_detection import bisect_optimal, bisect
+from community_detection import bisect_optimal, bisect, isolated_nodes, rich_nodes
 from find_jar import real_jar_paths, take_jar_dir
 
 
@@ -110,19 +110,24 @@ def take_direct_subdirectory(jar_path):
     return splitted[len(splitted)-1]
 
 
-def split_large_graph(G):
-    def split_large_graph_inner(acc, worklist):
-        if worklist == []:
-            return acc
+def split_large_graph(G, max_graph_size):
+    worklist = [G]
+    acc = []
+    while worklist != []:
+        print(list(map(lambda graph: len(graph.nodes), worklist)))
         target = worklist.pop()
-        if len(target.nodes) <= 200:
+        if len(target.nodes) <= max_graph_size:
             acc.append(target)
         else:
             small1, small2 = bisect(target)
+            print(len(isolated_nodes(small1)))
+            print(len(isolated_nodes(small2)))
+            if len(small1.nodes) == 0 or len(small2.nodes) == 0:
+                return None
             worklist.append(small1)
             worklist.append(small2)
-        return split_large_graph_inner(acc, worklist)
-    return split_large_graph_inner([], [G])
+    # print("acc: ", list(map(lambda graph: len(graph.nodes),acc)))
+    return acc
 
 
 def main():

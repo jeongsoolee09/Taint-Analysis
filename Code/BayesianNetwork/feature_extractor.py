@@ -119,6 +119,7 @@ def return_type_contains_name(node):
 # F03
 def class_contains_name(node):
     words = camel_case_split(node[1])
+    out = dict()
     for freq_word in TOP_FREQ_CLASSNAME_WORDS:
         out[("F03", freq_word)] = freq_word in words
     return out    # key: word, val: boolean

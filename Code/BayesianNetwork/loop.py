@@ -41,10 +41,20 @@ call_reader = csv.reader(call_data)
 DF_EDGES = list(df_reader)
 CALL_EDGES = list(call_reader)
 STATE_NAMES = list(map(lambda node: node.name, BN_for_inference.states))
-with open("paths.json", "r+") as pathjson:
-    SOLUTION_PATH = json.load(pathjson)["solution_directory"]
-with open(SOLUTION_PATH, "r+") as saganjson:
-    SOLUTION = json.load(saganjson)
+
+
+def there_may_be_solution():
+    with open("paths.json", "r+") as pathjson:
+        SOLUTION_PATH = json.load(pathjson)["solution_directory"]
+    try:
+        with open(SOLUTION_PATH, "r+") as solutionjson:
+            return json.load(solutionjson)
+    except:
+        return None
+
+
+SOLUTION = there_may_be_solution()
+
 
 # Exceptions ========================================
 # ===================================================
@@ -83,7 +93,7 @@ def random_loop(BN_for_inference, graph_for_reference, interaction_number,
 
     # exit the function based on confidence.
     if its_time_to_terminate:
-        if not kwargs["have_solution"]:
+        if kwargs["have_solution"]:
             draw_precision_graph(list(range(1, len(BN_for_inference.states)+1)),
                                  precision_list, interactive=False, loop_type="random")
             draw_stability_graph(list(range(1, len(BN_for_inference.states)+1)),
@@ -103,7 +113,7 @@ def random_loop(BN_for_inference, graph_for_reference, interaction_number,
     elif oracle_response == 'non':
         current_evidence[query] = 4
     elif oracle_response == 'exit':
-        if not kwargs["have_solution"]:
+        if kwargs["have_solution"]:
             draw_precision_graph(list(range(1, len(BN_for_inference.states)+1)),
                                  precision_list, interactive=False, loop_type="random")
             draw_stability_graph(list(range(1, len(BN_for_inference.states)+1)),
@@ -191,18 +201,18 @@ def tactical_loop(graph_for_reference, interaction_number,
     if there_are_no_nodes_left and not_yet_time_to_terminate:
         if set(STATE_NAMES) == set(current_asked):
             print("\nWarning: some distributions are not fully determined.\n")
-            if not kwargs["have_solution"]:
+            if kwargs["have_solution"]:
                 draw_precision_graph(list(range(1, len(BN_for_inference.states)+1)),
                                      precision_list, interactive=False, loop_type="tactical")
                 draw_stability_graph(list(range(1, len(BN_for_inference.states)+1)),
                                      stability_list, interactive=False, loop_type="tactical")
                 draw_precision_inferred_graph(list(range(1, len(BN_for_inference.states)+1)),
                                               stability_list, interactive=False, loop_type="tactical")
-                return prev_snapshot, precision_list, stability_list, precision_inferred_list
+            return prev_snapshot, precision_list, stability_list, precision_inferred_list
         else:
             query, dependent_nodes = find_max_d_con([], [], remove_sublist(STATE_NAMES, current_asked))
     elif there_are_no_nodes_left and its_time_to_terminate:
-        if not kwargs["have_solution"]:
+        if kwargs["have_solution"]:
             draw_precision_graph(list(range(1, len(BN_for_inference.states)+1)),
                                  precision_list, interactive=False, loop_type="tactical")
             draw_stability_graph(list(range(1, len(BN_for_inference.states)+1)),
@@ -213,7 +223,7 @@ def tactical_loop(graph_for_reference, interaction_number,
     elif there_are_nodes_left and not_yet_time_to_terminate:
         pass
     elif there_are_nodes_left and its_time_to_terminate:
-        raise ThisIsImpossible
+        return prev_snapshot, precision_list, stability_list, precision_inferred_list
 
     # ask the chosen method and fetch the answer from the solutions
     oracle_response = input("What label does <" + query + "> bear? [src|sin|san|non]: ")

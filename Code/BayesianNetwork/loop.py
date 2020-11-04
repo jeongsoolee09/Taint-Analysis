@@ -130,17 +130,18 @@ def random_loop(BN_for_inference, graph_for_reference, interaction_number,
     current_inference_time = time.time()-inference_start
     inference_time_list.append(current_inference_time)
 
-    # the new precision after the observation
-    current_precision = calculate_precision(new_snapshot)
-    precision_list[interaction_number] = current_precision
+    if kwargs["have_solution"]:
+        # the new precision after the observation
+        current_precision = calculate_precision(new_snapshot)
+        precision_list[interaction_number] = current_precision
 
-    # the new stability after the observation
-    current_stability = calculate_stability(prev_snapshot, new_snapshot)
-    stability_list[interaction_number] = current_stability
+        # the new stability after the observation
+        current_stability = calculate_stability(prev_snapshot, new_snapshot)
+        stability_list[interaction_number] = current_stability
 
-    # the new precision purely inferred by the BN, after the observation
-    current_precision_inferred = calculate_precision_inferred(new_snapshot, interaction_number)
-    precision_inferred_list[interaction_number] = current_precision_inferred
+        # the new precision purely inferred by the BN, after the observation
+        current_precision_inferred = calculate_precision_inferred(new_snapshot, interaction_number)
+        precision_inferred_list[interaction_number] = current_precision_inferred
 
     # print the number of confident nodes
     print("# of confident nodes: ", count_confident_nodes(new_snapshot))
@@ -238,12 +239,13 @@ def tactical_loop(graph_for_reference, interaction_number,
     elif oracle_response == 'non':
         current_evidence[query] = 4
     elif oracle_response == 'exit':
-        draw_precision_graph(list(range(1, len(BN_for_inference.states)+1)),
-                             precision_list, interactive=False, loop_type="tactical")
-        draw_stability_graph(list(range(1, len(BN_for_inference.states)+1)),
-                             stability_list, interactive=False, loop_type="tactical")
-        draw_precision_inferred_graph(list(range(1, len(BN_for_inference.states)+1)),
-                                      stability_list, interactive=False, loop_type="tactical")
+        if kwargs["have_solution"]:
+            draw_precision_graph(list(range(1, len(BN_for_inference.states)+1)),
+                                 precision_list, interactive=False, loop_type="tactical")
+            draw_stability_graph(list(range(1, len(BN_for_inference.states)+1)),
+                                 stability_list, interactive=False, loop_type="tactical")
+            draw_precision_inferred_graph(list(range(1, len(BN_for_inference.states)+1)),
+                                          stability_list, interactive=False, loop_type="tactical")
         return prev_snapshot, precision_list, stability_list, precision_inferred_list
 
     current_asked.append(query)
@@ -254,18 +256,19 @@ def tactical_loop(graph_for_reference, interaction_number,
     current_inference_time = time.time()-inference_start
     inference_time_list.append(current_inference_time)
 
-    # the new precision after the observation
-    current_precision = calculate_precision(new_snapshot)
-    precision_list[interaction_number] = current_precision
-
-    # the new stability after the observation
-    current_stability = calculate_stability(prev_snapshot, new_snapshot)
-    stability_list[interaction_number] = current_stability
-
-    # the new precision purely inferred by the BN, after the observation
-    current_precision_inferred = calculate_precision_inferred(new_snapshot, interaction_number)
-    precision_inferred_list[interaction_number] = current_precision_inferred
-
+    if kwargs["have_solution"]:
+        # the new precision after the observation
+        current_precision = calculate_precision(new_snapshot)
+        precision_list[interaction_number] = current_precision
+        
+        # the new stability after the observation
+        current_stability = calculate_stability(prev_snapshot, new_snapshot)
+        stability_list[interaction_number] = current_stability
+        
+        # the new precision purely inferred by the BN, after the observation
+        current_precision_inferred = calculate_precision_inferred(new_snapshot, interaction_number)
+        precision_inferred_list[interaction_number] = current_precision_inferred
+        
     # print the number of confident nodes
     print("# of confident nodes: ", count_confident_nodes(new_snapshot))
 
@@ -657,7 +660,7 @@ def main():
         tactical_loop(graph_for_reference, 0,
                       list(), dict(), list(),
                       initial_snapshot, initial_precision_list, initial_stability_list,
-                      initial_precision_inferred_list, list(), have_solution=True)
+                      initial_precision_inferred_list, list(), have_solution=False)
 
     print("Inference done.")
 

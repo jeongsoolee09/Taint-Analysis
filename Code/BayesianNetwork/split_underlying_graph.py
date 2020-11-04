@@ -11,7 +11,7 @@ import time
 import os
 
 from make_underlying_graph import df_reader, call_reader, extract_filename
-from community_detection import bisect_optimal, bisect, isolated_nodes, rich_nodes
+from community_detection import bisect_optimal, bisect, isolated_nodes, rich_nodes, bisect_naive
 from find_jar import real_jar_paths, take_jar_dir
 from functools import reduce
 
@@ -90,6 +90,7 @@ def mask_graph(G, methods):
 
 
 def is_vulnerable(G,node):
+    """G 안에 속한 node가 자신과 연결된 엣지를 지우면 안 되는 노드인지를 판별"""
     return (G.in_edges(nbunch=node) == 0 or G.out_edges(nbunch=node) == 1) or\
            (G.in_edges(nbunch=node) == 1 or G.out_edges(nbunch=node) == 0)
 
@@ -165,12 +166,13 @@ def split_large_graph(G, max_graph_size):
             small1, small2 = bisect(target)
             print(len(isolated_nodes(small1)))
             print(len(isolated_nodes(small2)))
-            # if len(small1.nodes) == 0 or len(small2.nodes) == 0:
-            #     return None
-            if len(small1.nodes) != 0:
-                worklist.append(small1)
-            if len(small2.nodes) != 0:
-                worklist.append(small2)
+
+            if len(small1.nodes) == 0 or len(small2.nodes) == 0:
+                small1, small2 = bisect_naive(target)  # give up minimizing isolated nodes
+                print(len(isolated_nodes(small1)))
+                print(len(isolated_nodes(small2)))
+            worklist.append(small1)
+            worklist.append(small2)
     # print("acc: ", list(map(lambda graph: len(graph.nodes),acc)))
     return acc
 

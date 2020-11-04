@@ -21,6 +21,15 @@ def bisect_optimal(large_graph):
     return best_A, best_B
 
 
+def bisect_naive(large_graph):
+    """bisect the given graph"""
+    node_set_A, node_set_B = community.kernighan_lin_bisection(large_graph.to_undirected())
+    naively_recovered_A = naive_recover_graph(node_set_A, large_graph)
+    naively_recovered_B = naive_recover_graph(node_set_B, large_graph)
+
+    return naively_recovered_A, naively_recovered_B
+
+
 def bisect(large_graph):
     """bisect the given graph"""
     node_set_A, node_set_B = community.kernighan_lin_bisection(large_graph.to_undirected())
@@ -52,12 +61,11 @@ def isolated_nodes(G):
 
 
 def rich_nodes(G):
-    tmp = []
-
+    acc = []
     for node_name in G.nodes:
         if len(G.in_edges(nbunch=node_name)) > 6:
-            tmp.append(node_name)
-    return tmp
+            acc.append(node_name)
+    return acc
 
 
 def minimize_isolated(graph1, graph2, original_graph):

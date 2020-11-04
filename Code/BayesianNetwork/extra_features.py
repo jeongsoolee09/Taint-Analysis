@@ -25,6 +25,11 @@ PROJECT_ROOT_DIR = retrieve_path()
 with open(os.path.join(PROJECT_ROOT_DIR, "GetterSetter.json"), "r+") as f:
     GETTER_SETTER = json.load(f)
 
+
+with open(os.path.join(PROJECT_ROOT_DIR, "Annotations.json"), "r+") as f:
+    ANNOTATIONS = json.load(f)
+
+
 with open("java_builtin_types.txt", "r+") as f:
     builtin_type_classes = f.readlines()
     builtin_type_classes = list(map(lambda x: x.rstrip(), builtin_type_classes))
@@ -134,6 +139,25 @@ def set_is_builtin_coll(df):
     return df
 
 
+def is_GET_POST_SELECT_mapfunc(row):
+    annot = ANNOTATIONS[row["name"]]
+    if "GET" in annot:
+        return "GET"
+    elif "POST" in annot:
+        return "POST"
+    elif "SELECT" in annot:
+        return "SELECT"
+    else:
+        return "nothing"
+
+
+def set_is_GET_POST_SELECT(df):
+    """is_GET_POST_SELECT 칼럼의 값을 [True|False]로 초기화"""
+    is_GET_POST_SELECT = df.apply(is_builtin_coll_mapfunc, axis=1)
+    df["is_GET_POST_SELECT"] = is_GET_POST_SELECT
+    return df
+
+
 # main =================================
 # ======================================
 
@@ -159,5 +183,8 @@ def main(graph_nodes):
 
     # "is_builtin_coll" column을 만든다.
     df = set_is_builtin_coll(df)
+
+    # "is_GET_POST_SELECT" column을 만든다.
+    df = set_is_GET_POST_SELECT(df)
 
     return df

@@ -187,6 +187,25 @@ def activate_builtin_collection_is_non(lessons):
             continue
 
 
+def activate_GET_POST_SELECT(lessons):
+    """lessons에 [GET|POST|SELECT] annotation을 달고 있는 메소드가 있는지 확인"""
+    for node, label in lessons.items():
+        row = EXTRA_FEATURES_PREV[EXTRA_FEATURES_PREV['name']==node]
+        if row.empty:
+            continue
+        if row["is_GET_POST_SELECT"].item() == "GET":
+            if label == "sin":
+                return True
+        elif row["is_GET_POST_SELECT"].item() == "POST":
+            if label == "src":
+                return True
+        elif row["is_GET_POST_SELECT"].item() == "SELECT":
+            if label == "sin":
+                return True
+        else:
+            continue
+
+
 # Tentative rules ============================================
 # ============================================================
 
@@ -262,6 +281,21 @@ def builtin_collection_is_non(**kwargs):
             method_name = row[1]
             if row[7]:
                 learned[method_name] = 'non'
+    else:
+        return dict()
+
+
+def GET_POST_SELECT_is_sin_or_src(**kwargs):
+    if kwargs["activated"]:
+        learned = dict()
+        for row in EXTRA_FEATURES_NEXT.itertuples():
+            method_name = row[1]
+            if row[8] == "GET":
+                learned[method_name] = 'sin'
+            elif row[8] == "POST":
+                learned[method_name] = 'src'
+            elif row[8] == "SELECT":
+                learned[method_name] = 'sin'
     else:
         return dict()
 
@@ -342,7 +376,7 @@ def one_call_relation(lessons, state_names):
     one_call_nodes = []
     for edge1, edge2 in list(CALLGRAPH.edges):
         if edge2 in previous_lessons_nodes:
-            label = lesson_nodes[edge2]
+            label = lessons[edge2]
             if edge1 in state_names:
                 one_call_nodes.append((edge1, label))
 
@@ -351,7 +385,7 @@ def one_call_relation(lessons, state_names):
     return one_call_nodes
 
 
-def a_priori_rules(lessons, state_names):  #  여기서 state_names는 그 다음에 물어볼 그래프의 노드들의 이름들.
+def a_priori_rules(lessons, state_names):  # 여기서 state_names는 그 다음에 물어볼 그래프의 노드들의 이름들.
     """굳이 물어보지 않아도 아는 것들: activate된 tentative rule들을 바탕으로, 해당되는 노드들을 찾아낸다."""
     # tentative rule들을 사용한다.
     getter_setter_dict = getter_setter_is_non(activated=activate_getter_setter(lessons))
@@ -375,7 +409,7 @@ def main(previous_graph_nodes, next_graph_nodes, lessons, state_names):
     global EXTRA_FEATURES_PREV
     global EXTRA_FEATURES_NEXT
 
-    if previous_graph_nodes == None:
+    if previous_graph_nodes is None:
         return dict()
 
     # constant부터 초기화

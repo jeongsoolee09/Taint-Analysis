@@ -1,5 +1,6 @@
 import networkx as nx
 import copy
+from community_detection import isolated_nodes, rich_nodes
 
 
 def is_vulnerable(G, node):
@@ -8,94 +9,66 @@ def is_vulnerable(G, node):
            (G.in_edges(nbunch=node) == 1 or G.out_edges(nbunch=node) == 0)
 
 
-# Heuristic No.1: rich_node의 incoming_edge 개수에 관계 없이 사용 가능
-def delete_deletable_edges(G, rich_node):
-    """날려도 되는 엣지들을 날리고, G를 리턴한다. 만약 모든 엣지들이 날릴 수 없는 엣지라면, None을 리턴한다."""
-    in_edges = G.in_edges(nbunch=rich_node)
-    out_edges = G.out_edges(nbunch=rich_node)
-    all_edges = list(in_edges) + list(out_edges)
-
-    deletable_edges = []
-    for node1, node2 in all_edges:
-        if node1 == rich_node:
-            if not is_vulnerable(G, node2):
-                deletable_edges.append((node1, node2))
-        if node2 == rich_node:
-            if not is_vulnerable(G, node1):
-                deletable_edges.append((node1, node2))
-
-    if deletable_edges != []:   # 날릴 수 있는 엣지 날리고 G 리턴
-        for deletable_edge in deletable_edges:
-            G.remove_edge(*deletable_edge)
-        return G
-    else:                       # G를 그냥 리턴
-        return G
+def can_stick_node_to(G, from_node, to_node):
+    """node1을 node2에 붙일 수 있는가?"""
+    if scoring_function(from_node, to_node) > 20 and\
+       G.in_edges(nbunch=to_node) < 6:
+        return True
+    else:
+        return False
 
 
-def make_all_possible_cases(edge_number):
-    """input으로 2를 주면 ['00', '01', '10', '11'] 을 만들어 냄"""
-    format_string = "{:0" + str(edge_number) + "b}"
-    return list(map(lambda x: format_string.format(x), range(2**edge_number)))
+def find_stickable_node(G, from_node, to_candidates, rich_node):
+    """to_candidates 중에서 from_node가 엣지를 쏠 수 있는 노드를 찾아보고, 찾는 즉시 리턴한다.
+       특히, rich_node를 제외한 다른 노드들에 붙일 수 있는가를 우선적으로 알아보고,
+       하나도 없다면 그제서야 rich_node에 붙일 수 있는지를 알아본다.
+       만약 rich_node에도 붙일 수 없다면 None을 리턴한다."""
+
+    # 우선 rich_node가 아닌 노드들에 붙일 수 있는지를 알아보고, 찾으면 곧바로 리턴한다.
+    for to_candidate in set(to_candidates)-{rich_node}:
+        if can_stick_node_to(G, from_node, to_candidate):
+            return to_candidiate
+    # 만약 못 찾았다면 rich_node에 붙일 수 있는지를 알아본다.
+    if can_stick_node_to(G, from_node, rich_node):
+        return rich_node
+    else:                       # 그래도 안 되면 하는 수 없이 None을 리턴한다.
+        return None
 
 
-# 엣지 뒤집는 방법: .remove_edge((u, v)) 한 다음 .add_edge(*(u, v)) 해 주면 됨.
-def flip_selected_edges(G, edges_to_flip):
-    for u, v in edges_to_flip:
-        G.remove_edge(u, v)
-        G.add_edge(v, u)
+def decompose_rich_node(G, rich_node):
+    """rich_node의 neighbor들을 재배치함으로써 rich_node의 incoming edge 개수를 줄인다."""
+    # 엣지를 쏘고 있는 노드들을 모두 rich node로부터 떼낸다.
+    in_edges = list(G.in_edges(nbunch=rich_node))
+    edge_shooters = []
+    for other_node, _ in in_edges:
+        edge_shooters.append(other_node)
+    for in_edge in in_edges:
+        G.remove_edge(*in_edge)
 
-
-# Heuristic No.2: rich_node의 incoming_edge가 약 10 이하일 경우에만 사용 가능
-def flip_edges_and_check(G, rich_node):
-    """뒤집고/안 뒤집고의 모든 가능성인 2^k 가능성들을 모두 탐색하며, cycle이 없는 경우가 발견될 경우 곧바로 G를 리턴한다."""
-    assert rich_node in list(G.nodes)
-
-    in_edges = G.in_edges(nbunch=rich_node)
-    out_edges = G.out_edges(nbunch=rich_node)
-    all_edges = list(in_edges) + list(out_edges)
-
-    number_of_edges = len(all_edges)
-
-    # 0과 1로 표현된 모든 뒤집고/안 뒤집는 경우들
-    all_possible_cases = make_all_possible_cases(number_of_edges)
-    print(all_possible_cases)
-    print("0"*number_of_edges)
-    all_possible_cases.remove("0"*number_of_edges)
-
-    for binary_possible_case in all_possible_cases:
-        # 모든 엣지들과 0/1을 결부짓기
-        all_possible_cases = list(zip(all_edges, binary_possible_case))
-
-        # 1과 결부된 엣지들만들을 남기기
-        edges_to_flip = list(filter(lambda tup: tup[1] == 1, all_possible_cases))
-        edges_to_flip = list(map(lambda tup: tup[0], edges_to_flip))
-
-        prev_G = G
-
-        flip_selected_edges(G, edges_to_flip)
-
-        assert prev_G != G
-
-        try:
-            nx.find_cycle(G)  # cycle이 없다면 곧바로 리턴
-        except:
-            return G
-
-
-def main(G, rich_node):
-    """No.2를 시도해 보고, 안 되면 No.1로 fallback한다. 그래도 안 되면 안 된다고 print하고, G를 단순히 리턴한다."""
     G_copy = copy.deepcopy(G)
-    # heur1_G = delete_deletable_edges(G, rich_node)
+    G_copy.to_undirected()
 
-    # if G_copy != heur1_G:
-    #     return heur1_G
-    # else:
-    #     heur2_G = flip_edges_and_check(G_copy, rich_node)
-    #     if heur2_G == heur1_G:
-    #         print('None of the heuristics worked :(')
-    #     return heur2_G
-    heur2_G = flip_edges_and_check(G_copy, rich_node)
-    if heur2_G == G_copy:
-        print('None of the heuristics worked :(')
-    return heur2_G
+    candidates = nx.node_connected_component(G_copy, rich_node)
+    # 이제 엣지를 쏘고 있는 노드들은 모두 rich_node로부터 disconnect되었다.
 
+    stash = []
+
+    # edge_shooter들을 하나씩 pop해 나가면서,
+    # 1. 만약 can 붙일 수 있는 노드에 노드를 붙이자.
+    while edge_shooters != []:
+        popped_node = edge_shooters.pop()
+        stickable_node = find_stickable_node(G, popped_node)
+        if stickable_node is not None:
+            G.add_edge(popped_node, stickable_node)
+        else:
+            stash.append(popped_node)
+
+    relocate_stashed_nodes(G, stash)
+
+
+def main():
+    # rich node를 identify한다.
+    rich_nodes = rich_nodes(G)
+
+    for rich_node in rich_nodes:
+        decompose_rich_node(G, rich_node)

@@ -3,10 +3,13 @@ import time
 import numpy as np
 import networkx as nx
 import itertools as it
+import deal_with_rich_nodes
+import copy
 
 from pomegranate import *
 from make_underlying_graph import find_root, find_edge_labels
 from make_CPT import *
+
 
 
 # Methods for BNs ====================================
@@ -126,15 +129,41 @@ def exclude_poor(G):
     return len(poors)
 
 
+def tame_rich(G):
+    """incoming edge가 너무 많은 노드들을 찾아내고, 해당 node들에 휴리스틱을 적용하여 가능한
+       incoming edge를 최소화한다."""
+    riches = []
+    for node_name in G.nodes:
+        if len(G.in_edges(nbunch=node_name)) > 6:
+            print(len(G.in_edges(nbunch=node_name)))
+            riches.append(node_name)
+    print("There are", len(riches), "rich nodes")
+
+    i = 0
+    G_copy = copy.deepcopy(G)
+    for rich_node in riches:
+        new_G = deal_with_rich_nodes.main(G, rich_node)
+        if G_copy == new_G:
+            i += 1
+
+    print("Tamed", len(riches)-i, "rich nodes")
+
+
+# main ====================================================
+# =========================================================
+
 def main(graph_name):
     start = time.time()
     graph_for_reference = nx.read_gpickle(graph_name)
     print("graph has", len(graph_for_reference), "nodes")
 
     print("preprocessing...")
-    
-    num_of_riches = exclude_rich(graph_for_reference)
-    num_of_poors = exclude_poor(graph_for_reference)
+
+    # num_of_riches = exclude_rich(graph_for_reference)
+    # num_of_poors = exclude_poor(graph_for_reference)
+
+    tame_rich(graph_for_reference)
+    exclude_poor(graph_for_reference)
 
     print("initializing BN...")
     BN_for_inference = init_BN(graph_for_reference)

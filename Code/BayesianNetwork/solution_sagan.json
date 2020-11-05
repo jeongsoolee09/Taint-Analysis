@@ -790,7 +790,7 @@
     "void ImagesGuideContentContributor.contribute(GuideContentResource,File)": "non",
     "MemberProfile TeamRepository.findByUsername(String)": "src",
     "void MemberProfile.setBio(String)": "non",
-    "Object RestOperations.postForObject(String,Object,Class,java.lang.Object[])": "src",
+    "Object RestOperations.postForObject(String,Object,Class,java.lang.Object[])": "sin",
     "ResultMatcher StatusResultMatchers.isUnsupportedMediaType()": "san",
     "ResponseEntity DocsWebhookController.processGuidesUpdate(String,String,String)": "non",
     "String Asciidoctor.convert(String,OptionsBuilder)": "sin",

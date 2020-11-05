@@ -54,6 +54,7 @@ def find_frequents(**kwargs):
 # Parameters =============================
 # ========================================
 
+
 TOP_FREQ_N_NAME_WORDS = 10            # name 낱말의 경우, 상위 몇 순위까지 고려할 거냐?
 TOP_FREQ_N_RTNTYPE_WORDS = 10         # rtntype 낱말의 경우, 상위 몇 순위까지 고려할 거냐?
 TOP_FREQ_N_CLASSNAME_WORDS = 10       # class 낱말의 경우, 상위 몇 순위까지 고려할 거냐?
@@ -173,13 +174,14 @@ def run_all_extractors(node_row):
 
     F18 = return_type_contains_name(node_row)  # dict
     F18_df = pd.DataFrame(F18, index=[0])
-    
-    vector = pd.concat([id_df, F06_df, F07_df, F10_df, F18_df], axis=1)
+
+    vector = pd.concat([id_df, F06_df, F07_df, F10_df, F12_df, F18_df], axis=1)
 
     return vector
 
 # main ================================
 # =====================================
+
 
 def main():
     sim_df = pd.DataFrame()

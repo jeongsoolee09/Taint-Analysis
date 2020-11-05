@@ -55,7 +55,8 @@ def naive_recover_graph(small_node_set, original_graph):
 def isolated_nodes(G):
     acc = []
     for node_name in G.nodes:
-        if len(G.in_edges(nbunch=node_name)) == 0 and len(G.out_edges(nbunch=node_name)) == 0:
+        if len(G.in_edges(nbunch=node_name)) == 0 and\
+           len(G.out_edges(nbunch=node_name)) == 0:
             acc.append(node_name)
     return acc
 

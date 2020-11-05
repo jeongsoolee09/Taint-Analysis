@@ -35,6 +35,15 @@ def find_stickable_node(G, from_node, to_candidates, rich_node):
         return None
 
 
+def relocate_stashed_nodes(G, stash):
+    """G에 있는 모든 노드들에 대해, stat"""
+    for stashed_node in stash:
+        for other_node in set(G.nodes)-set(stash):
+            if scoring_function(stashed_node, other_node) > 20:
+                G.add_edge(stashed_node, other_node)
+                break
+
+
 def decompose_rich_node(G, rich_node):
     """rich_node의 neighbor들을 재배치함으로써 rich_node의 incoming edge 개수를 줄인다."""
     # 엣지를 쏘고 있는 노드들을 모두 rich node로부터 떼낸다.
@@ -47,22 +56,26 @@ def decompose_rich_node(G, rich_node):
 
     G_copy = copy.deepcopy(G)
     G_copy.to_undirected()
-
-    candidates = nx.node_connected_component(G_copy, rich_node)
     # 이제 엣지를 쏘고 있는 노드들은 모두 rich_node로부터 disconnect되었다.
 
+    # edge_shooter를 갖다 붙일 수 있는 노드의 후보들
+    candidates = nx.node_connected_component(G_copy, rich_node)
+
+    # 현 subgraph에서는 갈 곳 없는 node_shooter들 창고
     stash = []
 
     # edge_shooter들을 하나씩 pop해 나가면서,
-    # 1. 만약 can 붙일 수 있는 노드에 노드를 붙이자.
+    # 1. 만약 candidate에 붙일 수 있는 노드가 있다면 edge_shooter를 붙이자.
+    # 2. 만약 candidate에 붙일 수 있는 노드가 없다면 stash에 보관해 두자.
     while edge_shooters != []:
         popped_node = edge_shooters.pop()
-        stickable_node = find_stickable_node(G, popped_node)
+        stickable_node = find_stickable_node(G, popped_node, candidates, rich_node)
         if stickable_node is not None:
             G.add_edge(popped_node, stickable_node)
         else:
             stash.append(popped_node)
 
+    # 이제 갈 곳 없는 노드들을 어딘가에 붙여 둔다.
     relocate_stashed_nodes(G, stash)
 
 

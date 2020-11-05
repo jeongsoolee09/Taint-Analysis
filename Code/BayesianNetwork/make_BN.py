@@ -9,7 +9,7 @@ import copy
 from pomegranate import *
 from make_underlying_graph import find_root, find_edge_labels
 from make_CPT import *
-
+from community_detection import isolated_nodes
 
 
 # Methods for BNs ====================================
@@ -139,14 +139,8 @@ def tame_rich(G):
             riches.append(node_name)
     print("There are", len(riches), "rich nodes")
 
-    i = 0
-    G_copy = copy.deepcopy(G)
-    for rich_node in riches:
-        new_G = deal_with_rich_nodes.main(G, rich_node)
-        if G_copy == new_G:
-            i += 1
-
-    print("Tamed", len(riches)-i, "rich nodes")
+    # G_copy = copy.deepcopy(G)
+    deal_with_rich_nodes.main(G)
 
 
 # main ====================================================
@@ -161,6 +155,9 @@ def main(graph_name):
 
     # num_of_riches = exclude_rich(graph_for_reference)
     # num_of_poors = exclude_poor(graph_for_reference)
+
+    num_of_poors = len(isolated_nodes(graph_for_reference))
+    print("there are", num_of_poors, "poor nodes")
 
     tame_rich(graph_for_reference)
     exclude_poor(graph_for_reference)

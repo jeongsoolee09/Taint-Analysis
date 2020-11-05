@@ -1,18 +1,29 @@
 import networkx as nx
 import copy
 from community_detection import isolated_nodes, rich_nodes
+from create_node import process
 
 
-def is_vulnerable(G, node):
-    """G 안에 속한 node가 자신과 연결된 엣지를 지우면 안 되는 노드인지를 판별"""
-    return (G.in_edges(nbunch=node) == 0 or G.out_edges(nbunch=node) == 1) or\
-           (G.in_edges(nbunch=node) == 1 or G.out_edges(nbunch=node) == 0)
+def scoring_function(info1, info2):
+    score = 0
+    if info1[0] == info2[0]:  # The two methods belong to the same class
+        score += 10
+    if info1[1] == info2[1]:  # The two methods have a same return type
+        score += 10
+    if (info1[2] in info2[2]) or (info2[2] in info1[2]) or \
+       (info1[2][0:2] == info2[2][0:2]) or (info1[2][0:2] == info2[2][0:2]):
+        score += 10  # The two methods start with a same prefix
+    if info1[3] == info2[3]:  # The two methods have a same input type
+        score += 10
+    return score
 
 
 def can_stick_node_to(G, from_node, to_node):
     """node1을 node2에 붙일 수 있는가?"""
-    if scoring_function(from_node, to_node) > 20 and\
-       G.in_edges(nbunch=to_node) < 6:
+    from_node_info = process(from_node)
+    to_node_info = process(to_node)
+    if scoring_function(from_node_info, to_node_info) > 20 and\
+       len(G.in_edges(nbunch=to_node)) < 6:
         return True
     else:
         return False
@@ -38,8 +49,9 @@ def find_stickable_node(G, from_node, to_candidates, rich_node):
 def relocate_stashed_nodes(G, stash):
     """G에 있는 모든 노드들에 대해, stat"""
     for stashed_node in stash:
+        print('stashed_node')
         for other_node in set(G.nodes)-set(stash):
-            if scoring_function(stashed_node, other_node) > 20:
+            if can_stick_node_to(G, stashed_node, other_node):
                 G.add_edge(stashed_node, other_node)
                 break
 
@@ -47,6 +59,7 @@ def relocate_stashed_nodes(G, stash):
 def decompose_rich_node(G, rich_node):
     """rich_node의 neighbor들을 재배치함으로써 rich_node의 incoming edge 개수를 줄인다."""
     # 엣지를 쏘고 있는 노드들을 모두 rich node로부터 떼낸다.
+
     in_edges = list(G.in_edges(nbunch=rich_node))
     edge_shooters = []
     for other_node, _ in in_edges:
@@ -55,7 +68,7 @@ def decompose_rich_node(G, rich_node):
         G.remove_edge(*in_edge)
 
     G_copy = copy.deepcopy(G)
-    G_copy.to_undirected()
+    G_copy = G_copy.to_undirected()
     # 이제 엣지를 쏘고 있는 노드들은 모두 rich_node로부터 disconnect되었다.
 
     # edge_shooter를 갖다 붙일 수 있는 노드의 후보들
@@ -79,9 +92,11 @@ def decompose_rich_node(G, rich_node):
     relocate_stashed_nodes(G, stash)
 
 
-def main():
+# side effect를 사용하는 함수이기 때문에, 그래프를 명시적으로 리턴하지 않아도 된다.
+def main(G):
     # rich node를 identify한다.
-    rich_nodes = rich_nodes(G)
+    rich_nodes_ = rich_nodes(G)
 
-    for rich_node in rich_nodes:
+    # 각 rich node들을 decompose한다.
+    for rich_node in rich_nodes_:
         decompose_rich_node(G, rich_node)

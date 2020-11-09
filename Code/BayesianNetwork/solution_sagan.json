@@ -849,7 +849,7 @@
     "Date Feed.getUpdated()": "src",
     "Cache RedisCacheManager.getCache(String)": "non",
     "String AbstractGuide.getCiStatusImageUrl()": "non",
-    "void Tutorial.setTypeLabel(String)": "sin",
+    "void Tutorial.setTypeLabel(String)": "non",
     "void PostFormAdapter.updatePostFromPostForm(Post,PostForm)": "non",
     "TeamLocation MemberProfile.getTeamLocation()": "non",
     "boolean ProjectGroup.equals(Object)": "non",

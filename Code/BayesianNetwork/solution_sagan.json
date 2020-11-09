@@ -549,7 +549,7 @@
     "Object RestTemplate.getForObject(String,Class,java.lang.Object[])": "src",
     "Collection Resources.getContent()": "non",
     "Resource ResourcePatternResolver.getResource(String)": "non",
-    "Set DefaultGuideHeader.getProjects()": "src",
+    "Set DefaultGuideHeader.getProjects()": "non",
     "sagan.site.renderer.GuideType[] GuideType.values()": "non",
     "JsonPathResultMatchers MockMvcResultMatchers.jsonPath(String,java.lang.Object[])": "non",
     "void ProjectRelease.replaceVersionPattern()": "non",

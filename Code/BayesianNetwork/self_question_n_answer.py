@@ -37,12 +37,6 @@ with open("solution_sagan.json", "r+") as saganjson:
     SOLUTION = json.load(saganjson)
 WINDOW_SIZE = 4
 
-# Exceptions ========================================
-# ===================================================
-
-class ThisIsImpossible(Exception):
-    pass
-
 # Random loop ========================================
 # ====================================================
 
@@ -586,20 +580,32 @@ def test_drive():
 def main():
     graph_files = find_pickled_graphs()
     lessons = {}
-    prev_graph = None
+    prev_graph_states = None
+    prev_graph_file = None
     for graph_file in graph_files:
         print("# of lessons:", len(lessons))
         graph_for_reference = nx.read_gpickle(graph_file)
         BN_for_inference = make_BN.main(graph_file)
         state_names = list(map(lambda node: node.name, BN_for_inference.states))
         print(graph_file, "has", len(state_names), "states")
-        learned_evidence = transfer_knowledge.main(prev_graph, state_names, lessons, state_names)
+        learned_evidence = transfer_knowledge.main(prev_graph_states, state_names, lessons)
         print("# of transferred evidence:", len(learned_evidence))
+        
+        # if prev_graph_file is not None:
+        #     # for debugging transfer
+        #     with open(prev_graph_file + '->' + graph_file + '.txt', 'w+') as f:
+        #         f.write(json.dumps(learned_evidence, indent=4))
+
+        # if lessons != {}:
+        #     with open(prev_graph_file+"_lessons.txt", 'w+') as f:
+        #         f.write(json.dumps(lessons, indent=4))
+
         loop_time_list, final_snapshot, current_asked =\
             single_loop(graph_file, graph_for_reference,
                         BN_for_inference, learned_evidence, loop_type="tactical")
         lessons = transfer_knowledge.learn(lessons, final_snapshot, current_asked)  # update the lessons
-        prev_graph = state_names
+        prev_graph_file = graph_file
+        prev_graph_states = state_names
 
 
 if __name__ == "__main__":

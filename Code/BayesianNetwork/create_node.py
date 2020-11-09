@@ -37,7 +37,11 @@ def filtermethod(string):
 
 def process(method_id):
     """splits a method id into (classname, rtntype, methodname, intype, id)"""
-    space_index = method_id.index(' ')
+    try:
+        space_index = method_id.index(' ')
+    except:
+        print("create_node.process() failed on:", method_id)
+        exit(1)
     split_on_open_paren = method_id.split('(')
     last_dot_index = split_on_open_paren[0].rindex('.')
     open_paren_index = method_id.index('(')

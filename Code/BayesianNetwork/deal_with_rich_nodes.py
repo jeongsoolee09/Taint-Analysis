@@ -2,6 +2,7 @@ import networkx as nx
 import copy
 from community_detection import isolated_nodes, rich_nodes
 from create_node import process
+from split_underlying_graph import decycle
 
 
 def scoring_function(info1, info2):
@@ -38,7 +39,7 @@ def find_stickable_node(G, from_node, to_candidates, rich_node):
     # 우선 rich_node가 아닌 노드들에 붙일 수 있는지를 알아보고, 찾으면 곧바로 리턴한다.
     for to_candidate in set(to_candidates)-{rich_node}:
         if can_stick_node_to(G, from_node, to_candidate):
-            return to_candidiate
+            return to_candidate
     # 만약 못 찾았다면 rich_node에 붙일 수 있는지를 알아본다.
     if can_stick_node_to(G, from_node, rich_node):
         return rich_node
@@ -49,7 +50,6 @@ def find_stickable_node(G, from_node, to_candidates, rich_node):
 def relocate_stashed_nodes(G, stash):
     """G에 있는 모든 노드들에 대해, stat"""
     for stashed_node in stash:
-        print('stashed_node')
         for other_node in set(G.nodes)-set(stash):
             if can_stick_node_to(G, stashed_node, other_node):
                 G.add_edge(stashed_node, other_node)
@@ -100,3 +100,4 @@ def main(G):
     # 각 rich node들을 decompose한다.
     for rich_node in rich_nodes_:
         decompose_rich_node(G, rich_node)
+        decycle(G)

@@ -71,9 +71,10 @@ def find_conf_sols(final_snapshot, current_asked):
 def learn(previous_lessons, final_snapshot, current_asked):
     """이전의 lesson들과 confident 노드들, 그리고 oracle response를 모두 모아 내놓는다."""
     oracle_response = dict(find_oracle_response(final_snapshot, current_asked))
-    conf_sols = dict(find_conf_sols(final_snapshot, current_asked))
-    previous_lessons_nodes = {**oracle_response, **conf_sols}
-    return {**previous_lessons, **previous_lessons_nodes}
+    # conf_sols = dict(find_conf_sols(final_snapshot, current_asked))
+    # previous_lessons_nodes = {**oracle_response, **conf_sols}
+    # return {**previous_lessons, **previous_lessons_nodes}
+    return {**previous_lessons, **oracle_response}
 
 
 def convert_bool_to_int(df):
@@ -116,7 +117,7 @@ def activate_getter_setter(lessons):
             continue
         if row["getter_setter"].item() == "getter" or\
            row["getter_setter"].item() == "setter":
-            if label == "non":
+            if label == 4.0:
                 return True         # 거봐 내 말이 맞다니까
         else:
             continue                # 두고 봐 진짜라니까
@@ -129,7 +130,7 @@ def activate_hashCode_is_san(lessons):
         if row.empty:
             continue
         if row["is_hashCode"].item():
-            if label == 'san':
+            if label == 3.0:
                 return True     # 거봐 내 말이 맞다니까
         else:
             continue            # 두고 봐 진짜라니까
@@ -142,7 +143,7 @@ def activate_assert_is_san(lessons):
         if row.empty:
             continue
         if row["is_assert"].item():
-            if label == 'san':
+            if label == 3.0:
                 return True     # 거봐 내 말이 맞다니까
         else:
             continue            # 두고 봐 진짜라니까
@@ -155,7 +156,7 @@ def activate_to_is_non(lessons):
         if row.empty:
             continue
         if row["is_to"].item():
-            if label == "non":
+            if label == 4.0:
                 return True
         else:
             continue
@@ -168,7 +169,7 @@ def activate_wrapping_primitives_is_non(lessons):
         if row.empty:
             continue
         if row["is_wrapping_primitive"].item():
-            if label == "non":
+            if label == 4.0:
                 return True
         else:
             continue
@@ -181,7 +182,7 @@ def activate_builtin_collection_is_non(lessons):
         if row.empty:
             continue
         if row["is_builtin_coll"].item():
-            if label == "non":
+            if label == 4.0:
                 return True
         else:
             continue
@@ -194,13 +195,13 @@ def activate_GET_POST_SELECT(lessons):
         if row.empty:
             continue
         if row["is_GET_POST_SELECT"].item() == "GET":
-            if label == "sin":
+            if label == 2.0:
                 return True
         elif row["is_GET_POST_SELECT"].item() == "POST":
-            if label == "src":
+            if label == 1.0:
                 return True
         elif row["is_GET_POST_SELECT"].item() == "SELECT":
-            if label == "sin":
+            if label == 2.0:
                 return True
         else:
             continue
@@ -219,7 +220,7 @@ def getter_setter_is_non(**kwargs):
         for row in EXTRA_FEATURES_NEXT.itertuples():
             method_name = row[1]
             if row[2] == "getter" or row[2] == "setter":
-                learned[method_name] = 'non'
+                learned[method_name] = 4.0
         return learned
     else:
         return dict()
@@ -232,7 +233,8 @@ def hashCode_is_san(**kwargs):
         for row in EXTRA_FEATURES_NEXT.itertuples():
             method_name = row[1]
             if method_name == "hashCode":
-                learned[method_name] = "san"
+                learned[method_name] = 3.0
+        return learned
     else:
         return dict()
 
@@ -244,7 +246,8 @@ def assert_is_san(**kwargs):
         for row in EXTRA_FEATURES_NEXT.itertuples():
             method_name = row[1]
             if "assert" in method_name:
-                learned[method_name] = "san"
+                learned[method_name] = 3.0
+        return learned
     else:
         return dict()
 
@@ -256,7 +259,8 @@ def to_is_non(**kwargs):
         for row in EXTRA_FEATURES_NEXT.itertuples():
             method_name = row[1]
             if "is" == camel_case_split(method_name)[0]:
-                learned[method_name] = "non"
+                learned[method_name] = 4.0
+        return learned
     else:
         return dict()
 
@@ -268,7 +272,8 @@ def wrapping_primitives_is_non(**kwargs):
         for row in EXTRA_FEATURES_NEXT.itertuples():
             method_name = row[1]
             if row[6]:
-                learned[method_name] = 'non'
+                learned[method_name] = 4.0
+        return learned
     else:
         return dict()
 
@@ -280,7 +285,8 @@ def builtin_collection_is_non(**kwargs):
         for row in EXTRA_FEATURES_NEXT.itertuples():
             method_name = row[1]
             if row[7]:
-                learned[method_name] = 'non'
+                learned[method_name] = 4.0
+        return learned
     else:
         return dict()
 
@@ -291,11 +297,12 @@ def GET_POST_SELECT_is_sin_or_src(**kwargs):
         for row in EXTRA_FEATURES_NEXT.itertuples():
             method_name = row[1]
             if row[8] == "GET":
-                learned[method_name] = 'sin'
+                learned[method_name] = 2.0
             elif row[8] == "POST":
-                learned[method_name] = 'src'
+                learned[method_name] = 1.0
             elif row[8] == "SELECT":
-                learned[method_name] = 'sin'
+                learned[method_name] = 2.0
+        return learned
     else:
         return dict()
 
@@ -305,9 +312,6 @@ def GET_POST_SELECT_is_sin_or_src(**kwargs):
 
 def pairwise_similarity(lessons_nodes, state_names):
     """lessons의 내용을 보고, state_names 중에서 충분히 닮은 것들을 찾아낸다."""
-    global EXTRA_FEATURES_PREV
-    global EXTRA_FEATURES_NEXT
-
     # 맨 처음 loop을 돌 때는 lesson이 안 쌓여 있기 때문
     if lessons_nodes == dict():
         return dict()
@@ -354,9 +358,6 @@ def pairwise_similarity(lessons_nodes, state_names):
     similars = carPro.to_dict('split')['data']
     similars = dict(similars)
 
-    # 1-call 관계에 있는 노드들 찾아내기
-    # lesson에 있는 노드와 1-call 관계에 있으면서 state_names에 동시에 있는 노드들 찾아내기
-
     return similars
 
 
@@ -389,26 +390,34 @@ def a_priori_rules(lessons, state_names):  # 여기서 state_names는 그 다음
     """굳이 물어보지 않아도 아는 것들: activate된 tentative rule들을 바탕으로, 해당되는 노드들을 찾아낸다."""
     # tentative rule들을 사용한다.
     getter_setter_dict = getter_setter_is_non(activated=activate_getter_setter(lessons))
+
     hashCode_dict = hashCode_is_san(activated=activate_hashCode_is_san(lessons))
+
     assert_dict = assert_is_san(activated=activate_assert_is_san(lessons))
+
     to_dict = to_is_non(activated=activate_to_is_non(lessons))
+
     wrapping_primitives_dict = wrapping_primitives_is_non(activated=activate_wrapping_primitives_is_non(lessons))
+
     builtin_collection_dict = builtin_collection_is_non(activated=activate_builtin_collection_is_non(lessons))
+
+    get_post_select_dict = GET_POST_SELECT_is_sin_or_src(activated=activate_GET_POST_SELECT(lessons))
+
     return {**getter_setter_dict, **hashCode_dict, **assert_dict,
-             **to_dict, **wrapping_primitives_dict, **builtin_collection_dict}
+             **to_dict, **wrapping_primitives_dict, **builtin_collection_dict, **get_post_select_dict}
 
 
 # main ====================================================
 # =========================================================
 
 
-def main(previous_graph_nodes, next_graph_nodes, lessons, state_names):
+def main(previous_graph_nodes, next_graph_nodes, lessons):
     """앞으로 적용할 evidence를 내놓는다."""
-    # 처음이라면 그럴 수 있어
 
     global EXTRA_FEATURES_PREV
     global EXTRA_FEATURES_NEXT
 
+    # 처음이라면 그럴 수 있어
     if previous_graph_nodes is None:
         return dict()
 
@@ -417,9 +426,10 @@ def main(previous_graph_nodes, next_graph_nodes, lessons, state_names):
     EXTRA_FEATURES_NEXT = extra_features.main(next_graph_nodes)
 
     # 각각의 evidence들을 collect
-    pairwise_similarity_dict = pairwise_similarity(lessons, state_names)
-    one_call_dict = one_call_relation(lessons, state_names)
-    a_priori_dict = a_priori_rules(lessons, state_names)
+    pairwise_similarity_dict = pairwise_similarity(lessons, next_graph_nodes)
+    one_call_dict = one_call_relation(lessons, next_graph_nodes)
+    a_priori_dict = a_priori_rules(lessons, next_graph_nodes)
 
     # 그 evidence를 모두 합쳐서 내놓기
     return {**pairwise_similarity_dict, **one_call_dict, **a_priori_dict}
+    # return a_priori_dict

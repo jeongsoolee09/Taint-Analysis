@@ -579,19 +579,16 @@ def test_drive():
 
 def one_pass(graph_file, lessons, prev_graph_states, prev_graph_file, **kwargs):
     """하나의 그래프에 대해 BN을 굽고 interaction을 진행한다."""
-    if kwargs["debug"]:
-        print("# of lessons:", len(lessons))
 
     graph_for_reference = nx.read_gpickle(graph_file)
     BN_for_inference = make_BN.main(graph_file)
     state_names = list(map(lambda node: node.name, BN_for_inference.states))
 
-    if kwargs["debug"]:
-        print(graph_file, "has", len(state_names), "states")
-
     learned_evidence = transfer_knowledge.main(prev_graph_states, state_names, lessons)
 
     if kwargs["debug"]:
+        print("# of lessons:", len(lessons))
+        print(graph_file, "has", len(state_names), "states")
         print("# of transferred evidence:", len(learned_evidence))
 
     # if kwargs["debug"]:
@@ -616,6 +613,7 @@ def one_pass(graph_file, lessons, prev_graph_states, prev_graph_file, **kwargs):
 
 def main():
     graph_files = find_pickled_graphs()
+    graph_files = list(filter(lambda x: '_poor' not in x, graph_files))
     lessons = {}
     prev_graph_states = None
     prev_graph_file = None

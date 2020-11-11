@@ -112,21 +112,23 @@ def exclude_rich(G):
 
 def exclude_poor(G):
     """고립된 노드들을 그래프에서 삭제한다."""
+    poor_nodes = []             # 리턴용
     while True:
-        poors = []
+        poors = []              # poor_nodes와 달리 매번 초기화되는 accumulator
         for node_name in G.nodes:
             if len(G.in_edges(nbunch=node_name)) == 0 and\
                len(G.out_edges(nbunch=node_name)) == 0:
                 poors.append(node_name)
+                poor_nodes.append(node_name)
         print("lost", len(poors), "poor nodes")
         if poors == []:
-            return
+            return poor_nodes
         for poor in poors:
             try:
                 G.remove_node(poor)
             except:  # 이미 없넹
                 pass
-    return len(poors)
+    return poor_nodes
 
 
 def tame_rich(G):
@@ -153,21 +155,23 @@ def main(graph_name):
 
     print("preprocessing...")
 
-    # num_of_riches = exclude_rich(graph_for_reference)
-    # num_of_poors = exclude_poor(graph_for_reference)
-
     num_of_poors = len(isolated_nodes(graph_for_reference))
     print("there are", num_of_poors, "poor nodes")
 
     tame_rich(graph_for_reference)
-    exclude_poor(graph_for_reference)
+    poor_nodes = exclude_poor(graph_for_reference)
+
+    # poor node가 있었다면 이를 저장해 두기
+    if poor_nodes != []:
+        G = nx.DiGraph()
+        for poor_node_name in poor_nodes:
+            G.add_node(poor_node_name)
+        nx.write_gpickle(G, graph_name+'_poor')
 
     print("initializing BN...")
     BN_for_inference = init_BN(graph_for_reference)
-    print("BN initialized")
+    print("initializing BN...done")
 
-    # nx.write_gpickle(graph_for_reference, graph_name)
-    print("elapsed time:", time.time()-start)
     return BN_for_inference
 
 

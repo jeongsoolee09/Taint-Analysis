@@ -577,36 +577,63 @@ def test_drive():
     return acc
 
 
+def one_pass(graph_file, lessons, prev_graph_states, prev_graph_file, **kwargs):
+    """하나의 그래프에 대해 BN을 굽고 interaction을 진행한다."""
+    if kwargs["debug"]:
+        print("# of lessons:", len(lessons))
+
+    graph_for_reference = nx.read_gpickle(graph_file)
+    BN_for_inference = make_BN.main(graph_file)
+    state_names = list(map(lambda node: node.name, BN_for_inference.states))
+
+    if kwargs["debug"]:
+        print(graph_file, "has", len(state_names), "states")
+
+    learned_evidence = transfer_knowledge.main(prev_graph_states, state_names, lessons)
+
+    if kwargs["debug"]:
+        print("# of transferred evidence:", len(learned_evidence))
+
+    # if kwargs["debug"]:
+    #     if prev_graph_file is not None:
+    #         # for debugging transfer
+    #         with open(prev_graph_file + '->' + graph_file + '.txt', 'w+') as f:
+    #             f.write(json.dumps(learned_evidence, indent=4))
+
+    #     if lessons != {}:
+    #         with open(prev_graph_file+"_lessons.txt", 'w+') as f:
+    #             f.write(json.dumps(lessons, indent=4))
+
+    loop_time_list, final_snapshot, current_asked =\
+        single_loop(graph_file, graph_for_reference,
+                    BN_for_inference, learned_evidence, loop_type="tactical")
+    lessons = transfer_knowledge.learn(lessons, final_snapshot, current_asked)  # update the lessons
+    prev_graph_file = graph_file
+    prev_graph_states = state_names
+
+    return lessons, prev_graph_states, prev_graph_file
+
+
 def main():
     graph_files = find_pickled_graphs()
     lessons = {}
     prev_graph_states = None
     prev_graph_file = None
+
+    # 일단 쪼갠 그래프들을 가지고 BN을 구워서 interaction하고
     for graph_file in graph_files:
-        print("# of lessons:", len(lessons))
-        graph_for_reference = nx.read_gpickle(graph_file)
-        BN_for_inference = make_BN.main(graph_file)
-        state_names = list(map(lambda node: node.name, BN_for_inference.states))
-        print(graph_file, "has", len(state_names), "states")
-        learned_evidence = transfer_knowledge.main(prev_graph_states, state_names, lessons)
-        print("# of transferred evidence:", len(learned_evidence))
-        
-        # if prev_graph_file is not None:
-        #     # for debugging transfer
-        #     with open(prev_graph_file + '->' + graph_file + '.txt', 'w+') as f:
-        #         f.write(json.dumps(learned_evidence, indent=4))
+        lessons, prev_graph_states, prev_graph_file =\
+            one_pass(graph_file, lessons,
+                     prev_graph_states, prev_graph_file, debug=True)
 
-        # if lessons != {}:
-        #     with open(prev_graph_file+"_lessons.txt", 'w+') as f:
-        #         f.write(json.dumps(lessons, indent=4))
-
-        loop_time_list, final_snapshot, current_asked =\
-            single_loop(graph_file, graph_for_reference,
-                        BN_for_inference, learned_evidence, loop_type="tactical")
-        lessons = transfer_knowledge.learn(lessons, final_snapshot, current_asked)  # update the lessons
-        prev_graph_file = graph_file
-        prev_graph_states = state_names
-
+    # 위에서 BN으로 만들면서 버려진 노드들을 모아 만든 그래프를 가지고 또 interaction하고
+    recycled_graphs = deal_with_poor_nodes.main()
+    i = 0
+    for recycled_graph in recycled_graph:
+        lessons, prev_graph_states, prev_graph_file =\
+            one_pass("recycled_graph_"+str(i), lessons,
+                     prev_graph_states, prev_graph_file, debug=True)
+        i += 1
 
 if __name__ == "__main__":
     main()

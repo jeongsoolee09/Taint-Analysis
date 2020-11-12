@@ -15,6 +15,7 @@ import modin.pandas as pd
 import networkx as nx
 import numpy as np
 import transfer_knowledge
+import deal_with_poor_nodes
 
 from datetime import datetime
 from create_node import process

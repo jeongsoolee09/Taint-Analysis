@@ -1,25 +1,29 @@
 import modin.pandas as pd
 import networkx as nx
-import csv
 import glob
 
 from split_underlying_graph import decycle
 from functools import partial
 from create_edge import no_symmetric, no_reflexive
 
+
 def find_poor_node_files():
     return glob.glob("*_poor")
 
+
 # Constants ========================================
 # ==================================================
+
 
 POOR_NODE_FILES = find_poor_node_files()
 DF_EDGES = pd.read_csv("df.csv", index_col=0)
 CALL_EDGES = pd.read_csv("callg.csv", index_col=0)
 SIM_EDGES = pd.read_csv("sim.csv", index_col=0)
 
+
 # Methods ==========================================
 # ==================================================
+
 
 def create_graph_without_edges(poor_nodes):
     g = nx.DiGraph()
@@ -37,8 +41,8 @@ def create_mapfunc(poor_nodes):
     return partial(raw_mapfunc, poor_nodes)
 
 
-def add_df_edges(G, poor_nodes):
-    mapfunc = create_mapfunc(poor_nodes)
+def add_df_edges(G):
+    mapfunc = create_mapfunc(G.nodes)
 
     # making original dataframe manageable by dropping irrelevant rows and columns
     small_df_edges = DF_EDGES[['id1', 'id2']]
@@ -51,8 +55,8 @@ def add_df_edges(G, poor_nodes):
         G.add_edge(rowtuple[0], rowtuple[1])  # id1, id2 respectively
 
 
-def add_call_edges(G, poor_nodes):
-    mapfunc = create_mapfunc(poor_nodes)
+def add_call_edges(G):
+    mapfunc = create_mapfunc(G.nodes)
 
     # making original dataframe manageable
     small_call_edges = CALL_EDGES[['id1', 'id2']]
@@ -65,8 +69,8 @@ def add_call_edges(G, poor_nodes):
         G.add_edge(rowtuple[0], rowtuple[1])  # id1, id2 respectively
 
 
-def add_sim_edges(G, poor_nodes):
-    mapfunc = create_mapfunc(poor_nodes)
+def add_sim_edges(G):
+    mapfunc = create_mapfunc(G.nodes)
 
     # making dataframe non-reflexive and non-symmetric
     sim_edges_new = no_symmetric(SIM_EDGES)
@@ -85,8 +89,8 @@ def add_sim_edges(G, poor_nodes):
 
 def pairup_elems(lst):
     """[1, 2, 3, 4, 5] |-> [(1, 2), (3, 4), 5]"""
-    odd_index_elems = x[::2]
-    even_index_elems = x[1::2]
+    odd_index_elems = lst[::2]
+    even_index_elems = lst[1::2]
     zipped = list(zip(odd_index_elems, even_index_elems))
     if len(lst) % 2 == 1:
         return zipped + [lst[(len(lst)-1)]]
@@ -95,12 +99,12 @@ def pairup_elems(lst):
 
 def create_single_graph(unconnected_graph):
     """하나의 poor_node 묶음에 대해 엣지가 모두 연결된 complete graph를 만들어 낸다."""
-    def compose(init_arg1, init_arg2, funclist):
+    def compose(init_arg1, funclist):
         for func in funclist:
-            init_arg1 = func(init_arg1, init_arg2)
-        return current_value
+            init_arg1 = func(init_arg1)
+        return init_arg1
 
-    complete_graph = compose(unconnected_graph, poor_nodes,
+    complete_graph = compose(unconnected_graph,
                              [add_df_edges, add_call_edges, add_sim_edges])
     decycle(complete_graph)
     return complete_graph
@@ -118,12 +122,12 @@ def merge_two_graphs(graph1, graph2):
 def main():
     raw_graphs = []
     for poor_node_file in POOR_NODE_FILES:
-        G = create_graph_without_edges(poor_nodes)
-        graphs.append(G)
-    pairedup_graphs = pairup_elems(graphs)
+        G = create_graph_without_edges(poor_node_file)
+        raw_graphs.append(G)
+    pairedup_graphs = pairup_elems(raw_graphs)
 
     merged_graphs = []
-    for elem in graphs:
+    for elem in pairedup_graphs:
         if type(elem) == tuple:  # 두 개를 merge함
             G = merge_two_graphs(*elem)
             merged_graphs.append(G)

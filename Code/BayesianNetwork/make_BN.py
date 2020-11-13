@@ -148,9 +148,10 @@ def tame_rich(G):
 # main ====================================================
 # =========================================================
 
-def main(graph_name):
+def main(graph_for_reference, **kwargs):
+    """available kwargs:
+       - filename (string): graph file name"""
     start = time.time()
-    graph_for_reference = nx.read_gpickle(graph_name)
     print("graph has", len(graph_for_reference), "nodes")
 
     print("preprocessing...")
@@ -162,11 +163,11 @@ def main(graph_name):
     poor_nodes = exclude_poor(graph_for_reference)
 
     # poor node가 있었다면 이를 저장해 두기
-    if poor_nodes != []:
+    if poor_nodes != [] and kwargs:
         G = nx.DiGraph()
         for poor_node_name in poor_nodes:
             G.add_node(poor_node_name)
-        nx.write_gpickle(G, graph_name+'_poor')
+        nx.write_gpickle(G, kwargs['graph_name']+'_poor')
 
     print("initializing BN...")
     BN_for_inference = init_BN(graph_for_reference)

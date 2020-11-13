@@ -578,11 +578,12 @@ def test_drive():
     return acc
 
 
-def one_pass(graph_file, lessons, prev_graph_states, prev_graph_file, **kwargs):
+def one_pass(graph_for_reference, lessons, prev_graph_states, prev_graph_file, **kwargs):
     """하나의 그래프에 대해 BN을 굽고 interaction을 진행한다."""
-
-    graph_for_reference = nx.read_gpickle(graph_file)
-    BN_for_inference = make_BN.main(graph_file)
+    if kwargs["filename"]:
+        BN_for_inference = make_BN.main(graph_for_reference, filename=kwargs["filename"])
+    else:
+        BN_for_inference = make_BN.main(graph_for_reference)
     state_names = list(map(lambda node: node.name, BN_for_inference.states))
 
     learned_evidence = transfer_knowledge.main(prev_graph_states, state_names, lessons)
@@ -613,24 +614,25 @@ def one_pass(graph_file, lessons, prev_graph_states, prev_graph_file, **kwargs):
 
 
 def main():
-    graph_files = find_pickled_graphs()
-    graph_files = list(filter(lambda x: '_poor' not in x, graph_files))
-    lessons = {}
-    prev_graph_states = None
-    prev_graph_file = None
+    # graph_files = find_pickled_graphs()
+    # graph_files = list(filter(lambda x: '_poor' not in x, graph_files))
+    # lessons = {}
+    # prev_graph_states = None
+    # prev_graph_file = None
 
-    # 일단 쪼갠 그래프들을 가지고 BN을 구워서 interaction하고
-    for graph_file in graph_files:
-        lessons, prev_graph_states, prev_graph_file =\
-            one_pass(graph_file, lessons,
-                     prev_graph_states, prev_graph_file, debug=True)
+    # # 일단 쪼갠 그래프들을 가지고 BN을 구워서 interaction하고
+    # for graph_file in graph_files:
+    #     graph_for_reference = nx.read_gpickle(graph_file)
+    #     lessons, prev_graph_states, prev_graph_file =\
+    #         one_pass(graph_for_reference, lessons,
+    #                  prev_graph_states, prev_graph_file, debug=True, filename=graph_file)
 
     # 위에서 BN으로 만들면서 버려진 노드들을 모아 만든 그래프를 가지고 또 interaction하고
     recycled_graphs = deal_with_poor_nodes.main()
     i = 0
     for recycled_graph in recycled_graph:
         lessons, prev_graph_states, prev_graph_file =\
-            one_pass("recycled_graph_"+str(i), lessons,
+            one_pass(recycleed_graph, lessons,
                      prev_graph_states, prev_graph_file, debug=True)
         i += 1
 

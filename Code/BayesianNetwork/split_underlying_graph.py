@@ -9,6 +9,7 @@ import json
 import hashlib
 import time
 import os
+import networkx.algorithms as nxalg
 
 from make_underlying_graph import df_reader, call_reader, extract_filename
 from community_detection import bisect_optimal, bisect, isolated_nodes, rich_nodes, bisect_naive
@@ -154,31 +155,42 @@ def find_optimal_graph_size(G):
         max_graph_size -= 1
 
 
-def split_large_graph(G, max_graph_size):
+def split_large_graph(G, graph_name, max_graph_size):
+    """주어진 큰 그래프를 max_graph_size 이하가 될 때까지 계속 두 개로 쪼갠다."""
     worklist = [G]
-    acc = []
+    out = []
+    tree = nx.DiGraph()
+    tree.add_node(G.name)  # create the root node of this subtree
+    i = -1
+
     while worklist != []:
-        print(list(map(lambda graph: len(graph.nodes), worklist)))
         target = worklist.pop()
         if len(target.nodes) <= max_graph_size:
-            acc.append(target)
+            out.append(target)
         else:
             small1, small2 = bisect(target)
-            print(len(isolated_nodes(small1)))
-            print(len(isolated_nodes(small2)))
-
             if len(small1.nodes) == 0 or len(small2.nodes) == 0:
                 small1, small2 = bisect_naive(target)  # give up minimizing isolated nodes
-                print(len(isolated_nodes(small1)))
-                print(len(isolated_nodes(small2)))
+            i += 1
+            small1.name = graph_name+"_"+str(i)
+            i += 1
+            small2.name = graph_name+"_"+str(i)
+
+            tree.add_edge(target.name, small1.name)
+            tree.add_edge(target.name, small2.name)
+
             worklist.append(small1)
             worklist.append(small2)
-    # print("acc: ", list(map(lambda graph: len(graph.nodes),acc)))
-    return acc
+    return out, tree
 
 
 def main():
+    original_tree = nx.DiGraph()       # tree to record splitting history
+
     graph_for_reference = nx.read_gpickle("graph_for_reference")
+    graph_for_reference.name = "graph_for_reference"
+    original_tree.add_node(graph_for_reference.name)       # the very root of the original_tree
+
     callgraph = draw_callgraph()
 
     if JAR_PATHS != []:
@@ -186,25 +198,33 @@ def main():
             graph_name = take_direct_subdirectory(jar_path)
             root_methods = collect_root_methods(jar_path)['id']
             all_methods = collect_callees(callgraph, root_methods)
+
             masked_graph = mask_graph(graph_for_reference, all_methods)
+            masked_graph.name = graph_name
             nx.write_gpickle(masked_graph, graph_name+"_graph")
+
             # optimal_max_graph_size = find_optimal_graph_size(masked_graph)
-            small_graphs = split_large_graph(masked_graph, 180)
-            i = 0
+            optimal_max_graph_size = 180
+            small_graphs, subtree = split_large_graph(masked_graph, graph_name, optimal_max_graph_size)
+
+            nxalg.compose(original_tree, subtree)
+
             for small_graph in small_graphs:
                 decycle(small_graph)
-                nx.write_gpickle(small_graph, graph_name+"_graph_"+str(i))
-                i += 1
+                nx.write_gpickle(small_graph, small_graph.name)
         nx.write_gpickle(callgraph, "callgraph")
 
     else:                       # There are no .jar files in PROJECT_ROOT
-        small_graphs = split_large_graph(graph_for_reference, 180)
-        i = 0
+        # optimal_max_graph_size = find_optimal_graph_size(masked_graph)
+        optimal_max_graph_size = 180
+
+        small_graphs, subtree = split_large_graph(graph_for_reference, graph_name, optimal_max_graph_size)
         for small_graph in small_graphs:
             decycle(small_graph)
-            nx.write_gpickle(small_graph, graph_name+"_graph_"+str(i))
-            i += 1
+            nx.write_gpickle(small_graph, small_graph.name)
         nx.write_gpickle(callgraph, "callgraph")
+
+    nx.write_gpickle(original_tree, "split_history")
 
 
 if __name__ == "__main__":

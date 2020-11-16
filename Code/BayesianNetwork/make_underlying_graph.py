@@ -35,19 +35,6 @@ data_reader = csv.reader(raw_data)
 edges_data = open("edges.csv", "r+")
 edges_reader = csv.reader(edges_data)
 
-# skip_func_data = open("skip_func.csv", "r+")
-# skip_func_reader = csv.reader(skip_func_data)
-
-
-# def skip_func_reader():
-#     """skip_func.txt를 단순히 읽어 낸다."""
-#     path = os.path.abspath("..")
-#     path = os.path.join(PROJECT_ROOT_DIR, "skip_func.txt")
-#     with open(path, "r+") as skip_func:
-#         lines = skip_func.readlines()
-#         lines = list(map(lambda line: line.rstrip(), lines))
-#     return lines
-
 
 def is_java_builtin(method_id, built_in_classes):
     """주어진 method가 java.lang 혹은 java.utils에 속하는지를 판별하는 predicate:
@@ -235,19 +222,6 @@ def flip_sim_edges(G):
             if 1 < len(G.out_edges(nbunch=parent)):
                 G.remove_edge(parent, child)
             # G.add_edge(child, parent, kind=kind)
-
-
-def plot_underlying_graph():
-    """단순하게 underlying graph만 출력한다."""
-    plt.clf()
-    edge_colormap = create_edge_colormap()
-    circular = nx.circular_layout(graph_for_reference)  # 노드 이름과 그래프 상에서의 좌표를 엮은 dict
-    nx.draw(graph_for_reference,
-            font_size=8,
-            with_labels=True,
-            edge_color=edge_colormap,
-            pos=circular)
-    plt.show(block=False)
 
 
 def main():

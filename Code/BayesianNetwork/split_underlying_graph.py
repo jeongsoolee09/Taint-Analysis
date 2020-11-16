@@ -201,13 +201,20 @@ def main():
 
             masked_graph = mask_graph(graph_for_reference, all_methods)
             masked_graph.name = graph_name
+
+            original_tree.add_edge(graph_for_reference.name, masked_graph.name)
+
             nx.write_gpickle(masked_graph, graph_name+"_graph")
 
             # optimal_max_graph_size = find_optimal_graph_size(masked_graph)
             optimal_max_graph_size = 180
             small_graphs, subtree = split_large_graph(masked_graph, graph_name, optimal_max_graph_size)
 
-            nxalg.compose(original_tree, subtree)
+            print("subtree: ", subtree.nodes)
+
+            original_tree = nxalg.compose(original_tree, subtree)
+
+            print("original tree: ", original_tree.nodes)
 
             for small_graph in small_graphs:
                 decycle(small_graph)
@@ -219,6 +226,8 @@ def main():
         optimal_max_graph_size = 180
 
         small_graphs, subtree = split_large_graph(graph_for_reference, graph_name, optimal_max_graph_size)
+
+        nxalg.compose(original_tree, subtree)
         for small_graph in small_graphs:
             decycle(small_graph)
             nx.write_gpickle(small_graph, small_graph.name)

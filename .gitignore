@@ -18,3 +18,4 @@ infer-out
 graph_*
 *.json
 *.old
+/Code/BayesianNetwork/split_history

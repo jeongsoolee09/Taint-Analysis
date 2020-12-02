@@ -1,0 +1,10 @@
+byte
+short
+int
+long
+float
+double
+char
+string
+boolean
+object

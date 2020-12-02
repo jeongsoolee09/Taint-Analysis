@@ -593,15 +593,15 @@ def one_pass(graph_for_reference, lessons, prev_graph_states, prev_graph_file, *
         print(graph_file, "has", len(state_names), "states")
         print("# of transferred evidence:", len(learned_evidence))
 
-    # if kwargs["debug"]:
-    #     if prev_graph_file is not None:
-    #         # for debugging transfer
-    #         with open(prev_graph_file + '->' + graph_file + '.txt', 'w+') as f:
-    #             f.write(json.dumps(learned_evidence, indent=4))
+    if kwargs["debug"]:
+        if prev_graph_file is not None:
+            # for debugging transfer
+            with open(prev_graph_file + '->' + graph_file + '.txt', 'w+') as f:
+                f.write(json.dumps(learned_evidence, indent=4))
 
-    #     if lessons != {}:
-    #         with open(prev_graph_file+"_lessons.txt", 'w+') as f:
-    #             f.write(json.dumps(lessons, indent=4))
+        if lessons != {}:
+            with open(prev_graph_file+"_lessons.txt", 'w+') as f:
+                f.write(json.dumps(lessons, indent=4))
 
     loop_time_list, final_snapshot, current_asked =\
         single_loop(graph_file, graph_for_reference,
@@ -614,18 +614,18 @@ def one_pass(graph_for_reference, lessons, prev_graph_states, prev_graph_file, *
 
 
 def main():
-    # graph_files = find_pickled_graphs()
-    # graph_files = list(filter(lambda x: '_poor' not in x, graph_files))
-    # lessons = {}
-    # prev_graph_states = None
-    # prev_graph_file = None
+    graph_files = find_pickled_graphs()
+    graph_files = list(filter(lambda x: '_poor' not in x, graph_files))
+    lessons = {}
+    prev_graph_states = None
+    prev_graph_file = None
 
-    # # 일단 쪼갠 그래프들을 가지고 BN을 구워서 interaction하고
-    # for graph_file in graph_files:
-    #     graph_for_reference = nx.read_gpickle(graph_file)
-    #     lessons, prev_graph_states, prev_graph_file =\
-    #         one_pass(graph_for_reference, lessons,
-    #                  prev_graph_states, prev_graph_file, debug=True, filename=graph_file)
+    # 일단 쪼갠 그래프들을 가지고 BN을 구워서 interaction하고
+    for graph_file in graph_files:
+        graph_for_reference = nx.read_gpickle(graph_file)
+        lessons, prev_graph_states, prev_graph_file =\
+            one_pass(graph_for_reference, lessons,
+                     prev_graph_states, prev_graph_file, debug=True, filename=graph_file)
 
     # 위에서 BN으로 만들면서 버려진 노드들을 모아 만든 그래프를 가지고 또 interaction하고
     recycled_graphs = deal_with_poor_nodes.main()

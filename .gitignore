@@ -19,3 +19,9 @@ graph_*
 *.json
 *.old
 /Code/BayesianNetwork/split_history
+/My-Papers/AutoSpec/auto/
+*.aux
+/My-Papers/AutoSpec/*.log
+/My-Papers/AutoSpec/*.out
+*.pdf
+/My-Papers/AutoSpec/*.gz

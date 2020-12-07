@@ -159,22 +159,19 @@ def main(graph_for_reference, **kwargs):
     num_of_poors = len(isolated_nodes(graph_for_reference))
     print("there are", num_of_poors, "poor nodes")
 
-    tame_rich(graph_for_reference)
-    poor_nodes = exclude_poor(graph_for_reference)
-
     # poor node가 있었다면 이를 저장해 두기
-    if poor_nodes != [] and kwargs:
-        G = nx.DiGraph()
-        for poor_node_name in poor_nodes:
-            G.add_node(poor_node_name)
-        nx.write_gpickle(G, kwargs['graph_name']+'_poor')
+    if kwargs['filename'] and kwargs['stash_poor']:
+        tame_rich(graph_for_reference)
+        poor_nodes = exclude_poor(graph_for_reference)
+
+        if poor_nodes != []:
+            G = nx.DiGraph()
+            for poor_node_name in poor_nodes:
+                G.add_node(poor_node_name)
+            nx.write_gpickle(G, kwargs['filename']+'_poor')
 
     print("initializing BN...")
     BN_for_inference = init_BN(graph_for_reference)
     print("initializing BN...done")
 
     return BN_for_inference
-
-
-if __name__ == "__main__":
-    main()

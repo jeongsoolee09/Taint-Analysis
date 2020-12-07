@@ -578,12 +578,12 @@ def test_drive():
     return acc
 
 
-def one_pass(graph_for_reference, lessons, prev_graph_states, prev_graph_file, **kwargs):
+def one_pass(graph_file, graph_for_reference, lessons, prev_graph_states, prev_graph_file, **kwargs):
     """하나의 그래프에 대해 BN을 굽고 interaction을 진행한다."""
-    if kwargs["filename"]:
-        BN_for_inference = make_BN.main(graph_for_reference, filename=kwargs["filename"])
+    if kwargs["filename"] and kwargs['stash_poor']:
+        BN_for_inference = make_BN.main(graph_for_reference, filename=kwargs["filename"], stash_poor=True)
     else:
-        BN_for_inference = make_BN.main(graph_for_reference)
+        BN_for_inference = make_BN.main(graph_for_reference, filename=None, stash_poor=False)
     state_names = list(map(lambda node: node.name, BN_for_inference.states))
 
     learned_evidence = transfer_knowledge.main(prev_graph_states, state_names, lessons)
@@ -606,6 +606,7 @@ def one_pass(graph_for_reference, lessons, prev_graph_states, prev_graph_file, *
     loop_time_list, final_snapshot, current_asked =\
         single_loop(graph_file, graph_for_reference,
                     BN_for_inference, learned_evidence, loop_type="tactical")
+
     lessons = transfer_knowledge.learn(lessons, final_snapshot, current_asked)  # update the lessons
     prev_graph_file = graph_file
     prev_graph_states = state_names
@@ -624,16 +625,22 @@ def main():
     for graph_file in graph_files:
         graph_for_reference = nx.read_gpickle(graph_file)
         lessons, prev_graph_states, prev_graph_file =\
-            one_pass(graph_for_reference, lessons,
+            one_pass(graph_file, graph_for_reference, lessons,
                      prev_graph_states, prev_graph_file, debug=True, filename=graph_file)
 
+    # lessons = {}                # TEMP
+    # prev_graph_states = None    # TEMP
+    # prev_graph_file = None      # TEMP
+
     # 위에서 BN으로 만들면서 버려진 노드들을 모아 만든 그래프를 가지고 또 interaction하고
+    print("\n ==== Now making and interacting with recycled graphs. ====\n")
     recycled_graphs = deal_with_poor_nodes.main()
     i = 0
-    for recycled_graph in recycled_graph:
+    for recycled_graph in recycled_graphs:
+        graph_file = "poor_" + str(i)
         lessons, prev_graph_states, prev_graph_file =\
-            one_pass(recycleed_graph, lessons,
-                     prev_graph_states, prev_graph_file, debug=True)
+            one_pass(graph_file, recycled_graph, lessons,
+                     prev_graph_states, prev_graph_file, debug=True, filename=None, stash_poor=False)
         i += 1
 
 if __name__ == "__main__":

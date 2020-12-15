@@ -27,6 +27,7 @@ Repository 책임자: 이정수
 3. 최신 opam
 4. Python 3.8.5
 5. `pip install numpy matplotlib networkx toolz pandas cython pomegranate ray dask modin[all] bs4 z3` 
+6. `opam install conf-gmp conf-mpfr`
 
 ### Infer 설치하기
 

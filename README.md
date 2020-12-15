@@ -26,7 +26,7 @@ Repository 책임자: 이정수
 2. 최신 Gradle
 3. 최신 opam
 4. Python 3.8.5
-5. `pip install numpy matplotlib networkx toolz pandas pomegranate ray dask modin[all] bs4 z3` 
+5. `pip install numpy matplotlib networkx toolz pandas cython pomegranate ray dask modin[all] bs4 z3` 
 
 ### Infer 설치하기
 

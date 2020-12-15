@@ -79,6 +79,15 @@ def recursively_collect_callee(classes, graph_for_reference):
     return callees
 
 
+def collect_class_method(classes, graph_for_reference):
+    nodes = list(graph_for_reference.nodes)
+    methods = []
+    for class_ in classes:
+        class_methods = list(filter(lambda node: process(node)[0] == class_, nodes))
+        methods += class_methods
+    return methods
+
+
 def extract_filename(path):
     """path에서 (확장자를 제외한) filename만을 추출한다."""
     _, tail = os.path.split(path)

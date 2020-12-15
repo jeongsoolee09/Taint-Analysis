@@ -95,6 +95,7 @@ $ cd Code/BayesianNetwork
 
 ```shell
 $ python create_node.py
+$ python feature_extractor.py
 $ python create_edge.py
 $ python make_underlying_graph.py
 $ python split_underlying_graph.py

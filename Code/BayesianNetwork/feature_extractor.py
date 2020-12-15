@@ -190,3 +190,6 @@ def main():
         sim_df = pd.concat([sim_df, vector])
     sim_df.to_csv("sim_vectors.csv", mode="w+")
 
+
+if __name__ == "__main__":
+    main()

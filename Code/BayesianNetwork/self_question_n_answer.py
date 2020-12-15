@@ -626,7 +626,7 @@ def main():
         graph_for_reference = nx.read_gpickle(graph_file)
         lessons, prev_graph_states, prev_graph_file =\
             one_pass(graph_file, graph_for_reference, lessons,
-                     prev_graph_states, prev_graph_file, debug=True, filename=graph_file)
+                     prev_graph_states, prev_graph_file, debug=True, filename=graph_file, stash_poor=True)
 
     # lessons = {}                # TEMP
     # prev_graph_states = None    # TEMP
@@ -635,6 +635,9 @@ def main():
     # 위에서 BN으로 만들면서 버려진 노드들을 모아 만든 그래프를 가지고 또 interaction하고
     print("\n ==== Now making and interacting with recycled graphs. ====\n")
     recycled_graphs = deal_with_poor_nodes.main()
+
+    print("made", len(recycled_graphs), "recycled graphs")
+    
     i = 0
     for recycled_graph in recycled_graphs:
         graph_file = "poor_" + str(i)

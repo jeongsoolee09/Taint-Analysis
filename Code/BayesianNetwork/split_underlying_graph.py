@@ -199,6 +199,7 @@ def main():
 
     else:                       # There are no .jar files in PROJECT_ROOT
         small_graphs = split_large_graph(graph_for_reference, 180)
+        graph_name = os.path.basename(os.path.normpath(PROJECT_ROOT_PATH))
         i = 0
         for small_graph in small_graphs:
             decycle(small_graph)

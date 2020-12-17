@@ -38,8 +38,8 @@ with open("solution_sagan.json", "r+") as saganjson:
     SOLUTION = json.load(saganjson)
 WINDOW_SIZE = 4
 
-# random loop ============================================
-# ========================================================
+# Random loop ========================================
+# ====================================================
 
 def random_loop(BN_for_inference, graph_for_reference, interaction_number,
                 current_asked, current_evidence, prev_snapshot,
@@ -55,7 +55,8 @@ def random_loop(BN_for_inference, graph_for_reference, interaction_number,
             - precision_list: accumulated precision values
             - stability_list: accumulated stability values
             - precision_inferred_list: accumulated precision values purely inferred by the BN
-            - inference_time_list: accumulated times took in belief propagation
+            - loop_time_list: accumulated times took in belief propagation
+            - window: sliding window with size 4
        Available kwargs: have_solution [True|False]: Do you have the complete solution for the benchmark?"""
 
     loop_start = time.time()
@@ -135,15 +136,16 @@ def random_loop(BN_for_inference, graph_for_reference, interaction_number,
                        current_asked, current_evidence, new_snapshot,
                        precision_list, stability_list, precision_inferred_list, loop_time_list, window)
 
-# tactical loop and its calculations ====================
+
+# tactical loop and its calculations =====================
 # ========================================================
 
 def tactical_loop(graph_for_reference, BN_for_inference, interaction_number,
                   current_asked, current_evidence, updated_nodes,
                   prev_snapshot, precision_list, stability_list,
                   precision_inferred_list, loop_time_list, window, **kwargs):
-    """The main interaction functionality (loops via recursion), asking tactically using d-separation
-       Parameters:
+    """the main interaction functionality (loops via recursion), asking tactically using d-separation
+       parameters:
             - graph_for_reference: the underlying graph.
             - interaction_number: number of interactions performed so far.
             - current_asked: names of currently asked nodes.
@@ -153,7 +155,8 @@ def tactical_loop(graph_for_reference, BN_for_inference, interaction_number,
             - precision_list: accumulated precision values
             - stability_list: accumulated stability values
             - precision_inferred_list: accumulated precision values purely inferred by the BN
-            - inference_time_list: accumulated times took in belief propagation
+            - loop_time_list: accumulated times took in belief propagation
+            - window: sliding window with size 4
        Available kwargs: have_solution [True|False]: Do you have the complete solution for the benchmark?"""
 
     loop_start = time.time()
@@ -176,7 +179,7 @@ def tactical_loop(graph_for_reference, BN_for_inference, interaction_number,
 
     # exit the function based on various termination measures.
     if there_are_no_nodes_left and not_yet_time_to_terminate:
-        if set(STATE_NAMES) == set(current_asked):
+        if set(state_names) == set(current_asked):
             print("\nWarning: some distributions are not fully determined.\n")
             if kwargs["have_solution"]:
                 draw_precision_graph(list(range(1, len(BN_for_inference.states)+1)),
@@ -188,7 +191,8 @@ def tactical_loop(graph_for_reference, BN_for_inference, interaction_number,
             return (prev_snapshot, precision_list, stability_list,
                     precision_inferred_list, loop_time_list, current_asked)
         else:
-            query, dependent_nodes = find_max_d_con([], [], remove_sublist(STATE_NAMES, current_asked))
+            query, dependent_nodes = find_max_d_con(graph_for_reference, BN_for_inference,
+                                                    [], [], remove_sublist(state_names, current_asked))
     elif there_are_no_nodes_left and its_time_to_terminate:
         if kwargs["have_solution"]:
             draw_precision_graph(list(range(1, len(BN_for_inference.states)+1)),
@@ -207,7 +211,8 @@ def tactical_loop(graph_for_reference, BN_for_inference, interaction_number,
 
     # ask the chosen method and fetch the answer from the solutions
     oracle_response = input("What label does <" + query + "> bear? [src|sin|san|non]: ")
-    updated_nodes += list(d_connected(query, current_asked, STATE_NAMES))
+    updated_nodes += list(d_connected(graph_for_reference, BN_for_inference,
+                                      query, current_asked, state_names))
 
     if oracle_response == 'src':
         current_evidence[query] = 1
@@ -273,13 +278,14 @@ def tactical_loop(graph_for_reference, BN_for_inference, interaction_number,
                          precision_inferred_list, loop_time_list, window, **kwargs)
 
 
-def d_connected(node, current_asked, pool):
+def d_connected(graph_for_reference, BN_for_inference, node, current_asked, pool):
     """현재까지 물어본 노드들이 주어졌을 때, node와 조건부 독립인 노드들의 set을 찾아낸다. Complexity: O(n)."""
     out = set()
-    for other_node in STATE_NAMES:
+    state_names = list(map(lambda node: node.name, BN_for_inference.states))
+    for other_node in state_names:
         if nx.d_separated(graph_for_reference, {node}, {other_node}, set(current_asked)):
             out.add(other_node)
-    return set(STATE_NAMES) - out
+    return set(state_names) - out
 
 
 def remove_sublist(lst, sublst):
@@ -295,9 +301,11 @@ def forall(unary_pred, collection):
     return reduce(lambda acc, elem: unary_pred(elem) and acc, collection, True)
 
 
-def find_max_d_con(current_asked, updated_nodes, list_of_all_nodes):
+def find_max_d_con(graph_for_reference, BN_for_inference, current_asked, updated_nodes, list_of_all_nodes):
+    """가장 d-connected 노드가 많은 노드를 리턴한다. 더 이상 고를 수 있는 노드가 없다면 None을 리턴한다."""
     node_dataframe = pd.DataFrame(list_of_all_nodes, columns=['nodes'])
-    mapfunc = lambda row: len(d_connected(row['nodes'], current_asked,
+    mapfunc = lambda row: len(d_connected(graph_for_reference, BN_for_inference,
+                                          row['nodes'], current_asked,
                                           list_of_all_nodes)-set(current_asked)-set(updated_nodes))
     d_con_set_len = node_dataframe.apply(mapfunc, axis=1)
     if d_con_set_len.mask(d_con_set_len == 0).dropna().empty:
@@ -321,6 +329,53 @@ def is_confident(parameters):
         return True
 
 
+def time_to_terminate(BN_for_inference, current_evidence, window, **kwargs):
+    """determine if it's time to terminate, based on different measures
+       - Available kwargs:
+           - 'plateau': terminate loop if the precision seems to be plateauing
+           - 'confidence': terminate loop if all nodes' are confidently updated"""
+    state_names = list(map(lambda node: node.name, BN_for_inference.states))
+    if kwargs['criteria'] == 'confidence':
+        # the distribution across random variables' values
+        snapshot = BN_for_inference.predict_proba(current_evidence, n_jobs=-1)
+        names_and_params = make_names_and_params(state_names, snapshot)
+        params = list(map(lambda tup: tup[1], names_and_params))
+        # list of lists of the probabilities across random variables' values, extracted from dist_dicts
+        dist_probs = list(map(lambda distobj: list(distobj.values()), params))
+        # Do all the nodes' probability lists satisfy is_confident()?
+        return reduce(lambda acc, lst: is_confident(lst) and acc, dist_probs, True)
+    elif kwargs['criteria'] == 'plateau':
+        # take a look at the contents of the window
+        acc = ()
+        for snapshot in window:
+            params = list(map(lambda tup: tup[1], snapshot))
+            names_and_labels = list(map(lambda tup: (tup[0], find_max_val(tup[1])), snapshot))
+            acc += (names_and_labels,)
+
+        a, b, c, d = acc
+
+        initial = np.ndarray([0])
+
+        all_4_are_equal = np.array_equal(a, b) and np.array_equal(b, c) and np.array_equal(c, d)
+
+        any_of_4_are_initial = np.array_equal(a, initial) or\
+            np.array_equal(b, initial) or\
+            np.array_equal(c, initial) or\
+            np.array_equal(d, initial)
+
+        there_is_a_pothole = (np.array_equal(a, c) and not np.array_equal(a, b) or\
+                              np.array_equal(a, d) and not np.array_equal(c, d)) and\
+            not np.array_equal(a, initial) and\
+            not np.array_equal(c, initial) and\
+            not np.array_equal(d, initial)
+
+        if all_4_are_equal and not any_of_4_are_initial:
+            return True
+        elif there_is_a_pothole:
+            return True
+        else:
+            return False
+
 def count_confident_nodes(snapshot):
     # the distribution across random variables' values
     names_and_params = make_names_and_params(snapshot)
@@ -333,16 +388,6 @@ def count_confident_nodes(snapshot):
         if is_confident(lst):
             acc += 1
     return acc
-
-
-def time_to_terminate(BN, current_evidence):
-    # the distribution across random variables' values
-    names_and_params = make_names_and_params(BN_for_inference.predict_proba(current_evidence, n_jobs=-1))
-    params = list(map(lambda tup: tup[1], names_and_params))
-    # list of lists of the probabilities across random variables' values, extracted from dist_dicts
-    dist_probs = list(map(lambda dist: list(dist.values()), params))
-    # Do all the nodes' probability lists satisfy is_confident()?
-    return reduce(lambda acc, lst: is_confident(lst) and acc, dist_probs, True)
 
 
 def normalize_dist(oracle_response):
@@ -370,7 +415,7 @@ def find_max_val(stats):
 
 
 # visualizing functions and their dependencies ============
-# ========================================================
+# =========================================================
 
 node_colordict = {"src": "red", "sin": "orange", "san": "yellow", "non": "green"}
 
@@ -420,90 +465,80 @@ def visualize_snapshot(snapshot, dependent_nodes):
     plt.show()
 
 
-def draw_precision_graph(x, y, **kwargs):
+def draw_precision_graph(graph_file, x, y, num_of_states, loop_type, interactive=True):
     """precision graph를 그리는 함수. NOTE: x와 y의 input 길이를 맞춰줘야 함.
        Available kwargs:
            - interactive [True|False]: Interactively show & update vs. save as png file"""
-
     plt.ion()
     precision_figure = plt.figure("Precision")
     ax = precision_figure.gca()
     ax.xaxis.set_major_locator(MaxNLocator(integer=True))
     ax.yaxis.set_major_locator(MaxNLocator(integer=True))
     precision_figure.clf()
-    num_of_states = len(STATE_NAMES)
     plt.xlim(1, num_of_states)
     plt.ylim(0, num_of_states)
     plt.xlabel('# of interactions')
     plt.ylabel('# of correct nodes')
-    plt.title("Precision development during interaction")
+    plt.title("Precision development during interaction ("+loop_type+")")
     plt.plot(x, y, 'b-')
-
-    if kwargs["interactive"]:
+    if interactive:
         precision_figure.canvas.draw()
     else:
-        if not os.path.isdir(GRAPH_FILE_NAME+"_stats"):
-            os.mkdir(GRAPH_FILE_NAME+"_stats")
-        plt.savefig(GRAPH_FILE_NAME+"_stats"+os.sep+\
-                    "precision_graph_"+NOW+"_"+kwargs["loop_type"]+".png")
+        if not os.path.isdir(graph_file+"_stats"):
+            os.mkdir(graph_file+"_stats")
+        plt.savefig(graph_file+"_stats"+os.sep+\
+                    "precision_graph_"+NOW+"_"+loop_type+".png")
     
 
-def draw_stability_graph(x, y, **kwargs):
+def draw_stability_graph(graph_file, x, y, num_of_states, loop_type, interactive=True):
     """stability graph를 그리는 함수. NOTE: x와 y의 input 길이를 맞춰줘야 함.
        Available kwargs:
            - interactive [True|False]: Interactively show & update vs. save as png file"""
-
     plt.ion()
     stability_figure = plt.figure("Stability")
     ax = stability_figure.gca()
     ax.xaxis.set_major_locator(MaxNLocator(integer=True))
     ax.yaxis.set_major_locator(MaxNLocator(integer=True))
     stability_figure.clf()
-    num_of_states = len(STATE_NAMES)
     plt.xlim(1, num_of_states)
     plt.ylim(0, num_of_states)
     plt.xlabel("# of interactions")
     plt.ylabel('# of changed nodes')
-    plt.title("Stability development during interaction")
+    plt.title("Stability development during interaction ("+loop_type+")")
     plt.plot(x, y, 'b-')
-    
-    if kwargs["interactive"]:
+    if interactive:
         stability_figure.canvas.draw()
     else:
-        if not os.path.isdir(GRAPH_FILE_NAME+"_stats"):
-            os.mkdir(GRAPH_FILE_NAME+"_stats")
-        plt.savefig(GRAPH_FILE_NAME+"_stats"+os.sep+\
-                    "stability__graph_"+NOW+"_"+kwargs["loop_type"]+".png")
+        if not os.path.isdir(graph_file+"_stats"):
+            os.mkdir(graph_file+"_stats")
+        plt.savefig(graph_file+"_stats"+os.sep+\
+                    "stability_graph_"+NOW+"_"+loop_type+".png")
 
 
-def draw_precision_inferred_graph(x, y, **kwargs):
+def draw_precision_inferred_graph(graph_file, x, y, num_of_states, loop_type, interactive=True):
     """stability graph를 그리는 함수. NOTE: x와 y의 input 길이를 맞춰줘야 함.
        Available kwargs:
            - interactive [True|False]: Interactively show & update vs. save as png file"""
-
     plt.ion()
     precision_inferred_figure = plt.figure("Inferred Precision")
     ax = precision_inferred_figure.gca()
     ax.xaxis.set_major_locator(MaxNLocator(integer=True))
     ax.yaxis.set_major_locator(MaxNLocator(integer=True))
     precision_inferred_figure.clf()
-    num_of_states = len(STATE_NAMES)
     plt.xlim(1, num_of_states)
     plt.ylim(0, num_of_states)
     plt.xlabel("# of interactions")
     plt.ylabel('# of correctly inferred nodes')
-    plt.title("Inferred precision development during interaction")
+    plt.title("Inferred precision development during interaction ("+loop_type+")")
     plt.plot(x, y, 'b-')
-    
-    if kwargs["interactive"]:
+    if interactive:
         precision_inferred_figure.canvas.draw()
     else:
-        if not os.path.isdir(GRAPH_FILE_NAME+"_stats"):
-            os.mkdir(GRAPH_FILE_NAME+"_stats")
-        plt.savefig(GRAPH_FILE_NAME+"_stats"+os.sep+\
-                    "precision_inferred_graph_"+NOW+"_"+kwargs["loop_type"]+".png")
-        
-        
+        if not os.path.isdir(graph_file+"_stats"):
+            os.mkdir(graph_file+"_stats")
+        plt.savefig(graph_file+"_stats"+os.sep+\
+                    "precision_inferred_graph_"+NOW+"_"+loop_type+".png")
+
 
 def create_node_colormap(names_and_labels):
     """BN을 기준으로 계산된 names_and_labels를 받아서 graph_for_reference를 기준으로 한 colormap을 만든다."""
@@ -528,75 +563,71 @@ def create_edge_colormap():
     return out
 
 
-def make_names_and_params(snapshot):
+def make_names_and_params(state_names, snapshot):
     """snapshot을 읽어서, 랜덤변수 별 확률값의 dict인 parameters만을 빼낸 다음 node의 이름과 짝지어서 list에 담아 낸다."""
-    dists = []
-    node_name_list = list(STATE_NAMES)
-    for dist in snapshot:
-        if type(dist) == int:  # oracle에 의해 고정된 경우!
-            dists.append(normalize_dist(dist))
+    distobjs = []
+    for distobj in snapshot:
+        if type(distobj) == int or type(distobj) == float:  # oracle에 의해 고정된 경우!
+            distobjs.append(normalize_dist(distobj))
         else:
-            dists.append(dist.parameters[0])
-    names_and_params = list(zip(node_name_list, dists))
+            distobjs.append(distobj.parameters[0])
+    names_and_params = list(zip(state_names, distobjs))
     return names_and_params
 
 
-def report_results(initial_snapshot, final_snapshot):
-    names_and_dists_initial = make_names_and_params(initial_snapshot)
+def report_results(state_names, initial_snapshot, final_snapshot):
+    names_and_dists_initial = make_names_and_params(state_names, initial_snapshot)
     names_and_labels_initial = list(map(lambda tup: (tup[0], find_max_val(tup[1])), names_and_dists_initial))
 
-    names_and_dists_final = make_names_and_params(final_snapshot)
+    names_and_dists_final = make_names_and_params(state_names, final_snapshot)
     names_and_labels_final = list(map(lambda tup: (tup[0], find_max_val(tup[1])), names_and_dists_final))
-    
-    changed_mesg = []
+
     for tup1, tup2 in zip(names_and_labels_initial, names_and_labels_final):
         # if the label has changed after interaction
         if tup1[1] != tup2[1]:
             print(tup1[0]+" is updated from "+tup1[1]+" to "+tup2[1])
 
 
-def save_data_as_csv(final_snapshot):
+def save_data_as_csv(state_names, final_snapshot):
     """inference가 다 끝난 label들을 csv로 저장한다."""
-    names_and_dists_final = make_names_and_params(final_snapshot)
+    names_and_dists_final = make_names_and_params(state_names, final_snapshot)
     names_and_labels_final = list(map(lambda tup: (tup[0], find_max_val(tup[1])), names_and_dists_final))
     out_df = pd.DataFrame(names_and_labels_final, columns=["name", "label"])
     out_df.to_csv("inferred.csv", mode='w')
-        
+
 
 def report_meta_statistics(graph_for_reference, BN_for_inference):
     """meta-functionality for debugging"""
     print("# of nodes: ", len(list(BN_for_inference.states)))
     print("# of edges: ", len(list(BN_for_inference.edges)))
-    nodes = list(STATE_NAMES)
-    max_num_of_in_edges = max(list(map(lambda node: graph_for_reference.in_edges(nbunch=node), nodes)))
-    max_num_of_out_edges = max(list(map(lambda node: graph_for_reference.out_edges(nbunch=node), nodes)))
+
+    state_names = list(map(lambda node: node.name, BN_for_inference.states))
+    max_num_of_in_edges = max(list(map(lambda node: graph_for_reference.in_edges(nbunch=node), state_names)))
+    max_num_of_out_edges = max(list(map(lambda node: graph_for_reference.out_edges(nbunch=node), state_names)))
     print("maximum # of in-edges:", max_num_of_in_edges)
     print("maximum # of out-edges:", max_num_of_out_edges)
     print("elapsed time: ", time.time() - start)
 
 
 # Methods for calculating graph values ====================
-# ========================================================
+# =========================================================
 
-def calculate_precision(current_snapshot):
+def calculate_precision(state_names, current_snapshot):
     """현재 확률분포 스냅샷의 정확도를 측정한다."""
     # current_snapshot의 타입은? np.array of Distribution.
-    names_and_params = make_names_and_params(current_snapshot)
-    names_and_labels = dict(map(lambda tup: (tup[0], find_max_val(tup[1])), names_and_params))
+    names_and_labels = dict(map(lambda tup: (tup[0], find_max_val(tup[1])), current_snapshot))
     correct_nodes = []
-    for node_name in STATE_NAMES:
+    for node_name in state_names:
         if names_and_labels[node_name] == SOLUTION[node_name]:
             correct_nodes.append(node_name)
     return len(correct_nodes)
 
 
-def calculate_stability(prev_snapshot, current_snapshot):
+def calculate_stability(state_names, prev_snapshot, current_snapshot):
     """직전 확률분포 스냅샷에 대한 현재 확률분포 스냅샷의 stability를 측정한다.
        stability: time t에서의 stability: time (t-1)에서의 스냅샷과 비교했을 때 time t에서의 스냅샷에서 레이블이 달라진 노드의 개수."""
-    names_and_dists_prev = make_names_and_params(prev_snapshot)
-    names_and_labels_prev = dict(map(lambda tup: (tup[0], find_max_val(tup[1])), names_and_dists_prev))
-    names_and_dists_current = make_names_and_params(current_snapshot)
-    names_and_labels_current = dict(map(lambda tup: (tup[0], find_max_val(tup[1])), names_and_dists_current))
+    names_and_labels_prev = dict(map(lambda tup: (tup[0], find_max_val(tup[1])), prev_snapshot))
+    names_and_labels_current = dict(map(lambda tup: (tup[0], find_max_val(tup[1])), current_snapshot))
     changed_nodes = []
     for node_name in names_and_labels_current.keys():
         if names_and_labels_prev[node_name] != names_and_labels_current[node_name]:
@@ -604,13 +635,12 @@ def calculate_stability(prev_snapshot, current_snapshot):
     return len(changed_nodes)
 
 
-def calculate_precision_inferred(current_snapshot, number_of_interaction):
+def calculate_precision_inferred(state_names, current_snapshot, number_of_interaction):
     """현재 확률분포 스냅샷을 보고, BN이 순수하게 infer한 것들 중에 맞힌 레이블의 개수를 구한다."""
-    # current_snapshot의 타입은? np.array of Distribution.
-    names_and_params = make_names_and_params(current_snapshot)
-    names_and_labels = dict(map(lambda tup: (tup[0], find_max_val(tup[1])), names_and_params))
+    # current_snapshot의 타입은? np.ndarray of Distribution.
+    names_and_labels = dict(map(lambda tup: (tup[0], find_max_val(tup[1])), current_snapshot))
     correct_nodes = []
-    for node_name in STATE_NAMES:
+    for node_name in state_names:
         if names_and_labels[node_name] == SOLUTION[node_name]:
             correct_nodes.append(node_name)
     return len(correct_nodes) - number_of_interaction
@@ -692,12 +722,12 @@ def test_drive():
     return acc
 
 
-def one_pass(graph_for_reference, lessons, prev_graph_states, prev_graph_file, **kwargs):
+def one_pass(graph_file, graph_for_reference, lessons, prev_graph_states, prev_graph_file, **kwargs):
     """하나의 그래프에 대해 BN을 굽고 interaction을 진행한다."""
-    if kwargs["filename"]:
-        BN_for_inference = make_BN.main(graph_for_reference, filename=kwargs["filename"])
+    if kwargs["filename"] and kwargs['stash_poor']:
+        BN_for_inference = make_BN.main(graph_for_reference, filename=kwargs["filename"], stash_poor=True)
     else:
-        BN_for_inference = make_BN.main(graph_for_reference)
+        BN_for_inference = make_BN.main(graph_for_reference, filename=None, stash_poor=False)
     state_names = list(map(lambda node: node.name, BN_for_inference.states))
 
     learned_evidence = transfer_knowledge.main(prev_graph_states, state_names, lessons)
@@ -720,6 +750,7 @@ def one_pass(graph_for_reference, lessons, prev_graph_states, prev_graph_file, *
     loop_time_list, final_snapshot, current_asked =\
         single_loop(graph_file, graph_for_reference,
                     BN_for_inference, learned_evidence, loop_type="tactical")
+
     lessons = transfer_knowledge.learn(lessons, final_snapshot, current_asked)  # update the lessons
     prev_graph_file = graph_file
     prev_graph_states = state_names
@@ -738,16 +769,21 @@ def main():
     for graph_file in graph_files:
         graph_for_reference = nx.read_gpickle(graph_file)
         lessons, prev_graph_states, prev_graph_file =\
-            one_pass(graph_for_reference, lessons,
-                     prev_graph_states, prev_graph_file, debug=True, filename=graph_file)
+            one_pass(graph_file, graph_for_reference, lessons,
+                     prev_graph_states, prev_graph_file, debug=True, filename=graph_file, stash_poor=True)
 
     # 위에서 BN으로 만들면서 버려진 노드들을 모아 만든 그래프를 가지고 또 interaction하고
+    print("\n ==== Now making and interacting with recycled graphs. ====\n")
     recycled_graphs = deal_with_poor_nodes.main()
+
+    print("made", len(recycled_graphs), "recycled graphs")
+    
     i = 0
-    for recycled_graph in recycled_graph:
+    for recycled_graph in recycled_graphs:
+        graph_file = "poor_" + str(i)
         lessons, prev_graph_states, prev_graph_file =\
-            one_pass(recycleed_graph, lessons,
-                     prev_graph_states, prev_graph_file, debug=True)
+            one_pass(graph_file, recycled_graph, lessons,
+                     prev_graph_states, prev_graph_file, debug=True, filename=None, stash_poor=False)
         i += 1
 
 if __name__ == "__main__":

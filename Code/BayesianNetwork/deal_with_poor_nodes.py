@@ -14,7 +14,6 @@ def find_poor_node_files():
 # ==================================================
 
 
-POOR_NODE_FILES = find_poor_node_files()
 DF_EDGES = pd.read_csv("df.csv", index_col=0)
 CALL_EDGES = pd.read_csv("callg.csv", index_col=0)
 SIM_EDGES = pd.read_csv("sim.csv", index_col=0)
@@ -139,6 +138,7 @@ def merge_two_graphs(graph1, graph2):
 
 def main():
     print("Loading poor graphs...")
+    POOR_NODE_FILES = find_poor_node_files()
     raw_graphs = []
     for poor_node_file in POOR_NODE_FILES:
         G = create_graph_without_edges(poor_node_file)

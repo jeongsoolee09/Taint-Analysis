@@ -6,6 +6,7 @@ import os.path
 import random
 import time
 import glob
+import argparse
 
 import make_BN
 import matplotlib.axes as axes
@@ -26,16 +27,24 @@ from pomegranate import *
 from scrape_oracle_docs import *
 from toolz import valmap
 
+parser = argparse.ArgumentParser()
+parser.add_argument("solution_file", help="path to the solution file. input 'None' if you don't have any.",
+                    type=str)
+args = parser.parse_args()
 
 # Constants ========================================
 # ==================================================
 
 NOW = datetime.now().strftime("%Y-%m-%d-%H:%M:%S")
-
 DF_EDGES = list(df_reader)
 CALL_EDGES = list(call_reader)
-with open("solution_sagan.json", "r+") as saganjson:
-    SOLUTION = json.load(saganjson)
+
+if args.solution_file != "None":
+    with open("solution_sagan.json", "r+") as saganjson:
+        SOLUTION = json.load(saganjson)
+else:
+    SOLUTION = None
+
 WINDOW_SIZE = 4
 
 # Random loop ========================================
@@ -558,26 +567,6 @@ def single_loop(graph_file, graph_for_reference, BN_for_inference, learned_evide
     return loop_time_list, final_snapshot, current_asked
 
 
-def test_drive_single(graph):
-    """KeyError를 쥐잡듯이 잡아버리자"""
-    acc = []
-    state_names = list(graph.nodes)
-    for node_name in state_names:
-        if node_name not in SOLUTION:
-            acc.append(node_name)
-    return acc
-
-
-def test_drive():
-    graph_files = find_pickled_graphs()
-    acc = []
-    for graph_file in graph_files:
-        graph = nx.read_gpickle(graph_file)
-        ret = test_drive_single(graph)
-        acc += ret
-    return acc
-
-
 def one_pass(graph_file, graph_for_reference, lessons, prev_graph_states, prev_graph_file, **kwargs):
     """하나의 그래프에 대해 BN을 굽고 interaction을 진행한다."""
     if kwargs["filename"] and kwargs['stash_poor']:
@@ -627,10 +616,6 @@ def main():
         lessons, prev_graph_states, prev_graph_file =\
             one_pass(graph_file, graph_for_reference, lessons,
                      prev_graph_states, prev_graph_file, debug=True, filename=graph_file, stash_poor=True)
-
-    # lessons = {}                # TEMP
-    # prev_graph_states = None    # TEMP
-    # prev_graph_file = None      # TEMP
 
     # 위에서 BN으로 만들면서 버려진 노드들을 모아 만든 그래프를 가지고 또 interaction하고
     print("\n ==== Now making and interacting with recycled graphs. ====\n")

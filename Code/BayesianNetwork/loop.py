@@ -52,7 +52,8 @@ WINDOW_SIZE = 4
 
 def random_loop(BN_for_inference, graph_for_reference, interaction_number,
                 current_asked, current_evidence, prev_snapshot,
-                precision_list, stability_list, precision_inferred_list, loop_time_list, window):
+                precision_list, stability_list, precision_inferred_list,
+                loop_time_list, window, graph_file):
     """The main interaction functionality, asking randomly
        Parameters:
             - BN_for_inference: the Bayesian Network.
@@ -71,6 +72,7 @@ def random_loop(BN_for_inference, graph_for_reference, interaction_number,
 
     random_index = random.randint(0, len(BN_for_inference.states)-1)
     state_names = list(map(lambda node: node.name, BN_for_inference.states))
+    num_of_states = len(state_names)
     query = state_names[random_index]
     while query in current_asked:
         random_index = random.randint(0, len(BN_for_inference.states)-1)
@@ -94,12 +96,12 @@ def random_loop(BN_for_inference, graph_for_reference, interaction_number,
         current_evidence[query] = 4
     elif oracle_response == 'exit':
         if not kwargs["have_solution"]:
-            draw_precision_graph(list(range(1, len(BN_for_inference.states)+1)),
-                                 precision_list, interactive=False, loop_type="random")
-            draw_stability_graph(list(range(1, len(BN_for_inference.states)+1)),
-                                 stability_list, interactive=False, loop_type="random")
-            draw_precision_inferred_graph(list(range(1, len(BN_for_inference.states)+1)),
-                                          stability_list, interactive=False, loop_type="random")
+            draw_precision_graph(graph_file, list(range(1, len(BN_for_inference.states)+1)),
+                                 precision_list, num_of_states, "random", interactive=False)
+            draw_stability_graph(graph_file, list(range(1, len(BN_for_inference.states)+1)),
+                                 stability_list, num_of_states, "random", interactive=False)
+            draw_precision_inferred_graph(graph_file, list(range(1, len(BN_for_inference.states)+1)),
+                                          precision_inferred_list, num_of_states, "random", interactive=False)
         return prev_snapshot, precision_list, stability_list, precision_inferred_list
 
     current_asked.append(query)
@@ -130,18 +132,19 @@ def random_loop(BN_for_inference, graph_for_reference, interaction_number,
 
     # visualize the current status if necessary
     if SOLUTION:
-        visualize_snapshot(new_snapshot, [])
-        draw_precision_graph(list(range(1, len(BN_for_inference.states)+1)),
-                             precision_list, interactive=True, loop_type="random")
-        draw_stability_graph(list(range(1, len(BN_for_inference.states)+1)),
-                             stability_list, interactive=True, loop_type="random")
-        draw_precision_inferred_graph(list(range(1, len(BN_for_inference.states)+1)),
-                                      stability_listinteractive=True, loop_type="random")
+        visualize_snapshot(state_names, graph_for_reference, new_snapshot, [])
+        draw_precision_graph(graph_file, list(range(1, len(BN_for_inference.states)+1)),
+                             precision_list, num_of_states, "random", interactive=True)
+        draw_stability_graph(graph_file, list(range(1, len(BN_for_inference.states)+1)),
+                             stability_list, num_of_states, "random", interactive=True,)
+        draw_precision_inferred_graph(graph_file, list(range(1, len(BN_for_inference.states)+1)),
+                                      precision_inferred_list, num_of_states, "random", interactive=True)
 
     # loop!
     return random_loop(BN_for_inference, graph_for_reference, interaction_number+1,
                        current_asked, current_evidence, new_snapshot,
-                       precision_list, stability_list, precision_inferred_list, loop_time_list, window)
+                       precision_list, stability_list, precision_inferred_list,
+                       loop_time_list, window, graph_file)
 
 
 # tactical loop and its calculations =====================
@@ -150,7 +153,7 @@ def random_loop(BN_for_inference, graph_for_reference, interaction_number,
 def tactical_loop(graph_for_reference, BN_for_inference, interaction_number,
                   current_asked, current_evidence, updated_nodes,
                   prev_snapshot, precision_list, stability_list,
-                  precision_inferred_list, loop_time_list, window):
+                  precision_inferred_list, loop_time_list, window, graph_file):
     """the main interaction functionality (loops via recursion), asking tactically using d-separation
        parameters:
             - graph_for_reference: the underlying graph.
@@ -168,6 +171,7 @@ def tactical_loop(graph_for_reference, BN_for_inference, interaction_number,
     loop_start = time.time()
 
     state_names = list(map(lambda node: node.name, BN_for_inference.states))
+    num_of_states = len(state_names)
 
     # some variables to make our code resemble English
     there_are_nodes_left = find_max_d_con(graph_for_reference, BN_for_inference, current_asked, updated_nodes, state_names)
@@ -188,12 +192,12 @@ def tactical_loop(graph_for_reference, BN_for_inference, interaction_number,
         if set(state_names) == set(current_asked):
             print("\nWarning: some distributions are not fully determined.\n")
             if SOLUTION:
-                draw_precision_graph(list(range(1, len(BN_for_inference.states)+1)),
-                                     precision_list, interactive=False, loop_type="tactical")
-                draw_stability_graph(list(range(1, len(BN_for_inference.states)+1)),
-                                     stability_list, interactive=False, loop_type="tactical")
-                draw_precision_inferred_graph(list(range(1, len(BN_for_inference.states)+1)),
-                                              stability_list, interactive=False, loop_type="tactical")
+                draw_precision_graph(graph_file, list(range(1, len(BN_for_inference.states)+1)),
+                                     precision_list, num_of_states, "tactical", interactive=False)
+                draw_stability_graph(graph_file, list(range(1, len(BN_for_inference.states)+1)),
+                                     stability_list, num_of_states, "tactical", interactive=False)
+                draw_precision_inferred_graph(graph_file, list(range(1, len(BN_for_inference.states)+1)),
+                                              precision_inferred_list, num_of_states, "tactical", interactive=False)
             return (prev_snapshot, precision_list, stability_list,
                     precision_inferred_list, loop_time_list, current_asked)
         else:
@@ -201,12 +205,12 @@ def tactical_loop(graph_for_reference, BN_for_inference, interaction_number,
                                                     [], [], remove_sublist(state_names, current_asked))
     elif there_are_no_nodes_left and its_time_to_terminate:
         if SOLUTION:
-            draw_precision_graph(list(range(1, len(BN_for_inference.states)+1)),
-                                 precision_list, interactive=False, loop_type="tactical")
-            draw_stability_graph(list(range(1, len(BN_for_inference.states)+1)),
-                                 stability_list, interactive=False, loop_type="tactical")
-            draw_precision_inferred_graph(list(range(1, len(BN_for_inference.states)+1)),
-                                          stability_list, interactive=False, loop_type="tactical")
+            draw_precision_graph(graph_file, list(range(1, len(BN_for_inference.states)+1)),
+                                 precision_list, num_of_states, "tactical", interactive=False)
+            draw_stability_graph(graph_file, list(range(1, len(BN_for_inference.states)+1)),
+                                 stability_list, num_of_states, "tactical", interactive=False)
+            draw_precision_inferred_graph(graph_file, list(range(1, len(BN_for_inference.states)+1)),
+                                          precision_inferred_list, num_of_states, "tactical", interactive=False)
         return (prev_snapshot, precision_list, stability_list,
                 precision_inferred_list, loop_time_list, current_asked)
     elif there_are_nodes_left and not_yet_time_to_terminate:
@@ -229,13 +233,14 @@ def tactical_loop(graph_for_reference, BN_for_inference, interaction_number,
     elif oracle_response == 'non':
         current_evidence[query] = 4
     elif oracle_response == 'exit':
-        draw_precision_graph(list(range(1, len(BN_for_inference.states)+1)),
-                             precision_list, interactive=False, loop_type="tactical")
-        draw_stability_graph(list(range(1, len(BN_for_inference.states)+1)),
-                             stability_list, interactive=False, loop_type="tactical")
-        draw_precision_inferred_graph(list(range(1, len(BN_for_inference.states)+1)),
-                                      stability_list, interactive=False, loop_type="tactical")
-        return prev_snapshot, precision_list, stability_list, precision_inferred_list
+        draw_precision_graph(graph_file, list(range(1, len(BN_for_inference.states)+1)),
+                             precision_list, num_of_states, "tactical", interactive=False)
+        draw_stability_graph(graph_file, list(range(1, len(BN_for_inference.states)+1)),
+                             stability_list, num_of_states, "tactical", interactive=False)
+        draw_precision_inferred_graph(graph_file, list(range(1, len(BN_for_inference.states)+1)),
+                                      precision_inferred_list, num_of_states, "tactical", interactive=False)
+        return (prev_snapshot, precision_list, stability_list,
+                precision_inferred_list, loop_time_list, current_asked)
 
     current_asked.append(query)
 
@@ -263,24 +268,21 @@ def tactical_loop(graph_for_reference, BN_for_inference, interaction_number,
     # record this loop's looping time
     loop_time_list.append(time.time()-loop_start)
 
-    # print the number of confident nodes
-    print("# of confident nodes: ", count_confident_nodes(new_snapshot))
-
     # visualize the current status if necessary
     if SOLUTION:
-        visualize_snapshot(new_snapshot, [])
-        draw_precision_graph(list(range(1, len(BN_for_inference.states)+1)),
-                             precision_list, interactive=True, loop_type="tactical")
-        draw_stability_graph(list(range(1, len(BN_for_inference.states)+1)),
-                             stability_list, interactive=True, loop_type="tactical")
-        draw_precision_inferred_graph(list(range(1, len(BN_for_inference.states)+1)),
-                                      stability_list, interactive=True, loop_type="tactical")
+        visualize_snapshot(state_names, graph_for_reference, new_snapshot, [])
+        draw_precision_graph(graph_file, list(range(1, len(BN_for_inference.states)+1)),
+                             precision_list, num_of_states, "tactical", interactive=True)
+        draw_stability_graph(graph_file, list(range(1, len(BN_for_inference.states)+1)),
+                             stability_list, num_of_states, "tactical", interactive=True)
+        draw_precision_inferred_graph(graph_file, list(range(1, len(BN_for_inference.states)+1)),
+                                      precision_inferred_list, num_of_states, "tactical", interactive=True)
 
     # loop!
     return tactical_loop(graph_for_reference, BN_for_inference, interaction_number+1,
                          current_asked, current_evidence, updated_nodes,
                          new_snapshot, precision_list, stability_list,
-                         precision_inferred_list, loop_time_list, window)
+                         precision_inferred_list, loop_time_list, window, graph_file)
 
 
 def d_connected(graph_for_reference, BN_for_inference, node, current_asked, pool):
@@ -382,9 +384,9 @@ def time_to_terminate(BN_for_inference, current_evidence, window, **kwargs):
             return False
 
 
-def count_confident_nodes(snapshot):
+def count_confident_nodes(state_names, snapshot):
     # the distribution across random variables' values
-    names_and_params = make_names_and_params(snapshot)
+    names_and_params = make_names_and_params(state_names, snapshot)
     params = list(map(lambda tup: tup[1], names_and_params))
     # list of lists of the probabilities across random variables' values, extracted from dist_dicts
     dist_probs = list(map(lambda dist: list(dist.values()), params))
@@ -425,17 +427,16 @@ def find_max_val(stats):
 
 node_colordict = {"src": "red", "sin": "orange", "san": "yellow", "non": "green"}
 
-def visualize_snapshot(snapshot, dependent_nodes):
+def visualize_snapshot(state_names, graph_for_reference, snapshot, dependent_nodes):
     """한번 iteration 돌 때마다, 전체 BN의 snapshot을 가시화한다. 이 때, confident node들 위에는 `conf`라는 문구를 띄운다."""
     network_figure = plt.figure("Bayesian Network", figsize=(30, 15))
     network_figure.clf()
     plt.ion()
     ax = network_figure.add_subplot()
-    names_and_params = make_names_and_params(snapshot)
-    params = list(map(lambda tup: tup[1], names_and_params))
-    names_and_labels = list(map(lambda tup: (tup[0], find_max_val(tup[1])), names_and_params))
-    node_colormap = create_node_colormap(names_and_labels)
-    edge_colormap = create_edge_colormap()
+    params = list(map(lambda tup: tup[1], snapshot))
+    names_and_labels = list(map(lambda tup: (tup[0], find_max_val(tup[1])), snapshot))
+    node_colormap = create_node_colormap(state_names, names_and_labels)
+    edge_colormap = create_edge_colormap(graph_for_reference)
 
     node_posmap = nx.circular_layout(graph_for_reference)
 
@@ -444,7 +445,7 @@ def visualize_snapshot(snapshot, dependent_nodes):
     for i, param in enumerate(params):
         if is_confident(param):
             confident_node_indices.append(i)
-    confident_nodes = list(map(lambda index: names_and_params[index][0], confident_node_indices))
+    confident_nodes = list(map(lambda index: snapshot[index][0], confident_node_indices))
     for confident_node in confident_nodes:
         x, y = node_posmap[confident_node]
         plt.text(x, y+0.1, s='conf', bbox=dict(facecolor='blue', alpha=0.5), horizontalalignment='center')
@@ -459,7 +460,7 @@ def visualize_snapshot(snapshot, dependent_nodes):
 
     # graph_for_reference의 G에서 lost node를 차집합
     for node_name in list(graph_for_reference.nodes):
-        if node_name not in STATE_NAMES:
+        if node_name not in state_names:
             graph_for_reference.remove_node(node_name)
 
     nx.draw(graph_for_reference,
@@ -546,16 +547,31 @@ def draw_precision_inferred_graph(graph_file, x, y, num_of_states, loop_type, in
                     "precision_inferred_graph_"+NOW+"_"+loop_type+".png")
 
 
-def create_node_colormap(names_and_labels):
+def draw_n_save(graph_file, BN_for_inference, precision_list, stability_list, precision_inferred_list, **kwargs):
+    """available kwargs: random, tactical"""
+    interaction_number = len(precision_list)
+
+    state_names = list(map(lambda node: node.name, BN_for_inference.states))
+    num_of_states = len(state_names)
+
+    draw_precision_graph(graph_file, range(interaction_number),
+                         precision_list, num_of_states, kwargs["loop_type"])
+    draw_stability_graph(graph_file, range(interaction_number),
+                         stability_list, num_of_states, kwargs["loop_type"])
+    draw_precision_inferred_graph(graph_file, range(interaction_number),
+                                  precision_inferred_list, num_of_states, kwargs["loop_type"])
+
+
+def create_node_colormap(state_names, names_and_labels):
     """BN을 기준으로 계산된 names_and_labels를 받아서 graph_for_reference를 기준으로 한 colormap을 만든다."""
-    out = list(STATE_NAMES)[:]
+    out = list(state_names)[:]
     for name, label in names_and_labels:
         index = out.index(name)
         out[index] = node_colordict[label]
     return out
 
 
-def create_edge_colormap():
+def create_edge_colormap(graph_for_reference):
     """엣지 목록을 받아서, 엣지의 종류에 따라 graph_for_reference를 그릴 때 엣지의 색깔을 달리한다."""
     out = list(graph_for_reference.edges)[:]
     for edge in out:
@@ -692,7 +708,7 @@ def single_loop(graph_file, graph_for_reference, BN_for_inference, learned_evide
             random_loop(BN_for_inference, graph_for_reference, 0,
                         initial_asked, learned_evidence, initial_snapshot,
                         initial_precision_list, initial_stability_list,
-                        initial_precision_inferred_list, list(), list())
+                        initial_precision_inferred_list, list(), list(), graph_file)
         draw_n_save(graph_file, precision_list, stability_list, initial_precision_inferred_list, loop_type='random')
 
     # tactical loop
@@ -701,31 +717,11 @@ def single_loop(graph_file, graph_for_reference, BN_for_inference, learned_evide
             tactical_loop(graph_for_reference, BN_for_inference, 0,
                           initial_asked, learned_evidence, initial_updated_nodes,
                           initial_snapshot, initial_precision_list, initial_stability_list,
-                          initial_precision_inferred_list, list(), initial_window)
+                          initial_precision_inferred_list, list(), initial_window, graph_file)
         draw_n_save(graph_file, BN_for_inference, precision_list, stability_list,
                     precision_inferred_list, loop_type='tactical')
 
     return loop_time_list, final_snapshot, current_asked
-
-
-def test_drive_single(graph):
-    """KeyError를 쥐잡듯이 잡아버리자"""
-    acc = []
-    state_names = list(graph.nodes)
-    for node_name in state_names:
-        if node_name not in SOLUTION:
-            acc.append(node_name)
-    return acc
-
-
-def test_drive():
-    graph_files = find_pickled_graphs()
-    acc = []
-    for graph_file in graph_files:
-        graph = nx.read_gpickle(graph_file)
-        ret = test_drive_single(graph)
-        acc += ret
-    return acc
 
 
 def one_pass(graph_file, graph_for_reference, lessons, prev_graph_states, prev_graph_file, **kwargs):

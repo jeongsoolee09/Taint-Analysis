@@ -29,7 +29,7 @@ from toolz import valmap
 
 parser = argparse.ArgumentParser()
 parser.add_argument("solution_file", help="path to the solution file. input 'None' if you don't have any.",
-                    type=string)
+                    type=str)
 args = parser.parse_args()
 
 # Constants ========================================

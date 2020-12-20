@@ -84,7 +84,7 @@ def no_reflexive(dataframe):
 def add_sim_edges(G):
     mapfunc = lambda row: row['id1'] in G.nodes and row['id2'] in G.nodes
 
-    print("adding sim_edges...")
+    # print("adding sim_edges...")
 
     # making dataframe non-reflexive and non-symmetric
     SIM_EDGES_pandas = SIM_EDGES._to_pandas()
@@ -137,16 +137,16 @@ def merge_two_graphs(graph1, graph2):
 
 
 def main():
-    print("Loading poor graphs...")
+    # print("Loading poor graphs...")
     POOR_NODE_FILES = find_poor_node_files()
     raw_graphs = []
     for poor_node_file in POOR_NODE_FILES:
         G = create_graph_without_edges(poor_node_file)
         raw_graphs.append(G)
     pairedup_graphs = pairup_elems(raw_graphs)
-    print("Loading poor graphs...done")
+    # print("Loading poor graphs...done")
 
-    print("Merging graph pairs...")
+    # print("Merging graph pairs...")
     merged_graphs = []
     for elem in pairedup_graphs:
         if type(elem) == tuple:  # 두 개를 merge함
@@ -154,13 +154,13 @@ def main():
             merged_graphs.append(G)
         else:                    # merge하지 않음
             merged_graphs.append(elem)
-    print("Merging graph pairs...done")
+    # print("Merging graph pairs...done")
 
-    print("creating recycled graphs...")
+    # print("creating recycled graphs...")
     complete_graphs = []
     for graph in merged_graphs:
         G = create_single_graph(graph)  # BOTTLENECK
         complete_graphs.append(G)
-    print("creating recycled graphs...done")
+    # print("creating recycled graphs...done")
 
     return complete_graphs

@@ -47,7 +47,7 @@ else:
 
 WINDOW_SIZE = 4
 GLOBAL_GRAPH = nx.read_gpickle("graph_for_reference")
-TOTAL_NUM_OF_METHS = GLOBAL_GRAPH.num_of_nodes()
+TOTAL_NUM_OF_METHS = GLOBAL_GRAPH.number_of_nodes()
 
 # Random loop ========================================
 # ====================================================
@@ -121,7 +121,7 @@ def random_loop(global_precision_list, snapshot_dict, graph_for_reference, BN_fo
     precision_inferred_list[interaction_number] = current_precision_inferred
 
     # slide the window
-    window = window[1:]     # dequeue the oldest one
+    window = window[1:]          # dequeue the oldest one
     window.append(new_snapshot)  # and enqueue the newest one
 
     print(interaction_number, ":", (current_precision/len(state_names))*100, "%")
@@ -160,7 +160,8 @@ def tactical_loop(global_precision_list, snapshot_dict, graph_for_reference, BN_
     state_names = list(map(lambda node: node.name, BN_for_inference.states))
 
     # some variables to make our code resemble English
-    there_are_nodes_left = find_max_d_con(graph_for_reference, BN_for_inference, current_asked, updated_nodes, state_names)
+    there_are_nodes_left = find_max_d_con(graph_for_reference, BN_for_inference, current_asked,
+                                          updated_nodes, state_names)
     there_are_no_nodes_left = not there_are_nodes_left
     its_time_to_terminate = time_to_terminate(BN_for_inference, current_evidence, window, criteria='plateau')
     not_yet_time_to_terminate = not its_time_to_terminate
@@ -234,6 +235,8 @@ def tactical_loop(global_precision_list, snapshot_dict, graph_for_reference, BN_
     # slide the window
     window = window[1:]          # dequeue the oldest one
     window.append(new_snapshot)  # and enqueue the newest one
+
+    print(interaction_number, ":", (current_precision/len(state_names))*100, "%")
 
     # record this loop's looping time
     loop_time_list.append(time.time()-loop_start)
@@ -426,11 +429,11 @@ def draw_stability_graph(graph_file, x, y, num_of_states, loop_type):
 
 def draw_precision_inferred_graph(graph_file, x, y, num_of_states, loop_type):
     """순수하게 BN이 추론해서 맞춘 노드의 개수에 대한 그래프를 그리는 함수."""
-    stability_figure = plt.figure("Inferred Precision")
-    ax = stability_figure.gca()
+    precision_inferred_figure = plt.figure("Inferred Precision")
+    ax = precision_inferred_figure.gca()
     ax.xaxis.set_major_locator(MaxNLocator(integer=True))
     ax.yaxis.set_major_locator(MaxNLocator(integer=True))
-    stability_figure.clf()
+    precision_inferred_figure.clf()
     plt.xlim(1, num_of_states)
     plt.ylim(0, num_of_states)
     plt.xlabel("# of interactions")
@@ -534,8 +537,9 @@ def find_pickled_graphs():
 # main ====================================================
 # =========================================================
 
-def single_loop(graph_file, graph_for_reference, BN_for_inference, learned_evidence, **kwargs):
-    """do a single loop on a given graph file
+def single_loop(snapshot_dict, graph_file, graph_for_reference,
+                BN_for_inference, learned_evidence, **kwargs):
+    """do a random or tactical loop on a given graph file
        - Available kwargs:
          - loop_type ([random|tactical]): whether we should use random/tactical loop for looping."""
 
@@ -562,7 +566,7 @@ def single_loop(graph_file, graph_for_reference, BN_for_inference, learned_evide
     if kwargs["loop_type"] == "random":
         (final_snapshot, precision_list, stability_list,
          precision_inferred_list, current_asked, global_precisions) =\
-            random_loop([], BN_for_inference, graph_for_reference, 0,
+            random_loop([], snapshot_dict, BN_for_inference, graph_for_reference, 0,
                         initial_asked, learned_evidence, initial_snapshot,
                         initial_precision_list, initial_stability_list,
                         initial_precision_inferred_list, list(), list(), graph_file)
@@ -574,18 +578,18 @@ def single_loop(graph_file, graph_for_reference, BN_for_inference, learned_evide
         (final_snapshot, precision_list, stability_list,
          precision_inferred_list, loop_time_list, current_asked,
          global_precisions) =\
-            tactical_loop([], graph_for_reference, BN_for_inference, 0,
-                          initial_asked, learned_evidence, initial_updated_nodes,
+            tactical_loop([], snapshot_dict, graph_for_reference, BN_for_inference,
+                          0, initial_asked, learned_evidence, initial_updated_nodes,
                           initial_snapshot, initial_precision_list, initial_stability_list,
-                          initial_precision_inferred_list, list(), initial_window, graph_file)
+                          initial_precision_inferred_list, [], initial_window, graph_file)
 
         draw_n_save(graph_file, BN_for_inference, precision_list, stability_list,
                     precision_inferred_list, loop_type='tactical')
 
-    return loop_time_list, final_snapshot, current_asked, global_precision_list
+    return loop_time_list, final_snapshot, current_asked, global_precisions
 
 
-def one_pass(snapshot_dict, graph_file, graph_for_reference, lessons,
+def one_pass(snapshot_dict, graph_file, graph_for_reference, BN_for_inference, lessons,
              prev_graph_states, prev_graph_file, debug=False):
     """하나의 그래프에 대해 BN을 굽고 interaction을 진행한다."""
     state_names = list(map(lambda node: node.name, BN_for_inference.states))
@@ -617,7 +621,7 @@ def one_pass(snapshot_dict, graph_file, graph_for_reference, lessons,
 def evaluate_global_precision(snapshot_dict):
     num_of_correct_nodes = 0
     for _, snapshot in snapshot_dict.items():
-        state_names = list(map(lambda node: node.name, BN_for_inference.states))
+        state_names = list(map(lambda tup: tup[0], snapshot))
         num_of_correct_nodes += calculate_precision(state_names, snapshot)
     return (num_of_correct_nodes/TOTAL_NUM_OF_METHS) * 100
 
@@ -634,8 +638,8 @@ def draw_n_save_global_precision_graph(global_precision_list):
     plt.xlabel('# of interactions')
     plt.ylabel('% of correct nodes')
     plt.title("Global Precision development during interaction")
-    plt.plot(x, y, 'b-')
-    plt.savefig("global_precision_graph_"+NOW+"_"+loop_type+".png")
+    plt.plot([x for x in range(TOTAL_NUM_OF_METHS)], global_precision_list, 'b-')
+    plt.savefig("global_precision_graph_"+NOW+".png")
 
 
 def main():
@@ -648,16 +652,19 @@ def main():
     snapshot_dict = {}
     global_precision_list = []
 
+    print("Baking BNs...")
+
     # 일단 쪼갠 그래프들을 전부 BN으로 굽자
     for graph_file in graph_files:
         graph_for_reference = nx.read_gpickle(graph_file)
         graph_for_reference.name = graph_file
         BN_for_inference = make_BN.main(graph_for_reference, filename=graph_file, stash_poor=True)
-        initial_raw_snapshot = BN_for_inference.predict_proba(learned_evidence, n_jobs=-1)
+        state_names = list(map(lambda node: node.name, BN_for_inference.states))
+        initial_raw_snapshot = BN_for_inference.predict_proba({}, n_jobs=-1)
         initial_snapshot = make_names_and_params(state_names, initial_raw_snapshot)
         snapshot_dict[graph_file] = initial_snapshot
         BN_for_inference.name = graph_file
-        BN_queue.append(BN_for_inference)
+        BN_queue.append((graph_for_reference, BN_for_inference))
 
     recycled_graphs = deal_with_poor_nodes.main()
     # print("made", len(recycled_graphs), "recycled graphs")
@@ -665,23 +672,30 @@ def main():
     i = 0
     for recycled_graph in recycled_graphs:
         graph_file = "poor_" + str(i)
+        graph_for_reference = recycled_graph
         graph_for_reference.name = graph_file
         BN_for_inference = make_BN.main(graph_for_reference, filename=None, stash_poor=False)
-        initial_raw_snapshot = BN_for_inference.predict_proba(learned_evidence, n_jobs=-1)
+        state_names = list(map(lambda node: node.name, BN_for_inference.states))
+        initial_raw_snapshot = BN_for_inference.predict_proba({}, n_jobs=-1)
         initial_snapshot = make_names_and_params(state_names, initial_raw_snapshot)
         snapshot_dict[graph_file] = initial_snapshot
         BN_for_inference.name = graph_file
-        BN_queue.append(BN_for_inference)
+        BN_queue.append((graph_for_reference, BN_for_inference))
         i += 1
+
+    print("Baking BNs...done")
 
     # evaluate the initial global precision of snapshot_dict and add it to global_precision_list
     global_precision_list.append(evaluate_global_precision(snapshot_dict))
 
-    for BN in BN_queue:
+    for graph, BN in BN_queue:
         lessons, prev_graph_states, prev_graph_file, global_precisions =\
-            one_pass(snapshot_dict, graph_file, graph_for_reference, lessons,
+            one_pass(snapshot_dict, graph.name, graph, BN, lessons,
                      prev_graph_states, prev_graph_file, debug=True)
         global_precision_list += global_precisions
+
+    for _ in range(TOTAL_NUM_OF_METHS-len(global_precision_list)):
+        global_precision_list.append(np.nan)
 
     draw_n_save_global_precision_graph(global_precision_list)
 

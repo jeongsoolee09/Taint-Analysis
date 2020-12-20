@@ -101,7 +101,7 @@ def exclude_rich(G):
     for node_name in G.nodes:
         if len(G.in_edges(nbunch=node_name)) > 6:
             riches.append(node_name)
-    print("lost", len(riches), "rich nodes")
+    # print("lost", len(riches), "rich nodes")
     for rich in riches:
         try:
             G.remove_node(rich)
@@ -120,7 +120,7 @@ def exclude_poor(G):
                len(G.out_edges(nbunch=node_name)) == 0:
                 poors.append(node_name)
                 poor_nodes.append(node_name)
-        print("lost", len(poors), "poor nodes")
+        # print("lost", len(poors), "poor nodes")
         if poors == []:
             return poor_nodes
         for poor in poors:
@@ -137,9 +137,9 @@ def tame_rich(G):
     riches = []
     for node_name in G.nodes:
         if len(G.in_edges(nbunch=node_name)) > 6:
-            print(len(G.in_edges(nbunch=node_name)))
+            # print(len(G.in_edges(nbunch=node_name)))
             riches.append(node_name)
-    print("There are", len(riches), "rich nodes")
+    # print("There are", len(riches), "rich nodes")
 
     # G_copy = copy.deepcopy(G)
     deal_with_rich_nodes.main(G)
@@ -152,12 +152,12 @@ def main(graph_for_reference, **kwargs):
     """available kwargs:
        - filename (string): graph file name"""
     start = time.time()
-    print("graph has", len(graph_for_reference), "nodes")
+    # print("graph has", len(graph_for_reference), "nodes")
 
-    print("preprocessing...")
+    # print("preprocessing...")
 
     num_of_poors = len(isolated_nodes(graph_for_reference))
-    print("there are", num_of_poors, "poor nodes")
+    # print("there are", num_of_poors, "poor nodes")
 
     # poor node가 있었다면 이를 저장해 두기
     if kwargs['filename'] and kwargs['stash_poor']:
@@ -170,8 +170,8 @@ def main(graph_for_reference, **kwargs):
                 G.add_node(poor_node_name)
             nx.write_gpickle(G, kwargs['filename']+'_poor')
 
-    print("initializing BN...")
+    # print("initializing BN...")
     BN_for_inference = init_BN(graph_for_reference)
-    print("initializing BN...done")
+    # print("initializing BN...done")
 
     return BN_for_inference

@@ -1,0 +1,72 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="about">À propos</string>
+    <string name="addEvents">Ajouter des événements</string>
+    <string name="addMedia">Ajouter des médias…</string>
+    <string name="addTime">Ajouter l\'heure</string>
+    <string name="appName">Diary</string>
+    <string name="backup">Sauvegarde</string>
+    <string name="built">Construit %s</string>
+    <string name="calendar">Calendrier</string>
+    <string name="changes">Sauvegarder les modifications ?</string>
+    <string name="complete">Sauvegarde terminée</string>
+    <string name="copyright">Copyright \u00A9 2012 <a href="mailto:hola@josep-portella.com">Josep Portella
+  Florit</a>\nCopyright \u00A9 2017 <a href="http://billthefarmer.github.io">Bill Farmer</a>\n\nCalendrier
+  alternatif <a href="https://github.com/npanigrahy/Custom-Calendar-View">Rendu de
+  calendrier alternatif</a>, Markdown rendu par <a href="https://github.com/falnatsheh/MarkdownView">Markdown
+  rendu</a>, Traduction Française par <a href="https://github.com/comptuzus">David Ta</a>, Gestion de fichier
+  par <a href="https://github.com/iPaulPro">Paul Burke</a>
+  </string>
+    <string name="discard">Jeter</string>
+    <string name="editScript">Modifier le script…</string>
+    <string name="editStyles">Modifier les styles…</string>
+    <string name="findAll">Trouver tout…</string>
+    <string name="folder">Dossier</string>
+    <string name="goToDate">Aller à la date…</string>
+    <string name="index">Indice</string>
+    <string name="licence">Licence <a href="https://www.gnu.org/licenses/gpl.txt">GNU GPLv3</a>
+  </string>
+    <string name="markdown">Markdown</string>
+    <string name="media">Médias</string>
+    <string name="nextEntry">Suivant</string>
+    <string name="pref_about_summ"><a href="https://github.com/billthefarmer/diary/releases/latest">Version %s</a></string>
+    <string name="pref_calendar">Utiliser un calendrier alternatif</string>
+    <string name="pref_calendar_summ">
+    Utiliser un calendrier alternatif pour sélectionner la date
+  </string>
+    <string name="pref_copy_media">Copier des images</string>
+    <string name="pref_copy_media_summ">
+    Copier les images insérées dans le dossier actuel
+  </string>
+    <string name="pref_dark_theme">Sombre</string>
+    <string name="pref_dark_theme_summ">
+    Utilisez le thème sombre pour l\'édition
+  </string>
+    <string name="pref_external">Navigateur</string>
+    <string name="pref_external_summ">
+    Utiliser le navigateur pour les liens externes
+  </string>
+    <string name="pref_index_page">Page d\'index</string>
+    <string name="pref_markdown">Utiliser markdown</string>
+    <string name="pref_markdown_summ">
+    Utiliser markdown pour le formatage du text
+  </string>
+    <string name="pref_template_page">Page de modèle</string>
+    <string name="pref_use_index">Utiliser l\'index</string>
+    <string name="pref_use_index_summ">
+    Utiliser la page d\'index pour le journal
+  </string>
+    <string name="pref_use_template">Utilise le modèle</string>
+    <string name="pref_use_template_summ">
+    Utiliser un modèle pour les entrées de journal
+  </string>
+    <string name="prevEntry">Précédent</string>
+    <string name="save">Sauvegarder</string>
+    <string name="search">Chercher…</string>
+    <string name="settings">Paramètres</string>
+    <string name="share">"Partager…"</string>
+    <string name="start">Démarrer la sauvegarde</string>
+    <string name="template">Modèle</string>
+    <string name="theme">Thème</string>
+    <string name="today">Aujourd\'hui</string>
+</resources>

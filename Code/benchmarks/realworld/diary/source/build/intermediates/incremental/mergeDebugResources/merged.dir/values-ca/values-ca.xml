@@ -1,0 +1,73 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="about">Sobre</string>
+    <string name="addEvents">Afegiu esdeveniments</string>
+    <string name="addMedia">Afegeix mitjans…</string>
+    <string name="addTime">Afegiu temps</string>
+    <string name="appName">Diari</string>
+    <string name="backup">Còpia de seguretat</string>
+    <string name="built">Construït %s</string>
+    <string name="calendar">Calendari</string>
+    <string name="changes">Guardar canvis?</string>
+    <string name="complete">S\'ha completat la còpia de seguretat</string>
+    <string name="copyright">Copyright \u00A9 2012 <a href="mailto:hola@josep-portella.com">Josep Portella
+  Florit</a>\nCopyright \u00A9 2017 <a href="http://billthefarmer.github.io">Bill Farmer</a>\n\nCustom
+  calendar per <a href="https://github.com/npanigrahy/Custom-Calendar-View"> Custom
+  Calendar View</a>, Markdown view per <a href="https://github.com/falnatsheh/MarkdownView">Markdown View</a>,
+  Utilitats de fitxers de <a href="https://github.com/iPaulPro">Paul
+  Burke</a>
+  </string>
+    <string name="discard">Descartar</string>
+    <string name="editScript">Edita script…</string>
+    <string name="editStyles">Edita estils…</string>
+    <string name="findAll">Trobeu-ho tot…</string>
+    <string name="folder">Carpeta</string>
+    <string name="goToDate">Ves a data…</string>
+    <string name="index">Índex</string>
+    <string name="licence">Llicència <a href="https://www.gnu.org/licenses/gpl.txt">GNU GPLv3</a>
+  </string>
+    <string name="markdown">Markdown</string>
+    <string name="media">Mitjans</string>
+    <string name="nextEntry">Següent</string>
+    <string name="pref_about_summ"><a href="https://github.com/billthefarmer/diary/releases/latest">Version
+  %s</a></string>
+    <string name="pref_calendar">Utilitza calendari personalitzat</string>
+    <string name="pref_calendar_summ">
+    Utilitza calendari personalitzat en lloc d\'un selector de data
+  </string>
+    <string name="pref_copy_media">Copiar imatges</string>
+    <string name="pref_copy_media_summ">
+    Copieu les imatges inserides a la carpeta actual
+  </string>
+    <string name="pref_dark_theme">Fosc</string>
+    <string name="pref_dark_theme_summ">
+    Utilitza el tema fosc per editar
+  </string>
+    <string name="pref_external">Navegador</string>
+    <string name="pref_external_summ">
+    Utilitzeu el navegador per a enllaços externs
+  </string>
+    <string name="pref_index_page">Pàgina d\'índex</string>
+    <string name="pref_markdown">Ús de markdown</string>
+    <string name="pref_markdown_summ">
+    Utilitzeu markdown a les entrades de format
+  </string>
+    <string name="pref_template_page">Pàgina de plantilles</string>
+    <string name="pref_use_index">Utilitzeu l\'índex</string>
+    <string name="pref_use_index_summ">
+    Utilitzeu la pàgina d\'índex per al diari
+  </string>
+    <string name="pref_use_template">Utilitzeu la plantilla</string>
+    <string name="pref_use_template_summ">
+    Utilitzeu la plantilla per a les entrades del diari
+  </string>
+    <string name="prevEntry">Anterior</string>
+    <string name="save">Desa</string>
+    <string name="search">Cerca…</string>
+    <string name="settings">Ajustos</string>
+    <string name="share">"Comparteix…"</string>
+    <string name="start">Inicia la còpia de seguretat</string>
+    <string name="template">Plantilla</string>
+    <string name="theme">Tema</string>
+    <string name="today">Avui</string>
+</resources>

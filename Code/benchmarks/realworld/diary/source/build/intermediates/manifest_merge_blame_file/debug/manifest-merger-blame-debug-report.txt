@@ -1,0 +1,193 @@
+1<?xml version="1.0" encoding="utf-8"?>
+2<!--
+3    Diary - Personal diary for Android
+4    Copyright © 2012  Josep Portella Florit <hola@josep-portella.com>
+5
+6    This program is free software: you can redistribute it and/or modify
+7    it under the terms of the GNU General Public License as published by
+8    the Free Software Foundation, either version 3 of the License, or
+9    (at your option) any later version.
+10
+11    This program is distributed in the hope that it will be useful,
+12    but WITHOUT ANY WARRANTY; without even the implied warranty of
+13    MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+14    GNU General Public License for more details.
+15
+16    You should have received a copy of the GNU General Public License
+17    along with this program.  If not, see <http://www.gnu.org/licenses/>.
+18-->
+19<manifest xmlns:android="http://schemas.android.com/apk/res/android"
+20    package="org.billthefarmer.diary"
+21    android:installLocation="auto"
+22    android:versionCode="171"
+23    android:versionName="1.71" >
+24
+25    <uses-sdk
+26        android:minSdkVersion="14"
+26-->/Users/jslee/Taint-Analysis/Code/benchmarks/realworld/diary/source/src/main/AndroidManifest.xml
+27        android:targetSdkVersion="28" />
+27-->/Users/jslee/Taint-Analysis/Code/benchmarks/realworld/diary/source/src/main/AndroidManifest.xml
+28
+29    <uses-permission android:name="android.permission.READ_EXTERNAL_STORAGE" />
+29-->/Users/jslee/Taint-Analysis/Code/benchmarks/realworld/diary/source/src/main/AndroidManifest.xml:27:3-78
+29-->/Users/jslee/Taint-Analysis/Code/benchmarks/realworld/diary/source/src/main/AndroidManifest.xml:27:20-75
+30    <uses-permission android:name="android.permission.WRITE_EXTERNAL_STORAGE" />
+30-->/Users/jslee/Taint-Analysis/Code/benchmarks/realworld/diary/source/src/main/AndroidManifest.xml:28:3-79
+30-->/Users/jslee/Taint-Analysis/Code/benchmarks/realworld/diary/source/src/main/AndroidManifest.xml:28:20-76
+31    <uses-permission android:name="android.permission.READ_CALENDAR" />
+31-->/Users/jslee/Taint-Analysis/Code/benchmarks/realworld/diary/source/src/main/AndroidManifest.xml:29:3-70
+31-->/Users/jslee/Taint-Analysis/Code/benchmarks/realworld/diary/source/src/main/AndroidManifest.xml:29:20-67
+32    <uses-permission android:name="android.permission.WRITE_CALENDAR" />
+32-->/Users/jslee/Taint-Analysis/Code/benchmarks/realworld/diary/source/src/main/AndroidManifest.xml:30:3-71
+32-->/Users/jslee/Taint-Analysis/Code/benchmarks/realworld/diary/source/src/main/AndroidManifest.xml:30:20-68
+33    <uses-permission android:name="android.permission.INTERNET" />
+33-->/Users/jslee/Taint-Analysis/Code/benchmarks/realworld/diary/source/src/main/AndroidManifest.xml:31:3-65
+33-->/Users/jslee/Taint-Analysis/Code/benchmarks/realworld/diary/source/src/main/AndroidManifest.xml:31:20-62
+34
+35    <meta-data
+35-->/Users/jslee/Taint-Analysis/Code/benchmarks/realworld/diary/source/src/main/AndroidManifest.xml:33:3-35:30
+36        android:name="android.webkit.WebView.MetricsOptOut"
+36-->/Users/jslee/Taint-Analysis/Code/benchmarks/realworld/diary/source/src/main/AndroidManifest.xml:34:7-58
+37        android:value="true" />
+37-->/Users/jslee/Taint-Analysis/Code/benchmarks/realworld/diary/source/src/main/AndroidManifest.xml:35:7-27
+38
+39    <application
+39-->/Users/jslee/Taint-Analysis/Code/benchmarks/realworld/diary/source/src/main/AndroidManifest.xml:37:3-107:17
+40        android:allowBackup="true"
+40-->/Users/jslee/Taint-Analysis/Code/benchmarks/realworld/diary/source/src/main/AndroidManifest.xml:38:7-33
+41        android:debuggable="true"
+42        android:icon="@drawable/ic_launcher"
+42-->/Users/jslee/Taint-Analysis/Code/benchmarks/realworld/diary/source/src/main/AndroidManifest.xml:41:7-43
+43        android:label="@string/appName"
+43-->/Users/jslee/Taint-Analysis/Code/benchmarks/realworld/diary/source/src/main/AndroidManifest.xml:42:7-38
+44        android:supportsRtl="true"
+44-->/Users/jslee/Taint-Analysis/Code/benchmarks/realworld/diary/source/src/main/AndroidManifest.xml:39:7-33
+45        android:theme="@style/AppTheme"
+45-->/Users/jslee/Taint-Analysis/Code/benchmarks/realworld/diary/source/src/main/AndroidManifest.xml:43:7-38
+46        android:usesCleartextTraffic="true" >
+46-->/Users/jslee/Taint-Analysis/Code/benchmarks/realworld/diary/source/src/main/AndroidManifest.xml:40:7-42
+47        <activity
+47-->/Users/jslee/Taint-Analysis/Code/benchmarks/realworld/diary/source/src/main/AndroidManifest.xml:46:5-77:16
+48            android:name="org.billthefarmer.diary.Diary"
+48-->/Users/jslee/Taint-Analysis/Code/benchmarks/realworld/diary/source/src/main/AndroidManifest.xml:47:9-29
+49            android:label="@string/appName"
+49-->/Users/jslee/Taint-Analysis/Code/benchmarks/realworld/diary/source/src/main/AndroidManifest.xml:48:9-40
+50            android:windowSoftInputMode="stateHidden|adjustResize" >
+50-->/Users/jslee/Taint-Analysis/Code/benchmarks/realworld/diary/source/src/main/AndroidManifest.xml:49:9-63
+51            <intent-filter>
+51-->/Users/jslee/Taint-Analysis/Code/benchmarks/realworld/diary/source/src/main/AndroidManifest.xml:50:7-53:23
+52                <action android:name="android.intent.action.MAIN" />
+52-->/Users/jslee/Taint-Analysis/Code/benchmarks/realworld/diary/source/src/main/AndroidManifest.xml:51:9-61
+52-->/Users/jslee/Taint-Analysis/Code/benchmarks/realworld/diary/source/src/main/AndroidManifest.xml:51:17-58
+53
+54                <category android:name="android.intent.category.LAUNCHER" />
+54-->/Users/jslee/Taint-Analysis/Code/benchmarks/realworld/diary/source/src/main/AndroidManifest.xml:52:9-69
+54-->/Users/jslee/Taint-Analysis/Code/benchmarks/realworld/diary/source/src/main/AndroidManifest.xml:52:19-66
+55            </intent-filter>
+56            <intent-filter>
+56-->/Users/jslee/Taint-Analysis/Code/benchmarks/realworld/diary/source/src/main/AndroidManifest.xml:54:7-61:23
+57                <action android:name="android.intent.action.SEND" />
+57-->/Users/jslee/Taint-Analysis/Code/benchmarks/realworld/diary/source/src/main/AndroidManifest.xml:55:9-61
+57-->/Users/jslee/Taint-Analysis/Code/benchmarks/realworld/diary/source/src/main/AndroidManifest.xml:55:17-58
+58
+59                <category android:name="android.intent.category.DEFAULT" />
+59-->/Users/jslee/Taint-Analysis/Code/benchmarks/realworld/diary/source/src/main/AndroidManifest.xml:56:9-68
+59-->/Users/jslee/Taint-Analysis/Code/benchmarks/realworld/diary/source/src/main/AndroidManifest.xml:56:19-65
+60
+61                <data android:mimeType="text/plain" />
+61-->/Users/jslee/Taint-Analysis/Code/benchmarks/realworld/diary/source/src/main/AndroidManifest.xml:58:9-47
+61-->/Users/jslee/Taint-Analysis/Code/benchmarks/realworld/diary/source/src/main/AndroidManifest.xml:58:15-44
+62                <data android:mimeType="audio/*" />
+62-->/Users/jslee/Taint-Analysis/Code/benchmarks/realworld/diary/source/src/main/AndroidManifest.xml:58:9-47
+62-->/Users/jslee/Taint-Analysis/Code/benchmarks/realworld/diary/source/src/main/AndroidManifest.xml:58:15-44
+63                <data android:mimeType="video/*" />
+63-->/Users/jslee/Taint-Analysis/Code/benchmarks/realworld/diary/source/src/main/AndroidManifest.xml:58:9-47
+63-->/Users/jslee/Taint-Analysis/Code/benchmarks/realworld/diary/source/src/main/AndroidManifest.xml:58:15-44
+64            </intent-filter>
+65            <intent-filter>
+65-->/Users/jslee/Taint-Analysis/Code/benchmarks/realworld/diary/source/src/main/AndroidManifest.xml:62:7-68:23
+66                <action android:name="android.intent.action.SEND" />
+66-->/Users/jslee/Taint-Analysis/Code/benchmarks/realworld/diary/source/src/main/AndroidManifest.xml:55:9-61
+66-->/Users/jslee/Taint-Analysis/Code/benchmarks/realworld/diary/source/src/main/AndroidManifest.xml:55:17-58
+67                <action android:name="android.intent.action.SEND_MULTIPLE" />
+67-->/Users/jslee/Taint-Analysis/Code/benchmarks/realworld/diary/source/src/main/AndroidManifest.xml:64:9-70
+67-->/Users/jslee/Taint-Analysis/Code/benchmarks/realworld/diary/source/src/main/AndroidManifest.xml:64:17-67
+68
+69                <category android:name="android.intent.category.DEFAULT" />
+69-->/Users/jslee/Taint-Analysis/Code/benchmarks/realworld/diary/source/src/main/AndroidManifest.xml:56:9-68
+69-->/Users/jslee/Taint-Analysis/Code/benchmarks/realworld/diary/source/src/main/AndroidManifest.xml:56:19-65
+70
+71                <data android:mimeType="image/*" />
+71-->/Users/jslee/Taint-Analysis/Code/benchmarks/realworld/diary/source/src/main/AndroidManifest.xml:58:9-47
+71-->/Users/jslee/Taint-Analysis/Code/benchmarks/realworld/diary/source/src/main/AndroidManifest.xml:58:15-44
+72            </intent-filter>
+73            <intent-filter>
+73-->/Users/jslee/Taint-Analysis/Code/benchmarks/realworld/diary/source/src/main/AndroidManifest.xml:69:7-76:23
+74                <action android:name="android.intent.action.VIEW" />
+74-->/Users/jslee/Taint-Analysis/Code/benchmarks/realworld/diary/source/src/main/AndroidManifest.xml:70:9-61
+74-->/Users/jslee/Taint-Analysis/Code/benchmarks/realworld/diary/source/src/main/AndroidManifest.xml:70:17-58
+75
+76                <category android:name="android.intent.category.BROWSABLE" />
+76-->/Users/jslee/Taint-Analysis/Code/benchmarks/realworld/diary/source/src/main/AndroidManifest.xml:72:9-70
+76-->/Users/jslee/Taint-Analysis/Code/benchmarks/realworld/diary/source/src/main/AndroidManifest.xml:72:19-67
+77                <category android:name="android.intent.category.DEFAULT" />
+77-->/Users/jslee/Taint-Analysis/Code/benchmarks/realworld/diary/source/src/main/AndroidManifest.xml:56:9-68
+77-->/Users/jslee/Taint-Analysis/Code/benchmarks/realworld/diary/source/src/main/AndroidManifest.xml:56:19-65
+78
+79                <data android:scheme="geo" />
+79-->/Users/jslee/Taint-Analysis/Code/benchmarks/realworld/diary/source/src/main/AndroidManifest.xml:58:9-47
+79-->/Users/jslee/Taint-Analysis/Code/benchmarks/realworld/diary/source/src/main/AndroidManifest.xml:75:15-35
+80            </intent-filter>
+81        </activity>
+82        <activity
+82-->/Users/jslee/Taint-Analysis/Code/benchmarks/realworld/diary/source/src/main/AndroidManifest.xml:79:5-91:16
+83            android:name="org.billthefarmer.diary.Editor"
+83-->/Users/jslee/Taint-Analysis/Code/benchmarks/realworld/diary/source/src/main/AndroidManifest.xml:80:9-30
+84            android:windowSoftInputMode="stateHidden|adjustResize" >
+84-->/Users/jslee/Taint-Analysis/Code/benchmarks/realworld/diary/source/src/main/AndroidManifest.xml:81:9-63
+85            <intent-filter android:scheme="http" >
+85-->/Users/jslee/Taint-Analysis/Code/benchmarks/realworld/diary/source/src/main/AndroidManifest.xml:82:7-90:23
+85-->/Users/jslee/Taint-Analysis/Code/benchmarks/realworld/diary/source/src/main/AndroidManifest.xml:83:11-32
+86                <action android:name="android.intent.action.VIEW" />
+86-->/Users/jslee/Taint-Analysis/Code/benchmarks/realworld/diary/source/src/main/AndroidManifest.xml:70:9-61
+86-->/Users/jslee/Taint-Analysis/Code/benchmarks/realworld/diary/source/src/main/AndroidManifest.xml:70:17-58
+87                <action android:name="android.intent.action.EDIT" />
+87-->/Users/jslee/Taint-Analysis/Code/benchmarks/realworld/diary/source/src/main/AndroidManifest.xml:86:9-61
+87-->/Users/jslee/Taint-Analysis/Code/benchmarks/realworld/diary/source/src/main/AndroidManifest.xml:86:17-58
+88
+89                <category android:name="android.intent.category.DEFAULT" />
+89-->/Users/jslee/Taint-Analysis/Code/benchmarks/realworld/diary/source/src/main/AndroidManifest.xml:56:9-68
+89-->/Users/jslee/Taint-Analysis/Code/benchmarks/realworld/diary/source/src/main/AndroidManifest.xml:56:19-65
+90
+91                <data android:mimeType="text/*" />
+91-->/Users/jslee/Taint-Analysis/Code/benchmarks/realworld/diary/source/src/main/AndroidManifest.xml:58:9-47
+91-->/Users/jslee/Taint-Analysis/Code/benchmarks/realworld/diary/source/src/main/AndroidManifest.xml:58:15-44
+92            </intent-filter>
+93        </activity>
+94        <activity
+94-->/Users/jslee/Taint-Analysis/Code/benchmarks/realworld/diary/source/src/main/AndroidManifest.xml:93:5-95:44
+95            android:name="org.billthefarmer.diary.Settings"
+95-->/Users/jslee/Taint-Analysis/Code/benchmarks/realworld/diary/source/src/main/AndroidManifest.xml:94:9-32
+96            android:label="@string/settings" />
+96-->/Users/jslee/Taint-Analysis/Code/benchmarks/realworld/diary/source/src/main/AndroidManifest.xml:95:9-41
+97
+98        <provider
+98-->/Users/jslee/Taint-Analysis/Code/benchmarks/realworld/diary/source/src/main/AndroidManifest.xml:97:5-105:16
+99            android:name="android.support.v4.content.FileProvider"
+99-->/Users/jslee/Taint-Analysis/Code/benchmarks/realworld/diary/source/src/main/AndroidManifest.xml:98:9-63
+100            android:authorities="org.billthefarmer.diary.fileprovider"
+100-->/Users/jslee/Taint-Analysis/Code/benchmarks/realworld/diary/source/src/main/AndroidManifest.xml:99:9-67
+101            android:exported="false"
+101-->/Users/jslee/Taint-Analysis/Code/benchmarks/realworld/diary/source/src/main/AndroidManifest.xml:100:9-33
+102            android:grantUriPermissions="true" >
+102-->/Users/jslee/Taint-Analysis/Code/benchmarks/realworld/diary/source/src/main/AndroidManifest.xml:101:9-43
+103            <meta-data
+103-->/Users/jslee/Taint-Analysis/Code/benchmarks/realworld/diary/source/src/main/AndroidManifest.xml:102:7-104:47
+104                android:name="android.support.FILE_PROVIDER_PATHS"
+104-->/Users/jslee/Taint-Analysis/Code/benchmarks/realworld/diary/source/src/main/AndroidManifest.xml:103:11-61
+105                android:resource="@xml/filepaths" />
+105-->/Users/jslee/Taint-Analysis/Code/benchmarks/realworld/diary/source/src/main/AndroidManifest.xml:104:11-44
+106        </provider>
+107    </application>
+108
+109</manifest>

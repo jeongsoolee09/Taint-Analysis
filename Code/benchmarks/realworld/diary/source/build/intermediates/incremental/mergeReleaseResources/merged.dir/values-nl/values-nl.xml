@@ -1,0 +1,72 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="about">Over</string>
+    <string name="addEvents">Evenementen toevoegen</string>
+    <string name="addMedia">Media toevoegen…</string>
+    <string name="addTime">Voeg tijd toe</string>
+    <string name="appName">Dagboek</string>
+    <string name="backup">Backup</string>
+    <string name="built">Uitgebracht op %s</string>
+    <string name="calendar">Kalender</string>
+    <string name="changes">Wijzigingen opslaan?</string>
+    <string name="complete">Backup voltooid</string>
+    <string name="copyright">Copyright \u00A9 2012 <a href="mailto:hola@josep-portella.com">Josep Portella
+  Florit</a>\nCopyright \u00A9 2017 <a href="http://billthefarmer.github.io">Bill Farmer</a>\n\nAangepaste
+  kalender door <a href="https://github.com/npanigrahy/Custom-Calendar-View">Aangepaste
+  kalenderweergave door</a>, Markdownweergave voor <a href="https://github.com/falnatsheh/MarkdownView">Markdown
+  View</a>, Nederlandse vertaling door <a href="https://github.com/Vistaus">Heimen
+  Stoffels</a>, Bestandshulpmiddelen door <a href="https://github.com/iPaulPro">Paul Burke</a>
+  </string>
+    <string name="discard">Afdanken</string>
+    <string name="editScript">Script bewerken…</string>
+    <string name="editStyles">Stijlen bewerken…</string>
+    <string name="findAll">Alles zoeken…</string>
+    <string name="folder">Map</string>
+    <string name="goToDate">Ga naar datum…</string>
+    <string name="index">Index</string>
+    <string name="licence">Licentie <a href="https://www.gnu.org/licenses/gpl.txt">GNU GPLv3</a>
+  </string>
+    <string name="markdown">Markdown</string>
+    <string name="media">Media</string>
+    <string name="nextEntry">Volgende</string>
+    <string name="pref_about_summ"><a href="https://github.com/billthefarmer/diary/releases/latest">Versie %s</a></string>
+    <string name="pref_calendar">Aangepaste kalender gebruiken</string>
+    <string name="pref_calendar_summ">
+    Aangepaste kalender gebruiken i.p.v. datumkiezer
+  </string>
+    <string name="pref_copy_media">Afbeeldingen kopiëren</string>
+    <string name="pref_copy_media_summ">
+    Ingevoegde afbeeldingen kopiëren naar de huidige map
+  </string>
+    <string name="pref_dark_theme">Donker</string>
+    <string name="pref_dark_theme_summ">
+    Donker thema gebruiken in bewerkmodus
+  </string>
+    <string name="pref_external">Browser</string>
+    <string name="pref_external_summ">
+    Gebruik de browser voor externe links
+  </string>
+    <string name="pref_index_page">Indexpagina</string>
+    <string name="pref_markdown">Markdown gebruiken</string>
+    <string name="pref_markdown_summ">
+    Markdown gebruiken om items te voorzien van opmaak
+  </string>
+    <string name="pref_template_page">Sjabloonpagina</string>
+    <string name="pref_use_index">Index gebruiken</string>
+    <string name="pref_use_index_summ">
+    Indexpagina gebruiken voor dagboek
+  </string>
+    <string name="pref_use_template">Gebruik sjabloon</string>
+    <string name="pref_use_template_summ">
+    Gebruik sjabloon voor agenda-items
+  </string>
+    <string name="prevEntry">Vorige</string>
+    <string name="save">Opslaan</string>
+    <string name="search">Zoeken…</string>
+    <string name="settings">Instellingen</string>
+    <string name="share">"Delen…"</string>
+    <string name="start">Backup starten</string>
+    <string name="template">Sjabloon</string>
+    <string name="theme">Thema</string>
+    <string name="today">Vandaag</string>
+</resources>

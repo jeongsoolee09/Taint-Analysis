@@ -1,0 +1,42 @@
+# List of SDK dependencies of this app, this information is also included in an encrypted form in the APK.
+# For more information visit: https://d.android.com/r/tools/dependency-metadata
+
+library {
+  maven_library {
+    groupId: "com.github.billthefarmer"
+    artifactId: "CustomCalendarView"
+    version: "v1.05"
+  }
+  digests {
+    sha256: "\355\316\020O\364\337k8\365\344I\204<o\3362\201\023r\000\200\301\020\203\353\346y\276j\233\341\022"
+  }
+}
+library {
+  maven_library {
+    groupId: "com.github.billthefarmer"
+    artifactId: "MarkdownView"
+    version: "v1.04"
+  }
+  digests {
+    sha256: "c\234\204\337\353\220\222\254\261\005~\215h\002N\023\303\232\277\242\322N\210\323iU\355\243\342\241T\340"
+  }
+}
+library {
+  maven_library {
+    groupId: "org.markdownj"
+    artifactId: "markdownj-core"
+    version: "0.4"
+  }
+  digests {
+    sha256: ":\320p\"n\362\2510\234\212\210\026\207\265T\030\217\353zO\017\344\237\350\325\aN\247\246\271/\343"
+  }
+}
+library_dependencies {
+  library_index: 1
+  library_dep_index: 2
+}
+module_dependencies {
+  module_name: "base"
+  dependency_index: 0
+  dependency_index: 1
+}

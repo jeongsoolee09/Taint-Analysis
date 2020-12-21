@@ -1,0 +1,31 @@
+org/billthefarmer/diary/FileUtils.java
+ org.billthefarmer.diary.FileUtils
+org/billthefarmer/diary/SettingsFragment.java
+ org.billthefarmer.diary.SettingsFragment
+org/billthefarmer/diary/Settings.java
+ org.billthefarmer.diary.Settings
+org/billthefarmer/diary/Editor.java
+ org.billthefarmer.diary.Editor
+ org.billthefarmer.diary.Editor$1
+org/billthefarmer/diary/QueryHandler.java
+ org.billthefarmer.diary.QueryHandler
+ org.billthefarmer.diary.QueryHandler$EventListener
+org/billthefarmer/diary/BuildConfig.java
+ org.billthefarmer.diary.BuildConfig
+org/billthefarmer/diary/DatePickerPreference.java
+ org.billthefarmer.diary.DatePickerPreference
+android/support/v4/content/FileProvider.java
+ android.support.v4.content.FileProvider
+ android.support.v4.content.FileProvider$PathStrategy
+ android.support.v4.content.FileProvider$SimplePathStrategy
+org/billthefarmer/diary/AboutPreference.java
+ org.billthefarmer.diary.AboutPreference
+org/billthefarmer/diary/Diary.java
+ org.billthefarmer.diary.Diary
+ org.billthefarmer.diary.Diary$1
+ org.billthefarmer.diary.Diary$2
+ org.billthefarmer.diary.Diary$EntryDecorator
+ org.billthefarmer.diary.Diary$FindTask
+ org.billthefarmer.diary.Diary$GestureListener
+ org.billthefarmer.diary.Diary$QueryTextListener
+ org.billthefarmer.diary.Diary$ZipTask

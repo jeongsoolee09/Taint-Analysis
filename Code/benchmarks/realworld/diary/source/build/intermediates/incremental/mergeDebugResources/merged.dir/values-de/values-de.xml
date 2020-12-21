@@ -1,0 +1,73 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="about">Über</string>
+    <string name="addEvents">Ereignisse hinzufügen</string>
+    <string name="addMedia">Medien hinzufügen…</string>
+    <string name="addTime">Zeit hinzufügen</string>
+    <string name="appName">Tagebuch</string>
+    <string name="backup">Backup</string>
+    <string name="built">Gebaut %s</string>
+    <string name="calendar">Kalender</string>
+    <string name="changes">Änderungen speichern?</string>
+    <string name="complete">Backup komplett</string>
+    <string name="copyright">Copyright \u00A9 2012 <a href="mailto:hola@josep-portella.com">Josep Portella
+  Florit</a>\nCopyright \u00A9 2017 <a href="http://billthefarmer.github.io">Bill Farmer</a>\n\nApp-eigener
+  Kalender von <a href="https://github.com/npanigrahy/Custom-Calendar-View">App-eigene
+  Kalenderansicht</a>, Markdown-Ansicht von <a href="https://github.com/falnatsheh/MarkdownView">Markdown-Ansicht</a>, Deutsche
+  Übersetzung von <a href="https://github.com/jaller94">Christian
+  Paul</a>, Datei Dienstprogramme von <a href="https://github.com/iPaulPro">Paul Burke</a>
+  </string>
+    <string name="discard">Verwerfen</string>
+    <string name="editScript">Skript bearbeiten…</string>
+    <string name="editStyles">Stile bearbeiten…</string>
+    <string name="findAll">Finde alle…</string>
+    <string name="folder">Ordner</string>
+    <string name="goToDate">Gehe zu Datum…</string>
+    <string name="index">Index</string>
+    <string name="licence">Lizenz <a href="https://www.gnu.org/licenses/gpl.txt">GNU GPLv3</a>
+  </string>
+    <string name="markdown">Markdown</string>
+    <string name="media">Medien</string>
+    <string name="nextEntry">Nächster</string>
+    <string name="pref_about_summ"><a href="https://github.com/billthefarmer/diary/releases/latest">Tagebuchversion
+  %s</a></string>
+    <string name="pref_calendar">Verwende app-eigenen Kalender</string>
+    <string name="pref_calendar_summ">
+    Nutze den app-eigenen Kalender statt der nativen Datumsauswahl
+  </string>
+    <string name="pref_copy_media">Bilder kopieren</string>
+    <string name="pref_copy_media_summ">
+    Kopieren von eingefügten Bildern in den aktuellen Ordner
+  </string>
+    <string name="pref_dark_theme">Dunkel</string>
+    <string name="pref_dark_theme_summ">
+    Verwenden Sie ein dunkles Design zum Bearbeiten
+  </string>
+    <string name="pref_external">Browser</string>
+    <string name="pref_external_summ">
+    Verwenden Sie den Browser für externe Links
+  </string>
+    <string name="pref_index_page">Indexseite</string>
+    <string name="pref_markdown">Nutze Markdown</string>
+    <string name="pref_markdown_summ">
+    Nutze Markdown zur Textformatierung
+  </string>
+    <string name="pref_template_page">Templateseite</string>
+    <string name="pref_use_index">Benutze Index</string>
+    <string name="pref_use_index_summ">
+    Verwenden Sie die Indexseite für das Journal
+  </string>
+    <string name="pref_use_template">Benutze Template</string>
+    <string name="pref_use_template_summ">
+    Template für Tagebucheinträge verwenden
+  </string>
+    <string name="prevEntry">Vorheriger</string>
+    <string name="save">Speichern</string>
+    <string name="search">Suchen…</string>
+    <string name="settings">Einstellungen</string>
+    <string name="share">"Teilen…"</string>
+    <string name="start">Backup starten</string>
+    <string name="template">Template</string>
+    <string name="theme">Thema</string>
+    <string name="today">Heute</string>
+</resources>

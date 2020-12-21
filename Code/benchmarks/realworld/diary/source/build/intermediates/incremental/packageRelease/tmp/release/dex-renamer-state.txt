@@ -1,0 +1,4 @@
+#Wed Dec 16 20:15:30 KST 2020
+base.0=/Users/jslee/Taint-Analysis/Code/benchmarks/realworld/diary/source/build/intermediates/dex/release/mergeDexRelease/classes.dex
+path.0=classes.dex
+renamed.0=classes.dex

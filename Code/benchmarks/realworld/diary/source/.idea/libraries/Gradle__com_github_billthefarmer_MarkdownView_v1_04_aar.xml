@@ -1,0 +1,13 @@
+<component name="libraryTable">
+  <library name="Gradle: com.github.billthefarmer:MarkdownView:v1.04@aar">
+    <CLASSES>
+      <root url="jar://$USER_HOME$/.gradle/caches/transforms-2/files-2.1/99a631398fd41017e47ab2cebde5e624/MarkdownView-v1.04/jars/classes.jar!/" />
+      <root url="file://$USER_HOME$/.gradle/caches/transforms-2/files-2.1/99a631398fd41017e47ab2cebde5e624/MarkdownView-v1.04/res" />
+      <root url="file://$USER_HOME$/.gradle/caches/transforms-2/files-2.1/99a631398fd41017e47ab2cebde5e624/MarkdownView-v1.04/AndroidManifest.xml" />
+    </CLASSES>
+    <JAVADOC />
+    <SOURCES>
+      <root url="jar://$USER_HOME$/.gradle/caches/modules-2/files-2.1/com.github.billthefarmer/MarkdownView/v1.04/c205e38419775009fcad448ad19c1512eb9adff4/MarkdownView-v1.04-sources.jar!/" />
+    </SOURCES>
+  </library>
+</component>

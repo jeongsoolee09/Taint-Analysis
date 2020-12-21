@@ -1,0 +1,196 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <color name="black">@android:color/background_dark</color>
+    <color name="current_day_of_month">@android:color/holo_blue_light</color>
+    <color name="dark">#80000000</color>
+    <color name="day_disabled_background_color">#F1F5F8</color>
+    <color name="day_disabled_text_color">#DEDEDE</color>
+    <color name="white">@android:color/background_light</color>
+    <dimen name="calendarPaddingLeft">8dp</dimen>
+    <dimen name="calendarPaddingRight">8dp</dimen>
+    <dimen name="calendarTitlePaddingBottom">8dp</dimen>
+    <dimen name="calendarTitlePaddingTop">8dp</dimen>
+    <dimen name="minDayCellHeight">32dp</dimen>
+    <dimen name="minDayCellWidth">32dp</dimen>
+    <string name="about">About</string>
+    <string name="addEvents">Add events</string>
+    <string name="addMedia">Add media…</string>
+    <string name="addTime">Add time</string>
+    <string name="appName">Diary</string>
+    <string name="backup">Backup</string>
+    <string name="built">Built %s</string>
+    <string name="calendar">Calendar</string>
+    <string name="changes">Save changes?</string>
+    <string name="complete">Backup complete</string>
+    <string name="copyright">Copyright \u00A9 2012 <a href="mailto:hola@josep-portella.com">Josep Portella
+  Florit</a>\nCopyright \u00A9 2017 <a href="https://billthefarmer.github.io">Bill Farmer</a>\n\nCustom
+  calendar by <a href="https://github.com/npanigrahy/Custom-Calendar-View">Custom
+  Calendar View</a>, Markdown view by <a href="https://github.com/falnatsheh/MarkdownView">Markdown View</a>,
+  Japanese translation by <a href="https://github.com/naofum">naofum</a>, German translation by
+  <a href="https://github.com/jaller94">Christian Paul</a>, French
+  translation by <a href="https://github.com/comptuzus">David Ta</a>,
+  Italian translation by <a href="https://github.com/marcoM32">Marco
+  Magliano</a>, Polish translation by <a href="https://github.com/bla-ke">Daria Szatan</a>, Simplified
+  Chinese translation by <a href="https://github.com/Therhokar">Therhokar Yang</a>, Brazilian
+  Portuguese translation by <a href="https://github.com/jeisoncp">Jeison Pandini</a>, Dutch
+  translation by <a href="https://github.com/Vistaus">Heimen
+  Stoffels</a>, File utilities by <a href="https://github.com/iPaulPro">Paul Burke</a>
+  </string>
+    <string name="discard">Discard</string>
+    <string name="editScript">Edit script…</string>
+    <string name="editStyles">Edit styles…</string>
+    <string name="findAll">Find all…</string>
+    <string name="folder">Folder</string>
+    <string name="goToDate">Go to date…</string>
+    <string name="index">Index</string>
+    <string name="licence">Licence <a href="https://www.gnu.org/licenses/gpl.txt">GNU GPLv3</a>
+  </string>
+    <string name="markdown">Markdown</string>
+    <string name="media">Media</string>
+    <string name="nextEntry">Next</string>
+    <string name="pref_about_summ"><a href="https://github.com/billthefarmer/diary/releases/latest">Version
+    %s</a>
+  </string>
+    <string name="pref_calendar">Use custom calendar</string>
+    <string name="pref_calendar_summ">
+    Use custom calendar rather than date picker
+  </string>
+    <string name="pref_copy_media">Copy images</string>
+    <string name="pref_copy_media_summ">
+    Copy inserted images to the current folder
+  </string>
+    <string name="pref_dark_theme">Dark</string>
+    <string name="pref_dark_theme_summ">
+    Use dark theme for editing
+  </string>
+    <string name="pref_external">Browser</string>
+    <string name="pref_external_summ">
+    Use browser for external links
+  </string>
+    <string name="pref_index_page">Index page</string>
+    <string name="pref_markdown">Use markdown</string>
+    <string name="pref_markdown_summ">
+    Use markdown to format entries
+  </string>
+    <string name="pref_template_page">Template page</string>
+    <string name="pref_use_index">Use index</string>
+    <string name="pref_use_index_summ">
+    Use index page for journal
+  </string>
+    <string name="pref_use_template">Use template</string>
+    <string name="pref_use_template_summ">
+    Use template for diary entries
+  </string>
+    <string name="prevEntry">Previous</string>
+    <string name="save">Save</string>
+    <string name="search">Search…</string>
+    <string name="settings">Settings</string>
+    <string name="share">Share…</string>
+    <string name="start">Start backup</string>
+    <string name="template">Template</string>
+    <string name="theme">Theme</string>
+    <string formatted="false" name="title_format">%s %d</string>
+    <string name="today">Today</string>
+    <style name="AppBaseTheme" parent="android:Theme.Holo.Light.DarkActionBar">
+    <!--
+        Theme customizations available in newer API levels can go in
+        res/values-vXX/styles.xml, while customizations related to
+        backward-compatibility can go here.
+    -->
+  </style>
+    <style name="AppDarkBaseTheme" parent="android:Theme.Holo">
+    <!--
+        Theme customizations available in newer API levels can go in
+        res/values-vXX/styles.xml, while customizations related to
+        backward-compatibility can go here.
+    -->
+  </style>
+    <style name="AppDarkTheme" parent="AppDarkBaseTheme">
+    <!--
+        All customizations that are NOT specific to a particular
+        API-level can go here.
+    -->
+
+    <item name="pref_about">@drawable/ic_pref_about_dark</item>
+    <item name="pref_calendar">@drawable/ic_pref_calendar_dark</item>
+    <item name="pref_copy_media">@drawable/ic_pref_copy_media_dark</item>
+    <item name="pref_dark_theme">@drawable/ic_pref_dark_theme_dark</item>
+    <item name="pref_external">@drawable/ic_pref_external_dark</item>
+    <item name="pref_folder">@drawable/ic_pref_folder_dark</item>
+    <item name="pref_index_page">@drawable/ic_pref_calendar_dark</item>
+    <item name="pref_markdown">@drawable/ic_pref_markdown_dark</item>
+    <item name="pref_template_page">@drawable/ic_pref_calendar_dark</item>
+    <item name="pref_use_index">@drawable/ic_pref_markdown_dark</item>
+    <item name="pref_use_template">@drawable/ic_pref_markdown_dark</item>
+
+  </style>
+    <style name="AppTheme" parent="AppBaseTheme">
+    <!--
+        All customizations that are NOT specific to a particular
+        API-level can go here.
+    -->
+
+    <item name="pref_about">@drawable/ic_pref_about</item>
+    <item name="pref_calendar">@drawable/ic_pref_calendar</item>
+    <item name="pref_copy_media">@drawable/ic_pref_copy_media</item>
+    <item name="pref_dark_theme">@drawable/ic_pref_dark_theme</item>
+    <item name="pref_external">@drawable/ic_pref_external</item>
+    <item name="pref_folder">@drawable/ic_pref_folder</item>
+    <item name="pref_index_page">@drawable/ic_pref_calendar</item>
+    <item name="pref_markdown">@drawable/ic_pref_markdown</item>
+    <item name="pref_template_page">@drawable/ic_pref_calendar</item>
+    <item name="pref_use_index">@drawable/ic_pref_markdown</item>
+    <item name="pref_use_template">@drawable/ic_pref_markdown</item>
+
+  </style>
+    <style name="CalendarView"/>
+    <style name="CalendarView.DayOfTheMonth">
+        <item name="android:textSize">14sp</item>
+        <item name="android:minWidth">@dimen/minDayCellWidth</item>
+        <item name="android:minHeight">@dimen/minDayCellHeight</item>
+        <item name="android:layout_width">wrap_content</item>
+        <item name="android:layout_height">wrap_content</item>
+        <item name="android:gravity">center</item>
+    </style>
+    <style name="CalendarView.DayOfTheWeek">
+        <item name="android:textSize">14sp</item>
+        <item name="android:minWidth">@dimen/minDayCellWidth</item>
+        <item name="android:minHeight">@dimen/minDayCellHeight</item>
+        <item name="android:layout_width">wrap_content</item>
+        <item name="android:layout_height">wrap_content</item>
+        <item name="android:gravity">center</item>
+    </style>
+    <style name="CalendarView.MonthTitle">
+        <item name="android:textSize">16sp</item>
+        <item name="android:textStyle">bold</item>
+        <item name="android:layout_width">wrap_content</item>
+        <item name="android:layout_height">wrap_content</item>
+        <item name="android:gravity">center</item>
+    </style>
+    <declare-styleable name="CustomCalendarView">
+        <attr format="color" name="calendarTitleTextColor"/>
+        <attr format="color" name="dayOfWeekTextColor"/>
+        <attr format="color" name="dayOfMonthTextColor"/>
+        <attr format="color" name="calendarBackgroundColor"/>
+        <attr format="color" name="disabledDayBackgroundColor"/>
+        <attr format="color" name="disabledDayTextColor"/>
+        <attr format="reference" name="selectedDayBackground"/>
+        <attr format="color" name="selectedDayTextColor"/>
+        <attr format="color" name="weekLayoutBackgroundColor"/>
+        <attr format="color" name="titleLayoutBackgroundColor"/>
+        <attr format="color" name="currentDayOfMonthColor"/>
+    </declare-styleable>
+    <declare-styleable name="Diary">
+    <attr format="reference" name="pref_about"/>
+    <attr format="reference" name="pref_calendar"/>
+    <attr format="reference" name="pref_copy_media"/>
+    <attr format="reference" name="pref_dark_theme"/>
+    <attr format="reference" name="pref_external"/>
+    <attr format="reference" name="pref_folder"/>
+    <attr format="reference" name="pref_index_page"/>
+    <attr format="reference" name="pref_markdown"/>
+    <attr format="reference" name="pref_template_page"/>
+    <attr format="reference" name="pref_use_index"/>
+    <attr format="reference" name="pref_use_template"/>
+  </declare-styleable>
+</resources>

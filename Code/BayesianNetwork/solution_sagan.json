@@ -1337,5 +1337,7 @@
     "String ProjectSample.getDescription()": "non",
     "XmlMapper SiteApplication.xmlMapper()": "non",
     "void ProjectRepository.setId(String)": "non",
-    "boolean Version.isQualified()": "non"
+    "boolean Version.isQualified()": "non",
+    "ResourceUrlEncodingFilter CloudFoundryMvcConfig.resourceUrlEncodingFilter()": "non",
+    "String Customer.toString()": "non"
 }

@@ -658,7 +658,7 @@ def main():
 
     # 일단 쪼갠 그래프들을 전부 BN으로 굽자
     for graph_file in graph_files:
-        print("graph_file: ", graph_file)
+        print("graph_file to BN: ", graph_file)
         graph_for_reference = nx.read_gpickle(graph_file)
         graph_for_reference.name = graph_file
         BN_for_inference = make_BN.main(graph_for_reference, filename=graph_file, stash_poor=True)

@@ -5,8 +5,8 @@ import os
 import os.path
 import random
 import time
-import glob
 import argparse
+import re
 
 import make_BN
 import matplotlib.axes as axes
@@ -532,7 +532,9 @@ def calculate_precision_inferred(state_names, current_snapshot, number_of_intera
 # =========================================================
 
 def find_pickled_graphs():
-    return list(filter(lambda name: "stats" not in name, glob.glob("*_graph_*")))
+    return list([f for f in os.listdir('.') if re.match(r'.*_graph_[0-9]+$', f)])
+
+
 
 # main ====================================================
 # =========================================================
@@ -656,6 +658,7 @@ def main():
 
     # 일단 쪼갠 그래프들을 전부 BN으로 굽자
     for graph_file in graph_files:
+        print("graph_file: ", graph_file)
         graph_for_reference = nx.read_gpickle(graph_file)
         graph_for_reference.name = graph_file
         BN_for_inference = make_BN.main(graph_for_reference, filename=graph_file, stash_poor=True)

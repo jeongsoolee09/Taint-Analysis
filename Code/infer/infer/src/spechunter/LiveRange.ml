@@ -173,7 +173,7 @@ let find_first_occurrence_of (ap:MyAccessPath.t) : Procname.t * S.t * S.elt =
     let elements = S.elements astate_set_nodup in
     let methname = first_of @@ (List.nth_exn elements 0) in
     let targetTuples = search_target_tuples_by_vardef_ap ap methname astate_set_nodup in
-    let earliest_state = find_earliest_astate_within targetTuples in
+    let earliest_state = find_earliest_astate_within targetTuples methname in
     (methname, astate_set, earliest_state)
 
 
@@ -484,7 +484,7 @@ let rec compute_chain_inner (current_methname:Procname.t) (current_astate_set:S.
             let current_astate_cleanedup = remove_duplicates_from current_astate_set in
             let states_upto_current = select_up_to current_astate ~within:current_astate_cleanedup in
             let future_states = S.diff current_astate_cleanedup states_upto_current in
-            let new_state = find_earliest_astate_of_var_within @@ S.elements future_states in
+            let new_state = find_earliest_astate_of_var_within (S.elements future_states) current_methname in
             let new_chain = (current_methname, Redefine (current_vardef)) :: current_chain in
             compute_chain_inner current_methname current_astate_set new_state new_chain 3
         | _ -> L.die InternalError "compute_chain_inner failed (1), current_methname: %a, current_astate_set: %a, current_astate: %a, current_chain: %a@." Procname.pp current_methname S.pp current_astate_set T.pp current_astate pp_chain current_chain end
@@ -501,7 +501,7 @@ let rec compute_chain_inner (current_methname:Procname.t) (current_astate_set:S.
         then (current_methname, Dead) :: current_chain else
         let states_with_return_var = search_target_tuples_by_pvar (mk_returnv current_methname) direct_caller (remove_duplicates_from caller_summary) in
         let have_been_before_filtered = filter_have_been_before states_with_return_var current_chain in
-        let new_state = try remove_from_aliasset ~from:(find_earliest_astate_within have_been_before_filtered) ~remove:(var_being_returned, [])
+        let new_state = try remove_from_aliasset ~from:(find_earliest_astate_within have_been_before_filtered current_methname) ~remove:(var_being_returned, [])
           with _ -> bottuple in
         if T.equal new_state bottuple then (current_methname, Dead) :: current_chain else
         let new_slice = (first_of new_state, Define (current_methname, second_of new_state)) in
@@ -525,12 +525,12 @@ let rec compute_chain_inner (current_methname:Procname.t) (current_astate_set:S.
               let new_states = search_target_tuples_by_vardef_ap ap callee_methname (remove_duplicates_from @@ get_summary callee_methname) in
               (* 여기서 skip_function이라 new_states가 비었을 가능성에 대비해야 함 *)
               if List.is_empty new_states then handle_empty_astateset current_methname current_astate_set callee_methname else
-              let new_state = find_earliest_astate_within new_states in
+              let new_state = find_earliest_astate_within new_states current_methname in
               let new_chain = (current_methname, Call (callee_methname, ap))::current_chain in
               compute_chain_inner callee_methname (get_summary callee_methname) new_state new_chain 3
           | nonempty_list -> (* 동일 proc에서의 Define *)
               (* L.progress "current ap: %a@." MyAccessPath.pp current_vardef; *)
-              let new_state = find_earliest_astate_within @@ S.elements (remove_duplicates_from @@ S.of_list nonempty_list) in
+            let new_state = find_earliest_astate_within (S.elements (remove_duplicates_from (S.of_list nonempty_list))) current_methname in
               let new_slice = (current_methname, Define (current_methname, ap)) in
               (* cycle을 막기 위해, 이미 동일 slice를 만든 적이 있었다면 생성 중단 *)
               if List.mem current_chain new_slice ~equal:double_equal

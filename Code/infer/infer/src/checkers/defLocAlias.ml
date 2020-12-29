@@ -559,7 +559,7 @@ module TransferFunctions = struct
                 let mapfunc = fun (var:Var.t) ->
                   begin match var with
                     | LogicalVar id ->
-                        let pvar = search_target_tuples_by_id id methname (fst apair) |> List.map ~f:fourth_of |> extract_another_pvar id in (* 여기가 문제 *)
+                        let pvar = search_target_tuples_by_id id methname (fst apair) |> List.map ~f:fourth_of |> extract_another_pvar id in
                         search_recent_vardef_astate methname pvar apair
                     | _ ->
                         L.die InternalError "exec_call/mapfunc failed, var: %a" Var.pp var end in

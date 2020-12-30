@@ -525,12 +525,18 @@ let rec compute_chain_inner (current_methname:Procname.t) (current_astate_set:S.
               let new_states = search_target_tuples_by_vardef_ap ap callee_methname (remove_duplicates_from @@ get_summary callee_methname) in
               (* 여기서 skip_function이라 new_states가 비었을 가능성에 대비해야 함 *)
               if List.is_empty new_states then handle_empty_astateset current_methname current_astate_set callee_methname else
-              let new_state = find_earliest_astate_within new_states current_methname in
+                let new_state = try
+                    find_earliest_astate_within new_states current_methname
+                  with _ -> bottuple in
+                if T.equal new_state bottuple then (current_methname, Dead) :: current_chain else
               let new_chain = (current_methname, Call (callee_methname, ap))::current_chain in
               compute_chain_inner callee_methname (get_summary callee_methname) new_state new_chain 3
           | nonempty_list -> (* 동일 proc에서의 Define *)
               (* L.progress "current ap: %a@." MyAccessPath.pp current_vardef; *)
-            let new_state = find_earliest_astate_within (S.elements (remove_duplicates_from (S.of_list nonempty_list))) current_methname in
+            let new_state = try
+                find_earliest_astate_within (S.elements (remove_duplicates_from (S.of_list nonempty_list))) current_methname
+              with _ -> bottuple in
+            if T.equal new_state bottuple then (current_methname, Dead) :: current_chain else
               let new_slice = (current_methname, Define (current_methname, ap)) in
               (* cycle을 막기 위해, 이미 동일 slice를 만든 적이 있었다면 생성 중단 *)
               if List.mem current_chain new_slice ~equal:double_equal

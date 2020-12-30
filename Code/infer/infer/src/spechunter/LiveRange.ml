@@ -484,7 +484,11 @@ let rec compute_chain_inner (current_methname:Procname.t) (current_astate_set:S.
             let current_astate_cleanedup = remove_duplicates_from current_astate_set in
             let states_upto_current = select_up_to current_astate ~within:current_astate_cleanedup in
             let future_states = S.diff current_astate_cleanedup states_upto_current in
-            let new_state = find_earliest_astate_of_var_within (S.elements future_states) current_methname in
+            let new_state = try
+                find_earliest_astate_of_var_within (S.elements future_states) current_methname
+              with
+                _ -> bottuple in
+              if T.equal new_state bottuple then (current_methname, Dead) :: current_chain else
             let new_chain = (current_methname, Redefine (current_vardef)) :: current_chain in
             compute_chain_inner current_methname current_astate_set new_state new_chain 3
         | _ -> L.die InternalError "compute_chain_inner failed (1), current_methname: %a, current_astate_set: %a, current_astate: %a, current_chain: %a@." Procname.pp current_methname S.pp current_astate_set T.pp current_astate pp_chain current_chain end

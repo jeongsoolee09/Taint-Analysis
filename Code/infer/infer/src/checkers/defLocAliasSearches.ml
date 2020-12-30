@@ -203,7 +203,7 @@ let find_earliest_astate_within (astatelist:S.elt list) (methname:Procname.t) : 
   | Some earliest_location ->
     (* L.progress "looking for %a in %a@." LocationSet.pp earliest_location pp_tuplelist astatelist; *)
     search_astate_by_loc earliest_location astatelist
-  | None -> L.die InternalError "find_earliest_astate_within failed, astatelist: %a, Method: %a@." S.pp (S.of_list astatelist) Procname.pp methname
+  | None -> raise IDontKnow (* L.die InternalError "find_earliest_astate_within failed, astatelist: %a, Method: %a@." S.pp (S.of_list astatelist) Procname.pp methname *)
 
 
 let find_earliest_astate_of_var_within (tuplelist:S.elt list) (methname:Procname.t) : T.t =

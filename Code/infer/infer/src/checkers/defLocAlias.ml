@@ -109,7 +109,9 @@ module TransferFunctions = struct
         (* L.progress "sweeping set: %a@." A.pp set; *)
         if Int.equal (A.cardinal set) 2 && A.mem (Var.of_id id, []) set
         then
-          begin match set |> A.remove (Var.of_id id, []) |> A.elements with
+          begin match set
+                      |> A.remove (Var.of_id id, [])
+                      |> A.elements with
             | [(x, _)] -> x
             | _ -> L.die InternalError "extract_another_pvar failed, id: %a, varsetlist: %a@." Ident.pp id pp_aliasset_list varsetlist end
         else extract_another_pvar id t
@@ -316,7 +318,9 @@ module TransferFunctions = struct
     | Lvar pv, BinOp (_, Var id1, Var id2) when not @@ is_mine id1 pv methname apair && is_mine id2 pv methname apair ->
         let targetState1 = search_target_tuple_by_id id1 methname (fst apair) in
         let targetState2 = search_target_tuple_by_id id2 methname (fst apair) in
-        let astate_rmvd = (fst apair) |> S.remove targetState1 |> S.remove targetState2 in
+        let astate_rmvd = (fst apair)
+                          |> S.remove targetState1
+                          |> S.remove targetState2 in
         let pvar_var = Var.of_pvar pv in
         let loc = LocationSet.singleton @@ CFG.Node.loc node in
         let aliasset_new = A.singleton (pvar_var, []) in
@@ -542,7 +546,9 @@ module TransferFunctions = struct
                         search_recent_vardef_astate methname pvar apair
                     | _ ->
                         L.die InternalError "exec_call/mapfunc failed, var: %a" Var.pp var end in
-                let actuals_pvar_tuples = actuals_logical |> List.filter ~f:is_logical_var |> List.map ~f:mapfunc in
+                let actuals_pvar_tuples = actuals_logical
+                                          |> List.filter ~f:is_logical_var
+                                          |> List.map ~f:mapfunc in
                 (* L.progress "callee: %a, actuals_pvar_tuples: %a@." Procname.pp callee_methname pp_tuplelist actuals_pvar_tuples; *)
                 let mangled_callv = (mk_callv callee_methname, []) in
                 let astate_set_callv_added = 
@@ -559,11 +565,15 @@ module TransferFunctions = struct
                 let mapfunc = fun (var:Var.t) ->
                   begin match var with
                     | LogicalVar id ->
-                        let pvar = search_target_tuples_by_id id methname (fst apair) |> List.map ~f:fourth_of |> extract_another_pvar id in
+                      let pvar = search_target_tuples_by_id id methname (fst apair)
+                                 |> List.map ~f:fourth_of
+                                 |> extract_another_pvar id in
                         search_recent_vardef_astate methname pvar apair
                     | _ ->
                         L.die InternalError "exec_call/mapfunc failed, var: %a" Var.pp var end in
-                let actuals_pvar_tuples = actuals_logical |> List.filter ~f:is_logical_var |> List.map ~f:mapfunc in
+                let actuals_pvar_tuples = actuals_logical
+                                          |> List.filter ~f:is_logical_var
+                                          |> List.map ~f:mapfunc in
                 (* L.progress "callee: %a, actuals_pvar_tuples: %a@." Procname.pp callee_methname pp_tuplelist actuals_pvar_tuples; *)
                 let actualpvar_alias_added = add_bindings_to_alias_of_tuples methname actuallog_formal_binding actuals_pvar_tuples (snd apair) |> S.of_list in
                 let mangled_callv = (mk_callv callee_methname, []) in
@@ -740,7 +750,9 @@ module TransferFunctions = struct
   let exec_instr : P.t -> extras ProcData.t -> CFG.Node.t -> Sil.instr -> P.t = fun prev' {summary} node instr ->
     (* L.progress "Executing instr: %a\n" (Sil.pp_instr ~print_types:true Pp.text) instr; *)
     let my_summary = summary in
-    let methname = node |> CFG.Node.underlying_node |> Procdesc.Node.get_proc_name in
+    let methname = node
+                   |> CFG.Node.underlying_node
+                   |> Procdesc.Node.get_proc_name in
     let prev = register_formals prev' node methname in
     (* let prev = prev' in *)
       match instr with

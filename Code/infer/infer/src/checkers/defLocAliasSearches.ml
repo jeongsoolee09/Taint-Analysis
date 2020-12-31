@@ -289,7 +289,7 @@ let search_target_tuple_by_vardef_ap (ap:MyAccessPath.t) (methname:Procname.t) (
   let elements = S.elements astate_set in
   let rec search_target_tuple_by_ap_inner (ap:MyAccessPath.t) (methname:Procname.t) (elements:S.elt list) = 
     match elements with
-    | [] -> L.die InternalError "search_target_tuple_by_vardef_ap failed, ap:%a, methname: %a, elements: %a" MyAccessPath.pp ap Procname.pp methname pp_tuplelist elements
+    | [] -> raise IDontKnow (* L.die InternalError "search_target_tuple_by_vardef_ap failed, ap:%a, methname: %a, elements: %a" MyAccessPath.pp ap Procname.pp methname pp_tuplelist elements *)
     | ((procname, vardef, _, _) as target)::t ->
         if Procname.equal procname methname && MyAccessPath.equal ap vardef
         then target

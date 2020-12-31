@@ -126,7 +126,11 @@ let detect_setter (methname:Procname.t) : methods option =
 
       (* Phase 2: *하나만* 있는 그 튜플 (파라미터)의 line number가 Phase 1에서 발견한 튜플의 line number 이전인지 확인한다. *)
       let ap = List.nth_exn sanity 0 in
-      let target_tuple = search_target_tuple_by_vardef_ap ap methname summary in
+      let target_tuple = try
+          search_target_tuple_by_vardef_ap ap methname summary
+        with
+          _ -> bottuple in
+      if T.equal target_tuple bottuple then Some Nothing else
       let ap_linenum = List.nth_exn (LocSet.elements @@ third_of target_tuple) 0 in
       let target_linenum = List.nth_exn (LocSet.elements @@ third_of target_tuple) 0 in
       if ap_linenum.line >= target_linenum.line then Some (Setter methname) else Some Nothing

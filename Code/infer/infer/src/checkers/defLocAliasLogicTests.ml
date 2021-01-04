@@ -35,11 +35,6 @@ let is_program_var (var:Var.t) : bool =
   | ProgramVar _ -> true
 
 
-(* let is_this_var_expr (exp:Exp.t) : bool =
-  match exp with
-  |  *)
-
-
 let convert_from_mangled : Procname.t -> (Mangled.t*Typ.t) -> Var.t = fun methname (m,_) -> Pvar.mk m methname |> Var.of_pvar
 
 

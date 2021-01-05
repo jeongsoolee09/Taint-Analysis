@@ -7,6 +7,7 @@ import random
 import time
 import glob
 import argparse
+import re
 
 import make_BN
 import matplotlib.axes as axes
@@ -816,10 +817,10 @@ def main():
     # 일단 쪼갠 그래프들을 전부 BN으로 굽자
     for graph_file in graph_files:
         graph_for_reference = nx.read_gpickle(graph_file)
-        if graph_for_reference.number_of_nodes() == 0:
-            continue
         graph_for_reference.name = graph_file
         BN_for_inference = make_BN.main(graph_for_reference, filename=graph_file, stash_poor=True)
+        if len(BN_for_inference.states) == 0:  # the graph file contained only poor nodes!
+            continue
         state_names = list(map(lambda node: node.name, BN_for_inference.states))
         initial_raw_snapshot = BN_for_inference.predict_proba({}, n_jobs=-1)
         initial_snapshot = make_names_and_params(state_names, initial_raw_snapshot)
@@ -836,6 +837,8 @@ def main():
         graph_for_reference = recycled_graph
         graph_for_reference.name = graph_file
         BN_for_inference = make_BN.main(graph_for_reference, filename=None, stash_poor=False)
+        if len(BN_for_inference.states) == 0:  # the graph file contained only poor nodes!
+            continue
         state_names = list(map(lambda node: node.name, BN_for_inference.states))
         initial_raw_snapshot = BN_for_inference.predict_proba({}, n_jobs=-1)
         initial_snapshot = make_names_and_params(state_names, initial_raw_snapshot)

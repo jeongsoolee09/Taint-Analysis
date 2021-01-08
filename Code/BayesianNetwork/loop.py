@@ -85,6 +85,7 @@ def random_loop(global_precision_list, snapshot_dict, BN_for_inference, graph_fo
 
     # exit the function based on confidence.
     if its_time_to_terminate:
+        save_data_as_csv(prev_snapshot, state_names)
         return (prev_snapshot, precision_list, stability_list,
                 precision_inferred_list, current_asked, global_precision_list)
 
@@ -106,6 +107,7 @@ def random_loop(global_precision_list, snapshot_dict, BN_for_inference, graph_fo
                                  stability_list, num_of_states, "random", interactive=False)
             draw_precision_inferred_graph(graph_file, list(range(1, len(BN_for_inference.states)+1)),
                                           precision_inferred_list, num_of_states, "random", interactive=False)
+        save_data_as_csv(prev_snapshot, state_names)
         return prev_snapshot, precision_list, stability_list, precision_inferred_list
 
     current_asked.append(query)
@@ -208,6 +210,7 @@ def tactical_loop(global_precision_list, snapshot_dict, graph_for_reference, BN_
                                      stability_list, num_of_states, "tactical", interactive=False)
                 draw_precision_inferred_graph(graph_file, list(range(1, len(BN_for_inference.states)+1)),
                                               precision_inferred_list, num_of_states, "tactical", interactive=False)
+            save_data_as_csv(prev_snapshot, state_names)
             return (prev_snapshot, precision_list, stability_list,
                     precision_inferred_list, loop_time_list, current_asked,
                     global_precision_list)
@@ -222,12 +225,14 @@ def tactical_loop(global_precision_list, snapshot_dict, graph_for_reference, BN_
                                  stability_list, num_of_states, "tactical", interactive=False)
             draw_precision_inferred_graph(graph_file, list(range(1, len(BN_for_inference.states)+1)),
                                           precision_inferred_list, num_of_states, "tactical", interactive=False)
+        save_data_as_csv(prev_snapshot, state_names)
         return (prev_snapshot, precision_list, stability_list,
                 precision_inferred_list, loop_time_list, current_asked,
                 global_precision_list)
     elif there_are_nodes_left and not_yet_time_to_terminate:
         pass
     elif there_are_nodes_left and its_time_to_terminate:
+        save_data_as_csv(prev_snapshot, state_names)
         return (prev_snapshot, precision_list, stability_list,
                 precision_inferred_list, loop_time_list, current_asked,
                 global_precision_list)
@@ -634,7 +639,8 @@ def save_data_as_csv(state_names, final_snapshot):
     names_and_dists_final = make_names_and_params(state_names, final_snapshot)
     names_and_labels_final = list(map(lambda tup: (tup[0], find_max_val(tup[1])), names_and_dists_final))
     out_df = pd.DataFrame(names_and_labels_final, columns=["name", "label"])
-    out_df.to_csv("inferred.csv", mode='w')
+    # append to the file if it exists
+    out_df.to_csv("inferred.csv", mode='a', header=not os.path.exists("inferred.csv"))
 
 
 def report_meta_statistics(graph_for_reference, BN_for_inference):
@@ -689,8 +695,6 @@ def calculate_precision_inferred(state_names, current_snapshot, number_of_intera
 # Finding graph files =====================================
 # =========================================================
 
-def find_pickled_graphs():
-    return list(filter(lambda name: "stats" not in name, glob.glob("*_graph_*")))
 def find_pickled_graphs():
     return list([f for f in os.listdir('.') if re.match(r'.*_graph_[0-9]+$', f)])
 
@@ -850,18 +854,22 @@ def main():
     print("Baking BNs...done")
 
     # evaluate the initial global precision of snapshot_dict and add it to global_precision_list
-    global_precision_list.append(evaluate_global_precision(snapshot_dict))
+    if SOLUTION:
+        global_precision_list.append(evaluate_global_precision(snapshot_dict))
 
     for graph, BN in BN_queue:
         lessons, prev_graph_states, prev_graph_file, global_precisions =\
             one_pass(snapshot_dict, graph.name, graph, BN, lessons,
                      prev_graph_states, prev_graph_file, debug=True)
-        global_precision_list += global_precisions
+        if SOLUTION:
+            global_precision_list += global_precisions
 
     for _ in range(TOTAL_NUM_OF_METHS-len(global_precision_list)):
         global_precision_list.append(np.nan)
 
-    draw_n_save_global_precision_graph(global_precision_list)
+    if SOLUTION:
+        draw_n_save_global_precision_graph(global_precision_list)
+
 
 if __name__ == "__main__":
     main()

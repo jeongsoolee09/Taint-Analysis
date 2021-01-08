@@ -145,6 +145,15 @@ def tame_rich(G):
     deal_with_rich_nodes.main(G)
 
 
+def get_maximum_in_edges(G):
+    """get the maximum incoming edges of a given graph. Nice for debugging purposes."""
+    nodes = list(G.nodes)
+    num_of_in_edges = list(map(lambda node: len(G.in_edges(nbunch=node)), nodes))
+    if num_of_in_edges == []:
+        return "empty graph"
+    return max(num_of_in_edges)
+        
+
 # main ====================================================
 # =========================================================
 
@@ -159,9 +168,10 @@ def main(graph_for_reference, **kwargs):
     num_of_poors = len(isolated_nodes(graph_for_reference))
     # print("there are", num_of_poors, "poor nodes")
 
+    tame_rich(graph_for_reference)
+
     # poor node가 있었다면 이를 저장해 두기
     if kwargs['filename'] and kwargs['stash_poor']:
-        tame_rich(graph_for_reference)
         poor_nodes = exclude_poor(graph_for_reference)
 
         if poor_nodes != []:
@@ -169,6 +179,8 @@ def main(graph_for_reference, **kwargs):
             for poor_node_name in poor_nodes:
                 G.add_node(poor_node_name)
             nx.write_gpickle(G, kwargs['filename']+'_poor')
+
+    # print("max number of in_edges:", get_maximum_in_edges(graph_for_reference))
 
     # print("initializing BN...")
     BN_for_inference = init_BN(graph_for_reference)

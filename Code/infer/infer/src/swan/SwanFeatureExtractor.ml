@@ -1,5 +1,7 @@
 open! IStd
 
+open DefLocAlias
+
 (**
    |-----------+----------------------------+
    | Feature # | Feature types              |
@@ -108,204 +110,204 @@ let extract_SourceToReturn ~(source_name:string) =
 (* ================================================== *)
 
 
-let classContainsName_args = [
-  "Saniti"
-; "Encod"
-; "Escap"
-; "Valid"
-; "Check"
-; "Verif"
-; "Authen"
-; "Security"
-; "Connect"
-; "Bind"
-; "OAuth"
-; ".io."
-; "web"
-; ".net."
-; "sql"
-; "Manager"
-; "Output"
-; "Input"
-; "database"
-; "db"
-; "hibernate"
-; "credential"
-; "process"
-; "runtime"
-; "user"
-; "jdbc"
-; "Html"
-; "Page"
-; "Request"
-; "http"
-; "url"
-; "servlet"
-; "Response"
-; "Redirect"
-; "Css"
-; "Dom"
+let classContainsName_features = [
+  extract_ClassContainsName "Saniti"
+; extract_ClassContainsName "Encod"
+; extract_ClassContainsName "Escap"
+; extract_ClassContainsName "Valid"
+; extract_ClassContainsName "Check"
+; extract_ClassContainsName "Verif"
+; extract_ClassContainsName "Authen"
+; extract_ClassContainsName "Security"
+; extract_ClassContainsName "Connect"
+; extract_ClassContainsName "Bind"
+; extract_ClassContainsName "OAuth"
+; extract_ClassContainsName ".io."
+; extract_ClassContainsName "web"
+; extract_ClassContainsName ".net."
+; extract_ClassContainsName "sql"
+; extract_ClassContainsName "Manager"
+; extract_ClassContainsName "Output"
+; extract_ClassContainsName "Input"
+; extract_ClassContainsName "database"
+; extract_ClassContainsName "db"
+; extract_ClassContainsName "hibernate"
+; extract_ClassContainsName "credential"
+; extract_ClassContainsName "process"
+; extract_ClassContainsName "runtime"
+; extract_ClassContainsName "user"
+; extract_ClassContainsName "jdbc"
+; extract_ClassContainsName "Html"
+; extract_ClassContainsName "Page"
+; extract_ClassContainsName "Request"
+; extract_ClassContainsName "http"
+; extract_ClassContainsName "url"
+; extract_ClassContainsName "servlet"
+; extract_ClassContainsName "Response"
+; extract_ClassContainsName "Redirect"
+; extract_ClassContainsName "Css"
+; extract_ClassContainsName "Dom"
 ]
 
 
 let classEndsWithName_features = [
-  "Encoder"
-; "Request"
-; "Render"
+  extract_ClassEndsWithName "Encoder"
+; extract_ClassEndsWithName "Request"
+; extract_ClassEndsWithName "Render"
 ]
 
 
-let classModifier = [
-  "static"
-; "public"
-; "final"
+let classModifier_features = [
+  extract_ClassModifier "static"
+; extract_ClassModifier "public"
+; extract_ClassModifier "final"
 ]
 
 
-let invocationClassName = [
-  "Saniti"
-; "regex"
-; "escap"
-; ".io."
-; "encod"
-; "sql"
-; "db"
-; "web"
-; ".net."
-; "Log."
+let invocationClassName_features = [
+  extract_InvocationClassName "Saniti"
+; extract_InvocationClassName "regex"
+; extract_InvocationClassName "escap"
+; extract_InvocationClassName ".io."
+; extract_InvocationClassName "encod"
+; extract_InvocationClassName "sql"
+; extract_InvocationClassName "db"
+; extract_InvocationClassName "web"
+; extract_InvocationClassName ".net."
+; extract_InvocationClassName "Log."
 ]
 
 
-let methodNameStartsWith = [
-  "get"
-; "set"
-; "put"
-; "has"
-; "is"
-; "open"
-; "close"
-; "create"
-; "delete"
+let methodNameStartsWith_features = [
+  extract_MethodNameStartsWith "get"
+; extract_MethodNameStartsWith "set"
+; extract_MethodNameStartsWith "put"
+; extract_MethodNameStartsWith "has"
+; extract_MethodNameStartsWith "is"
+; extract_MethodNameStartsWith "open"
+; extract_MethodNameStartsWith "close"
+; extract_MethodNameStartsWith "create"
+; extract_MethodNameStartsWith "delete"
 ]
 
 
-let methodNameEquals = [
-  "log"
-; "setHeader"
-; "sendRedirect"
+let methodNameEquals_features = [
+  extract_MethodNameEquals "log"
+; extract_MethodNameEquals "setHeader"
+; extract_MethodNameEquals "sendRedirect"
 ]
 
 
 let methodNameContains = [
-  "saniti"
-; "escape"
-; "unescape"
-; "replac"
-; "strip"
-; "encod"
-; "regex"
-; "authen"
-; "check"
-; "verif"
-; "privilege"
-; "login"
-; "loginpage"
-; "logout"
-; "connect"
-; "disconnect"
-; "bind"
-; "unbind"
-; "read"
-; "thread"
-; "load"
-; "payload"
-; "request"
-; "creat"
-; "decod"
-; "unescap"
-; "pars"
-; "stream"
-; "retriev"
-; "Object"
-; "Name"
-; "writ"
-; "updat"
-; "send"
-; "handl"
-; "log"
-; "run"
-; "execut"
-; "compile"
-; "dump"
-; "print"
-; "execute"
-; "query"
-; "role"
-; "authori"
-; "redirect"
-; "getParameter"
+  extract_MethodNameContains "saniti"
+; extract_MethodNameContains "escape"
+; extract_MethodNameContains "unescape"
+; extract_MethodNameContains "replac"
+; extract_MethodNameContains "strip"
+; extract_MethodNameContains "encod"
+; extract_MethodNameContains "regex"
+; extract_MethodNameContains "authen"
+; extract_MethodNameContains "check"
+; extract_MethodNameContains "verif"
+; extract_MethodNameContains "privilege"
+; extract_MethodNameContains "login"
+; extract_MethodNameContains "loginpage"
+; extract_MethodNameContains "logout"
+; extract_MethodNameContains "connect"
+; extract_MethodNameContains "disconnect"
+; extract_MethodNameContains "bind"
+; extract_MethodNameContains "unbind"
+; extract_MethodNameContains "read"
+; extract_MethodNameContains "thread"
+; extract_MethodNameContains "load"
+; extract_MethodNameContains "payload"
+; extract_MethodNameContains "request"
+; extract_MethodNameContains "creat"
+; extract_MethodNameContains "decod"
+; extract_MethodNameContains "unescap"
+; extract_MethodNameContains "pars"
+; extract_MethodNameContains "stream"
+; extract_MethodNameContains "retriev"
+; extract_MethodNameContains "Object"
+; extract_MethodNameContains "Name"
+; extract_MethodNameContains "writ"
+; extract_MethodNameContains "updat"
+; extract_MethodNameContains "send"
+; extract_MethodNameContains "handl"
+; extract_MethodNameContains "log"
+; extract_MethodNameContains "run"
+; extract_MethodNameContains "execut"
+; extract_MethodNameContains "compile"
+; extract_MethodNameContains "dump"
+; extract_MethodNameContains "print"
+; extract_MethodNameContains "execute"
+; extract_MethodNameContains "query"
+; extract_MethodNameContains "role"
+; extract_MethodNameContains "authori"
+; extract_MethodNameContains "redirect"
+; extract_MethodNameContains "getParameter"
 ]
 
 
 let paramContainsTypeOrName = [
-  "java.lang.String"
-; "char[]"
-; "byte[]"
-; "java.lang.CharSequence"
-; "java.lang.StringBuilder"
-; ".io."
-; "web"
-; "sql"
-; "db"
-; "credential"
-; "url"
+  extract_ParamContainsTypeOrName "java.lang.String"
+; extract_ParamContainsTypeOrName "char[]"
+; extract_ParamContainsTypeOrName "byte[]"
+; extract_ParamContainsTypeOrName "java.lang.CharSequence"
+; extract_ParamContainsTypeOrName "java.lang.StringBuilder"
+; extract_ParamContainsTypeOrName ".io."
+; extract_ParamContainsTypeOrName "web"
+; extract_ParamContainsTypeOrName "sql"
+; extract_ParamContainsTypeOrName "db"
+; extract_ParamContainsTypeOrName "credential"
+; extract_ParamContainsTypeOrName "url"
 ]
 
 
 let paramToSink = [
-  "writ"
-; "set"
-; "updat"
-; "send"
-; "handl"
-; "put"
-; "log"
-; "run"
-; "execut"
-; "dump"
-; "print"
-; "pars"
-; "stream"
+  extract_ParamToSink "writ"
+; extract_ParamToSink "set"
+; extract_ParamToSink "updat"
+; extract_ParamToSink "send"
+; extract_ParamToSink "handl"
+; extract_ParamToSink "put"
+; extract_ParamToSink "log"
+; extract_ParamToSink "run"
+; extract_ParamToSink "execut"
+; extract_ParamToSink "dump"
+; extract_ParamToSink "print"
+; extract_ParamToSink "pars"
+; extract_ParamToSink "stream"
 ]
 
 
 let returnTypeContainsName = [
-  "Document"
-; "Node"
-; "User"
-; "Credential"
-; "Servlet"
-; "Request"
+  extract_ReturnTypeContainsName "Document"
+; extract_ReturnTypeContainsName "Node"
+; extract_ReturnTypeContainsName "User"
+; extract_ReturnTypeContainsName "Credential"
+; extract_ReturnTypeContainsName "Servlet"
+; extract_ReturnTypeContainsName "Request"
 ]
 
 
 let returnType = [
-  "byte[]"
-; "java.lang.String"
-; "java.lang.CharSequence"
-; "boolean"
-; "java.sql.ResultSet"
+  extract_ReturnType "byte[]"
+; extract_ReturnType "java.lang.String"
+; extract_ReturnType "java.lang.CharSequence"
+; extract_ReturnType "boolean"
+; extract_ReturnType "java.sql.ResultSet"
 ]
 
 
 let sourceToReturn = [
-  "get"
-; "read"
-; "decode"
-; "unescape"
-; "load"
-; "request"
-; "create"
+  extract_SourceToReturn "get"
+; extract_SourceToReturn "read"
+; extract_SourceToReturn "decode"
+; extract_SourceToReturn "unescape"
+; extract_SourceToReturn "load"
+; extract_SourceToReturn "request"
+; extract_SourceToReturn "create"
 ]
 
 
@@ -378,3 +380,11 @@ let extract_MethodModifier =
     with "on". *)
 let extract_VoidOnMethod =
   fun (meth:Procname.t) -> raise NotYet
+
+
+(* Main ============================================ *)
+(* ================================================= *)
+
+
+let main () : unit =
+  ()

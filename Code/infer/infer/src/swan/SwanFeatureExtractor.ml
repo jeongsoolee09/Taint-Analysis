@@ -1,6 +1,7 @@
 open! IStd
 
 open DefLocAlias
+open Str
 
 (**
    |-----------+----------------------------+
@@ -37,8 +38,94 @@ open DefLocAlias
 (* higher-order features are higher-order functions that return feature extractors *)
 (* feature extractors are functions of Procname.t -> bool *)
 
-module L = Logging
+(* module L = Logging *)
 module F = Format
+module Hashtbl = Caml.Hashtbl
+
+
+(* Feature Value ==================================== *)
+(* ================================================== *)
+
+
+type feature_value = True | False | DontKnow
+
+
+let output (boolval:bool) : feature_value =
+  if boolval then True else False
+
+
+type class_modifier = Static | Public | Final
+
+
+(** get the modifier of the class that the given methname belongs to *)
+let get_class_modifier (methname:Procname) : class_modifier =
+  let classname : Typ.Name.t = Procname.get_class_type_name methname in
+  let java_struct = Tenv.lookup classname in
+  match java_struct with
+  | Some struct_ ->
+    let class_annot = struct_.annots in
+    if Annot.Item.is_final then Final else Public (* TODO: Static annots *)
+  | None -> DontKnow
+
+
+type method_modifier = Static | Public | Private | Final
+
+
+let is_static_method (meth:Procname.t) =
+  match meth with
+  | Procname.Java java_meth -> Procname.Java.is_static java_meth
+  | _ -> DontKnow
+
+
+let is_public_method (meth:Procname.t) =
+  let procdesc = lookup_pdesc meth in
+  let procattr = Procdesc.get_attributes procdesc in
+  match procattr.access with
+  | Public -> true
+  | _ -> false
+
+
+let is_private_method (meth:Procname.t) =
+  let procdesc = lookup_pdesc meth in
+  let procattr = Procdesc.get_attributes procdesc in
+  match procattr.access with
+  | Private -> true
+  | _ -> false
+  
+
+let is_final_method (meth:Procname.t) = 
+  let procdesc = lookup_pdesc meth in
+  let procattr = Procdesc.get_attributes procdesc in
+  let {return; params} : Annot.Method.t = procattr.method_annotation in
+  List.exists ~f:(fun (annot:Annot.Item.t) -> Annot.Item.is_final annot) params || Annot.Item.is_final return
+
+
+(* Hash table from Procname.t to Procdesc.t ========= *)
+(* ================================================== *)
+
+let procdesc_table = Hashtbl.create 777 
+
+
+let add_pdesc (methname:Procname.t) : unit =
+  let procdesc_opt = Procdesc.load methname in
+  match procdesc_opt with
+  | Some pdesc -> Hashtbl.add procdesc_table methname pdesc
+  | None -> ()
+
+
+let lookup_pdesc (methname:Procname.t) : Procdesc.t option =
+  Hashtbl.find procdesc_table methname
+
+
+(* Prefix utils ===================================== *)
+(* ================================================== *)
+
+
+let regex = Str.regexp ".+?(?:(?<=[a-z])(?=[A-Z])|(?<=[A-Z])(?=[A-Z][a-z])|$)"
+
+
+let raw = ignore @@ search_forward regex method_id;
+  matched_string method_id
 
 
 (* Higher-order features ============================ *)
@@ -317,57 +404,74 @@ let sourceToReturn = [
 
 (** Implicit methods (e.g. methods from bytecode for access of private fields) *)
 let extract_IsImplicitMethod =
-  fun (meth:Procname.t) -> raise NotYet
+  fun (meth:Procname.t) ->
+  let string_meth = Procname.to_string meth in
+  String.is_substring string_meth ~substring:"$"
 
 
 (** This feature checks wether the method is part of an anonymous class or not. *)
-let extract_AnonymousClass =
+let extract_AnonymousClass =    (* TODO *)
   fun (meth:Procname.t) -> raise NotYet
 
 
 (** Does this method have parameters? *)
 let extract_HasParameters =
-  fun (meth:Procname.t) -> raise NotYet
+  fun (meth:Procname.t) ->
+  match find_pdesc meth with
+  | Some pdesc ->
+    output @@ not @@ Int.equal (List.length @@ Procdesc.get_formals @@ pdesc) 0
+  | None -> DontKnow
 
 
 (** Does this method have a return type? *)
 let extract_HasReturnType =
-  fun (meth:Procname.t) -> raise NotYet
+  fun (meth:Procname.t) ->
+  match find_pdesc meth with
+  | Some pdesc ->
+    output @@ Typ.is_void @@ Procdesc.get_ret_type pdesc
+  | None -> DontKnow
 
 
 (** Is the method part of an inner class? *)
-let extract_InnerClass =
+let extract_InnerClass =        (* TODO *)
   fun (meth:Procname.t) -> raise NotYet
 
 
 (** Does this method return a constant? *)
-let extract_ReturnsConstant =
+let extract_ReturnsConstant =   (* TODO *)
   fun (meth:Procname.t) -> raise NotYet
 
 
 (** Feature that checks wether a parameter flows to return value. *)
-let extract_ParaFlowsToReturn =
+let extract_ParaFlowsToReturn = (* TODO *)
   fun (meth:Procname.t) -> raise NotYet
 
 
 (** Does any of the parameters match the return type? *)
 let extract_ParamTypeMatchesReturnType =
-  fun (meth:Procname.t) -> raise NotYet
+  fun (meth:Procname.t) ->
+  match find_pdesc meth with
+  | Some pdesc ->
+    let paramtypes = List.map ~f:snd @@ Procdesc.get_formals pdesc in
+    let rtntype = get_ret_type in
+    output @@ List.mem paramtypes rtntype ~equal:Typ.equal
+  | None -> DontKnow
 
 
 (** Check if an invocation to a certain method is made. *)
-let extract_InvocationName =
+let extract_InvocationName =    (* TODO *)
   fun (meth:Procname.t) -> raise NotYet
 
 
 (** Returns if the method is a constructor or not. *)
 let extract_IsConstructor =
-  fun (meth:Procname.t) -> raise NotYet
+  fun (meth:Procname.t) ->
+  Procname.is_constructor meth
 
 
 (** Feature that checks whether the current method begins with "get", and there
     is a corresponding "set" method in the class. *)
-let extract_IsRealSetter =
+let extract_IsRealSetter =      (* TODO *)
   fun (meth:Procname.t) -> raise NotYet
 
 
@@ -376,10 +480,14 @@ let extract_MethodModifier =
   fun (meth:Procname.t) -> raise NotYet
 
 
-(** Feature that matches whever a method returns void and the method name starts
+(** Feature that matches whenever a method returns void and the method name starts
     with "on". *)
 let extract_VoidOnMethod =
-  fun (meth:Procname.t) -> raise NotYet
+  fun (meth:Procname.t) ->
+  match find_pdesc meth with
+  | Some pdesc ->
+    Typ.is_void @@ Procdesc.get_ret_type pdesc && 
+  | None -> DontKnow
 
 
 (* Main ============================================ *)

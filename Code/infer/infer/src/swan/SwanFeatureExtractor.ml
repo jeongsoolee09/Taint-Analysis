@@ -1,7 +1,6 @@
 open! IStd
 
 open DefLocAlias
-open Str
 
 (**
    |-----------+----------------------------+
@@ -47,14 +46,16 @@ module Hashtbl = Caml.Hashtbl
 (* ================================================== *)
 
 
-type feature_value = True | False | DontKnow
+type feature_value = True | False | DontKnow [@@deriving equal]
 
 
 let output (boolval:bool) : feature_value =
   if boolval then True else False
 
 
-type class_modifier = Static | Public | Final
+module Class_Modifier = struct
+  type t = Static | Public | Final [@@deriving equal]
+end
 
 
 (** get the modifier of the class that the given methname belongs to *)
@@ -65,10 +66,12 @@ let get_class_modifier (methname:Procname) : class_modifier =
   | Some struct_ ->
     let class_annot = struct_.annots in
     if Annot.Item.is_final then Final else Public (* TODO: Static annots *)
-  | None -> DontKnow
+  | None -> L.die InternalError "This is not a Java method!: %a@." Procname.pp methname
 
 
-type method_modifier = Static | Public | Private | Final
+module Method_Modifier = struct
+  type t = Static | Public | Private | Final [@@deriving equal]
+end
 
 
 let is_static_method (meth:Procname.t) =
@@ -114,18 +117,24 @@ let add_pdesc (methname:Procname.t) : unit =
 
 
 let lookup_pdesc (methname:Procname.t) : Procdesc.t option =
-  Hashtbl.find procdesc_table methname
+  Hashtbl.find_opt procdesc_table methname
 
 
 (* Prefix utils ===================================== *)
 (* ================================================== *)
 
 
-let regex = Str.regexp ".+?(?:(?<=[a-z])(?=[A-Z])|(?<=[A-Z])(?=[A-Z][a-z])|$)"
+(** return "get" when given "getSomethingNow". *)
+let get_prefix (camel_case_string:string) : string =
+  String.take_while ~f:(fun char -> Char.is_lowercase char) camel_case_string
 
 
-let raw = ignore @@ search_forward regex method_id;
-  matched_string method_id
+(** return "Now" when given "getSometingNow". *)
+let get_last_word (camel_case_string:string) : string =
+  let last_uppercase_char = find_last_uppercase_char caml_case_string in
+  let last_uppercase_char_index = String.rindex camel_case_string last_uppercase_char in
+  let str_length = String.length last_uppercase_char in
+  String.sub ~pos:last_uppercase_char_index ~len:(str_length-last_uppercase_char)
 
 
 (* Higher-order features ============================ *)
@@ -134,17 +143,24 @@ let raw = ignore @@ search_forward regex method_id;
 
 (** Is the method part of class that contains the given name? *)
 let extract_ClassContainsName ~(name:string) =
-  fun (meth:Procname.t) -> raise NotYet
+  fun (meth:Procname.t) ->
+  String.contains (Procname.to_string meth) ~substring:name
 
 
 (** Is the method part of class that ends with the given name? *)
 let extract_ClassEndsWithName ~(name:string) =
-  fun (meth:Procname.t) -> raise NotYet
+  fun (meth:Procname.t) ->
+  String.contains (Procname.to_string meth) ~substring:name
 
 
 (** This feature checks the modifier of the class where the method is part of. *)
-let extract_ClassModifier ~(modifier:string) =
-  fun (meth:Procname.t) -> raise NotYet
+let extract_ClassModifier ~(modifier:class_modifier) =
+  fun (meth:Procname.t) ->
+  let class_modifier = get_class_mod in
+  match modifier with
+  | Static -> Class_Modifier.equal class_modifier Static
+  | Public -> Class_Modifier.equal class_modifier Public
+  | Final  -> Class_Modifier.equal class_modifier Final
 
 
 (** Check if an invocation to a method of a certain class is made. *)
@@ -245,9 +261,9 @@ let classEndsWithName_features = [
 
 
 let classModifier_features = [
-  extract_ClassModifier "static"
-; extract_ClassModifier "public"
-; extract_ClassModifier "final"
+  extract_ClassModifier Static
+; extract_ClassModifier Public
+; extract_ClassModifier Final
 ]
 
 

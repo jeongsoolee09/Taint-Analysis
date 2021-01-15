@@ -41,66 +41,7 @@ open DefLocAlias
 module F = Format
 module Hashtbl = Caml.Hashtbl
 
-
-(* Feature Value ==================================== *)
-(* ================================================== *)
-
-
-type feature_value = True | False | DontKnow [@@deriving equal]
-
-
-let output (boolval:bool) : feature_value =
-  if boolval then True else False
-
-
-module Class_Modifier = struct
-  type t = Static | Public | Final [@@deriving equal]
-end
-
-
-(** get the modifier of the class that the given methname belongs to *)
-let get_class_modifier (methname:Procname) : class_modifier =
-  let classname : Typ.Name.t = Procname.get_class_type_name methname in
-  let java_struct = Tenv.lookup classname in
-  match java_struct with
-  | Some struct_ ->
-    let class_annot = struct_.annots in
-    if Annot.Item.is_final then Final else Public (* TODO: Static annots *)
-  | None -> L.die InternalError "This is not a Java method!: %a@." Procname.pp methname
-
-
-module Method_Modifier = struct
-  type t = Static | Public | Private | Final [@@deriving equal]
-end
-
-
-let is_static_method (meth:Procname.t) =
-  match meth with
-  | Procname.Java java_meth -> Procname.Java.is_static java_meth
-  | _ -> DontKnow
-
-
-let is_public_method (meth:Procname.t) =
-  let procdesc = lookup_pdesc meth in
-  let procattr = Procdesc.get_attributes procdesc in
-  match procattr.access with
-  | Public -> true
-  | _ -> false
-
-
-let is_private_method (meth:Procname.t) =
-  let procdesc = lookup_pdesc meth in
-  let procattr = Procdesc.get_attributes procdesc in
-  match procattr.access with
-  | Private -> true
-  | _ -> false
-  
-
-let is_final_method (meth:Procname.t) = 
-  let procdesc = lookup_pdesc meth in
-  let procattr = Procdesc.get_attributes procdesc in
-  let {return; params} : Annot.Method.t = procattr.method_annotation in
-  List.exists ~f:(fun (annot:Annot.Item.t) -> Annot.Item.is_final annot) params || Annot.Item.is_final return
+exception NotYet
 
 
 (* Hash table from Procname.t to Procdesc.t ========= *)
@@ -120,6 +61,91 @@ let lookup_pdesc (methname:Procname.t) : Procdesc.t option =
   Hashtbl.find_opt procdesc_table methname
 
 
+(* Feature Value ==================================== *)
+(* ================================================== *)
+
+
+type feature_value = True | False | DontKnow [@@deriving equal]
+
+
+let output (boolval:bool) : feature_value =
+  if boolval then True else False
+
+
+module Class_Modifier = struct
+  type t = Static | Public | Final [@@deriving equal]
+end
+
+
+(** get the modifier of the class that the given methname belongs to *)
+let get_class_modifier (methname:Procname.t) =
+  match methname with
+  | Procname.Java java_meth ->
+      let classname : Typ.Name.t = Procname.Java.get_class_type_name java_meth in
+      let tenv_global =
+        begin match Tenv.load_global () with
+          | Some tenv_ -> tenv_
+          | None -> L.die InternalError
+                      "Could not load global tenv for %a@.!"
+                      Procname.pp methname end in
+      let java_struct = Tenv.lookup tenv_global classname in
+      begin match java_struct with
+        | Some struct_ ->
+            let class_annot = struct_.annots in
+            if Annot.Item.is_final class_annot
+            then Class_Modifier.Final
+            else Class_Modifier.Public (* TODO: Static annots *)
+        | None -> L.die InternalError "Tenv lookup for %a failed!@." Procname.pp methname end
+  | _ -> L.die InternalError "%a is not a Java method!" Procname.pp methname
+
+
+module Method_Modifier = struct
+  type t = Static | Public | Private | Final [@@deriving equal]
+end
+
+
+let is_static_method (meth:Procname.t) =
+  match meth with
+  | Procname.Java java_meth -> Procname.Java.is_static java_meth
+  | _ -> L.die InternalError "%a is not a Java method!" Procname.pp meth
+
+
+let is_public_method (meth:Procname.t) =
+  let procdesc =
+    match lookup_pdesc meth with
+    | Some pdesc_ -> pdesc_
+    | None -> L.die InternalError
+                "Could not find pdesc for %a@." Procname.pp meth in
+  let procattr = Procdesc.get_attributes procdesc in
+  match procattr.access with
+  | Public -> true
+  | _ -> false
+
+
+let is_private_method (meth:Procname.t) =
+  let procdesc =
+    match lookup_pdesc meth with
+    | Some pdesc_ -> pdesc_
+    | None -> L.die InternalError
+                "Could not find pdesc for %a@." Procname.pp meth in
+  let procattr = Procdesc.get_attributes procdesc in
+  match procattr.access with
+  | Private -> true
+  | _ -> false
+
+
+let is_final_method (meth:Procname.t) = 
+  let procdesc =
+    match lookup_pdesc meth with
+    | Some pdesc_ -> pdesc_
+    | None -> L.die InternalError
+                "Could not find pdesc for %a@." Procname.pp meth in
+  let procattr = Procdesc.get_attributes procdesc in
+  let {return; params} : Annot.Method.t = procattr.method_annotation in
+  List.exists ~f:(fun (annot:Annot.Item.t) ->
+      Annot.Item.is_final annot) params || Annot.Item.is_final return
+
+
 (* Prefix utils ===================================== *)
 (* ================================================== *)
 
@@ -129,13 +155,20 @@ let get_prefix (camel_case_string:string) : string =
   String.take_while ~f:(fun char -> Char.is_lowercase char) camel_case_string
 
 
-(** return "Now" when given "getSometingNow". *)
-let get_last_word (camel_case_string:string) : string =
-  let last_uppercase_char = find_last_uppercase_char caml_case_string in
-  let last_uppercase_char_index = String.rindex camel_case_string last_uppercase_char in
-  let str_length = String.length last_uppercase_char in
-  String.sub ~pos:last_uppercase_char_index ~len:(str_length-last_uppercase_char)
+(** find the index of the last uppercase character in a string. *)
+let find_last_uppercase_char_index (camel_case_string:string) =
+  String.rfindi camel_case_string ~f:(fun _ char -> Char.is_uppercase char)
 
+
+(** return "Now" when given "getSomethingNow". *)
+let get_last_word (camel_case_string:string) : string =
+  let index = find_last_uppercase_char_index camel_case_string in
+  match index with
+  | Some index ->
+      let str_length = String.length camel_case_string in
+      String.sub ~pos:index ~len:(str_length-index) camel_case_string
+  | None -> camel_case_string
+      
 
 (* Higher-order features ============================ *)
 (* ================================================== *)
@@ -144,19 +177,19 @@ let get_last_word (camel_case_string:string) : string =
 (** Is the method part of class that contains the given name? *)
 let extract_ClassContainsName ~(name:string) =
   fun (meth:Procname.t) ->
-  String.contains (Procname.to_string meth) ~substring:name
+  String.is_substring (Procname.to_string meth) ~substring:name
 
 
 (** Is the method part of class that ends with the given name? *)
 let extract_ClassEndsWithName ~(name:string) =
   fun (meth:Procname.t) ->
-  String.contains (Procname.to_string meth) ~substring:name
+  String.is_substring (Procname.to_string meth) ~substring:name
 
 
 (** This feature checks the modifier of the class where the method is part of. *)
-let extract_ClassModifier ~(modifier:class_modifier) =
+let extract_ClassModifier ~(modifier:Class_Modifier.t) =
   fun (meth:Procname.t) ->
-  let class_modifier = get_class_mod in
+  let class_modifier = get_class_modifier meth in
   match modifier with
   | Static -> Class_Modifier.equal class_modifier Static
   | Public -> Class_Modifier.equal class_modifier Public
@@ -165,252 +198,291 @@ let extract_ClassModifier ~(modifier:class_modifier) =
 
 (** Check if an invocation to a method of a certain class is made. *)
 let extract_InvocationClassName ~(classname:string) =
-  fun (meth:Procname.t) -> raise NotYet
+  fun (meth:Procname.t) ->      (* TODO *)
+  raise NotYet
 
 
 (** Does this method's name start with the given word? *)
 let extract_MethodNameStartsWith ~(word:string) =
-  fun (meth:Procname.t) -> raise NotYet
+  fun (meth:Procname.t) ->
+  String.equal (get_prefix (Procname.get_method meth)) word
 
 
 (** Is this method's name identical the given word? *)
 let extract_MethodNameEquals ~(word:string) =
-  fun (meth:Procname.t) -> raise NotYet
+  fun (meth:Procname.t) ->
+  String.equal (Procname.get_method meth) word
 
 
 (** Does this method's name contain the given word? *)
 let extract_MethodNameContains ~(word:string) =
-  fun (meth:Procname.t) -> raise NotYet
+  fun (meth:Procname.t) ->
+  String.is_substring (Procname.get_method meth) ~substring:word
 
 
 (** Do any of the parameters' type contain the given name? *)
-let extract_ParamContainsTypeOrName ~(name:string) =
-  fun (meth:Procname.t) -> raise NotYet
+let extract_ParamContainsTypeOrName ~(type_name:string) =
+  fun (meth:Procname.t) ->
+  match meth with
+  | Procname.Java java_meth ->
+      let raw_params : Procname.Java.java_type list = Procname.Java.get_parameters java_meth in
+      let string_params : string list = List.map ~f:(fun param ->
+          Typ.Name.Java.Split.type_name param) raw_params in
+      List.mem ~equal:String.equal string_params type_name
+  | _ -> L.die InternalError "%a is not a Java method!" Procname.pp meth
 
 
 (** Feature that checks whether a parameter flows to the sink. *)
 let extract_ParamToSink ~(sink_name:string) =
-  fun (meth:Procname.t) -> raise NotYet
+  fun (meth:Procname.t) -> raise NotYet (* TODO *)
 
 
 (** Does the return type contain the given name? *)
 let extract_ReturnTypeContainsName ~(name:string) =
-  fun (meth:Procname.t) -> raise NotYet
+  fun (meth:Procname.t) ->
+  let verbose_string = Procname.to_string meth in
+  match String.is_substring verbose_string ~substring:" " with
+  | true -> (* normal method; match with the return type's name *)
+      let rtntype_string = String.take_while ~f:(fun char -> not @@ Char.equal ' ' char) "void setSomething()" in
+      String.is_substring rtntype_string ~substring:name
+  | false -> (* special method; match with the entire name *)
+      String.is_substring verbose_string ~substring:name
 
 
-(** Does the return type of the method equal to the type given? *)
+(** Is the return type of the method equal to the type given? *)
 let extract_ReturnType ~(type_name:string) =
-  fun (meth:Procname.t) -> raise NotYet
+  fun (meth:Procname.t) ->
+  let verbose_string = Procname.to_string meth in
+  match String.is_substring verbose_string ~substring:" " with
+  | true -> (* normal method; match with the return type's name *)
+      let rtntype_string = String.take_while ~f:(fun char -> not @@ Char.equal ' ' char) "void setSomething()" in
+      String.equal rtntype_string type_name
+  | false -> (* special method; match with the entire name *)
+      String.equal verbose_string type_name
 
 
 (** Does the source method return one of its parameters
     (we are only interested in sources with one of the given names)? *)
 let extract_SourceToReturn ~(source_name:string) =
-  fun (meth:Procname.t) -> raise NotYet
+  fun (meth:Procname.t) -> raise NotYet (* TODO *)
 
 
-(* Instantiated Higher-order Functions ============== *)
+(* This is kinda strange; what category will "public static void main" fall into?
+   public or static? *)
+(** Feature checking the method modifiers *)
+let extract_MethodModifier ~(modifier:Method_Modifier.t) =
+  fun (meth:Procname.t) ->
+  let meth_modifier =if is_public_method meth then Method_Modifier.Public else
+    if is_private_method meth then Method_Modifier.Private else
+    if is_static_method meth then Method_Modifier.Static else
+    if is_final_method meth then Method_Modifier.Final else
+      L.die InternalError "No modifier has been detected for %a@."
+        Procname.pp meth in
+  Method_Modifier.equal modifier meth_modifier
+
+
+(* instantiated Higher-order Functions ============== *)
 (* ================================================== *)
 
 
 let classContainsName_features = [
-  extract_ClassContainsName "Saniti"
-; extract_ClassContainsName "Encod"
-; extract_ClassContainsName "Escap"
-; extract_ClassContainsName "Valid"
-; extract_ClassContainsName "Check"
-; extract_ClassContainsName "Verif"
-; extract_ClassContainsName "Authen"
-; extract_ClassContainsName "Security"
-; extract_ClassContainsName "Connect"
-; extract_ClassContainsName "Bind"
-; extract_ClassContainsName "OAuth"
-; extract_ClassContainsName ".io."
-; extract_ClassContainsName "web"
-; extract_ClassContainsName ".net."
-; extract_ClassContainsName "sql"
-; extract_ClassContainsName "Manager"
-; extract_ClassContainsName "Output"
-; extract_ClassContainsName "Input"
-; extract_ClassContainsName "database"
-; extract_ClassContainsName "db"
-; extract_ClassContainsName "hibernate"
-; extract_ClassContainsName "credential"
-; extract_ClassContainsName "process"
-; extract_ClassContainsName "runtime"
-; extract_ClassContainsName "user"
-; extract_ClassContainsName "jdbc"
-; extract_ClassContainsName "Html"
-; extract_ClassContainsName "Page"
-; extract_ClassContainsName "Request"
-; extract_ClassContainsName "http"
-; extract_ClassContainsName "url"
-; extract_ClassContainsName "servlet"
-; extract_ClassContainsName "Response"
-; extract_ClassContainsName "Redirect"
-; extract_ClassContainsName "Css"
-; extract_ClassContainsName "Dom"
+  extract_ClassContainsName ~name:"Saniti"
+; extract_ClassContainsName ~name:"Encod"
+; extract_ClassContainsName ~name:"Escap"
+; extract_ClassContainsName ~name:"Valid"
+; extract_ClassContainsName ~name:"Check"
+; extract_ClassContainsName ~name:"Verif"
+; extract_ClassContainsName ~name:"Authen"
+; extract_ClassContainsName ~name:"Security"
+; extract_ClassContainsName ~name:"Connect"
+; extract_ClassContainsName ~name:"Bind"
+; extract_ClassContainsName ~name:"OAuth"
+; extract_ClassContainsName ~name:".io."
+; extract_ClassContainsName ~name:"web"
+; extract_ClassContainsName ~name:".net."
+; extract_ClassContainsName ~name:"sql"
+; extract_ClassContainsName ~name:"Manager"
+; extract_ClassContainsName ~name:"Output"
+; extract_ClassContainsName ~name:"Input"
+; extract_ClassContainsName ~name:"database"
+; extract_ClassContainsName ~name:"db"
+; extract_ClassContainsName ~name:"hibernate"
+; extract_ClassContainsName ~name:"credential"
+; extract_ClassContainsName ~name:"process"
+; extract_ClassContainsName ~name:"runtime"
+; extract_ClassContainsName ~name:"user"
+; extract_ClassContainsName ~name:"jdbc"
+; extract_ClassContainsName ~name:"Html"
+; extract_ClassContainsName ~name:"Page"
+; extract_ClassContainsName ~name:"Request"
+; extract_ClassContainsName ~name:"http"
+; extract_ClassContainsName ~name:"url"
+; extract_ClassContainsName ~name:"servlet"
+; extract_ClassContainsName ~name:"Response"
+; extract_ClassContainsName ~name:"Redirect"
+; extract_ClassContainsName ~name:"Css"
+; extract_ClassContainsName ~name:"Dom"
 ]
 
 
 let classEndsWithName_features = [
-  extract_ClassEndsWithName "Encoder"
-; extract_ClassEndsWithName "Request"
-; extract_ClassEndsWithName "Render"
+  extract_ClassEndsWithName ~name:"Encoder"
+; extract_ClassEndsWithName ~name:"Request"
+; extract_ClassEndsWithName ~name:"Render"
 ]
 
 
 let classModifier_features = [
-  extract_ClassModifier Static
-; extract_ClassModifier Public
-; extract_ClassModifier Final
+  extract_ClassModifier ~modifier:Class_Modifier.Static
+; extract_ClassModifier ~modifier:Class_Modifier.Public
+; extract_ClassModifier ~modifier:Class_Modifier.Final
 ]
 
 
 let invocationClassName_features = [
-  extract_InvocationClassName "Saniti"
-; extract_InvocationClassName "regex"
-; extract_InvocationClassName "escap"
-; extract_InvocationClassName ".io."
-; extract_InvocationClassName "encod"
-; extract_InvocationClassName "sql"
-; extract_InvocationClassName "db"
-; extract_InvocationClassName "web"
-; extract_InvocationClassName ".net."
-; extract_InvocationClassName "Log."
+  extract_InvocationClassName ~classname:"Saniti"
+; extract_InvocationClassName ~classname:"regex"
+; extract_InvocationClassName ~classname:"escap"
+; extract_InvocationClassName ~classname:".io."
+; extract_InvocationClassName ~classname:"encod"
+; extract_InvocationClassName ~classname:"sql"
+; extract_InvocationClassName ~classname:"db"
+; extract_InvocationClassName ~classname:"web"
+; extract_InvocationClassName ~classname:".net."
+; extract_InvocationClassName ~classname:"Log."
 ]
 
 
 let methodNameStartsWith_features = [
-  extract_MethodNameStartsWith "get"
-; extract_MethodNameStartsWith "set"
-; extract_MethodNameStartsWith "put"
-; extract_MethodNameStartsWith "has"
-; extract_MethodNameStartsWith "is"
-; extract_MethodNameStartsWith "open"
-; extract_MethodNameStartsWith "close"
-; extract_MethodNameStartsWith "create"
-; extract_MethodNameStartsWith "delete"
+  extract_MethodNameStartsWith ~word:"get"
+; extract_MethodNameStartsWith ~word:"set"
+; extract_MethodNameStartsWith ~word:"put"
+; extract_MethodNameStartsWith ~word:"has"
+; extract_MethodNameStartsWith ~word:"is"
+; extract_MethodNameStartsWith ~word:"open"
+; extract_MethodNameStartsWith ~word:"close"
+; extract_MethodNameStartsWith ~word:"create"
+; extract_MethodNameStartsWith ~word:"delete"
 ]
 
 
 let methodNameEquals_features = [
-  extract_MethodNameEquals "log"
-; extract_MethodNameEquals "setHeader"
-; extract_MethodNameEquals "sendRedirect"
+  extract_MethodNameEquals ~word:"log"
+; extract_MethodNameEquals ~word:"setHeader"
+; extract_MethodNameEquals ~word:"sendRedirect"
 ]
 
 
 let methodNameContains = [
-  extract_MethodNameContains "saniti"
-; extract_MethodNameContains "escape"
-; extract_MethodNameContains "unescape"
-; extract_MethodNameContains "replac"
-; extract_MethodNameContains "strip"
-; extract_MethodNameContains "encod"
-; extract_MethodNameContains "regex"
-; extract_MethodNameContains "authen"
-; extract_MethodNameContains "check"
-; extract_MethodNameContains "verif"
-; extract_MethodNameContains "privilege"
-; extract_MethodNameContains "login"
-; extract_MethodNameContains "loginpage"
-; extract_MethodNameContains "logout"
-; extract_MethodNameContains "connect"
-; extract_MethodNameContains "disconnect"
-; extract_MethodNameContains "bind"
-; extract_MethodNameContains "unbind"
-; extract_MethodNameContains "read"
-; extract_MethodNameContains "thread"
-; extract_MethodNameContains "load"
-; extract_MethodNameContains "payload"
-; extract_MethodNameContains "request"
-; extract_MethodNameContains "creat"
-; extract_MethodNameContains "decod"
-; extract_MethodNameContains "unescap"
-; extract_MethodNameContains "pars"
-; extract_MethodNameContains "stream"
-; extract_MethodNameContains "retriev"
-; extract_MethodNameContains "Object"
-; extract_MethodNameContains "Name"
-; extract_MethodNameContains "writ"
-; extract_MethodNameContains "updat"
-; extract_MethodNameContains "send"
-; extract_MethodNameContains "handl"
-; extract_MethodNameContains "log"
-; extract_MethodNameContains "run"
-; extract_MethodNameContains "execut"
-; extract_MethodNameContains "compile"
-; extract_MethodNameContains "dump"
-; extract_MethodNameContains "print"
-; extract_MethodNameContains "execute"
-; extract_MethodNameContains "query"
-; extract_MethodNameContains "role"
-; extract_MethodNameContains "authori"
-; extract_MethodNameContains "redirect"
-; extract_MethodNameContains "getParameter"
+  extract_MethodNameContains ~word:"saniti"
+; extract_MethodNameContains ~word:"escape"
+; extract_MethodNameContains ~word:"unescape"
+; extract_MethodNameContains ~word:"replac"
+; extract_MethodNameContains ~word:"strip"
+; extract_MethodNameContains ~word:"encod"
+; extract_MethodNameContains ~word:"regex"
+; extract_MethodNameContains ~word:"authen"
+; extract_MethodNameContains ~word:"check"
+; extract_MethodNameContains ~word:"verif"
+; extract_MethodNameContains ~word:"privilege"
+; extract_MethodNameContains ~word:"login"
+; extract_MethodNameContains ~word:"loginpage"
+; extract_MethodNameContains ~word:"logout"
+; extract_MethodNameContains ~word:"connect"
+; extract_MethodNameContains ~word:"disconnect"
+; extract_MethodNameContains ~word:"bind"
+; extract_MethodNameContains ~word:"unbind"
+; extract_MethodNameContains ~word:"read"
+; extract_MethodNameContains ~word:"thread"
+; extract_MethodNameContains ~word:"load"
+; extract_MethodNameContains ~word:"payload"
+; extract_MethodNameContains ~word:"request"
+; extract_MethodNameContains ~word:"creat"
+; extract_MethodNameContains ~word:"decod"
+; extract_MethodNameContains ~word:"unescap"
+; extract_MethodNameContains ~word:"pars"
+; extract_MethodNameContains ~word:"stream"
+; extract_MethodNameContains ~word:"retriev"
+; extract_MethodNameContains ~word:"Object"
+; extract_MethodNameContains ~word:"Name"
+; extract_MethodNameContains ~word:"writ"
+; extract_MethodNameContains ~word:"updat"
+; extract_MethodNameContains ~word:"send"
+; extract_MethodNameContains ~word:"handl"
+; extract_MethodNameContains ~word:"log"
+; extract_MethodNameContains ~word:"run"
+; extract_MethodNameContains ~word:"execut"
+; extract_MethodNameContains ~word:"compile"
+; extract_MethodNameContains ~word:"dump"
+; extract_MethodNameContains ~word:"print"
+; extract_MethodNameContains ~word:"execute"
+; extract_MethodNameContains ~word:"query"
+; extract_MethodNameContains ~word:"role"
+; extract_MethodNameContains ~word:"authori"
+; extract_MethodNameContains ~word:"redirect"
+; extract_MethodNameContains ~word:"getParameter"
 ]
 
 
 let paramContainsTypeOrName = [
-  extract_ParamContainsTypeOrName "java.lang.String"
-; extract_ParamContainsTypeOrName "char[]"
-; extract_ParamContainsTypeOrName "byte[]"
-; extract_ParamContainsTypeOrName "java.lang.CharSequence"
-; extract_ParamContainsTypeOrName "java.lang.StringBuilder"
-; extract_ParamContainsTypeOrName ".io."
-; extract_ParamContainsTypeOrName "web"
-; extract_ParamContainsTypeOrName "sql"
-; extract_ParamContainsTypeOrName "db"
-; extract_ParamContainsTypeOrName "credential"
-; extract_ParamContainsTypeOrName "url"
+  extract_ParamContainsTypeOrName ~type_name:"java.lang.String"
+; extract_ParamContainsTypeOrName ~type_name:"char[]"
+; extract_ParamContainsTypeOrName ~type_name:"byte[]"
+; extract_ParamContainsTypeOrName ~type_name:"java.lang.CharSequence"
+; extract_ParamContainsTypeOrName ~type_name:"java.lang.StringBuilder"
+; extract_ParamContainsTypeOrName ~type_name:".io."
+; extract_ParamContainsTypeOrName ~type_name:"web"
+; extract_ParamContainsTypeOrName ~type_name:"sql"
+; extract_ParamContainsTypeOrName ~type_name:"db"
+; extract_ParamContainsTypeOrName ~type_name:"credential"
+; extract_ParamContainsTypeOrName ~type_name:"url"
 ]
 
 
 let paramToSink = [
-  extract_ParamToSink "writ"
-; extract_ParamToSink "set"
-; extract_ParamToSink "updat"
-; extract_ParamToSink "send"
-; extract_ParamToSink "handl"
-; extract_ParamToSink "put"
-; extract_ParamToSink "log"
-; extract_ParamToSink "run"
-; extract_ParamToSink "execut"
-; extract_ParamToSink "dump"
-; extract_ParamToSink "print"
-; extract_ParamToSink "pars"
-; extract_ParamToSink "stream"
+  extract_ParamToSink ~sink_name:"writ"
+; extract_ParamToSink ~sink_name:"set"
+; extract_ParamToSink ~sink_name:"updat"
+; extract_ParamToSink ~sink_name:"send"
+; extract_ParamToSink ~sink_name:"handl"
+; extract_ParamToSink ~sink_name:"put"
+; extract_ParamToSink ~sink_name:"log"
+; extract_ParamToSink ~sink_name:"run"
+; extract_ParamToSink ~sink_name:"execut"
+; extract_ParamToSink ~sink_name:"dump"
+; extract_ParamToSink ~sink_name:"print"
+; extract_ParamToSink ~sink_name:"pars"
+; extract_ParamToSink ~sink_name:"stream"
 ]
 
 
 let returnTypeContainsName = [
-  extract_ReturnTypeContainsName "Document"
-; extract_ReturnTypeContainsName "Node"
-; extract_ReturnTypeContainsName "User"
-; extract_ReturnTypeContainsName "Credential"
-; extract_ReturnTypeContainsName "Servlet"
-; extract_ReturnTypeContainsName "Request"
+  extract_ReturnTypeContainsName ~name:"Document"
+; extract_ReturnTypeContainsName ~name:"Node"
+; extract_ReturnTypeContainsName ~name:"User"
+; extract_ReturnTypeContainsName ~name:"Credential"
+; extract_ReturnTypeContainsName ~name:"Servlet"
+; extract_ReturnTypeContainsName ~name:"Request"
 ]
 
 
 let returnType = [
-  extract_ReturnType "byte[]"
-; extract_ReturnType "java.lang.String"
-; extract_ReturnType "java.lang.CharSequence"
-; extract_ReturnType "boolean"
-; extract_ReturnType "java.sql.ResultSet"
+  extract_ReturnType ~type_name:"byte[]"
+; extract_ReturnType ~type_name:"java.lang.String"
+; extract_ReturnType ~type_name:"java.lang.CharSequence"
+; extract_ReturnType ~type_name:"boolean"
+; extract_ReturnType ~type_name:"java.sql.ResultSet"
 ]
 
 
 let sourceToReturn = [
-  extract_SourceToReturn "get"
-; extract_SourceToReturn "read"
-; extract_SourceToReturn "decode"
-; extract_SourceToReturn "unescape"
-; extract_SourceToReturn "load"
-; extract_SourceToReturn "request"
-; extract_SourceToReturn "create"
+  extract_SourceToReturn ~source_name:"get"
+; extract_SourceToReturn ~source_name:"read"
+; extract_SourceToReturn ~source_name:"decode"
+; extract_SourceToReturn ~source_name:"unescape"
+; extract_SourceToReturn ~source_name:"load"
+; extract_SourceToReturn ~source_name:"request"
+; extract_SourceToReturn ~source_name:"create"
 ]
 
 
@@ -433,18 +505,18 @@ let extract_AnonymousClass =    (* TODO *)
 (** Does this method have parameters? *)
 let extract_HasParameters =
   fun (meth:Procname.t) ->
-  match find_pdesc meth with
+  match lookup_pdesc meth with
   | Some pdesc ->
-    output @@ not @@ Int.equal (List.length @@ Procdesc.get_formals @@ pdesc) 0
+      output @@ not @@ Int.equal (List.length @@ Procdesc.get_formals @@ pdesc) 0
   | None -> DontKnow
 
 
 (** Does this method have a return type? *)
 let extract_HasReturnType =
   fun (meth:Procname.t) ->
-  match find_pdesc meth with
+  match lookup_pdesc meth with
   | Some pdesc ->
-    output @@ Typ.is_void @@ Procdesc.get_ret_type pdesc
+      output @@ Typ.is_void @@ Procdesc.get_ret_type pdesc
   | None -> DontKnow
 
 
@@ -466,11 +538,11 @@ let extract_ParaFlowsToReturn = (* TODO *)
 (** Does any of the parameters match the return type? *)
 let extract_ParamTypeMatchesReturnType =
   fun (meth:Procname.t) ->
-  match find_pdesc meth with
+  match lookup_pdesc meth with
   | Some pdesc ->
-    let paramtypes = List.map ~f:snd @@ Procdesc.get_formals pdesc in
-    let rtntype = get_ret_type in
-    output @@ List.mem paramtypes rtntype ~equal:Typ.equal
+      let paramtypes = List.map ~f:snd @@ Procdesc.get_formals pdesc in
+      let rtntype = Procdesc.get_ret_type pdesc in
+      output @@ List.mem paramtypes rtntype ~equal:Typ.equal
   | None -> DontKnow
 
 
@@ -482,7 +554,7 @@ let extract_InvocationName =    (* TODO *)
 (** Returns if the method is a constructor or not. *)
 let extract_IsConstructor =
   fun (meth:Procname.t) ->
-  Procname.is_constructor meth
+  output @@ Procname.is_constructor meth
 
 
 (** Feature that checks whether the current method begins with "get", and there
@@ -491,18 +563,14 @@ let extract_IsRealSetter =      (* TODO *)
   fun (meth:Procname.t) -> raise NotYet
 
 
-(** Feature checking the method modifiers *)
-let extract_MethodModifier =
-  fun (meth:Procname.t) -> raise NotYet
-
-
 (** Feature that matches whenever a method returns void and the method name starts
     with "on". *)
 let extract_VoidOnMethod =
   fun (meth:Procname.t) ->
-  match find_pdesc meth with
+  match lookup_pdesc meth with
   | Some pdesc ->
-    Typ.is_void @@ Procdesc.get_ret_type pdesc && 
+      output (Typ.is_void @@ Procdesc.get_ret_type pdesc &&
+      String.equal (get_prefix (Procname.get_method meth)) "on")
   | None -> DontKnow
 
 

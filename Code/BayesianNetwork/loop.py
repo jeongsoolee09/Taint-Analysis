@@ -210,7 +210,7 @@ def tactical_loop(global_precision_list, snapshot_dict, graph_for_reference, BN_
                                      stability_list, num_of_states, "tactical", interactive=False)
                 draw_precision_inferred_graph(graph_file, list(range(1, len(BN_for_inference.states)+1)),
                                               precision_inferred_list, num_of_states, "tactical", interactive=False)
-            save_data_as_csv(prev_snapshot, state_names)
+            save_data_as_csv(state_names, prev_snapshot)
             return (prev_snapshot, precision_list, stability_list,
                     precision_inferred_list, loop_time_list, current_asked,
                     global_precision_list)
@@ -225,14 +225,14 @@ def tactical_loop(global_precision_list, snapshot_dict, graph_for_reference, BN_
                                  stability_list, num_of_states, "tactical", interactive=False)
             draw_precision_inferred_graph(graph_file, list(range(1, len(BN_for_inference.states)+1)),
                                           precision_inferred_list, num_of_states, "tactical", interactive=False)
-        save_data_as_csv(prev_snapshot, state_names)
+        save_data_as_csv(state_names, prev_snapshot)
         return (prev_snapshot, precision_list, stability_list,
                 precision_inferred_list, loop_time_list, current_asked,
                 global_precision_list)
     elif there_are_nodes_left and not_yet_time_to_terminate:
         pass
     elif there_are_nodes_left and its_time_to_terminate:
-        save_data_as_csv(prev_snapshot, state_names)
+        save_data_as_csv(state_names, prev_snapshot)
         return (prev_snapshot, precision_list, stability_list,
                 precision_inferred_list, loop_time_list, current_asked,
                 global_precision_list)
@@ -636,8 +636,9 @@ def report_results(state_names, initial_snapshot, final_snapshot):
 
 def save_data_as_csv(state_names, final_snapshot):
     """inference가 다 끝난 label들을 csv로 저장한다."""
-    names_and_dists_final = make_names_and_params(state_names, final_snapshot)
-    names_and_labels_final = list(map(lambda tup: (tup[0], find_max_val(tup[1])), names_and_dists_final))
+    # names_and_dists_final = make_names_and_params(state_names, final_snapshot)
+    # names_and_labels_final = list(map(lambda tup: (tup[0], find_max_val(tup[1])), names_and_dists_final))
+    names_and_labels_final = list(map(lambda tup: (tup[0], find_max_val(tup[1])), final_snapshot))
     out_df = pd.DataFrame(names_and_labels_final, columns=["name", "label"])
     # append to the file if it exists
     out_df.to_csv("inferred.csv", mode='a', header=not os.path.exists("inferred.csv"))

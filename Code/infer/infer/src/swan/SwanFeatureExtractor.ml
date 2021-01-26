@@ -32,18 +32,27 @@ open! IStd
    |-----------+----------------------------+
 *)
 
+(** For use in infer_repl:
+
+#mod_use "infer/src/swan/MyCallGraph.ml"
+#mod_use "infer/src/swan/SetofAllMeths.ml"
+#mod_use "infer/src/swan/SummaryLoader.ml"
+#use "infer/src/swan/SwanFeatureExtractor.ml"
+
+*)
+
+
 (* higher-order features are higher-order functions that return feature extractors *)
 (* feature extractors are functions of Procname.t -> bool *)
 
 module L = Logging
 module F = Format
 module Map = Caml.Map.Make (Procname)
-module DLA = DefLocAlias.TransferFunctions
 module Search = DefLocAliasSearches
 module Test = DefLocAliasLogicTests
 module S = DefLocAliasDomain.AbstractStateSetFinite
 module A = DefLocAliasDomain.SetofAliases
-module MyAccessPath = DefLocAliasDomain.MyAccessPath 
+module MyAccessPath = DefLocAliasDomain.MyAccessPath
 
 exception NotYet
 
@@ -54,7 +63,7 @@ let methnames = SetofAllMeths.calculate_list ()
 
 let second_of (_, b, _, _) = b
 
-let fourth_of (_, _, _, d) = :
+let fourth_of (_, _, _, d) = d
 
 
 let rec catMaybes_tuplist (optlist:('a*'b option) list) : ('a*'b) list =
@@ -81,7 +90,7 @@ let exp_to_pvar (exp:Exp.t) =
 (* ================================================== *)
 
 
-let summary_table = DLA.load_summary_from_disk_to_map Map.empty
+let summary_table = SummaryLoader.load_summary_from_disk_to_map Map.empty
 
 
 let lookup_summary (methname:Procname.t) =
@@ -116,7 +125,7 @@ let get_formal_args (key:Procname.t) = Map.find key formal_arg_table
 (* ================================================== *)
 
 
-let callgraph = MyCallGraph.load_summary_from_disk_to_map Map.empty
+let callgraph = MyCallGraph.load_callgraph_from_disk_to_map Map.empty
 
 
 let lookup_callee (methname:Procname.t) : Procname.t option =
@@ -134,7 +143,9 @@ let batch_add_pdesc_to_map (methnames:Procname.t list) map =
       | Some pdesc -> Map.add methname pdesc acc
       | None -> acc) ~init:map methnames
 
+
 let procdesc_table = batch_add_pdesc_to_map methnames Map.empty
+
 
 let lookup_pdesc (methname:Procname.t) : Procdesc.t option =
   Map.find_opt methname procdesc_table
@@ -311,9 +322,9 @@ let extract_ParamContainsTypeOrName ~(type_name:string) =
   fun (meth:Procname.t) ->
   match meth with
   | Procname.Java java_meth ->
-      let raw_params : Procname.Java.java_type list = Procname.Java.get_parameters java_meth in
+      let raw_params = Procname.Java.get_parameters java_meth in
       let string_params : string list = List.map ~f:(fun param ->
-          Typ.Name.Java.Split.type_name param) raw_params in
+          Typ.to_string param) raw_params in
       List.mem ~equal:String.equal string_params type_name
   | _ -> L.die InternalError "%a is not a Java method!" Procname.pp meth
 
@@ -460,13 +471,13 @@ let extract_ReturnType ~(type_name:string) =
     (we are only interested in sources with one of the given names)? *)
 let extract_ret_id call_instr =
   match call_instr with
-  | Call ((id, _), _, _, _, _, _) -> id
+  | Sil.Call ((id, _), _, _, _, _) -> id
   | _ -> L.die InternalError
            "%a is not a call_instr!"
            (Sil.pp_instr ~print_types:false Pp.text) call_instr
 
 
-let extract_SourceToReturn ~(source_name:string) =  (* TODO: will attack it later *)
+let extract_SourceToReturn ~(source_name:string) =
   fun (meth:Procname.t) ->
   (* Do any of the following:
      1. values returned from a source
@@ -480,36 +491,45 @@ let extract_SourceToReturn ~(source_name:string) =  (* TODO: will attack it late
         || acc) callgraph false in
   if not @@ appears_on_callgraph meth source_name then return false else
     (* 2. Do the aforementioned values flow to a return? *)
-    match Procdesc.load meth with
-    | Some summary ->
-        let passing_sourceval_to_return (meth:Procname.t) callee_name_piece : feature_value =
-          (* need to leverage the static analysis:
-             iterate through the set and search for the return variable,
-             and see if params or its aliases are return var's aliases *)
-          let return_tups = Search.find_tuples_with_ret summary meth in
-          let return_aliassets = List.map ~f:(fun return_tup -> fourth_of return_tup) return_tups
-                                 |> List.fold ~f:(fun acc set -> A.union acc set) ~init:A.empty aliassets
-                                 |> big_union_A aliassets
+    match Summary.OnDisk.get meth with
+    | Some summary_payload ->
+      begin match summary_payload.Summary.payloads.def_loc_alias with
+        | Some summary ->
+          let passing_sourceval_to_return (meth:Procname.t) callee_name_piece : feature_value =
+            (* need to leverage the static analysis:
+               iterate through the set and search for the return variable,
+               and see if params or its aliases are return var's aliases *)
+            let return_tups = Search.find_tuples_with_ret (fst summary) meth in
+            let return_aliases = List.map ~f:(fun return_tup -> fourth_of return_tup) return_tups
+                                 |> List.fold ~f:(fun acc set -> A.union acc set) ~init:A.empty
                                  |> A.elements in
-          let call_instrs =
-            Procdesc.fold_instrs pdesc ~init:[]
-              ~f:(fun acc _ instr ->
-                  if is_call instr && String.is_substring (extract_calleename instr)
-                       ~substring:callee_name_piece
-                  then instr::acc else acc) in
-          (* If there are no calls to the designated source, then just return false *)
-          if Int.equal (List.length call_instrs) 0 then return false else
-            let ret_ids = List.map ~f:extract_ret_id call_instrs in
-            (* is there a non-ph tuple with the ret_id? *)
-            let ret_id_pvar_tuples = List.map ~f:(fun id ->
-                Search.search_target_tuple_by_id id meth summary) ret_ids in
-            let sourceval_aps_and_friends =
-              A.elements @@ big_union_A @@ List.map ~f:(fun ap ->
-                  transitively_collect_aliases ap summary meth) ret_id_pvar_tuples in
-            return @@ List.fold ~f:(fun acc ap ->
-                List.mem return_aliassets ap ~equal:MyAccessPath.equal || acc)
-              ~init:false sourceval_aps_and_friends in
-        passing_sourceval_to_return
+            begin match Procdesc.load meth with
+              | Some pdesc ->
+                let call_instrs =
+                  Procdesc.fold_instrs pdesc ~init:[]
+                    ~f:(fun acc _ instr ->
+                        if is_call instr && String.is_substring (extract_calleename instr)
+                             ~substring:callee_name_piece
+                        then instr::acc else acc) in
+                (* If there are no calls to the designated source, then just return false *)
+                if Int.equal (List.length call_instrs) 0 then return false else
+                  let ret_id_aliases = List.map ~f:extract_ret_id call_instrs
+                                       (* is there a non-ph tuple with the ret_id? *)
+                                       |> List.map ~f:(fun id ->
+                                           Search.search_target_tuple_by_id id meth (fst summary))
+                                       |> List.map ~f:(fun tup -> fourth_of tup)
+                                       |> big_union_A
+                                       |> A.elements
+                                       |> List.map ~f:(fun ap ->
+                                           transitively_collect_aliases ap (fst summary) meth)
+                                       |> big_union_A
+                                       |> A.elements in
+                  return @@ List.fold ~f:(fun acc ap ->
+                      List.mem ret_id_aliases ap ~equal:MyAccessPath.equal || acc)
+                    ~init:false return_aliases
+              | None -> DontKnow end in
+          passing_sourceval_to_return meth source_name
+        | None -> DontKnow end
     | None -> DontKnow
 
 
@@ -747,12 +767,11 @@ let extract_IsImplicitMethod =
 (** This feature checks wether the method is part of an anonymous class or not. *)
 let extract_AnonymousClass =
   fun (meth:Procname.t) ->
-  match methname with
+  match meth with
   | Procname.Java java_meth ->
       let classname : Typ.Name.t = Procname.Java.get_class_type_name java_meth in
-      Typ.Java.is_anonymous_inner_class_name classname
-  | _ -> L.die InternalError "%a is not a Java method!" Procname.pp methname
-
+      Typ.Name.Java.is_anonymous_inner_class_name_exn classname
+  | _ -> L.die InternalError "%a is not a Java method!" Procname.pp meth
 
 
 (** Does this method have parameters? *)
@@ -784,9 +803,10 @@ let extract_ReturnsConstant =
   let is_returning_constant (ret_instr:Sil.instr) =
     match ret_instr with
     | Store {e1=lhs; e2=rhs} ->
-        if is_program_var e1 && Var.is_const e2
-        then Var.is_return (exp_to_pvar e1)
-        else false in
+        if Test.is_program_var_expr lhs && Exp.is_const rhs
+        then Var.is_return (exp_to_pvar lhs)
+        else false
+    | _ -> L.die InternalError "fuck" in
   match Procdesc.load meth with
   | Some pdesc ->
       return @@ Procdesc.fold_instrs pdesc ~init:false
@@ -815,7 +835,7 @@ let extract_ParamTypeMatchesReturnType =
 let extract_InvocationName =
   fun (meth:Procname.t) ->
   Map.fold (fun _ v acc ->
-    Procname.equal meth v || acc) callgraph_table false
+    Procname.equal meth v || acc) callgraph false
 
 
 (** Returns if the method is a constructor or not. *)
@@ -828,18 +848,26 @@ let extract_IsConstructor =
     is a corresponding "set" method in the class. *)
 let extract_IsRealSetter =
   fun (meth:Procname.t) ->
-  let method_string = Procname.get_method meth in
-  if not @@ String.equal (get_prefix method_string) "set" then False else
-    let classname : Typ.Name.t = Procname.Java.get_class_type_name meth in
-    let all_methods_of_class =
-      List.filter ~f:(fun meth_ ->
-          let classname_ = Procname.Java.get_class_type_name meth in
-          Typ.Name.equal classname_ classname) methnames in
-    let method_name_without_set = String.substring method_string 3 (String.length method_string) in
-    let corresponding_getter_string = "get"^method_name_without_set in
-    return @@ List.fold ~f:(fun acc meth_ ->
-        let method_string = Procname.get_method meth_ in
-        String.equal corresponding_getter_string method_string || acc) ~init:false methnames
+  match meth with
+  | Procname.Java java_meth ->
+    let method_string = Procname.Java.get_method java_meth in
+    if not @@ String.equal (get_prefix method_string) "set" then False else
+      let classname : Typ.Name.t = Procname.Java.get_class_type_name java_meth in
+      let all_methods_of_class =
+        methnames
+        |> List.map ~f:(fun meth ->
+            match meth with
+            | Procname.Java java_meth -> java_meth
+            | _ -> L.die InternalError "%a is not a Java method!" Procname.pp meth)
+        |> List.filter ~f:(fun meth_ ->
+            let classname_ = Procname.Java.get_class_type_name meth_ in
+            Typ.Name.equal classname_ classname) in
+      let method_name_without_set = String.slice method_string 3 (String.length method_string) in
+      let corresponding_getter_string = "get"^method_name_without_set in
+      return @@ List.fold ~f:(fun acc meth_ ->
+          let method_string = Procname.Java.get_method meth_ in
+          String.equal corresponding_getter_string method_string || acc) ~init:false all_methods_of_class
+  | _ -> L.die InternalError "%a is not a Java method!" Procname.pp meth
 
 
 (** Feature that matches whenever a method returns void and the method name starts
@@ -858,5 +886,4 @@ let extract_VoidOnMethod =
 
 
 let main () : unit =
-  MyCallGraph.load_summary_from_disk_to callgraph
-  
+  ()

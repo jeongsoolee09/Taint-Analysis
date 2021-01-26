@@ -11,7 +11,7 @@ module T = DefLocAliasDomain.AbstractState
 exception NotImplemented
 exception IDontKnow
 
-let is_pvar_expr (exp:Exp.t) : bool =
+let is_program_var_expr (exp:Exp.t) : bool =
   match exp with
   | Lvar _ -> true
   | _ -> false

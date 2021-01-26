@@ -866,7 +866,8 @@ let extract_IsRealSetter =
       let corresponding_getter_string = "get"^method_name_without_set in
       return @@ List.fold ~f:(fun acc meth_ ->
           let method_string = Procname.Java.get_method meth_ in
-          String.equal corresponding_getter_string method_string || acc) ~init:false all_methods_of_class
+          String.equal corresponding_getter_string method_string || acc)
+        ~init:false all_methods_of_class
   | _ -> L.die InternalError "%a is not a Java method!" Procname.pp meth
 
 

@@ -8,6 +8,7 @@
 open! IStd
 open AbsLoc
 open! AbstractDomain.Types
+module BoSummary = BufferOverrunAnalysisSummary
 module L = Logging
 module Dom = BufferOverrunDomain
 module PO = BufferOverrunProofObligations
@@ -22,10 +23,11 @@ module ModelEnv = struct
     ; node_hash: int
     ; location: Location.t
     ; tenv: Tenv.t
-    ; integer_type_widths: Typ.IntegerWidths.t }
+    ; integer_type_widths: Typ.IntegerWidths.t
+    ; get_summary: BoSummary.get_summary }
 
-  let mk_model_env pname ~node_hash location tenv integer_type_widths =
-    {pname; node_hash; location; tenv; integer_type_widths}
+  let mk_model_env pname ~node_hash location tenv integer_type_widths get_summary =
+    {pname; node_hash; location; tenv; integer_type_widths; get_summary}
 end
 
 module Exec = struct
@@ -103,7 +105,9 @@ module Exec = struct
   let init_c_array_fields {pname; node_hash; tenv; integer_type_widths} path typ locs ?dyn_length
       mem =
     let rec init_field path locs dimension ?dyn_length (mem, inst_num) (field_name, field_typ, _) =
-      let field_path = Option.map path ~f:(fun path -> Symb.SymbolPath.field path field_name) in
+      let field_path =
+        Option.map path ~f:(fun path -> Symb.SymbolPath.append_field path field_name)
+      in
       let field_loc = PowLoc.append_field locs ~fn:field_name in
       let mem =
         match field_typ.Typ.desc with
@@ -235,11 +239,11 @@ module Exec = struct
 end
 
 module Check = struct
-  let check_access ~size ~idx ~offset ~arr_traces ~idx_traces ~last_included ~taint ~latest_prune
-      location cond_set =
+  let check_access ~size ~idx ~offset ~arr_traces ~idx_traces ~last_included ~latest_prune location
+      cond_set =
     match (size, idx) with
     | NonBottom length, NonBottom idx ->
-        PO.ConditionSet.add_array_access location ~size:length ~offset ~idx ~last_included ~taint
+        PO.ConditionSet.add_array_access location ~size:length ~offset ~idx ~last_included
           ~idx_traces ~arr_traces ~latest_prune cond_set
     | _ ->
         cond_set
@@ -260,10 +264,7 @@ module Check = struct
         offset
 
 
-  let get_taint arr idx = Dom.Taint.join (Dom.Val.get_taint arr) (Dom.Val.get_taint idx)
-
   let array_access ~arr ~idx ~is_plus ~last_included ~latest_prune location cond_set =
-    let taint = get_taint arr idx in
     let idx_traces = Dom.Val.get_traces idx in
     let idx =
       let idx_itv = Dom.Val.get_itv idx in
@@ -274,8 +275,8 @@ module Check = struct
       let size = ArrayBlk.ArrInfo.get_size arr_info in
       let offset = offsetof arr_info in
       log_array_access allocsite size offset idx ;
-      check_access ~size ~idx ~offset ~arr_traces ~idx_traces ~last_included ~taint ~latest_prune
-        location acc
+      check_access ~size ~idx ~offset ~arr_traces ~idx_traces ~last_included ~latest_prune location
+        acc
     in
     ArrayBlk.fold array_access1 (Dom.Val.get_array_blk arr) cond_set
 
@@ -285,7 +286,7 @@ module Check = struct
     let arr =
       if Language.curr_language_is Java then
         let arr_locs = Sem.eval_locs array_exp mem in
-        if PowLoc.is_empty arr_locs then Dom.Val.Itv.top else Dom.Mem.find_set arr_locs mem
+        if PowLoc.is_bot arr_locs then Dom.Val.Itv.top else Dom.Mem.find_set arr_locs mem
       else Sem.eval_arr integer_type_widths array_exp mem
     in
     let latest_prune = Dom.Mem.get_latest_prune mem in
@@ -293,7 +294,6 @@ module Check = struct
 
 
   let array_access_byte ~arr ~idx ~is_plus ~last_included ~latest_prune location cond_set =
-    let taint = get_taint arr idx in
     let idx_traces = Dom.Val.get_traces idx in
     let idx =
       let idx_itv = Dom.Val.get_itv idx in
@@ -304,8 +304,8 @@ module Check = struct
       let size = ArrayBlk.ArrInfo.byte_size arr_info in
       let offset = offsetof arr_info in
       log_array_access allocsite size offset idx ;
-      check_access ~size ~idx ~offset ~arr_traces ~idx_traces ~last_included ~taint ~latest_prune
-        location acc
+      check_access ~size ~idx ~offset ~arr_traces ~idx_traces ~last_included ~latest_prune location
+        acc
     in
     ArrayBlk.fold array_access_byte1 (Dom.Val.get_array_blk arr) cond_set
 
@@ -363,13 +363,15 @@ module ReplaceCallee = struct
 
 
   module CacheForMakeShared = struct
-    let results : Procname.t option Procname.Hash.t lazy_t = lazy (Procname.Hash.create 128)
+    let results : Procname.t option Procname.LRUHash.t lazy_t =
+      lazy (Procname.LRUHash.create ~initial_size:128 ~max_size:200)
 
-    let add pname value = Procname.Hash.replace (Lazy.force results) pname value
 
-    let find_opt pname = Procname.Hash.find_opt (Lazy.force results) pname
+    let add pname value = Procname.LRUHash.replace (Lazy.force results) pname value
 
-    let clear () = if Lazy.is_val results then Procname.Hash.clear (Lazy.force results)
+    let find_opt pname = Procname.LRUHash.find_opt (Lazy.force results) pname
+
+    let clear () = if Lazy.is_val results then Procname.LRUHash.clear (Lazy.force results)
   end
 
   let get_cpp_constructor_of_make_shared =

@@ -14,9 +14,9 @@ open Sawja_pack
     instruction. *)
 type jump_kind = Next | Jump of int | Exit
 
-module NodeTbl : Caml.Hashtbl.S with type key = Procdesc.Node.t
 (** Hastable for storing nodes that correspond to if-instructions. These are used when adding the
     edges in the contrl flow graph. *)
+module NodeTbl : Caml.Hashtbl.S with type key = Procdesc.Node.t
 
 (** data structure for saving the three structures tht contain the intermediate representation of a
     file: the type environment, the control graph and the control flow graph *)
@@ -32,10 +32,10 @@ type t = private
   ; goto_jumps: (int, jump_kind) Caml.Hashtbl.t
   ; cn: JBasics.class_name
   ; source_file: SourceFile.t
-  ; program: JClasspath.program }
+  ; program: JProgramDesc.t }
 
 val create_context :
-  icfg -> Procdesc.t -> JBir.t -> JBasics.class_name -> SourceFile.t -> JClasspath.program -> t
+  icfg -> Procdesc.t -> JBir.t -> JBasics.class_name -> SourceFile.t -> JProgramDesc.t -> t
 (** cretes a context for a given method. *)
 
 val get_tenv : t -> Tenv.t

@@ -13,15 +13,21 @@ open! IStd
 (** based on the build_system and options passed to infer, we run in different driver modes *)
 type mode =
   | Analyze
-  | BuckGenrule of string
-  | BuckGenruleMaster of string list
-  | BuckCompilationDB of BuckMode.clang_compilation_db_deps * string * string list
-  | Clang of Clang.compiler * string * string list
-  | ClangCompilationDB of [`Escaped of string | `Raw of string] list
-  | Javac of Javac.compiler * string * string list
-  | Maven of string * string list
-  | PythonCapture of Config.build_system * string list
-  | XcodeXcpretty of string * string list
+  | Ant of {prog: string; args: string list}
+  | BuckClangFlavor of {build_cmd: string list}
+  | BuckCombinedGenrule of {build_cmd: string list}
+  | BuckCompilationDB of {deps: BuckMode.clang_compilation_db_deps; prog: string; args: string list}
+  | BuckGenrule of {prog: string}
+  | BuckGenruleMaster of {build_cmd: string list}
+  | BuckJavaFlavor of {build_cmd: string list}
+  | Clang of {compiler: Clang.compiler; prog: string; args: string list}
+  | ClangCompilationDB of {db_files: [`Escaped of string | `Raw of string] list}
+  | Gradle of {prog: string; args: string list}
+  | Javac of {compiler: Javac.compiler; prog: string; args: string list}
+  | Maven of {prog: string; args: string list}
+  | NdkBuild of {build_cmd: string list}
+  | XcodeBuild of {prog: string; args: string list}
+  | XcodeXcpretty of {prog: string; args: string list}
 
 val is_analyze_mode : mode -> bool
 

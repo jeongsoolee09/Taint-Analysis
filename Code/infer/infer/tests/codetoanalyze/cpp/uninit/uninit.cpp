@@ -269,11 +269,20 @@ int no_warning_noreturn_callee_ok(bool t) {
 
 void some_f(void* p);
 
-int* FP_pointer_param_void_star_ok() {
+int* pointer_param_void_star_ok() {
   A a;
   int* res;
-  some_f(&a); // the type of a here is void*, hence no fields are found
-  return a.ptr; // false positive
+  some_f(&a);
+  return a.ptr;
+}
+
+void another_f(char* p);
+
+int* pointer_param_char_star_ok() {
+  A a;
+  int* res;
+  another_f((char*)&a);
+  return a.ptr;
 }
 
 short union_ok() {
@@ -334,4 +343,9 @@ void FN_call_to_maybe_uninit_fn_ptr_bad(bool nondet) {
 void use_uninit_in_expr_bad() {
   int x;
   int y = x + 2;
+}
+
+int unused_attribute_ok() {
+  int __attribute__((unused)) x = 42;
+  return x;
 }

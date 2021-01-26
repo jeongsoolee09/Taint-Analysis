@@ -7,7 +7,7 @@
 
 (** Global variables *)
 
-type t = {reg: Reg.t; init: Exp.t option; typ: Typ.t; loc: Loc.t}
+type t = {reg: Reg.t; init: (Exp.t * int) option; loc: Loc.t}
 [@@deriving compare, equal, hash, sexp]
 
 let pp fs {reg} =
@@ -18,16 +18,15 @@ let pp fs {reg} =
   in
   pf "@%s%a" name Reg.pp_demangled reg
 
-let pp_defn fs {reg; init; typ; loc} =
-  Format.fprintf fs "@[<2>%a %a%a%a@]" Typ.pp typ Reg.pp reg Loc.pp loc
+let pp_defn fs {reg; init; loc} =
+  Format.fprintf fs "@[<2>%a %a%a %a@]" Typ.pp (Reg.typ reg) Reg.pp reg
     (Option.pp "@ = @[%a@]" Exp.pp)
-    init
+    (Option.map ~f:fst init) Loc.pp loc
 
 let invariant g =
-  Invariant.invariant [%here] g [%sexp_of: t]
-  @@ fun () ->
-  let {reg; typ} = g in
-  assert (Typ.is_sized typ) ;
-  assert (Var.global (Reg.var reg))
+  let@ () = Invariant.invariant [%here] g [%sexp_of: t] in
+  let {reg} = g in
+  assert (Typ.is_sized (Reg.typ reg)) ;
+  assert (Reg.is_global reg)
 
-let mk ?init reg typ loc = {reg; init; typ; loc} |> check invariant
+let mk ?init reg loc = {reg; init; loc} |> check invariant

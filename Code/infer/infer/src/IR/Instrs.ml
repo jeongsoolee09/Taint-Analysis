@@ -44,70 +44,101 @@ type reversed
 
 type not_reversed
 
-type 'rev t =
+(** [Empty] and [Singleton _] can have both directions. We do not attempt to make the representation
+    canonic, e.g. [NotReversed \[||\]], [Reversed \[||\]], and [Empty] are all allowed despite
+    representing the same value. *)
+type _ t =
   | NotReversed : Sil.instr Array.t -> not_reversed t
   | Reversed : Sil.instr RevArray.t -> reversed t
+  | Empty : _ t
+  | Singleton : Sil.instr -> _ t
 
 type not_reversed_t = not_reversed t
 
-(* Some functions are only used on non-reversed arrays, let's specialize them.
-  The argument of the type helps us make sure they can't be used otherwise. *)
-(* Functions on non-reversed arrays *)
+(** {2 Functions on non-reversed arrays}
 
-let of_array instrs = NotReversed instrs
+    Some functions are only used on non-reversed arrays, let's specialize them. The argument of the
+    type helps us make sure they can't be used otherwise. *)
 
-let get_underlying_not_reversed = function NotReversed instrs -> instrs
+let get_underlying_not_reversed = function
+  | NotReversed instrs ->
+      instrs
+  | Empty ->
+      [||]
+  | Singleton instr ->
+      [|instr|]
 
-let empty = of_array [||]
 
-let singleton instr = of_array [|instr|]
+let empty = Empty
 
-let append_list (NotReversed instrs) list = NotReversed (Array.append instrs (Array.of_list list))
+let singleton instr = Singleton instr
+
+let append_list t list =
+  let instrs = get_underlying_not_reversed t in
+  NotReversed (Array.append instrs (Array.of_list list))
+
 
 let of_list l = NotReversed (Array.of_list l)
 
-let of_rev_list l = NotReversed (Array.of_list_rev l)
+let filter_map t ~f =
+  let instrs = get_underlying_not_reversed t in
+  NotReversed (Array.filter_map instrs ~f)
 
-let filter_map (NotReversed instrs) ~f = NotReversed (Array.filter_map instrs ~f)
 
-let map_changed =
-  let aux_changed arr ~f i =
-    for i = i to Array.length arr - 1 do
-      Array.unsafe_get arr i |> f |> Array.unsafe_set arr i
-    done ;
-    arr
-  in
-  let rec aux_unchanged ~equal arr ~f i =
+let map_and_fold =
+  let rec aux_changed arr ~f current i =
     if i >= Array.length arr then arr
     else
       let e = Array.unsafe_get arr i in
-      let e' = f e in
-      if equal e e' then aux_unchanged ~equal arr ~f (i + 1)
+      let next, e' = f current e in
+      Array.unsafe_set arr i e' ;
+      aux_changed arr ~f next (i + 1)
+  in
+  let rec aux_unchanged arr ~f current i =
+    if i >= Array.length arr then arr
+    else
+      let e = Array.unsafe_get arr i in
+      let next, e' = f current e in
+      if phys_equal e e' then aux_unchanged arr ~f next (i + 1)
       else
         let arr = Array.copy arr in
         Array.unsafe_set arr i e' ;
-        aux_changed arr ~f (i + 1)
+        aux_changed arr ~f next (i + 1)
   in
-  fun ~equal (NotReversed instrs as t) ~f ->
-    let instrs' = aux_unchanged ~equal instrs ~f 0 in
+  fun t ~f ~init ->
+    let instrs = get_underlying_not_reversed t in
+    let instrs' = aux_unchanged instrs ~f init 0 in
     if phys_equal instrs instrs' then t else NotReversed instrs'
 
 
-let concat_map_changed ~equal (NotReversed instrs as t) ~f =
+let map (t : not_reversed t) ~f =
+  let f () e = ((), f e) in
+  map_and_fold t ~f ~init:()
+
+
+let concat_map t ~f =
+  let instrs = get_underlying_not_reversed t in
   let instrs' = Array.concat_map ~f instrs in
   if
     Int.equal (Array.length instrs) (Array.length instrs')
-    && Array.for_all2_exn ~f:equal instrs instrs'
+    && Array.for_all2_exn ~f:phys_equal instrs instrs'
   then t
   else NotReversed instrs'
 
 
-let reverse_order (NotReversed instrs) = Reversed (RevArray.of_rev_array instrs)
+let reverse_order t =
+  let instrs = get_underlying_not_reversed t in
+  Reversed (RevArray.of_rev_array instrs)
+
 
 (* Functions on both reversed and non-reversed arrays *)
 
 let is_empty (type r) (t : r t) =
   match t with
+  | Empty ->
+      true
+  | Singleton _ ->
+      false
   | NotReversed instrs ->
       Array.is_empty instrs
   | Reversed rev_instrs ->
@@ -116,6 +147,10 @@ let is_empty (type r) (t : r t) =
 
 let fold (type r) (t : r t) ~init ~f =
   match t with
+  | Empty ->
+      init
+  | Singleton instr ->
+      f init instr
   | NotReversed instrs ->
       Array.fold instrs ~init ~f
   | Reversed rev_instrs ->
@@ -130,6 +165,10 @@ let for_all t ~f = Container.for_all ~iter t ~f
 
 let count (type r) (t : r t) =
   match t with
+  | Empty ->
+      0
+  | Singleton _ ->
+      1
   | NotReversed instrs ->
       Array.length instrs
   | Reversed rev_instrs ->
@@ -140,6 +179,10 @@ let nth_exists t index = index < count t
 
 let nth_exn (type r) (t : r t) index =
   match t with
+  | Empty ->
+      [||].(index)
+  | Singleton instr ->
+      [|instr|].(index)
   | NotReversed instrs ->
       instrs.(index)
   | Reversed rev_instrs ->
@@ -148,6 +191,10 @@ let nth_exn (type r) (t : r t) index =
 
 let last (type r) (t : r t) =
   match t with
+  | Empty ->
+      None
+  | Singleton instr ->
+      Some instr
   | NotReversed instrs ->
       if is_empty t then None else Some (Array.last instrs)
   | Reversed rev_instrs ->

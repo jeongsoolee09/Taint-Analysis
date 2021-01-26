@@ -4,8 +4,10 @@
  * This source code is licensed under the MIT license found in the
  * LICENSE file in the root directory of this source tree.
  *)
+
 open! IStd
 module CLOpt = CommandLineOption
+module L = Die
 
 type data = {name: string; command_doc: CLOpt.command_doc}
 
@@ -18,12 +20,14 @@ let mk_command_doc ~see_also:see_also_commands ?environment:environment_opt ?fil
     ~synopsis =
   let section = 1 in
   let see_also =
-    let exe_names =
-      List.map see_also_commands ~f:(fun cmd ->
-          let exe = InferCommand.to_exe_name cmd in
-          Printf.sprintf "$(b,%s)(%d)" (Cmdliner.Manpage.escape exe) section )
-    in
-    [`P (String.concat ~sep:", " exe_names)]
+    if List.is_empty see_also_commands then None
+    else
+      let exe_names =
+        List.map see_also_commands ~f:(fun cmd ->
+            let exe = InferCommand.to_exe_name cmd in
+            Printf.sprintf "$(b,%s)(%d)" (Cmdliner.Manpage.escape exe) section )
+      in
+      Some [`P (String.concat ~sep:", " exe_names)]
   in
   let environment =
     Option.value environment_opt
@@ -43,7 +47,7 @@ let mk_command_doc ~see_also:see_also_commands ?environment:environment_opt ?fil
                 Cmdliner.Manpage.s_files section ) ]
   in
   CLOpt.mk_command_doc ~section ~version:Version.versionString
-    ~date:Version.man_pages_last_modify_date ~synopsis:[`Pre synopsis] ~environment ~files ~see_also
+    ~date:Version.man_pages_last_modify_date ~synopsis:[`Pre synopsis] ~environment ~files ?see_also
 
 
 let analyze =
@@ -112,23 +116,54 @@ let compile =
     ~see_also:InferCommand.[Capture]
 
 
+let debug =
+  mk_command_doc ~title:"Infer Debug" ~short_description:"print internal infer data structures"
+    ~synopsis:
+      {|$(b,infer) $(b,debug) $(b,--global-tenv)
+$(b,infer) $(b,debug) $(b,--procedures) $(i,[options])
+$(b,infer) $(b,debug) $(b,--source-files) $(i,[options])|}
+    ~description:
+      [ `P
+          "If $(b,--procedures) is passed, print information about each procedures captured by \
+           infer."
+      ; `P "If $(b,--source-files) is passed, print information about captured source files."
+      ; `P "If $(b,--global-tenv) is passed,  print the global type environment (if any)."
+      ; `P "At least one of the above options must be passed." ]
+    ~see_also:InferCommand.[Explore; Report]
+
+
 let explore =
   mk_command_doc ~title:"Infer Explore"
     ~short_description:"explore the error traces in infer reports"
-    ~synopsis:
-      {|$(b,infer) $(b,explore) $(i,[options])
-$(b,infer) $(b,explore) $(b,--procedures) $(i,[options])
-$(b,infer) $(b,explore) $(b,--source-files) $(i,[options])|}
+    ~synopsis:{|$(b,infer) $(b,explore) $(i,[options])|}
     ~description:
       [ `P
-          "If $(b,--procedures) is passed, print information about each procedure captured by \
-           infer."
-      ; `P "If $(b,--source-files) is passed, print information about captured source files."
-      ; `P
-          "Otherwise, show the list of bugs on the console and explore symbolic program traces \
-           emitted by infer to explain a report. Can also generate an HTML report from a JSON \
-           report." ]
+          "Show the list of bugs on the console and explore symbolic program traces emitted by \
+           infer to explain a report. Can also generate an HTML report from a JSON report." ]
     ~see_also:InferCommand.[Report; Run]
+
+
+let help =
+  mk_command_doc ~title:"Infer Help" ~short_description:"Show and generate documentation."
+    ~synopsis:
+      {|$(b,infer) $(b,help)
+$(b,infer) $(b,help) $(b,--help-checker) $(i,checker1) $(i,...) $(b,--help-checker) $(i,checkerN)
+$(b,infer) $(b,help) $(b,--help-issue-type) $(i,ISSUE_TYPE1) $(i,...) $(b,--help-issue-type) $(i,ISSUE_TYPEN)
+$(b,infer) $(b,help) $(b,--list-checkers)
+$(b,infer) $(b,help) $(b,--list-issue-types)
+$(b,infer) $(b,help) $(b,--write-website) $(i,website_root)|}
+    ~description:
+      [ `P "Without arguments, show the Infer manual as with $(b,infer) $(b,--help)"
+      ; `P
+          "For each $(b,-help-checker) or $(b,--help-issue-type) option passed, display \
+           information about the given checker or issue type."
+      ; `P "If $(b,--list-checkers) is passed, list all available checkers."
+      ; `P "If $(b,--list-issue-types) is passed, list all issue types."
+      ; `P
+          "Use $(b,--write-website) to build some of the documentation for the $(i,fbinfer.com) \
+           website. (Used in scripts, not meant to be used except when publishing content to \
+           $(i,fbinfer.com))" ]
+    ~see_also:[]
 
 
 let infer =
@@ -138,6 +173,8 @@ let infer =
       {|$(b,infer) $(b,analyze) $(i,[options])
 $(b,infer) $(b,capture) $(i,[options])
 $(b,infer) $(b,compile) $(i,[options])
+$(b,infer) $(b,help) $(i,[options])
+$(b,infer) $(b,explore) $(i,[options])
 $(b,infer) $(b,report) $(i,[options])
 $(b,infer) $(b,reportdiff) $(i,[options])
 $(b,infer) $(b,run) $(i,[options])
@@ -272,17 +309,6 @@ let reportdiff =
     ~see_also:InferCommand.[Report]
 
 
-let events =
-  mk_command_doc ~title:"Infer Events"
-    ~short_description:"dump all the logged events in machine readable format"
-    ~synopsis:{|$(b,infer) $(b,events)|}
-    ~description:
-      [ `P
-          "Emit to stdout one JSON object per line, each describing a logged event happened during \
-           the execution of Infer" ]
-    ~see_also:InferCommand.[Report; Run]
-
-
 let run =
   mk_command_doc ~title:"Infer Analysis of a Project"
     ~short_description:"capture source files, analyze, and report"
@@ -300,9 +326,9 @@ $(b,infer) $(b,analyze) $(i,[options])|} ]
 
 let spechunter =
   mk_command_doc ~title:"SpecHunter"
-  ~short_description:"run a predefined DFA for SpecHunter"
-  ~synopsis:"%(b,infer) @(b,spechunter) $(b,--) $(i, [SpecHunter command])" ~description:[`P ""]
-  ~see_also:InferCommand.[SpecHunter]
+    ~short_description:"run a predefined DFA for SpecHunter"
+    ~synopsis:"%(b,infer) @(b,spechunter) $(b,--) $(i, [SpecHunter command])" ~description:[`P ""]
+    ~see_also:InferCommand.[SpecHunter]
 
 
 let command_to_data =
@@ -315,12 +341,19 @@ let command_to_data =
   [ mk Analyze analyze
   ; mk Capture capture
   ; mk Compile compile
-  ; mk Events events
+  ; mk Debug debug
   ; mk Explore explore
+  ; mk Help help
   ; mk Report report
   ; mk ReportDiff reportdiff
-  ; mk Run run 
-  ; mk SpecHunter spechunter]
+  ; mk Run run
+  ; mk SpecHunter spechunter ]
 
 
-let data_of_command command = List.Assoc.find_exn ~equal:InferCommand.equal command_to_data command
+let data_of_command command =
+  match List.Assoc.find ~equal:InferCommand.equal command_to_data command with
+  | Some data ->
+      data
+  | None ->
+      L.die InternalError "No data found for command '%s'. Please add an entry in %s!"
+        (InferCommand.to_string command) __FILE__

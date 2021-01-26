@@ -1,5 +1,4 @@
 open! IStd
-open DefLocAlias.TransferFunctions
 open DefLocAliasSearches
 open DefLocAliasLogicTests
 open DefLocAliasDomain
@@ -48,13 +47,20 @@ module PairOfMS = struct
 end
 
 
+let rec catMaybes_tuplist (optlist:('a*'b option) list) : ('a*'b) list =
+  match optlist with
+  | [] -> []
+  | (sth1, Some sth2) :: t -> (sth1, sth2)::catMaybes_tuplist t
+  | (_, None) :: _ -> L.die InternalError "catMaybes_tuplist failed"
+
+
 let pp_status fmt x =
   match x with
   | Define (proc, ap) -> F.fprintf fmt "Define (%a using %a)" MyAccessPath.pp ap Procname.pp proc
   | Call (proc, ap) -> F.fprintf fmt "Call (%a with %a)" Procname.pp proc MyAccessPath.pp ap
   | Redefine ap -> F.fprintf fmt "Redefine (%a)" MyAccessPath.pp ap
   | Dead -> F.fprintf fmt "Dead"
- 
+
 
 let pp_pair fmt (proc, v) = F.fprintf fmt "(%a, %a) ->" Procname.pp proc pp_status v
 
@@ -95,9 +101,9 @@ let get_formal_args (key:Procname.t) = Hashtbl.find formal_args key
 
 let batch_print_formal_args () =
   Hashtbl.iter (fun k v -> L.progress "procname: %a, " Procname.pp k;
-  L.progress "vars: ";
-  List.iter v ~f:(L.progress "%a, " Var.pp);
-  L.progress "\n") formal_args
+                 L.progress "vars: ";
+                 List.iter v ~f:(L.progress "%a, " Var.pp);
+                 L.progress "\n") formal_args
 
 
 (** a tabular representation of the call graph. *)
@@ -130,8 +136,8 @@ let remove_duplicates_from (astate_set:S.t) : S.t =
     if (List.length lst) > 1
     then 
       List.fold_left lst
-      ~init:bottuple
-      ~f:(fun (acc:T.t) (elem:T.t) ->
+        ~init:bottuple
+        ~f:(fun (acc:T.t) (elem:T.t) ->
             if (A.cardinal @@ fourth_of acc) < (A.cardinal @@ fourth_of elem)
             then elem
             else acc)
@@ -140,14 +146,14 @@ let remove_duplicates_from (astate_set:S.t) : S.t =
   let result = S.of_list @@ List.map ~f:leave_tuple_with_biggest_aliasset partitioned_by_duplicates in
   S.filter
     (fun tup ->
-      let var, _ = second_of tup in
-      not @@ is_placeholder_vardef var && not @@ Var.is_this var) result
-  
+       let var, _ = second_of tup in
+       not @@ is_placeholder_vardef var && not @@ Var.is_this var) result
+
 
 (** 해시 테이블 형태의 콜그래프를 ocamlgraph로 변환한다. *)
 let callg_hash2og () : unit =
   Hashtbl.iter (fun key value ->
-    G.add_edge callgraph (key, get_summary key) (value, get_summary value)) callgraph_table
+      G.add_edge callgraph (key, get_summary key) (value, get_summary value)) callgraph_table
 
 
 (** 주어진 hashtbl의 엔트리 중에서 (callgraph_table이 쓰일 것) summary_table에 있지 않은 엔트리를 날린다. *)
@@ -160,6 +166,11 @@ let filter_callgraph_table hashtbl : unit =
       else ()) hashtbl
 
 
+(** specially mangled variable to mark a value as returned from callee *)
+let mk_returnv procname =
+  Var.of_pvar @@ Pvar.mk (Mangled.from_string "returnv") procname
+
+
 (** 주어진 AccessPath ap에 있어 가장 이른 정의 state를 찾는다. *)
 let find_first_occurrence_of (ap:MyAccessPath.t) : Procname.t * S.t * S.elt =
   let astate_set = BFS.fold (fun (_, astate) acc ->
@@ -169,12 +180,12 @@ let find_first_occurrence_of (ap:MyAccessPath.t) : Procname.t * S.t * S.elt =
   match S.elements astate_set with
   | [] -> (Procname.empty_block, S.empty, bottuple) (* probably clinit *)
   | _ ->
-    let astate_set_nodup = remove_duplicates_from astate_set in
-    let elements = S.elements astate_set_nodup in
-    let methname = first_of @@ (List.nth_exn elements 0) in
-    let targetTuples = search_target_tuples_by_vardef_ap ap methname astate_set_nodup in
-    let earliest_state = find_earliest_astate_within targetTuples methname in
-    (methname, astate_set, earliest_state)
+      let astate_set_nodup = remove_duplicates_from astate_set in
+      let elements = S.elements astate_set_nodup in
+      let methname = first_of @@ (List.nth_exn elements 0) in
+      let targetTuples = search_target_tuples_by_vardef_ap ap methname astate_set_nodup in
+      let earliest_state = find_earliest_astate_within targetTuples methname in
+      (methname, astate_set, earliest_state)
 
 
 (** 디버깅 용도로 BFS 사용해서 그래프 출력하기 *)
@@ -295,8 +306,8 @@ let extract_callee_from (ap:MyAccessPath.t) =
   | LogicalVar _ -> L.die InternalError "extract_callee_from_returnv failed"
   | ProgramVar pv ->
       begin match Pvar.get_declaring_function pv with
-      | Some procname -> procname
-      | None -> L.die InternalError "extract_callee_from_returnv failed" end
+        | Some procname -> procname
+        | None -> L.die InternalError "extract_callee_from_returnv failed" end
 
 
 (** 바로 다음의 successor들 중에서 파라미터를 들고 있는 함수를 찾아 낸다. 못 찾을 경우, Procname.empty_block을 내뱉는다. *)
@@ -305,7 +316,7 @@ let find_immediate_successor (current_methname:Procname.t) (current_astate_set:S
   (* let not_skip_succs = List.filter ~f:(fun (proc, _) -> not @@ is_skip_function proc) succs in *)
   let succ_meths_and_formals = List.map ~f:(fun (meth, _) -> (meth, get_formal_args meth)) succs (*not_skip_succs*) in
   List.fold_left ~init:Procname.empty_block ~f:(fun acc (m, p) ->
-    if List.mem p (fst param) ~equal:Var.equal then m else acc) succ_meths_and_formals
+      if List.mem p (fst param) ~equal:Var.equal then m else acc) succ_meths_and_formals
 
 
 let pop (lst:'a list) : 'a option =
@@ -318,10 +329,10 @@ let extract_ap_from_chain_slice (slice:(Procname.t*status) option) : MyAccessPat
   match slice with
   | Some (_, status) ->
       begin match status with
-      | Define (_, ap) -> ap
-      | Call (_, ap) -> ap
-      | Redefine ap -> ap
-      | Dead -> (* L.progress "Extracting from Dead\n"; *) second_of bottuple end
+        | Define (_, ap) -> ap
+        | Call (_, ap) -> ap
+        | Redefine ap -> ap
+        | Dead -> (* L.progress "Extracting from Dead\n"; *) second_of bottuple end
   | None -> (* L.progress "Extracting from empty chain\n"; *) second_of bottuple
 
 
@@ -369,28 +380,28 @@ let extract_subchain_from (chain:chain) (chain_slice:Procname.t * status) : chai
   match index with
   | -1 -> []
   | _ ->
-    let subchain_length = (List.length chain) - index in
-    List.sub chain ~pos:index ~len:subchain_length
+      let subchain_length = (List.length chain) - index in
+      List.sub chain ~pos:index ~len:subchain_length
 
 
 (** returnv가 들어 있는 aliasset을 받아서, 그 안에 callee로부터 carry over된 var가 있다면 날린다. returnv는 무조건 날린다. *)
 let filter_carrriedover_ap (aliasset:A.t) : A.t =
   if not @@ List.exists ~f:is_returnv_ap (A.elements aliasset) then aliasset else
-  let returnv_ap = List.find_exn (A.elements aliasset) ~f:is_returnv_ap in
-  let callee_methname = extract_callee_from returnv_ap in
-  let callee_astate_set = get_summary callee_methname in
-  (* astate_set 안에서 aliasset 안에 returnv가 들어 있는 astate 찾기 *)
-  let astate_with_return = S.fold (fun astate acc -> 
-    let aliasset = fourth_of astate in
-    if A.exists is_return_ap aliasset
-    then astate::acc
-    else acc) callee_astate_set [] in
-  match astate_with_return with
-  | [] -> (* Skip_function으로, summary가 없는 경우이다. -> 아무것도 할 것 없이 returnv만 날려 준다. *)
-      A.remove returnv_ap aliasset
-  | statelist -> (* return 지점이 여러 개인 method로, 제거 대상이 여러 개이다. *)
-      let aps_to_remove = A.of_list @@ List.map ~f:second_of statelist in
-      A.remove returnv_ap @@ A.diff aliasset aps_to_remove 
+    let returnv_ap = List.find_exn (A.elements aliasset) ~f:is_returnv_ap in
+    let callee_methname = extract_callee_from returnv_ap in
+    let callee_astate_set = get_summary callee_methname in
+    (* astate_set 안에서 aliasset 안에 returnv가 들어 있는 astate 찾기 *)
+    let astate_with_return = S.fold (fun astate acc -> 
+        let aliasset = fourth_of astate in
+        if A.exists is_return_ap aliasset
+        then astate::acc
+        else acc) callee_astate_set [] in
+    match astate_with_return with
+    | [] -> (* Skip_function으로, summary가 없는 경우이다. -> 아무것도 할 것 없이 returnv만 날려 준다. *)
+        A.remove returnv_ap aliasset
+    | statelist -> (* return 지점이 여러 개인 method로, 제거 대상이 여러 개이다. *)
+        let aps_to_remove = A.of_list @@ List.map ~f:second_of statelist in
+        A.remove returnv_ap @@ A.diff aliasset aps_to_remove 
 
 
 (** pvar가 여러 개 있는 aliasset 내에서 관련 없는 pvar들을 (하나 남기고) 모두 없앰 *)
@@ -398,8 +409,8 @@ let cleanup_aliasset (aliasset:A.t) (self:MyAccessPath.t) : A.t =
   let carried_over_ap_filtered = filter_carrriedover_ap aliasset in
   let self_filtered = A.remove self carried_over_ap_filtered in
   let aliasset_filtered = A.filter (fun (var, _) ->
-        (not @@ is_logical_var var &&
-         not @@ is_frontend_tmp_var var)) self_filtered in
+      (not @@ is_logical_var var &&
+       not @@ is_frontend_tmp_var var)) self_filtered in
   aliasset_filtered
 
 
@@ -407,9 +418,9 @@ let cleanup_aliasset (aliasset:A.t) (self:MyAccessPath.t) : A.t =
 let find_entry_containing_chainslice (methname:Procname.t) (status:status) : chain option =
   let all_chains = Hashtbl.fold (fun _ v acc -> v::acc) chains [] in
   let result_chains = List.fold ~f:(fun acc chain ->
-    if is_contained_in_chain (methname, status) chain
-    then chain::acc
-    else acc) ~init:[] all_chains in
+      if is_contained_in_chain (methname, status) chain
+      then chain::acc
+      else acc) ~init:[] all_chains in
   List.nth result_chains 0
 
 
@@ -424,8 +435,12 @@ let handle_empty_astateset (caller_methname:Procname.t) (caller_astate_set:S.t) 
   let collect_all_returnv (astate_set:S.t) : A.elt list =
     let astate_list = S.elements astate_set in
     let aliasset_list = List.map ~f:fourth_of astate_list in
-    let filtered_aliasset_list = List.map ~f:(A.filter (fun (var, _) -> is_returnv var)) aliasset_list in
-    List.fold ~f:(fun acc set -> if Int.equal (A.cardinal set) 1 then (extract_from_singleton set)::acc else acc) ~init:[] filtered_aliasset_list in
+    let filtered_aliasset_list =
+      List.map ~f:(A.filter (fun (var, _) -> is_returnv var)) aliasset_list in
+    List.fold ~f:(fun acc set ->
+        if Int.equal (A.cardinal set) 1
+        then (extract_from_singleton set)::acc
+        else acc) ~init:[] filtered_aliasset_list in
   let returnv_list = collect_all_returnv caller_astate_set in
   (* 경우에 따라 returnv를 가진 튜플이 여러 개일 수 있음 *)
   let target_returnv_list = List.fold ~f:(fun acc returnv -> if Procname.equal (extract_callee_from returnv) skip_function then returnv::acc else acc) ~init:[] returnv_list in
@@ -449,13 +464,13 @@ let is_carriedover_ap (ap:A.elt) (current_methname:Procname.t) (current_astate_s
       | tuples -> List.fold ~f:(fun _ elem ->
           let aliasset = fourth_of elem in
           A.exists is_returnv_ap aliasset) ~init:false tuples)
-        ~init:false callee_nodes
+    ~init:false callee_nodes
 
 
-let get_declaring_function_of (var:Var.t) : Procname.t =
-  match Var.get_declaring_function var with
-  | None -> L.die InternalError "get_declaring_function_of failed, var: %a@." Var.pp var
-  | Some methname -> methname 
+(* let get_declaring_function_of (var:Var.t) : Procname.t =
+ *   match Var.get_declaring_function var with
+ *   | None -> L.die InternalError "get_declaring_function_of failed, var: %a@." Var.pp var
+ *   | Some methname -> methname  *)
 
 
 let rec compute_chain_inner (current_methname:Procname.t) (current_astate_set:S.t) (current_astate:S.elt) (current_chain:chain) (retry:int) : chain =
@@ -488,10 +503,15 @@ let rec compute_chain_inner (current_methname:Procname.t) (current_astate_set:S.
                 find_earliest_astate_of_var_within (S.elements future_states) current_methname
               with
                 _ -> bottuple in
-              if T.equal new_state bottuple then (current_methname, Dead) :: current_chain else
-            let new_chain = (current_methname, Redefine (current_vardef)) :: current_chain in
-            compute_chain_inner current_methname current_astate_set new_state new_chain 3
-        | _ -> L.die InternalError "compute_chain_inner failed (1), current_methname: %a, current_astate_set: %a, current_astate: %a, current_chain: %a@." Procname.pp current_methname S.pp current_astate_set T.pp current_astate pp_chain current_chain end
+            if T.equal new_state bottuple then (current_methname, Dead) :: current_chain else
+              let new_chain = (current_methname, Redefine (current_vardef)) :: current_chain in
+              compute_chain_inner current_methname current_astate_set new_state new_chain 3
+        | _ -> L.die InternalError
+                 "compute_chain_inner failed (1), current_methname: %a, current_astate_set: %a, current_astate: %a, current_chain: %a@."
+                 Procname.pp current_methname
+                 S.pp current_astate_set
+                 T.pp current_astate
+                 pp_chain current_chain end
   | [ap] -> (* either definition or call *)
       if Var.is_return (fst ap)
       then (* caller에서의 define *)
@@ -503,58 +523,64 @@ let rec compute_chain_inner (current_methname:Procname.t) (current_astate_set:S.
           with _ -> (Procname.empty_block, S.empty) in
         if Procname.equal direct_caller Procname.empty_block (* 이 chain은 더 큰 chain의 subchain이다: bail out! *)
         then (current_methname, Dead) :: current_chain else
-        let states_with_return_var = search_target_tuples_by_pvar (mk_returnv current_methname) direct_caller (remove_duplicates_from caller_summary) in
-        let have_been_before_filtered = filter_have_been_before states_with_return_var current_chain in
-        let new_state = try remove_from_aliasset ~from:(find_earliest_astate_within have_been_before_filtered current_methname) ~remove:(var_being_returned, [])
-          with _ -> bottuple in
-        if T.equal new_state bottuple then (current_methname, Dead) :: current_chain else
-        let new_slice = (first_of new_state, Define (current_methname, second_of new_state)) in
-        (* cycle을 막기 위해, 이미 동일 slice를 만든 적이 있었다면 생성 중단 *)
-        if List.mem current_chain new_slice ~equal:double_equal
-        then (current_methname, Dead)::current_chain
-        else 
-          let new_chain = new_slice::current_chain in
-          compute_chain_inner direct_caller caller_summary new_state new_chain 3
+          let states_with_return_var =
+            search_target_tuples_by_pvar (mk_returnv current_methname)
+              direct_caller (remove_duplicates_from caller_summary) in
+          let have_been_before_filtered =
+            filter_have_been_before states_with_return_var current_chain in
+          let new_state = try
+              remove_from_aliasset ~from:(find_earliest_astate_within
+                                            have_been_before_filtered current_methname)
+                ~remove:(var_being_returned, [])
+            with _ -> bottuple in
+          if T.equal new_state bottuple then (current_methname, Dead) :: current_chain else
+            let new_slice = (first_of new_state, Define (current_methname, second_of new_state)) in
+            (* cycle을 막기 위해, 이미 동일 slice를 만든 적이 있었다면 생성 중단 *)
+            if List.mem current_chain new_slice ~equal:double_equal
+            then (current_methname, Dead)::current_chain
+            else
+              let new_chain = new_slice::current_chain in
+              compute_chain_inner direct_caller caller_summary new_state new_chain 3
       else (* 동일 procedure 내에서의 define 혹은 call *)
         (* 다음 튜플을 현재 procedure 내에서 찾을 수 있는지를 기준으로 경우 나누기 *)
         begin match search_target_tuples_by_vardef_ap ap current_methname current_astate_set with
           | [] -> (* Call *)
               let current_aliasset = fourth_of current_astate in
-              (* L.progress "current_astate: %a@." T.pp current_astate; *)
-              let callv = A.fold (fun ap acc -> if is_callv_ap ap then ap else acc) current_aliasset (second_of bottuple) in
-              (* L.progress "callv: %a, contents: %a@." MyAccessPath.pp callv Procname.pp (extract_callee_from callv); *)
-              let callee_methname = (* find_immediate_successor current_methname current_astate_set ap *) extract_callee_from callv in
-              (* L.progress "extracted methname: %a@." Procname.pp callee_methname; *)
+              let callv = A.fold (fun ap acc ->
+                  if is_callv_ap ap then ap else acc) current_aliasset (second_of bottuple) in
+              let callee_methname =  extract_callee_from callv in
               (* 파라미터 (ap) 튜플들 *)
-              let new_states = search_target_tuples_by_vardef_ap ap callee_methname (remove_duplicates_from @@ get_summary callee_methname) in
+              let new_states = search_target_tuples_by_vardef_ap ap
+                  callee_methname (remove_duplicates_from @@ get_summary callee_methname) in
               (* 여기서 skip_function이라 new_states가 비었을 가능성에 대비해야 함 *)
-              if List.is_empty new_states then handle_empty_astateset current_methname current_astate_set callee_methname else
+              if List.is_empty new_states
+              then handle_empty_astateset current_methname current_astate_set callee_methname else
                 let new_state = try
                     find_earliest_astate_within new_states current_methname
                   with _ -> bottuple in
                 if T.equal new_state bottuple then (current_methname, Dead) :: current_chain else
-              let new_chain = (current_methname, Call (callee_methname, ap))::current_chain in
-              compute_chain_inner callee_methname (get_summary callee_methname) new_state new_chain 3
+                  let new_chain = (current_methname, Call (callee_methname, ap))::current_chain in
+                  compute_chain_inner callee_methname (get_summary callee_methname) new_state new_chain 3
           | nonempty_list -> (* 동일 proc에서의 Define *)
-              (* L.progress "current ap: %a@." MyAccessPath.pp current_vardef; *)
-            let new_state = try
-                find_earliest_astate_within (S.elements (remove_duplicates_from (S.of_list nonempty_list))) current_methname
-              with _ -> bottuple in
-            if T.equal new_state bottuple then (current_methname, Dead) :: current_chain else
-              let new_slice = (current_methname, Define (current_methname, ap)) in
-              (* cycle을 막기 위해, 이미 동일 slice를 만든 적이 있었다면 생성 중단 *)
-              if List.mem current_chain new_slice ~equal:double_equal
-              then (current_methname, Dead)::current_chain
-              else
-                let new_chain = new_slice::current_chain in
-                compute_chain_inner current_methname current_astate_set new_state new_chain 3 end
+              let new_state = try
+                  find_earliest_astate_within
+                    (S.elements (remove_duplicates_from (S.of_list nonempty_list))) current_methname
+                with _ -> bottuple in
+              if T.equal new_state bottuple then (current_methname, Dead) :: current_chain else
+                let new_slice = (current_methname, Define (current_methname, ap)) in
+                (* cycle을 막기 위해, 이미 동일 slice를 만든 적이 있었다면 생성 중단 *)
+                if List.mem current_chain new_slice ~equal:double_equal
+                then (current_methname, Dead)::current_chain
+                else
+                  let new_chain = new_slice::current_chain in
+                  compute_chain_inner current_methname current_astate_set new_state new_chain 3 end
   | _ -> (* 현재 astate의 aliasset을 청소해서 불필요한 pvar를 없애고 재시도 *)
-        let (a, b, c, aliasset) = current_astate in
-        let current_aliasset_cleaned_up = cleanup_aliasset aliasset current_vardef in
-        let current_astate_cleaned_up = (a, b, c, current_aliasset_cleaned_up) in
-        if not @@ Int.equal retry 0
-        then compute_chain_inner current_methname (current_astate_set) current_astate_cleaned_up current_chain (retry-1)
-        else (current_methname, Dead)::current_chain (* unsoundness introduced *)
+      let (a, b, c, aliasset) = current_astate in
+      let current_aliasset_cleaned_up = cleanup_aliasset aliasset current_vardef in
+      let current_astate_cleaned_up = (a, b, c, current_aliasset_cleaned_up) in
+      if not @@ Int.equal retry 0
+      then compute_chain_inner current_methname (current_astate_set) current_astate_cleaned_up current_chain (retry-1)
+      else (current_methname, Dead)::current_chain (* unsoundness introduced *)
 
 
 (** 콜 그래프와 분석 결과를 토대로 체인 (Define -> ... -> Dead)을 계산해 낸다 *)
@@ -574,19 +600,19 @@ let compute_chain (ap:MyAccessPath.t) : chain =
   (* L.progress "%a@." MyAccessPath.pp ap; *)
   let (first_methname, _, first_astate) = find_first_occurrence_of ap in
   if Procname.equal first_methname Procname.empty_block then [] else
-  let first_aliasset = fourth_of first_astate in
-  match A.exists is_returnv_ap first_aliasset with
-  | true -> (* 이미 어떤 chain의 subchain이라면 새로 계산할 필요 없음 *)
-      let initial_chain_slice = Define (first_methname, ap) in
-      begin match find_entry_containing_chainslice first_methname initial_chain_slice with
-      | None -> (* 이전에 계산해 놓은 게 없네 *)
-          (* L.progress "not extracting chain for %a@." MyAccessPath.pp ap; *)
-          compute_chain_ ap
-      | Some chain -> (* 이전에 계산해 놓은 게 있네! 거기서 단순 추출만 해야지 *)
-          extract_subchain_from chain (first_methname, initial_chain_slice) end
-  | false ->
-      (* L.progress "false for %a@." MyAccessPath.pp ap; *)
-      compute_chain_ ap
+    let first_aliasset = fourth_of first_astate in
+    match A.exists is_returnv_ap first_aliasset with
+    | true -> (* 이미 어떤 chain의 subchain이라면 새로 계산할 필요 없음 *)
+        let initial_chain_slice = Define (first_methname, ap) in
+        begin match find_entry_containing_chainslice first_methname initial_chain_slice with
+          | None -> (* 이전에 계산해 놓은 게 없네 *)
+              (* L.progress "not extracting chain for %a@." MyAccessPath.pp ap; *)
+              compute_chain_ ap
+          | Some chain -> (* 이전에 계산해 놓은 게 있네! 거기서 단순 추출만 해야지 *)
+              extract_subchain_from chain (first_methname, initial_chain_slice) end
+    | false ->
+        (* L.progress "false for %a@." MyAccessPath.pp ap; *)
+        compute_chain_ ap
 
 
 let collect_all_proc_and_ap () =
@@ -604,7 +630,8 @@ let chains_to_string hashtbl =
 (** 파일로 call graph를 출력 *)
 let save_callgraph () =
   let ch = Out_channel.create "Callgraph.txt" in
-  Hashtbl.iter (fun k v -> Out_channel.output_string ch @@ (Procname.to_string k)^" -> "^(Procname.to_string v^"\n")) callgraph_table;
+  Hashtbl.iter (fun k v ->
+      Out_channel.output_string ch @@ (Procname.to_string k)^" -> "^(Procname.to_string v^"\n")) callgraph_table;
   Out_channel.flush ch;
   Out_channel.close ch
 
@@ -666,22 +693,22 @@ let write_json (json:json) : unit =
 
 (** interface with the driver *)
 let main () =
-  MyCallGraph.load_summary_from_disk_to callgraph_table;
+  MyCallGraph.load_callgraph_from_disk_to callgraph_table;
   save_callgraph ();
-  load_summary_from_disk_to summary_table;
+  SummaryLoader.load_summary_from_disk_to summary_table;
   batch_add_formal_args ();
   filter_callgraph_table callgraph_table;
   save_skip_function ();
   callg_hash2og ();
-  let setofallprocandap_with_garbage = List.stable_dedup (collect_all_proc_and_ap ()) in
-  let setofallprocandap = List.filter ~f:(fun (_, (var, _)) ->
-    let pv = extract_pvar_from_var var in
-    not @@ Var.is_this var &&
-    not @@ is_placeholder_vardef var &&
-    not @@ Pvar.is_frontend_tmp pv) setofallprocandap_with_garbage in
-  List.iter ~f:(fun (proc, ap) ->
+  List.stable_dedup @@ collect_all_proc_and_ap ()
+  |> List.filter ~f:(fun (_, (var, _)) ->
+      let pv = extract_pvar_from_var var in
+      not @@ Var.is_this var &&
+      not @@ is_placeholder_vardef var &&
+      not @@ Pvar.is_frontend_tmp pv)
+  |> List.iter ~f:(fun (proc, ap) ->
       L.progress "computing chain for %a in %a@." MyAccessPath.pp ap Procname.pp proc;
-      add_chain (proc, ap) (compute_chain ap)) setofallprocandap;
+      add_chain (proc, ap) (compute_chain ap));
   let wrapped_chains = Hashtbl.fold (fun (current_meth, target_ap) chain acc ->
       wrap_chain_representation current_meth target_ap (List.map ~f:(fun (proc, status) ->
           represent_status proc status) chain)::acc) chains [] in

@@ -1112,7 +1112,7 @@ TranslationUnitDecl None:None:None None:None:None
   VarDecl tests/friend.cpp:18:1 tests/friend.cpp:18:8
     CXXConstructExpr
   TypedefDecl tests/friend.cpp:18:8 tests/friend.cpp:18:8
-58 35 110 
+58 37 112 
 TranslationUnitDecl None:None:None None:None:None
   TypedefDecl None:None:None None:None:None
   TypedefDecl None:None:None None:None:None
@@ -1200,14 +1200,16 @@ TranslationUnitDecl None:None:None None:None:None
         CompoundStmt
           ObjCAutoreleasePoolStmt
             CompoundStmt
-              ObjCMessageExpr
+              ExprWithCleanups
                 ObjCMessageExpr
-                ImplicitCastExpr
-                  DeclRefExpr
+                  ImplicitCastExpr
+                    ObjCMessageExpr
+                  ImplicitCastExpr
+                    DeclRefExpr
       ReturnStmt
         IntegerLiteral
   TypedefDecl tests/Hello.m:28:10 tests/Hello.m:28:10
-132 188 136 
+132 193 139 
 TranslationUnitDecl None:None:None None:None:None
   TypedefDecl None:None:None None:None:None
   TypedefDecl None:None:None None:None:None
@@ -1295,8 +1297,8 @@ TranslationUnitDecl None:None:None None:None:None
   ObjCCategoryDecl tests/ObjCTest.m:26:1 tests/ObjCTest.m:30:2
     ObjCMethodDecl tests/ObjCTest.m:28:1 tests/ObjCTest.m:28:35
        ParmVarDecl tests/ObjCTest.m:28:14 tests/ObjCTest.m:28:34
-  ObjCImplementationDecl tests/ObjCTest.m:32:1 tests/ObjCTest.m:66:1
-    ObjCMethodDecl tests/ObjCTest.m:34:1 tests/ObjCTest.m:64:1
+  ObjCImplementationDecl tests/ObjCTest.m:32:1 tests/ObjCTest.m:65:1
+    ObjCMethodDecl tests/ObjCTest.m:34:1 tests/ObjCTest.m:63:1
        ParmVarDecl tests/ObjCTest.m:34:14 tests/ObjCTest.m:34:34
        ImplicitParamDecl tests/ObjCTest.m:34:34 tests/ObjCTest.m:34:34
        ImplicitParamDecl tests/ObjCTest.m:34:34 tests/ObjCTest.m:34:34
@@ -1403,93 +1405,100 @@ TranslationUnitDecl None:None:None None:None:None
         ObjCAtTryStmt
           CompoundStmt
             DeclStmt
-              ObjCArrayLiteral
+              ExprWithCleanups
                 ImplicitCastExpr
-                  ObjCBoxedExpr
-                    IntegerLiteral
+                  ObjCArrayLiteral
+                    ImplicitCastExpr
+                      ImplicitCastExpr
+                        ObjCBoxedExpr
+                          IntegerLiteral
               VarDecl tests/ObjCTest.m:48:5 tests/ObjCTest.m:48:26
-                ObjCArrayLiteral
+                ExprWithCleanups
                   ImplicitCastExpr
-                    ObjCBoxedExpr
-                      IntegerLiteral
-            CallExpr
-              ImplicitCastExpr
-                DeclRefExpr
-              ImplicitCastExpr
-                ObjCStringLiteral
-                  StringLiteral
-              PseudoObjectExpr
-                ObjCSubscriptRefExpr
-                  OpaqueValueExpr
-                    ImplicitCastExpr
-                      DeclRefExpr
-                  OpaqueValueExpr
-                    IntegerLiteral
-                OpaqueValueExpr
-                  ImplicitCastExpr
-                    DeclRefExpr
-                OpaqueValueExpr
-                  IntegerLiteral
-                ObjCMessageExpr
-                  OpaqueValueExpr
-                    ImplicitCastExpr
-                      DeclRefExpr
-                  ImplicitCastExpr
+                    ObjCArrayLiteral
+                      ImplicitCastExpr
+                        ImplicitCastExpr
+                          ObjCBoxedExpr
+                            IntegerLiteral
+            ExprWithCleanups
+              CallExpr
+                ImplicitCastExpr
+                  DeclRefExpr
+                ImplicitCastExpr
+                  ObjCStringLiteral
+                    StringLiteral
+                PseudoObjectExpr
+                  ObjCSubscriptRefExpr
+                    OpaqueValueExpr
+                      ImplicitCastExpr
+                        DeclRefExpr
                     OpaqueValueExpr
                       IntegerLiteral
-            DeclStmt
-              ObjCDictionaryLiteral
-                ImplicitCastExpr
-                  ObjCStringLiteral
-                    StringLiteral
-                ImplicitCastExpr
-                  ObjCBoxedExpr
+                  OpaqueValueExpr
+                    ImplicitCastExpr
+                      DeclRefExpr
+                  OpaqueValueExpr
                     IntegerLiteral
-              VarDecl tests/ObjCTest.m:51:5 tests/ObjCTest.m:51:36
-                ObjCDictionaryLiteral
                   ImplicitCastExpr
-                    ObjCStringLiteral
-                      StringLiteral
-                  ImplicitCastExpr
-                    ObjCBoxedExpr
-                      IntegerLiteral
-            CallExpr
-              ImplicitCastExpr
-                DeclRefExpr
-              ImplicitCastExpr
-                ObjCStringLiteral
-                  StringLiteral
-              PseudoObjectExpr
-                ObjCSubscriptRefExpr
-                  OpaqueValueExpr
+                    ObjCMessageExpr
+                      OpaqueValueExpr
+                        ImplicitCastExpr
+                          DeclRefExpr
+                      ImplicitCastExpr
+                        OpaqueValueExpr
+                          IntegerLiteral
+            DeclStmt
+              ExprWithCleanups
+                ImplicitCastExpr
+                  ObjCDictionaryLiteral
                     ImplicitCastExpr
-                      DeclRefExpr
-                  OpaqueValueExpr
-                    ObjCStringLiteral
-                      StringLiteral
-                OpaqueValueExpr
+                      ObjCStringLiteral
+                        StringLiteral
+                    ImplicitCastExpr
+                      ImplicitCastExpr
+                        ObjCBoxedExpr
+                          IntegerLiteral
+              VarDecl tests/ObjCTest.m:51:5 tests/ObjCTest.m:51:36
+                ExprWithCleanups
                   ImplicitCastExpr
-                    DeclRefExpr
-                OpaqueValueExpr
+                    ObjCDictionaryLiteral
+                      ImplicitCastExpr
+                        ObjCStringLiteral
+                          StringLiteral
+                      ImplicitCastExpr
+                        ImplicitCastExpr
+                          ObjCBoxedExpr
+                            IntegerLiteral
+            ExprWithCleanups
+              CallExpr
+                ImplicitCastExpr
+                  DeclRefExpr
+                ImplicitCastExpr
                   ObjCStringLiteral
                     StringLiteral
-                ObjCMessageExpr
-                  OpaqueValueExpr
-                    ImplicitCastExpr
-                      DeclRefExpr
-                  ImplicitCastExpr
+                PseudoObjectExpr
+                  ObjCSubscriptRefExpr
+                    OpaqueValueExpr
+                      ImplicitCastExpr
+                        DeclRefExpr
                     OpaqueValueExpr
                       ObjCStringLiteral
                         StringLiteral
-            CallExpr
-              ImplicitCastExpr
-                DeclRefExpr
-              ImplicitCastExpr
-                ObjCStringLiteral
-                  StringLiteral
-              CStyleCastExpr
-                ImplicitCastExpr
-                  DeclRefExpr
+                  OpaqueValueExpr
+                    ImplicitCastExpr
+                      DeclRefExpr
+                  OpaqueValueExpr
+                    ObjCStringLiteral
+                      StringLiteral
+                  ImplicitCastExpr
+                    ObjCMessageExpr
+                      OpaqueValueExpr
+                        ImplicitCastExpr
+                          DeclRefExpr
+                      ImplicitCastExpr
+                        OpaqueValueExpr
+                          ObjCStringLiteral
+                            StringLiteral
           ObjCAtCatchStmt
             CompoundStmt
               CallExpr
@@ -1500,7 +1509,7 @@ TranslationUnitDecl None:None:None None:None:None
                     StringLiteral
                 ImplicitCastExpr
                   DeclRefExpr
-           VarDecl tests/ObjCTest.m:54:13 tests/ObjCTest.m:54:26
+           VarDecl tests/ObjCTest.m:53:13 tests/ObjCTest.m:53:26
           ObjCAtFinallyStmt
             CompoundStmt
               CallExpr
@@ -1526,14 +1535,14 @@ TranslationUnitDecl None:None:None None:None:None
     ObjCPropertyImplDecl tests/ObjCTest.m:21:34 tests/ObjCTest.m:21:34
     ObjCIvarDecl tests/ObjCTest.m:22:54 tests/ObjCTest.m:22:54
     ObjCPropertyImplDecl tests/ObjCTest.m:22:54 tests/ObjCTest.m:22:54
-  ObjCCategoryDecl tests/ObjCTest.m:68:1 tests/ObjCTest.m:72:2
-    ObjCMethodDecl tests/ObjCTest.m:70:1 tests/ObjCTest.m:70:26
-       ParmVarDecl tests/ObjCTest.m:70:14 tests/ObjCTest.m:70:25
-  ObjCCategoryImplDecl tests/ObjCTest.m:74:1 tests/ObjCTest.m:82:1
-    ObjCMethodDecl tests/ObjCTest.m:76:1 tests/ObjCTest.m:80:1
-       ParmVarDecl tests/ObjCTest.m:76:14 tests/ObjCTest.m:76:25
-       ImplicitParamDecl tests/ObjCTest.m:76:25 tests/ObjCTest.m:76:25
-       ImplicitParamDecl tests/ObjCTest.m:76:25 tests/ObjCTest.m:76:25
+  ObjCCategoryDecl tests/ObjCTest.m:67:1 tests/ObjCTest.m:71:2
+    ObjCMethodDecl tests/ObjCTest.m:69:1 tests/ObjCTest.m:69:26
+       ParmVarDecl tests/ObjCTest.m:69:14 tests/ObjCTest.m:69:25
+  ObjCCategoryImplDecl tests/ObjCTest.m:73:1 tests/ObjCTest.m:81:1
+    ObjCMethodDecl tests/ObjCTest.m:75:1 tests/ObjCTest.m:79:1
+       ParmVarDecl tests/ObjCTest.m:75:14 tests/ObjCTest.m:75:25
+       ImplicitParamDecl tests/ObjCTest.m:75:25 tests/ObjCTest.m:75:25
+       ImplicitParamDecl tests/ObjCTest.m:75:25 tests/ObjCTest.m:75:25
       CompoundStmt
         PseudoObjectExpr
           BinaryOperator
@@ -1612,47 +1621,122 @@ TranslationUnitDecl None:None:None None:None:None
                   ParenExpr
                     CStyleCastExpr
                       IntegerLiteral
-  ObjCInterfaceDecl tests/ObjCTest.m:84:1 tests/ObjCTest.m:86:2
-  ObjCInterfaceDecl tests/ObjCTest.m:88:1 tests/ObjCTest.m:90:2
-    ObjCMethodDecl tests/ObjCTest.m:89:1 tests/ObjCTest.m:89:60
-       ParmVarDecl tests/ObjCTest.m:89:28 tests/ObjCTest.m:89:58
-  ObjCInterfaceDecl tests/ObjCTest.m:92:1 tests/ObjCTest.m:93:2
-  ObjCImplementationDecl tests/ObjCTest.m:95:1 tests/ObjCTest.m:105:1
-    ObjCMethodDecl tests/ObjCTest.m:97:1 tests/ObjCTest.m:99:1
-       ParmVarDecl tests/ObjCTest.m:97:14 tests/ObjCTest.m:97:25
-       ImplicitParamDecl tests/ObjCTest.m:97:25 tests/ObjCTest.m:97:25
-       ImplicitParamDecl tests/ObjCTest.m:97:25 tests/ObjCTest.m:97:25
+  ObjCInterfaceDecl tests/ObjCTest.m:83:1 tests/ObjCTest.m:85:2
+  ObjCInterfaceDecl tests/ObjCTest.m:87:1 tests/ObjCTest.m:89:2
+    ObjCMethodDecl tests/ObjCTest.m:88:1 tests/ObjCTest.m:88:60
+       ParmVarDecl tests/ObjCTest.m:88:28 tests/ObjCTest.m:88:58
+  ObjCInterfaceDecl tests/ObjCTest.m:91:1 tests/ObjCTest.m:92:2
+  ObjCImplementationDecl tests/ObjCTest.m:94:1 tests/ObjCTest.m:104:1
+    ObjCMethodDecl tests/ObjCTest.m:96:1 tests/ObjCTest.m:98:1
+       ParmVarDecl tests/ObjCTest.m:96:14 tests/ObjCTest.m:96:25
+       ImplicitParamDecl tests/ObjCTest.m:96:25 tests/ObjCTest.m:96:25
+       ImplicitParamDecl tests/ObjCTest.m:96:25 tests/ObjCTest.m:96:25
       CompoundStmt
         ObjCMessageExpr
           ImplicitCastExpr
             DeclRefExpr
-    ObjCMethodDecl tests/ObjCTest.m:101:1 tests/ObjCTest.m:103:1
-       ParmVarDecl tests/ObjCTest.m:101:14 tests/ObjCTest.m:101:34
-       ImplicitParamDecl tests/ObjCTest.m:101:34 tests/ObjCTest.m:101:34
-       ImplicitParamDecl tests/ObjCTest.m:101:34 tests/ObjCTest.m:101:34
+    ObjCMethodDecl tests/ObjCTest.m:100:1 tests/ObjCTest.m:102:1
+       ParmVarDecl tests/ObjCTest.m:100:14 tests/ObjCTest.m:100:34
+       ImplicitParamDecl tests/ObjCTest.m:100:34 tests/ObjCTest.m:100:34
+       ImplicitParamDecl tests/ObjCTest.m:100:34 tests/ObjCTest.m:100:34
       CompoundStmt
         ObjCMessageExpr
           ImplicitCastExpr
             DeclRefExpr
-  FunctionDecl tests/ObjCTest.m:107:1 tests/ObjCTest.m:113:1
-     ParmVarDecl tests/ObjCTest.m:107:10 tests/ObjCTest.m:107:14
-     ParmVarDecl tests/ObjCTest.m:107:20 tests/ObjCTest.m:107:27
+  FunctionDecl tests/ObjCTest.m:106:1 tests/ObjCTest.m:112:1
+     ParmVarDecl tests/ObjCTest.m:106:10 tests/ObjCTest.m:106:14
+     ParmVarDecl tests/ObjCTest.m:106:20 tests/ObjCTest.m:106:27
     CompoundStmt
       ObjCAutoreleasePoolStmt
         CompoundStmt
-          ObjCMessageExpr
+          ExprWithCleanups
             ObjCMessageExpr
-              ObjCMessageExpr
+              ImplicitCastExpr
                 ObjCMessageExpr
-            ObjCStringLiteral
-              StringLiteral
-          ObjCMessageExpr
+                  ImplicitCastExpr
+                    ObjCMessageExpr
+              ObjCStringLiteral
+                StringLiteral
+          ExprWithCleanups
             ObjCMessageExpr
-            ObjCStringLiteral
-              StringLiteral
+              ImplicitCastExpr
+                ObjCMessageExpr
+              ObjCStringLiteral
+                StringLiteral
       ReturnStmt
         IntegerLiteral
-  TypedefDecl tests/ObjCTest.m:112:10 tests/ObjCTest.m:112:10
+  TypedefDecl tests/ObjCTest.m:111:10 tests/ObjCTest.m:111:10
+56 8 115 
+TranslationUnitDecl None:None:None None:None:None
+  TypedefDecl None:None:None None:None:None
+  TypedefDecl None:None:None None:None:None
+  TypedefDecl None:None:None None:None:None
+  TypedefDecl None:None:None None:None:None
+  TypedefDecl None:None:None None:None:None
+  ObjCInterfaceDecl None:None:None None:None:None
+  TypedefDecl None:None:None None:None:None
+  TypedefDecl None:None:None None:None:None
+  TypedefDecl None:None:None None:None:None
+  TypedefDecl tests/FoundationStub.h:8:1 tests/FoundationStub.h:8:13
+  TypedefDecl tests/FoundationStub.h:9:1 tests/FoundationStub.h:9:22
+  ObjCInterfaceDecl tests/FoundationStub.h:16:1 tests/FoundationStub.h:27:2
+    ObjCMethodDecl tests/FoundationStub.h:18:1 tests/FoundationStub.h:18:22
+    ObjCMethodDecl tests/FoundationStub.h:19:1 tests/FoundationStub.h:19:20
+    ObjCMethodDecl tests/FoundationStub.h:20:1 tests/FoundationStub.h:20:28
+    ObjCMethodDecl tests/FoundationStub.h:21:1 tests/FoundationStub.h:21:21
+    ObjCMethodDecl tests/FoundationStub.h:22:1 tests/FoundationStub.h:22:15
+    ObjCMethodDecl tests/FoundationStub.h:24:1 tests/FoundationStub.h:24:34
+       ParmVarDecl tests/FoundationStub.h:24:29 tests/FoundationStub.h:24:33
+    ObjCMethodDecl tests/FoundationStub.h:25:1 tests/FoundationStub.h:25:41
+       ParmVarDecl tests/FoundationStub.h:25:29 tests/FoundationStub.h:25:40
+  ObjCInterfaceDecl tests/FoundationStub.h:29:1 tests/FoundationStub.h:31:2
+    ObjCMethodDecl tests/FoundationStub.h:30:1 tests/FoundationStub.h:30:37
+       ParmVarDecl tests/FoundationStub.h:30:32 tests/FoundationStub.h:30:36
+  ObjCInterfaceDecl tests/FoundationStub.h:33:1 tests/FoundationStub.h:35:2
+    ObjCMethodDecl tests/FoundationStub.h:34:1 tests/FoundationStub.h:34:21
+  ObjCInterfaceDecl tests/FoundationStub.h:37:1 tests/FoundationStub.h:42:2
+    ObjCMethodDecl tests/FoundationStub.h:38:1 tests/FoundationStub.h:40:56
+       ParmVarDecl tests/FoundationStub.h:38:46 tests/FoundationStub.h:38:51
+       ParmVarDecl tests/FoundationStub.h:39:46 tests/FoundationStub.h:39:51
+       ParmVarDecl tests/FoundationStub.h:40:40 tests/FoundationStub.h:40:51
+    ObjCMethodDecl tests/FoundationStub.h:41:1 tests/FoundationStub.h:41:38
+       ParmVarDecl tests/FoundationStub.h:41:32 tests/FoundationStub.h:41:35
+  ObjCInterfaceDecl tests/FoundationStub.h:44:1 tests/FoundationStub.h:47:2
+    ObjCMethodDecl tests/FoundationStub.h:45:1 tests/FoundationStub.h:45:64
+       ParmVarDecl tests/FoundationStub.h:45:35 tests/FoundationStub.h:45:40
+       ParmVarDecl tests/FoundationStub.h:45:52 tests/FoundationStub.h:45:61
+    ObjCMethodDecl tests/FoundationStub.h:46:1 tests/FoundationStub.h:46:49
+       ParmVarDecl tests/FoundationStub.h:46:33 tests/FoundationStub.h:46:44
+  ObjCInterfaceDecl tests/FoundationStub.h:49:1 tests/FoundationStub.h:50:2
+  FunctionDecl tests/FoundationStub.h:52:13 tests/FoundationStub.h:52:13
+     ParmVarDecl tests/FoundationStub.h:52:13 tests/FoundationStub.h:52:13
+  FunctionDecl tests/FoundationStub.h:52:1 tests/FoundationStub.h:52:34
+     ParmVarDecl tests/FoundationStub.h:52:19 tests/FoundationStub.h:52:28
+  RecordDecl tests/ObjCBridgeTransferTest.m:10:9 tests/ObjCBridgeTransferTest.m:11:1
+  TypedefDecl tests/ObjCBridgeTransferTest.m:10:1 tests/ObjCBridgeTransferTest.m:11:3
+  ObjCInterfaceDecl tests/ObjCBridgeTransferTest.m:13:1 tests/ObjCBridgeTransferTest.m:14:2
+  FunctionDecl tests/ObjCBridgeTransferTest.m:16:1 tests/ObjCBridgeTransferTest.m:16:27
+  ObjCInterfaceDecl tests/ObjCBridgeTransferTest.m:18:1 tests/ObjCBridgeTransferTest.m:19:2
+  ObjCImplementationDecl tests/ObjCBridgeTransferTest.m:21:1 tests/ObjCBridgeTransferTest.m:27:1
+    ObjCMethodDecl tests/ObjCBridgeTransferTest.m:23:1 tests/ObjCBridgeTransferTest.m:25:1
+       ImplicitParamDecl tests/ObjCBridgeTransferTest.m:25:1 tests/ObjCBridgeTransferTest.m:25:1
+       ImplicitParamDecl tests/ObjCBridgeTransferTest.m:25:1 tests/ObjCBridgeTransferTest.m:25:1
+      CompoundStmt
+        DeclStmt
+          ExprWithCleanups
+            ImplicitCastExpr
+              ObjCBridgedCastExpr
+                CallExpr
+                  ImplicitCastExpr
+                    DeclRefExpr
+          VarDecl tests/ObjCBridgeTransferTest.m:24:3 tests/ObjCBridgeTransferTest.m:24:65
+            ExprWithCleanups
+              ImplicitCastExpr
+                ObjCBridgedCastExpr
+                  CallExpr
+                    ImplicitCastExpr
+                      DeclRefExpr
+  TypedefDecl tests/ObjCBridgeTransferTest.m:24:51 tests/ObjCBridgeTransferTest.m:24:51
 12 0 84 
 TranslationUnitDecl None:None:None None:None:None
   TypedefDecl None:None:None None:None:None

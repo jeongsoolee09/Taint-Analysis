@@ -162,6 +162,16 @@ module Node : sig
 
   val get_wto_index : t -> int
 
+  val set_code_block_exit : t -> code_block_exit:t -> unit
+  (** Set an exit node corresponding to a start node of a code block. Using this, when there is a
+      code block, frontend can keep the correspondence between start/exit nodes of a code block. *)
+
+  val get_code_block_exit : t -> t option
+  (** Get an exit node corresponding to a start node of a code block. *)
+
+  val is_dangling : t -> bool
+  (** Returns true if the node is dangling, i.e. no successors and predecessors *)
+
   val hash : t -> int
   (** Hash function for nodes *)
 
@@ -176,17 +186,17 @@ module Node : sig
   val compute_key : t -> NodeKey.t
 end
 
-module IdMap : PrettyPrintable.PPMap with type key = Node.id
 (** Map with node id keys. *)
+module IdMap : PrettyPrintable.PPMap with type key = Node.id
 
-module NodeHash : Caml.Hashtbl.S with type key = Node.t
 (** Hash table with nodes as keys. *)
+module NodeHash : Caml.Hashtbl.S with type key = Node.t
 
-module NodeMap : Caml.Map.S with type key = Node.t
 (** Map over nodes. *)
+module NodeMap : Caml.Map.S with type key = Node.t
 
-module NodeSet : Caml.Set.S with type elt = Node.t
 (** Set of nodes. *)
+module NodeSet : Caml.Set.S with type elt = Node.t
 
 (** procedure descriptions *)
 
@@ -222,7 +232,7 @@ val get_attributes : t -> ProcAttributes.t
 
 val set_attributes : t -> ProcAttributes.t -> unit
 
-val get_captured : t -> (Mangled.t * Typ.t) list
+val get_captured : t -> (Mangled.t * Typ.t * Pvar.capture_mode) list
 (** Return name and type of block's captured variables *)
 
 val get_exit_node : t -> Node.t
@@ -240,8 +250,6 @@ val get_locals : t -> ProcAttributes.var_data list
 (** Return name and type and attributes of local variables *)
 
 val get_nodes : t -> Node.t list
-
-val get_nodes_num : t -> int
 
 val get_proc_name : t -> Procname.t
 
@@ -263,12 +271,24 @@ val is_defined : t -> bool
 val is_java_synchronized : t -> bool
 (** Return [true] if the procedure signature has the Java synchronized keyword *)
 
+val is_objc_arc_on : t -> bool
+(** Return [true] iff the ObjC procedure is compiled with ARC *)
+
 val iter_instrs : (Node.t -> Sil.instr -> unit) -> t -> unit
 (** iterate over all nodes and their instructions *)
 
 val replace_instrs : t -> f:(Node.t -> Sil.instr -> Sil.instr) -> bool
 (** Map and replace the instructions to be executed. Returns true if at least one substitution
     occured. *)
+
+val replace_instrs_using_context :
+     t
+  -> f:(Node.t -> 'a -> Sil.instr -> Sil.instr)
+  -> update_context:('a -> Sil.instr -> 'a)
+  -> context_at_node:(Node.t -> 'a)
+  -> bool
+(** Map and replace the instructions to be executed using a context that we built with previous
+    instructions in the node. Returns true if at least one substitution occured. *)
 
 val replace_instrs_by : t -> f:(Node.t -> Sil.instr -> Sil.instr array) -> bool
 (** Like [replace_instrs], but slower, and each instruction may be replaced by 0, 1, or more
@@ -312,11 +332,10 @@ val is_captured_var : t -> Var.t -> bool
 
 val has_modify_in_block_attr : t -> Pvar.t -> bool
 
-val is_connected : t -> (unit, [`Join | `Other]) Result.t
-(** checks whether a cfg for the given procdesc is connected or not *)
+val shallow_copy_code_from_pdesc : orig_pdesc:t -> dest_pdesc:t -> unit
 
-module SQLite : SqliteUtils.Data with type t = t option
 (** per-procedure CFGs are stored in the SQLite "procedures" table as NULL if the procedure has no
     CFG *)
+module SQLite : SqliteUtils.Data with type t = t option
 
 val load : Procname.t -> t option

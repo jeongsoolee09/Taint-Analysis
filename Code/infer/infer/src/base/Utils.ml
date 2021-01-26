@@ -11,9 +11,6 @@ module F = Format
 module Hashtbl = Caml.Hashtbl
 module L = Die
 
-(** initial process times *)
-let initial_times = Unix.times ()
-
 (** recursively traverse a path for files ending with a given extension *)
 let find_files ~path ~extension =
   let rec traverse_dir_aux init dir_path =
@@ -26,10 +23,29 @@ let find_files ~path ~extension =
           traverse_dir_aux files full_path
       | _ ->
           files
+      | exception Unix.Unix_error (ENOENT, _, _) ->
+          files
     in
     Sys.fold_dir ~init ~f:(aux dir_path) dir_path
   in
   traverse_dir_aux [] path
+
+
+let fold_folders ~init ~f ~path =
+  let rec traverse_dir_aux acc dir_path =
+    let aux base_path acc' rel_path =
+      let full_path = base_path ^/ rel_path in
+      match (Unix.stat full_path).Unix.st_kind with
+      | Unix.S_DIR ->
+          traverse_dir_aux (f acc' full_path) full_path
+      | _ ->
+          acc'
+      | exception Unix.Unix_error (ENOENT, _, _) ->
+          acc'
+    in
+    Sys.fold_dir ~init:acc ~f:(aux dir_path) dir_path
+  in
+  traverse_dir_aux init path
 
 
 (** read a source file and return a list of lines, or None in case of error *)
@@ -50,7 +66,8 @@ let read_file fname =
       cleanup () ;
       Ok (List.rev !res)
   | Sys_error error ->
-      cleanup () ; Error error
+      cleanup () ;
+      Error error
 
 
 (** type for files used for printing *)
@@ -199,7 +216,7 @@ type file_lock =
   ; unlock: unit -> unit }
 
 let create_file_lock () =
-  let file, oc = Core.Filename.open_temp_file "infer" "" in
+  let file, oc = Core.Filename.open_temp_file "infer_lock" "" in
   let fd = Core.Unix.openfile ~mode:[IStd.Unix.O_WRONLY] file in
   let lock () = Core.Unix.lockf fd ~mode:IStd.Unix.F_LOCK ~len:IStd.Int64.zero in
   let unlock () = Core.Unix.lockf fd ~mode:IStd.Unix.F_ULOCK ~len:IStd.Int64.zero in
@@ -207,7 +224,11 @@ let create_file_lock () =
 
 
 let with_file_lock ~file_lock:{file; oc; fd} ~f =
-  let finally () = Core.Unix.close fd ; Out_channel.close oc ; Core.Unix.remove file in
+  let finally () =
+    Core.Unix.close fd ;
+    Out_channel.close oc ;
+    Core.Unix.remove file
+  in
   try_finally_swallow_timeout ~f ~finally
 
 
@@ -240,29 +261,11 @@ let echo_in chan_in = with_channel_in ~f:print_endline chan_in
 let with_process_in command read =
   let chan = Unix.open_process_in command in
   let f () = read chan in
-  let finally () = consume_in chan ; Unix.close_process_in chan in
+  let finally () =
+    consume_in chan ;
+    Unix.close_process_in chan
+  in
   do_finally_swallow_timeout ~f ~finally
-
-
-let with_process_lines ~(debug : ('a, F.formatter, unit) format -> 'a) ~cmd ~tmp_prefix ~f =
-  let shell_cmd = List.map ~f:Escape.escape_shell cmd |> String.concat ~sep:" " in
-  let verbose_err_file = Filename.temp_file tmp_prefix ".err" in
-  let shell_cmd_redirected = Printf.sprintf "%s 2>'%s'" shell_cmd verbose_err_file in
-  debug "Trying to execute: %s@\n%!" shell_cmd_redirected ;
-  let input_lines chan = In_channel.input_lines ~fix_win_eol:true chan in
-  let res = with_process_in shell_cmd_redirected input_lines in
-  let verbose_errlog = with_file_in verbose_err_file ~f:In_channel.input_all in
-  if not (String.equal verbose_errlog "") then
-    debug "@\nlog:@\n<<<<<<@\n%s@\n>>>>>>@\n%!" verbose_errlog ;
-  match res with
-  | lines, Ok () ->
-      f lines
-  | lines, (Error _ as err) ->
-      let output = String.concat ~sep:"\n" lines in
-      L.(die ExternalError)
-        "*** Failed to execute: %s@\n*** Command: %s@\n*** Output:@\n%s@."
-        (Unix.Exit_or_signal.to_string_hum err)
-        shell_cmd output
 
 
 let is_dir_kind (kind : Unix.file_kind) = match kind with S_DIR -> true | _ -> false
@@ -315,23 +318,15 @@ let realpath ?(warn_on_error = true) path =
 let devnull = lazy (Unix.openfile "/dev/null" ~mode:[Unix.O_WRONLY])
 
 let suppress_stderr2 f2 x1 x2 =
-  let restore_stderr src = Unix.dup2 ~src ~dst:Unix.stderr ; Unix.close src in
+  let restore_stderr src =
+    Unix.dup2 ~src ~dst:Unix.stderr () ;
+    Unix.close src
+  in
   let orig_stderr = Unix.dup Unix.stderr in
-  Unix.dup2 ~src:(Lazy.force devnull) ~dst:Unix.stderr ;
+  Unix.dup2 ~src:(Lazy.force devnull) ~dst:Unix.stderr () ;
   let f () = f2 x1 x2 in
   let finally () = restore_stderr orig_stderr in
   protect ~f ~finally
-
-
-let compare_versions v1 v2 =
-  let int_list_of_version v =
-    let lv = match String.split ~on:'.' v with [v] -> [v; "0"] | v -> v in
-    let int_of_string_or_zero v = try int_of_string v with Failure _ -> 0 in
-    List.map ~f:int_of_string_or_zero lv
-  in
-  let lv1 = int_list_of_version v1 in
-  let lv2 = int_list_of_version v2 in
-  [%compare: int list] lv1 lv2
 
 
 let rec rmtree name =
@@ -348,7 +343,8 @@ let rec rmtree name =
             then rmtree (name ^/ entry) ;
             rmdir dir
         | None ->
-            Unix.closedir dir ; Unix.rmdir name
+            Unix.closedir dir ;
+            Unix.rmdir name
       in
       rmdir dir
   | _ ->
@@ -466,3 +462,49 @@ let iter_infer_deps ~project_root ~f infer_deps_file =
       List.iter ~f:one_line lines
   | Error error ->
       Die.die InternalError "Couldn't read deps file '%s': %s" infer_deps_file error
+
+
+let physical_cores () =
+  with_file_in "/proc/cpuinfo" ~f:(fun ic ->
+      let physical_or_core_regxp =
+        Re.Str.regexp "\\(physical id\\|core id\\)[^0-9]+\\([0-9]+\\).*"
+      in
+      let rec loop sockets cores =
+        match In_channel.input_line ~fix_win_eol:true ic with
+        | None ->
+            (Int.Set.length sockets, Int.Set.length cores)
+        | Some line when Re.Str.string_match physical_or_core_regxp line 0 -> (
+            let value = Re.Str.matched_group 2 line |> int_of_string in
+            match Re.Str.matched_group 1 line with
+            | "physical id" ->
+                loop (Int.Set.add sockets value) cores
+            | "core id" ->
+                loop sockets (Int.Set.add cores value)
+            | _ ->
+                L.die InternalError "Couldn't parse line '%s' from /proc/cpuinfo." line )
+        | Some _ ->
+            loop sockets cores
+      in
+      let sockets, cores_per_socket = loop Int.Set.empty Int.Set.empty in
+      sockets * cores_per_socket )
+
+
+let cpus = Setcore.numcores ()
+
+let numcores =
+  match Version.build_platform with Darwin | Windows -> cpus / 2 | Linux -> physical_cores ()
+
+
+let set_best_cpu_for worker_id =
+  let threads_per_core = cpus / numcores in
+  let chosen_core = worker_id * threads_per_core % numcores in
+  let chosen_thread_in_core = worker_id * threads_per_core / numcores in
+  Setcore.setcore ((chosen_core * threads_per_core) + chosen_thread_in_core)
+
+
+let zip_fold_filenames ~init ~f ~zip_filename =
+  let file_in = Zip.open_in zip_filename in
+  let collect acc (entry : Zip.entry) = f acc entry.filename in
+  let result = List.fold ~f:collect ~init (Zip.entries file_in) in
+  Zip.close_in file_in ;
+  result

@@ -17,17 +17,21 @@ type std_vector_function =
   | PushBack
   | Reserve
   | ShrinkToFit
-[@@deriving compare]
 
 val pp_std_vector_function : F.formatter -> std_vector_function -> unit
+
+type java_iterator_function = Remove
 
 type t =
   | CFree
   | ConstantDereference of IntLit.t
   | CppDelete
+  | EndIterator
   | GoneOutOfScope of Pvar.t * Typ.t
+  | OptionalEmpty
   | StdVector of std_vector_function
-[@@deriving compare]
+  | JavaIterator of java_iterator_function
+[@@deriving compare, equal]
 
 val pp : F.formatter -> t -> unit
 

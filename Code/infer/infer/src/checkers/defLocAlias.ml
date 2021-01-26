@@ -3,7 +3,8 @@ open DefLocAliasDomain
 open DefLocAliasSearches
 open DefLocAliasLogicTests
 
-(** Interprocedural Liveness Checker with alias relations in mind. *)
+(** Interprocedural Liveness Checker with alias relations
+    and redefinitions in mind. *)
 
 exception NotImplemented
 exception IDontKnow
@@ -16,20 +17,16 @@ module S = DefLocAliasDomain.AbstractStateSetFinite
 module A = DefLocAliasDomain.SetofAliases
 module T = DefLocAliasDomain.AbstractState
 module H = DefLocAliasDomain.HistoryMap
-
-module Payload = SummaryPayload.Make (struct
-    type t = DefLocAliasDomain.t
-    let field = Payloads.Fields.def_loc_alias
-  end)
+module Map = Caml.Map.Make (Procname)             
 
 
-module TransferFunctions = struct
-  module CFG = ProcCfg.OneInstrPerNode (ProcCfg.Exceptional)
+module TransferFunctions (CFG : ProcCfg.S) = struct
+  module CFG = CFG
   module InvariantMap = CFG.Node.IdMap
   module Domain = P
-  type extras = ProcData.no_extras
   type instr = Sil.instr
 
+  type analysis_data = P.t InterproceduralAnalysis.t
 
   let choose_larger_location (locset1:LocationSet.t) (locset2:LocationSet.t) =
     let elem1 = LocationSet.min_elt locset1 in
@@ -38,21 +35,23 @@ module TransferFunctions = struct
     | (-1) -> locset1
     | 0 -> if LocationSet.subset locset1 locset2 then locset1 else locset2
     | 1 -> locset2
-    | _ -> L.die InternalError "choose_larger_location failed, locset1: %a, locset2: %a" LocationSet.pp locset1 LocationSet.pp locset2
+    | _ -> L.die InternalError
+             "choose_larger_location failed, locset1: %a, locset2: %a"
+             LocationSet.pp locset1 LocationSet.pp locset2
 
   
   (** specially mangled variable to mark a value as returned from callee *)
   let mk_returnv procname =
-    Pvar.mk (Mangled.from_string "returnv") procname |> Var.of_pvar
+    Var.of_pvar @@ Pvar.mk (Mangled.from_string "returnv") procname
 
   
   (** specially mangled variable to mark an AP as passed to a callee *)
   let mk_callv procname =
-    Pvar.mk (Mangled.from_string "callv") procname |> Var.of_pvar
+    Var.of_pvar @@ Pvar.mk (Mangled.from_string "callv") procname
 
 
   let mk_dummy procname =
-    Pvar.mk (Mangled.from_string "dummy") procname |> Var.of_pvar
+    Var.of_pvar @@ Pvar.mk (Mangled.from_string "dummy") procname
 
 
   let rec extract_nonthisvar_from_args methname (arg_ts:(Exp.t*Typ.t) list) (astate_set:S.t) : Exp.t list =
@@ -168,19 +167,8 @@ module TransferFunctions = struct
 
 
   (** 변수가 리턴된다면 그걸 alias set에 넣는다 (variable carryover) *)
-  let apply_summary astate_set caller_summary callee_methname ret_id caller_methname : S.t =
-    match Payload.read_full ~caller_summary:caller_summary ~callee_pname:callee_methname with
-    | Some (_, summ) ->
-        variable_carryover astate_set callee_methname ret_id caller_methname (fst summ)
-    | None -> 
-        (* Nothing to carry over! -> just make a ph tuple and end *)
-        let ph = (placeholder_vardef caller_methname, []) in
-        let returnv = mk_returnv callee_methname in
-        let loc = LocationSet.singleton Location.dummy in
-        let aliasset = doubleton (Var.of_id ret_id, []) (returnv, []) in
-        let newtuple = (caller_methname, ph, loc, aliasset) in
-        let newstate = newtuple in
-        S.add newstate astate_set
+  let apply_summary astate_set callee_summary callee_methname ret_id caller_methname : S.t =
+        variable_carryover astate_set callee_methname ret_id caller_methname (fst callee_summary)
 
 
   let pp_explist fmt (explist:Exp.t list) =
@@ -210,9 +198,10 @@ module TransferFunctions = struct
       else (v1, v2)::acc) ~init:[] ziplist
 
 
-  let get_formal_args (caller_summary:Summary.t) (callee_methname:Procname.t) : Var.t list =
-    match Payload.read_full ~caller_summary:caller_summary ~callee_pname:callee_methname with
-    | Some (procdesc, _) -> Procdesc.get_formals procdesc |> List.map ~f:(convert_from_mangled callee_methname)
+  let get_formal_args analyze_dependency (callee_methname:Procname.t) : Var.t list =
+    match analyze_dependency callee_methname with
+    | Some (procdesc, _) -> Procdesc.get_formals procdesc
+                            |> List.map ~f:(convert_from_mangled callee_methname)
     | None -> (* Oops, it's a native code outside our focus *) []
 
 
@@ -231,7 +220,9 @@ module TransferFunctions = struct
     let proc2, _, _, alias2 = tup2 in
     let pvar_vardef = find_another_pvar_vardef alias2 in
     if not @@ Procname.equal proc1 proc2
-      then L.die InternalError "merge_ph_tuples failed, tup1: %a, tup2: %a, location: %a" T.pp tup1 T.pp tup2 LocationSet.pp lset;
+    then L.die InternalError
+        "merge_ph_tuples failed, tup1: %a, tup2: %a, location: %a"
+        T.pp tup1 T.pp tup2 LocationSet.pp lset;
     let aliasset = A.add pvar_vardef @@ A.union alias1 alias2 in
     (proc1, pvar_vardef, lset, aliasset)
 
@@ -510,86 +501,92 @@ module TransferFunctions = struct
     | _ -> mk_dummy Procname.empty_block
 
 
-  let exec_call (ret_id:Ident.t) (e_fun:Exp.t) (arg_ts:(Exp.t*Typ.t) list) (caller_summary:Summary.t) (apair:P.t) (methname:Procname.t) : P.t =
+  let exec_call (ret_id:Ident.t) (e_fun:Exp.t) (arg_ts:(Exp.t*Typ.t) list)
+      analyze_dependency (apair:P.t) (methname:Procname.t) : P.t =
     let callee_methname =
       match e_fun with
       | Const (Cfun fn) -> fn
-      | _ -> L.die InternalError "exec_call failed, ret_id: %a, e_fun: %a astate_set: %a, methname: %a" Ident.pp ret_id Exp.pp e_fun S.pp (fst apair) Procname.pp methname in
-    match input_is_void_type arg_ts (fst apair) with
-    | true -> (* All Arguments are Just Constants: just apply the summary, make a new tuple and end *)
-        let astate_set_summary_applied = apply_summary (fst apair) caller_summary callee_methname ret_id methname in
-        let aliasset = A.add (mk_returnv callee_methname, []) @@ A.singleton (Var.of_id ret_id, []) in
+      | _ -> L.die InternalError
+               "exec_call failed, ret_id: %a, e_fun: %a astate_set: %a, methname: %a"
+               Ident.pp ret_id Exp.pp e_fun S.pp (fst apair) Procname.pp methname in
+    match analyze_dependency callee_methname with
+    | Some (_, callee_summary) ->
+        begin match input_is_void_type arg_ts (fst apair) with
+        | true -> (* All Arguments are Just Constants: just apply the summary, make a new tuple and end *)
+            let astate_set_summary_applied = apply_summary (fst apair) apair callee_methname ret_id methname in
+            let aliasset = A.add (mk_returnv callee_methname, []) @@ A.singleton (Var.of_id ret_id, []) in
+            let loc = LocationSet.singleton Location.dummy in
+            let newtuple = (methname, (placeholder_vardef methname, []), loc, aliasset) in
+            let newset = S.add newtuple astate_set_summary_applied in
+            (newset, (snd apair))
+        | false -> (* There is at least one argument which is a non-thisvar variable *)
+            begin try
+                let astate_set_summary_applied = apply_summary (fst apair) apair callee_methname ret_id methname in
+                let formals = get_formal_args analyze_dependency callee_methname in
+                begin match formals with
+                  | [] -> (* Callee in Native Code! *)
+                      let actuals_logical = List.map ~f:(fst >> convert_exp_to_logical) arg_ts in
+                      let mapfunc = fun (var:Var.t) ->
+                        begin match var with
+                          | LogicalVar id ->
+                              let pvar1 = search_target_tuples_by_id id methname (fst apair) in
+                              let pvar2 = List.map ~f:fourth_of pvar1 in
+                              let pvar = extract_another_pvar id pvar2 in
+                              search_recent_vardef_astate methname pvar apair
+                          | _ ->
+                              L.die InternalError "exec_call/mapfunc failed, var: %a" Var.pp var end in
+                      let actuals_pvar_tuples = actuals_logical
+                                                |> List.filter ~f:is_logical_var
+                                                |> List.map ~f:mapfunc in
+                      let mangled_callv = (mk_callv callee_methname, []) in
+                      let astate_set_callv_added = 
+                        S.map (fun (p, v, l, a) -> 
+                            let aliasset_callv_added = A.add mangled_callv a in
+                            (p, v, l, aliasset_callv_added)) (S.of_list actuals_pvar_tuples) in
+                      let astate_set_rmvd = S.diff astate_set_summary_applied (S.of_list actuals_pvar_tuples) in
+                      let astate_set_callv_added = S.union astate_set_rmvd astate_set_callv_added in
+                      (astate_set_callv_added, snd apair)
+                  | _ ->  (* Callee in User Code! *)
+                      let actuals_logical = List.map ~f:(fst >> convert_exp_to_logical) arg_ts in
+                      let actuallog_formal_binding =  leave_only_var_tuples @@ zip actuals_logical formals in
+                      (* mapfunc finds pvar tuples transmitted as actual arguments *)
+                      let mapfunc = fun (var:Var.t) ->
+                        begin match var with
+                          | LogicalVar id ->
+                              let pvar = search_target_tuples_by_id id methname (fst apair)
+                                         |> List.map ~f:fourth_of
+                                         |> extract_another_pvar id in
+                              search_recent_vardef_astate methname pvar apair
+                          | _ ->
+                              L.die InternalError "exec_call/mapfunc failed, var: %a" Var.pp var end in
+                      let actuals_pvar_tuples = actuals_logical
+                                                |> List.filter ~f:is_logical_var
+                                                |> List.map ~f:mapfunc in
+                      let actualpvar_alias_added = add_bindings_to_alias_of_tuples methname actuallog_formal_binding actuals_pvar_tuples (snd apair) |> S.of_list in
+                      let mangled_callv = (mk_callv callee_methname, []) in
+                      let actualpvar_callv_added = 
+                        S.map (fun (p, v, l, a) -> 
+                            let aliasset_callv_added = A.add mangled_callv a in
+                            (p, v, l, aliasset_callv_added)) actualpvar_alias_added in
+                      if Int.equal (S.cardinal actualpvar_callv_added) 0
+                      then (* void function call! *)
+                        (astate_set_summary_applied, snd apair)
+                      else
+                        let applied_state_rmvd = S.diff astate_set_summary_applied (S.of_list actuals_pvar_tuples) in
+                        let newset = S.union applied_state_rmvd actualpvar_callv_added in
+                        (newset, snd apair) end
+              with _ -> (* corner case: maybe one of actuals contains literal null? *)
+                apair end end
+    | None ->
+        (* Nothing to carry over! -> just make a ph tuple and end *)
+        let astate_set, historymap = apair in
+        let ph = (placeholder_vardef methname, []) in
+        let returnv = mk_returnv callee_methname in
         let loc = LocationSet.singleton Location.dummy in
-        let newtuple = (methname, (placeholder_vardef methname, []), loc, aliasset) in
-        let newset = S.add newtuple astate_set_summary_applied in
-        (newset, (snd apair))
-    | false -> (* There is at least one argument which is a non-thisvar variable *)
-        begin try
-          (* L.progress "initial fst_apair: %a@." S.pp (fst apair); *)
-          let astate_set_summary_applied = apply_summary (fst apair) caller_summary callee_methname ret_id methname in
-          let formals = get_formal_args caller_summary callee_methname (*|> List.filter ~f:(fun x -> not @@ Var.is_this x)*) in
-          L.d_printfln "methname: %a, formals: %a@." Procname.pp callee_methname pp_varlist formals;
-          begin match formals with
-            | [] -> (* Callee in Native Code! *)
-                let actuals_logical = List.map ~f:(fst >> convert_exp_to_logical) arg_ts in
-                (* L.progress "actuals_logical: %a, methname: %a, fst_apair: %a@." pp_varlist actuals_logical Procname.pp methname S.pp (fst apair); *)
-                let mapfunc = fun (var:Var.t) ->
-                  begin match var with
-                    | LogicalVar id ->
-                        (* let pvar = search_target_tuples_by_id id methname (fst apair) |> List.map ~f:fourth_of |> extract_another_pvar id in *)
-                        let pvar1 = search_target_tuples_by_id id methname (fst apair) in
-                        (* L.progress "pvar1: %a, fst_apair: %a@." pp_tuplelist pvar1 S.pp (fst apair); *)
-                        let pvar2 = List.map ~f:fourth_of pvar1 in
-                        (* L.progress "pvar2: %a@." pp_aliasset_list pvar2; *)
-                        let pvar = extract_another_pvar id pvar2 in
-                        (* L.progress "pvar: %a@." Var.pp pvar; *)
-                        search_recent_vardef_astate methname pvar apair
-                    | _ ->
-                        L.die InternalError "exec_call/mapfunc failed, var: %a" Var.pp var end in
-                let actuals_pvar_tuples = actuals_logical
-                                          |> List.filter ~f:is_logical_var
-                                          |> List.map ~f:mapfunc in
-                (* L.progress "callee: %a, actuals_pvar_tuples: %a@." Procname.pp callee_methname pp_tuplelist actuals_pvar_tuples; *)
-                let mangled_callv = (mk_callv callee_methname, []) in
-                let astate_set_callv_added = 
-                  S.map (fun (p, v, l, a) -> 
-                      let aliasset_callv_added = A.add mangled_callv a in
-                      (p, v, l, aliasset_callv_added)) (S.of_list actuals_pvar_tuples) in
-                let astate_set_rmvd = S.diff astate_set_summary_applied (S.of_list actuals_pvar_tuples) in
-                let astate_set_callv_added = S.union astate_set_rmvd astate_set_callv_added in
-                (astate_set_callv_added, snd apair)
-            | _ ->  (* Callee in User Code! *)
-                let actuals_logical = List.map ~f:(fst >> convert_exp_to_logical) arg_ts in
-                let actuallog_formal_binding =  leave_only_var_tuples @@ zip actuals_logical formals in
-                (* mapfunc finds pvar tuples transmitted as actual arguments *)
-                let mapfunc = fun (var:Var.t) ->
-                  begin match var with
-                    | LogicalVar id ->
-                      let pvar = search_target_tuples_by_id id methname (fst apair)
-                                 |> List.map ~f:fourth_of
-                                 |> extract_another_pvar id in
-                        search_recent_vardef_astate methname pvar apair
-                    | _ ->
-                        L.die InternalError "exec_call/mapfunc failed, var: %a" Var.pp var end in
-                let actuals_pvar_tuples = actuals_logical
-                                          |> List.filter ~f:is_logical_var
-                                          |> List.map ~f:mapfunc in
-                (* L.progress "callee: %a, actuals_pvar_tuples: %a@." Procname.pp callee_methname pp_tuplelist actuals_pvar_tuples; *)
-                let actualpvar_alias_added = add_bindings_to_alias_of_tuples methname actuallog_formal_binding actuals_pvar_tuples (snd apair) |> S.of_list in
-                let mangled_callv = (mk_callv callee_methname, []) in
-                let actualpvar_callv_added = 
-                    S.map (fun (p, v, l, a) -> 
-                      let aliasset_callv_added = A.add mangled_callv a in
-                      (p, v, l, aliasset_callv_added)) actualpvar_alias_added in
-                if Int.equal (S.cardinal actualpvar_callv_added) 0
-                then (* void function call! *)
-                  (astate_set_summary_applied, snd apair)
-                else
-                let applied_state_rmvd = S.diff astate_set_summary_applied (S.of_list actuals_pvar_tuples) in
-                let newset = S.union applied_state_rmvd actualpvar_callv_added in
-                (newset, snd apair) end
-        with _ -> (* corner case: maybe one of actuals contains literal null? *)
-          apair end
+        let aliasset = doubleton (Var.of_id ret_id, []) (returnv, []) in
+        let newtuple = (methname, ph, loc, aliasset) in
+        let newstate = newtuple in
+        (S.add newstate astate_set, historymap)
 
 
   (** Procname.Java.t를 포장한 Procname.t에서 해당 Procname.Java.t를 추출한다. *)
@@ -705,11 +702,15 @@ module TransferFunctions = struct
         let proc = Procdesc.Node.get_proc_name node in
         let targetloc = Procdesc.Node.get_loc node in
         (* 파라미터 라인넘버 보정 *)
-        let loc = LocationSet.singleton {Location.line=targetloc.line-1; Location.col=targetloc.col; Location.file=targetloc.file} in
-        let bake_newstate = fun (var_ap:MyAccessPath.t) -> (proc, var_ap, loc, A.singleton var_ap) in
+        let loc = LocationSet.singleton {Location.line=targetloc.line-1;
+                                         Location.col=targetloc.col;
+                                         Location.file=targetloc.file} in
+        let bake_newstate = fun (var_ap:MyAccessPath.t) ->
+          (proc, var_ap, loc, A.singleton var_ap) in
         let tuplelist = List.map ~f:bake_newstate formal_aps in
         let tupleset = S.of_list tuplelist in
-        let formal_aps_with_methname = List.map ~f:(fun tup -> (methname, tup)) formal_aps in
+        let formal_aps_with_methname = List.map ~f:(fun tup ->
+            (methname, tup)) formal_aps in
         let newmap = H.batch_add_to_history formal_aps_with_methname loc (snd apair) in
         let newset = S.union (fst apair) tupleset in
         (newset, newmap)
@@ -723,38 +724,13 @@ module TransferFunctions = struct
     | (_, None)::_ -> L.die InternalError "catMaybes_tuplist failed"
 
 
-  (** 디스크에서 써머리를 읽어와서 해시테이블에 정리 *)
-  let load_summary_from_disk_to hashtbl =
-    let all_source_files = SourceFiles.get_all ~filter:(fun _ -> true) () in
-    let all_procnames_list = List.map ~f:SourceFiles.proc_names_of_source all_source_files in
-    (* 아직은 파일이 하나밖에 없으니까 *)
-    let all_procnames = List.concat all_procnames_list in
-    let all_summaries_optlist = List.map ~f:(fun proc -> (proc, Summary.OnDisk.get proc)) all_procnames in
-    let all_proc_and_summaries_opt = List.filter ~f:(fun (_, summ) -> match summ with Some _ -> true | None -> false) all_summaries_optlist in
-    let all_proc_and_summaries = catMaybes_tuplist all_proc_and_summaries_opt in
-    let all_proc_and_astate_sets_opt = List.map ~f:(fun (proc, summ) -> (proc, Payload.of_summary summ)) all_proc_and_summaries in
-    let all_proc_and_astates = catMaybes_tuplist all_proc_and_astate_sets_opt in
-    let all_proc_and_tuples = List.map ~f:(fun (x, (y, _)) -> (x, y)) all_proc_and_astates in
-    List.iter ~f:(fun (proc, astate) -> Hashtbl.add hashtbl proc astate) all_proc_and_tuples
-
-
-  let exec_metadata (md:Sil.instr_metadata) (apair:P.t) : P.t =
-    match md with
-    | ExitScope _ -> (* S.filter (fun tup ->
-         * not @@ Var.is_this @@ second_of tup &&
-         * not @@ is_placeholder_vardef @@ second_of tup) *)
-         apair
-    | _ -> apair
-
-
-  let exec_instr : P.t -> extras ProcData.t -> CFG.Node.t -> Sil.instr -> P.t = fun prev' {summary} node instr ->
-    (* L.progress "Executing instr: %a\n" (Sil.pp_instr ~print_types:true Pp.text) instr; *)
-    let my_summary = summary in
+  let exec_instr (prev':P.t) ({InterproceduralAnalysis.proc_desc=_; (* might use this later *)
+                               InterproceduralAnalysis.analyze_dependency})
+      (node:CFG.Node.t) (instr:Sil.instr) : P.t =
     let methname = node
                    |> CFG.Node.underlying_node
                    |> Procdesc.Node.get_proc_name in
     let prev = register_formals prev' node methname in
-    (* let prev = prev' in *)
       match instr with
       | Load {id=id; e=exp} ->
           exec_load id exp prev methname
@@ -762,21 +738,19 @@ module TransferFunctions = struct
           exec_store exp1 exp2 methname prev node
       | Prune _ -> prev
       | Call ((ret_id, _), e_fun, arg_ts, _, _) ->
-          exec_call ret_id e_fun arg_ts my_summary prev methname
-      | Metadata md -> exec_metadata md prev
+          exec_call ret_id e_fun arg_ts analyze_dependency prev methname
+      | Metadata _ -> prev
 
 
   let pp_session_name node fmt = F.fprintf fmt "def/loc/alias %a" CFG.Node.pp_id (CFG.Node.id node)
 end
 
+module CFG = ProcCfg.OneInstrPerNode (ProcCfg.Normal)
 
-module Analyzer = AbstractInterpreter.MakeRPO (TransferFunctions)
+
+module Analyzer = AbstractInterpreter.MakeRPO (TransferFunctions (CFG))
 
 
-let checker {Callbacks.summary=summary; exe_env} : Summary.t =
-  let proc_name = Summary.get_proc_name summary in
-  let tenv = Exe_env.get_tenv exe_env proc_name in
-  match Analyzer.compute_post (ProcData.make_default summary tenv) ~initial:DefLocAliasDomain.initial with
-  | Some post ->
-      Payload.update_summary post summary
-  | None -> L.die InternalError "Checker Failed"
+(** Postcondition computing function *)
+let checker ({InterproceduralAnalysis.proc_desc} as analysis_data) =
+  Analyzer.compute_post analysis_data ~initial:DefLocAliasDomain.initial proc_desc

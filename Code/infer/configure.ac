@@ -12,14 +12,14 @@ AC_PREREQ([2.63])
 # - the values below
 # - opam
 AC_INIT([Infer],
-        [0.17.0],
+        [1.0.0],
         [https://github.com/facebook/infer/issues/])
 
 AC_CONFIG_SRCDIR([infer/src/istd/IStd.ml])
 
 # WARNING: keep in sync with above
-INFER_MAJOR=0
-INFER_MINOR=17
+INFER_MAJOR=1
+INFER_MINOR=0
 INFER_PATCH=0
 
 AC_SUBST([INFER_MAJOR])
@@ -136,9 +136,6 @@ AS_IF([test "x$enable_c_analyzers" = "xyes"], [
   AC_SUBST([ENABLE_OCAMLOPT_CUSTOM_CC])
 ])
 # end if($enable_c_analyzers)
-
-AC_CHECK_TOOL([PYTHON27], [python2.7], [no])
-AC_ASSERT_PROG([python2.7], [$PYTHON27])
 
 AC_CHECK_TOOL([XCODE_SELECT], [xcode-select], [no])
 AS_IF([test "x$XCODE_SELECT" != "xno"], [XCODE_SELECT_OUT=`xcode-select -p`])
@@ -381,7 +378,7 @@ if test x"$NDKBUILD" = x"no"; then
     [$PATH$PATH_SEPARATOR$ANDROID_NDK$PATH_SEPARATOR/opt/android_ndk/r15c])
 fi
 
-AC_CHECK_PYTHON_MODULE([$PYTHON27], [lxml])
+AC_CHECK_TOOL([NINJA], [ninja], [no])
 
 AC_CHECK_TOOL([XCPRETTY], [xcpretty], [no])
 
@@ -399,6 +396,15 @@ AS_IF([test "$SED" != "xno"], [
 AC_SUBST([GNU_SED])
 
 AC_CHECK_TOOL([BREW], [brew], [no])
+
+AC_CHECK_TOOL([INSTALL_NAME_TOOL], [install_name_tool], [no])
+AC_SUBST([INSTALL_NAME_TOOL])
+AC_CHECK_TOOL([LDD], [ldd], [no])
+AC_SUBST([LDD])
+AC_CHECK_TOOL([OTOOL], [otool], [no])
+AC_SUBST([OTOOL])
+AC_CHECK_TOOL([PATCHELF], [patchelf], [no])
+AC_SUBST([PATCHELF])
 
 AC_CHECK_INFER_MAN_LAST_MODIFIED()
 

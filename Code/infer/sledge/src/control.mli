@@ -11,9 +11,12 @@ type exec_opts =
   { bound: int  (** Loop/recursion unrolling bound *)
   ; skip_throw: bool  (** Treat throw as unreachable *)
   ; function_summaries: bool  (** Use function summarisation *)
-  ; globals: Used_globals.r }
+  ; entry_points: string list
+  ; globals: Domain_used_globals.r }
 
-module Make (Dom : Domain_sig.Dom) : sig
-  val exec_pgm : exec_opts -> Llair.t -> unit
-  val compute_summaries : exec_opts -> Llair.t -> Dom.summary list Reg.Map.t
+module Make (Dom : Domain_intf.Dom) : sig
+  val exec_pgm : exec_opts -> Llair.program -> unit
+
+  val compute_summaries :
+    exec_opts -> Llair.program -> Dom.summary list Llair.Reg.Map.t
 end

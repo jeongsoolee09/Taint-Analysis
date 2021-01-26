@@ -13,9 +13,10 @@ type exec_opts =
   { bound: int
   ; skip_throw: bool
   ; function_summaries: bool
-  ; globals: Used_globals.r }
+  ; entry_points: string list
+  ; globals: Domain_used_globals.r }
 
-module Make (Dom : Domain_sig.Dom) = struct
+module Make (Dom : Domain_intf.Dom) = struct
   module Stack : sig
     type t
     type as_inlined_location = t [@@deriving compare, sexp_of]
@@ -30,15 +31,20 @@ module Make (Dom : Domain_sig.Dom) = struct
     val pop_throw :
          t
       -> init:'a
-      -> unwind:(Reg.t list -> Reg.Set.t -> Dom.from_call -> 'a -> 'a)
+      -> unwind:
+           (   Llair.Reg.t list
+            -> Llair.Reg.Set.t
+            -> Dom.from_call
+            -> 'a
+            -> 'a)
       -> (Dom.from_call * Llair.jump * t * 'a) option
   end = struct
     type t =
       | Return of
           { recursive: bool  (** return from a possibly-recursive call *)
           ; dst: Llair.Jump.t
-          ; formals: Reg.t list
-          ; locals: Reg.Set.t
+          ; formals: Llair.Reg.t list
+          ; locals: Llair.Reg.Set.t
           ; from_call: Dom.from_call
           ; stk: t }
       | Throw of Llair.Jump.t * t
@@ -86,8 +92,7 @@ module Make (Dom : Domain_sig.Dom) = struct
       | Empty -> ()
 
     let invariant s =
-      Invariant.invariant [%here] s [%sexp_of: t]
-      @@ fun () ->
+      let@ () = Invariant.invariant [%here] s [%sexp_of: t] in
       match s with
       | Return _ | Throw (_, Return _) | Empty -> ()
       | Throw _ -> fail "malformed stack: %a" print_abbrev s ()
@@ -167,7 +172,6 @@ module Make (Dom : Domain_sig.Dom) = struct
       end
 
       include T
-      include Comparator.Make (T)
 
       let pp fs {dst; src} =
         Format.fprintf fs "#%i %%%s <--%a" dst.sort_index dst.lbl
@@ -177,33 +181,33 @@ module Make (Dom : Domain_sig.Dom) = struct
     end
 
     module Depths = struct
-      type t = int Map.M(Edge).t
+      module M = Map.Make (Edge)
 
-      let empty = Map.empty (module Edge)
-      let find = Map.find
-      let set = Map.set
+      type t = int M.t
+
+      let empty = M.empty
+      let find = M.find
+      let set = M.set
 
       let join x y =
-        Map.merge x y ~f:(fun ~key:_ -> function
+        M.merge x y ~f:(fun ~key:_ -> function
           | `Left d | `Right d -> Some d
           | `Both (d1, d2) -> Some (Int.max d1 d2) )
     end
 
     type priority = int * Edge.t [@@deriving compare]
     type priority_queue = priority Fheap.t
-    type waiting_states = (Dom.t * Depths.t) list Map.M(Llair.Block).t
+    type waiting_states = (Dom.t * Depths.t) list Llair.Block.Map.t
     type t = priority_queue * waiting_states * int
     type x = Depths.t -> t -> t
 
-    let empty_waiting_states : waiting_states =
-      Map.empty (module Llair.Block)
-
+    let empty_waiting_states : waiting_states = Llair.Block.Map.empty
     let pp_priority fs (n, e) = Format.fprintf fs "%i: %a" n Edge.pp e
 
     let pp fs pq =
       Format.fprintf fs "@[%a@]"
         (List.pp " ::@ " pp_priority)
-        (Sequence.to_list (Fheap.to_sequence pq))
+        (Fheap.to_list pq)
 
     let skip _ w = w
     let seq x y d w = y d (x d w)
@@ -220,7 +224,9 @@ module Make (Dom : Domain_sig.Dom) = struct
         let pq = Fheap.add pq (depth, edge) in
         [%Trace.info "@[<6>enqueue %i: %a@ | %a@]" depth Edge.pp edge pp pq] ;
         let depths = Depths.set depths ~key:edge ~data:depth in
-        let ws = Map.add_multi ws ~key:curr ~data:(state, depths) in
+        let ws =
+          Llair.Block.Map.add_multi ws ~key:curr ~data:(state, depths)
+        in
         (pq, ws, bound)
 
     let init state curr bound =
@@ -230,7 +236,7 @@ module Make (Dom : Domain_sig.Dom) = struct
     let rec run ~f (pq0, ws, bnd) =
       match Fheap.pop pq0 with
       | Some ((_, ({Edge.dst; stk} as edge)), pq) -> (
-        match Map.find_and_remove ws dst with
+        match Llair.Block.Map.find_and_remove ws dst with
         | Some (q :: qs, ws) ->
             let join (qa, da) (q, d) = (Dom.join q qa, Depths.join d da) in
             let skipped, (qs, depths) =
@@ -239,24 +245,26 @@ module Make (Dom : Domain_sig.Dom) = struct
                   | Some joined, depths -> (skipped, (joined, depths))
                   | None, _ -> (curr :: skipped, joined) )
             in
-            let ws = Map.add_exn ws ~key:dst ~data:skipped in
+            let ws = Llair.Block.Map.add_exn ws ~key:dst ~data:skipped in
             run ~f (f stk qs dst depths (pq, ws, bnd))
         | _ ->
             [%Trace.info "done: %a" Edge.pp edge] ;
             run ~f (pq, ws, bnd) )
-      | None -> [%Trace.info "queue empty"] ; ()
+      | None ->
+          [%Trace.info "queue empty"] ;
+          ()
   end
 
   let exec_jump stk state block Llair.{dst; retreating} =
     Work.add ~prev:block ~retreating stk state dst
 
-  let summary_table = Hashtbl.create (module Reg)
+  let summary_table = Hashtbl.create (module Llair.Reg)
 
   let exec_call opts stk state block call globals =
     let Llair.{callee; actuals; areturn; return; recursive} = call in
     let Llair.{name; formals; freturn; locals; entry} = callee in
     [%Trace.call fun {pf} ->
-      pf "%a from %a with state@ %a" Reg.pp name.reg Reg.pp
+      pf "%a from %a with state@ %a" Llair.Reg.pp name.reg Llair.Reg.pp
         return.dst.parent.name.reg Dom.pp state]
     ;
     let dnf_states =
@@ -301,21 +309,24 @@ module Make (Dom : Domain_sig.Dom) = struct
     [%Trace.printf
       "@[<v>%t@]" (fun fs ->
           Hashtbl.iteri summary_table ~f:(fun ~key ~data ->
-              Format.fprintf fs "@[<v>%a:@ @[%a@]@]@ " Reg.pp key
+              Format.fprintf fs "@[<v>%a:@ @[%a@]@]@ " Llair.Reg.pp key
                 (List.pp "@," Dom.pp_summary)
                 data ) )]
 
   let exec_return ~opts stk pre_state (block : Llair.block) exp =
     let Llair.{name; formals; freturn; locals} = block.parent in
-    [%Trace.call fun {pf} -> pf "from: %a" Reg.pp name.reg]
+    [%Trace.call fun {pf} -> pf "from: %a" Llair.Reg.pp name.reg]
     ;
     let summarize post_state =
       if not opts.function_summaries then post_state
       else
-        let globals = Used_globals.by_function opts.globals name.reg in
+        let globals =
+          Domain_used_globals.by_function opts.globals name.reg
+        in
         let function_summary, post_state =
           Dom.create_summary ~locals post_state
-            ~formals:(Set.union (Reg.Set.of_list formals) globals)
+            ~formals:
+              (Llair.Reg.Set.union (Llair.Reg.Set.of_list formals) globals)
         in
         Hashtbl.add_multi summary_table ~key:name.reg ~data:function_summary ;
         pp_st () ;
@@ -324,7 +335,7 @@ module Make (Dom : Domain_sig.Dom) = struct
     let exit_state =
       match (freturn, exp) with
       | Some freturn, Some return_val ->
-          Dom.exec_move pre_state (Vector.of_ (freturn, return_val))
+          Dom.exec_move pre_state (IArray.of_ (freturn, return_val))
       | None, None -> pre_state
       | _ -> violates Llair.Func.invariant block.parent
     in
@@ -337,9 +348,8 @@ module Make (Dom : Domain_sig.Dom) = struct
         (* Create and store a function summary for main *)
         if
           opts.function_summaries
-          && List.exists
-               (Config.find_list "entry-points")
-               ~f:(String.equal (Reg.name name.reg))
+          && List.exists opts.entry_points
+               ~f:(String.equal (Llair.Reg.name name.reg))
         then summarize exit_state |> (ignore : Dom.t -> unit) ;
         Work.skip )
     |>
@@ -347,7 +357,7 @@ module Make (Dom : Domain_sig.Dom) = struct
 
   let exec_throw stk pre_state (block : Llair.block) exc =
     let func = block.parent in
-    [%Trace.call fun {pf} -> pf "from %a" Reg.pp func.name.reg]
+    [%Trace.call fun {pf} -> pf "from %a" Llair.Reg.pp func.name.reg]
     ;
     let unwind formals scope from_call state =
       Dom.retn formals (Some func.fthrow) from_call
@@ -357,7 +367,7 @@ module Make (Dom : Domain_sig.Dom) = struct
     | Some (from_call, retn_site, stk, unwind_state) ->
         let fthrow = func.fthrow in
         let exit_state =
-          Dom.exec_move unwind_state (Vector.of_ (fthrow, exc))
+          Dom.exec_move unwind_state (IArray.of_ (fthrow, exc))
         in
         let post_state = Dom.post func.locals from_call exit_state in
         let retn_state =
@@ -372,7 +382,7 @@ module Make (Dom : Domain_sig.Dom) = struct
          Stack.t
       -> Dom.t
       -> Llair.block
-      -> Reg.t option
+      -> Llair.Reg.t option
       -> Llair.jump
       -> Work.x =
    fun stk state block areturn return ->
@@ -381,32 +391,39 @@ module Make (Dom : Domain_sig.Dom) = struct
     exec_jump stk state block return
 
   let exec_term :
-      exec_opts -> Llair.t -> Stack.t -> Dom.t -> Llair.block -> Work.x =
+         exec_opts
+      -> Llair.program
+      -> Stack.t
+      -> Dom.t
+      -> Llair.block
+      -> Work.x =
    fun opts pgm stk state block ->
     [%Trace.info
       "@[<2>exec term@\n@[%a@]@\n%a@]" Dom.pp state Llair.Term.pp block.term] ;
+    Report.step () ;
     match block.term with
     | Switch {key; tbl; els} ->
-        Vector.fold tbl
+        IArray.fold tbl
           ~f:(fun x (case, jump) ->
-            match Dom.exec_assume state (Exp.eq key case) with
+            match Dom.exec_assume state (Llair.Exp.eq key case) with
             | Some state -> exec_jump stk state block jump |> Work.seq x
             | None -> x )
           ~init:
             ( match
                 Dom.exec_assume state
-                  (Vector.fold tbl ~init:Exp.true_ ~f:(fun b (case, _) ->
-                       Exp.and_ (Exp.dq key case) b ))
+                  (IArray.fold tbl ~init:Llair.Exp.true_
+                     ~f:(fun b (case, _) ->
+                       Llair.Exp.and_ (Llair.Exp.dq key case) b ))
               with
             | Some state -> exec_jump stk state block els
             | None -> Work.skip )
     | Iswitch {ptr; tbl} ->
-        Vector.fold tbl ~init:Work.skip ~f:(fun x (jump : Llair.jump) ->
+        IArray.fold tbl ~init:Work.skip ~f:(fun x (jump : Llair.jump) ->
             match
               Dom.exec_assume state
-                (Exp.eq ptr
-                   (Exp.label
-                      ~parent:(Reg.name jump.dst.parent.name.reg)
+                (Llair.Exp.eq ptr
+                   (Llair.Exp.label
+                      ~parent:(Llair.Reg.name jump.dst.parent.name.reg)
                       ~name:jump.dst.lbl))
             with
             | Some state -> exec_jump stk state block jump |> Work.seq x
@@ -435,7 +452,7 @@ module Make (Dom : Domain_sig.Dom) = struct
                     exec_skip_func stk state block areturn return
                 | None ->
                     exec_call opts stk state block {call with callee}
-                      (Used_globals.by_function opts.globals
+                      (Domain_used_globals.by_function opts.globals
                          callee.name.reg) )
                 |> Work.seq x ) )
     | Return {exp} -> exec_return ~opts stk state block exp
@@ -449,43 +466,50 @@ module Make (Dom : Domain_sig.Dom) = struct
    fun state inst ->
     [%Trace.info
       "@[<2>exec inst@\n@[%a@]@\n%a@]" Dom.pp state Llair.Inst.pp inst] ;
+    Report.step () ;
     Dom.exec_inst state inst |> Result.of_option ~error:(state, inst)
 
   let exec_block :
-      exec_opts -> Llair.t -> Stack.t -> Dom.t -> Llair.block -> Work.x =
+         exec_opts
+      -> Llair.program
+      -> Stack.t
+      -> Dom.t
+      -> Llair.block
+      -> Work.x =
    fun opts pgm stk state block ->
     [%Trace.info "exec block %%%s" block.lbl] ;
-    match Vector.fold_result ~f:exec_inst ~init:state block.cmnd with
+    match IArray.fold_result ~f:exec_inst ~init:state block.cmnd with
     | Ok state -> exec_term opts pgm stk state block
     | Error (state, inst) ->
         Report.invalid_access_inst (Dom.report_fmt_thunk state) inst ;
         Work.skip
 
-  let harness : exec_opts -> Llair.t -> (int -> Work.t) option =
+  let harness : exec_opts -> Llair.program -> (int -> Work.t) option =
    fun opts pgm ->
-    let entry_points = Config.find_list "entry-points" in
-    List.find_map ~f:(Llair.Func.find pgm.functions) entry_points
+    List.find_map ~f:(Llair.Func.find pgm.functions) opts.entry_points
     |> function
     | Some {name= {reg}; formals= []; freturn; locals; entry} ->
         Some
           (Work.init
              (fst
                 (Dom.call ~summaries:opts.function_summaries
-                   ~globals:(Used_globals.by_function opts.globals reg)
+                   ~globals:
+                     (Domain_used_globals.by_function opts.globals reg)
                    ~actuals:[] ~areturn:None ~formals:[] ~freturn ~locals
                    (Dom.init pgm.globals)))
              entry)
     | _ -> None
 
-  let exec_pgm : exec_opts -> Llair.t -> unit =
+  let exec_pgm : exec_opts -> Llair.program -> unit =
    fun opts pgm ->
     match harness opts pgm with
     | Some work -> Work.run ~f:(exec_block opts pgm) (work opts.bound)
     | None -> fail "no applicable harness" ()
 
-  let compute_summaries opts pgm : Dom.summary list Reg.Map.t =
+  let compute_summaries opts pgm : Dom.summary list Llair.Reg.Map.t =
     assert opts.function_summaries ;
     exec_pgm opts pgm ;
-    Hashtbl.fold summary_table ~init:Reg.Map.empty ~f:(fun ~key ~data map ->
-        match data with [] -> map | _ -> Map.set map ~key ~data )
+    Hashtbl.fold summary_table ~init:Llair.Reg.Map.empty
+      ~f:(fun ~key ~data map ->
+        match data with [] -> map | _ -> Llair.Reg.Map.set map ~key ~data )
 end

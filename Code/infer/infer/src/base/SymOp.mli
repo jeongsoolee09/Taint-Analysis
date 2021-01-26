@@ -59,8 +59,8 @@ type failure_kind =
   | FKrecursion_timeout of int  (** max recursion level exceeded *)
   | FKcrash of string  (** uncaught exception or failed assertion *)
 
-exception Analysis_failure_exe of failure_kind
 (** Timeout exception *)
+exception Analysis_failure_exe of failure_kind
 
 val exn_not_failure : exn -> bool
 (** check that the exception is not a timeout exception *)
@@ -72,5 +72,3 @@ val try_finally : f:(unit -> 'a) -> finally:(unit -> unit) -> 'a
     so [finally ()] should return reasonably quickly. *)
 
 val pp_failure_kind : Format.formatter -> failure_kind -> unit
-
-val failure_kind_to_string : failure_kind -> string

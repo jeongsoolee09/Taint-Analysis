@@ -30,7 +30,7 @@ let compile compiler build_prog build_args =
   in
   (* Pass non-special args via a file to avoid exceeding the command line size limit. *)
   let args_file =
-    let file = Filename.temp_file "args_" "" in
+    let file = Filename.temp_file ~in_dir:(ResultsDir.get_path Temporary) "javac_args" "" in
     let quoted_file_args =
       List.map file_args ~f:(fun arg ->
           if String.contains arg '\'' then arg else F.sprintf "'%s'" arg )
@@ -41,7 +41,9 @@ let compile compiler build_prog build_args =
   let cli_file_args = cli_args @ ["@" ^ args_file] in
   let args = prog_args @ cli_file_args in
   L.(debug Capture Quiet) "Current working directory: '%s'@." (Sys.getcwd ()) ;
-  let verbose_out_file = Filename.temp_file "javac" ".out" in
+  let verbose_out_file =
+    Filename.temp_file ~in_dir:(ResultsDir.get_path Temporary) "javac" ".out"
+  in
   let try_run cmd error_k =
     let shell_cmd = List.map ~f:Escape.escape_shell cmd |> String.concat ~sep:" " in
     let shell_cmd_redirected = Printf.sprintf "%s 2>'%s'" shell_cmd verbose_out_file in
@@ -95,6 +97,19 @@ let no_source_file args =
           not_source_file arg
       | Some arg_file ->
           List.for_all ~f:not_source_file (In_channel.read_lines arg_file) )
+
+
+let call_infer_javac_capture ~javac_args =
+  let prog = Config.bin_dir ^/ "infer" in
+  let args =
+    "capture" :: "--continue" :: "--" :: "javac"
+    :: List.filter_map javac_args ~f:(fun arg ->
+           if String.equal "-Werror" arg then None
+           else if String.is_substring arg ~substring:"-g:" then Some "-g"
+           else Some arg )
+  in
+  L.debug Capture Verbose "%s %s@." prog (String.concat ~sep:" " args) ;
+  Process.create_process_and_wait ~prog ~args
 
 
 let capture compiler ~prog ~args =

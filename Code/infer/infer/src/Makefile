@@ -8,33 +8,12 @@ include $(ROOT_DIR)/Makefile.config
 
 #### Global declarations ####
 
-ETC_DIR = $(INFER_DIR)/etc
-# paths to BUILD_DIR are relative because that's how dune likes it
-# can be overriden to specify another build mode (eg opt)
-INFER_BUILD_DIR = _build/default
-
-#### Backend declarations ####
-
 INFER_MAIN = infer
-
-#### Checkers declarations ####
-
-INFER_ATDGEN_STUB_BASES = atd/jsonbug atd/runstate atd/java_method_decl atd/perf_profiler atd/java_profiler_samples atd/clang_profiler_samples
-INFER_ATDGEN_TYPES = j t
-INFER_ATDGEN_STUB_ATDS = $(INFER_ATDGEN_STUB_BASES:.atd)
-INFER_ATDGEN_SUFFIXES = $(foreach atd_t,$(INFER_ATDGEN_TYPES),_$(atd_t).ml _$(atd_t).mli)
-INFER_ATDGEN_STUBS = $(foreach base,$(INFER_ATDGEN_STUB_BASES),\
-	$(addprefix $(base),$(INFER_ATDGEN_SUFFIXES)))
-
-#### InferCreateTraceViewLinks declarations ####
-
-FACEBOOK_DIR = facebook
+INFERTOP_MAIN = infertop
+INFERUNIT_MAIN = inferunit
 INFER_CREATE_TRACEVIEW_LINKS_MODULE = InferCreateTraceViewLinks
 INFER_CREATE_TRACEVIEW_LINKS_MAIN = $(INFER_CREATE_TRACEVIEW_LINKS_MODULE)
-
-### InferUnit declarations ###
-
-INFERUNIT_MAIN = inferunit
+CHECKCOPYRIGHT_MAIN = checkCopyright
 
 #### Clang declarations ####
 
@@ -60,25 +39,17 @@ CLANG_PLUGIN_MIRRORED_FILES = $(addprefix $(CLANG_PLUGIN_MIRROR)/, $(notdir $(FC
 
 CLANG_BINIOU_DICT = $(ETC_DIR)/clang_ast.dict
 
-#### scripts declarations ####
-
-CHECKCOPYRIGHT_BIN = $(SCRIPT_DIR)/checkCopyright
-CHECKCOPYRIGHT_MAIN = checkCopyright
-
-#### End of declarations ####
-
 ifeq ($(ENABLE_OCAMLOPT_CUSTOM_CC),yes)
 EXTRA_CFLAGS += -cc,$(CC)
 endif
 
 # list of ocamlbuild targets common to all build targets -- native version
-INFER_CONFIG_TARGETS = $(INFER_BUILD_DIR)/$(INFER_MAIN).exe
+INFER_CONFIG_TARGETS = $(INFER_MAIN).exe
 ifeq ($(IS_FACEBOOK_TREE),yes)
-INFER_CONFIG_TARGETS += $(INFER_BUILD_DIR)/$(INFER_CREATE_TRACEVIEW_LINKS_MAIN).exe
+INFER_CONFIG_TARGETS += $(INFER_CREATE_TRACEVIEW_LINKS_MAIN).exe
 endif
 
-OCAML_GENERATED_SOURCES = \
-  base/Version.ml $(INFER_ATDGEN_STUBS)
+OCAML_GENERATED_SOURCES = base/Version.ml
 
 ifeq ($(BUILD_C_ANALYZERS),yes)
 OCAML_GENERATED_SOURCES += $(CLANG_ATDGEN_STUBS) $(CLANG_PLUGIN_MIRRORED_FILES)
@@ -91,9 +62,12 @@ OCAML_SOURCES = \
 .PHONY: all
 all: infer
 
-GENERATED_FROM_AUTOCONF = dune.common dune-workspace base/Version.ml
+GENERATED_FROM_AUTOCONF = dune.common ../dune-workspace base/Version.ml
 
-GENERATED_DUNES += dune atd/dune base/dune IR/dune istd/dune scripts/dune
+.PHONY: dune-workspace
+dune-workspace: ../dune-workspace
+
+GENERATED_DUNES += dune al/dune clang/dune integration/dune java/dune opensource/dune unit/dune
 
 SRC_BUILD_COMMON = $(GENERATED_FROM_AUTOCONF) $(GENERATED_DUNES) $(OCAML_SOURCES)
 ifeq ($(BUILD_C_ANALYZERS),yes)
@@ -103,83 +77,91 @@ endif
 .PHONY: src_build_common
 src_build_common: $(SRC_BUILD_COMMON)
 
-# single out infer.exe as the source of truth for make, knowing that in fact several targets are
-# produced by the build
-$(INFER_BUILD_DIR)/$(INFER_MAIN).exe: $(SRC_BUILD_COMMON) $(MAKEFILE_LIST)
-	$(QUIET)dune build $(INFER_CONFIG_TARGETS)
-#	let make know that the target is up-to-date even if ocamlbuild cached it
-	$(QUIET)touch $@
+# NOTE: the complexity below is because @runtest and @fmt interact poorly: we want dune to format
+# test files *after* having promoted them when the test outputs change
+.PHONY: runtest
+runtest: $(SRC_BUILD_COMMON) $(MAKEFILE_LIST)
+	$(QUIET)exit_code=0; \
+	$(DUNE_BUILD) @runtest --auto-promote || exit_code=$$?; \
+	$(DUNE_BUILD) @fmt --auto-promote || exit_code=$$?; \
+	exit $$exit_code
 
 .PHONY: test
-test: $(SRC_BUILD_COMMON) $(MAKEFILE_LIST)
-#	needed for dune to "install" the relevant dynamic libraries for the C stubs
-	$(QUIET)cd c_stubs; dune build InferCStubs.install
-	$(QUIET)dune build \
-	  $(patsubst $(INFER_BUILD_DIR)/%.exe,_build/test/%.bc,$(INFER_CONFIG_TARGETS)) \
-	  _build/test/scripts/checkCopyright.bc _build/test/$(INFERUNIT_MAIN).bc _build/test/infertop.bc
+test: $(SRC_BUILD_COMMON) $(MAKEFILE_LIST) runtest
+	$(DUNE_BUILD) \
+	  $(patsubst %.exe, %.bc.exe, $(INFER_CONFIG_TARGETS)) \
+	  scripts/$(CHECKCOPYRIGHT_MAIN).bc.exe $(INFERUNIT_MAIN).bc.exe $(INFERTOP_MAIN).bc.exe
+
+.PHONY: unit
+unit: runtest test
+	$(QUIET)$(REMOVE_DIR) infer-out-unit-tests
+	$(QUIET)INFER_ARGS=--results-dir^infer-out-unit-tests $(INFERUNIT_BIN)
+
+.PHONY: build_all
+build_all: $(SRC_BUILD_COMMON)
+	$(DUNE_BUILD) @all
 
 .PHONY: doc
 doc: $(SRC_BUILD_COMMON) $(MAKEFILE_LIST)
-	$(QUIET)dune build @$(INFER_BUILD_DIR)/doc
+	$(QUIET)cd .. && $(DUNE_BUILD) @doc
 
 .PHONY: check
 check: src_build_common
-	dune build @check
+	$(DUNE_BUILD) @check
 
+#### Aliases for building binaries ####
+
+# Single out infer[.bc].exe as the source of truth for make, knowing that in fact several
+# targets are produced by the build.
+# The targets below are marked as .PHONY because if you build with one profile `make
+# BUILD_MODE=dev` and then try with another profile `make BUILD_MODE=opt`, make won't
+# trigger a rebuild since it has only partial view on the dependencies.
+
+.PHONY: $(INFER_BIN).exe
+$(INFER_BIN).exe:  $(SRC_BUILD_COMMON) $(MAKEFILE_LIST)
+	$(QUIET)$(DUNE_BUILD) $(INFER_CONFIG_TARGETS)
+
+.PHONY: $(INFER_BIN).bc.exe
+$(INFER_BIN).bc.exe:  $(SRC_BUILD_COMMON) $(MAKEFILE_LIST)
+	$(QUIET)$(DUNE_BUILD) $(patsubst %.exe, %.bc.exe, $(INFER_CONFIG_TARGETS))
+
+.PHONY: $(INFERTOP_BIN) toplevel
+$(INFERTOP_BIN): $(SRC_BUILD_COMMON) $(MAKEFILE_LIST)
+	$(DUNE_BUILD) $(INFERTOP_MAIN).bc.exe
+toplevel: $(INFERTOP_BIN)
+
+.PHONY: $(CHECKCOPYRIGHT_BIN) checkCopyright
+$(CHECKCOPYRIGHT_BIN): $(SRC_BUILD_COMMON) $(MAKEFILE_LIST)
+	$(DUNE_BUILD) scripts/$(CHECKCOPYRIGHT_MAIN)
+checkCopyright: $(CHECKCOPYRIGHT_BIN)
+
+.PHONY: infer
+infer: $(INFER_BIN).exe
+	$(INSTALL_PROGRAM) -C $(INFER_BIN).exe $(INFER_BIN)
+ifeq ($(IS_FACEBOOK_TREE),yes)
+	$(INSTALL_PROGRAM) -C $(INFER_CREATE_TRACEVIEW_LINKS_BIN).exe $(INFER_CREATE_TRACEVIEW_LINKS_BIN)
+endif
+	$(MAKE) $(INFER_BIN_ALIASES)
+
+.PHONY: byte
+byte: $(INFER_BIN).bc.exe
+	$(INSTALL_PROGRAM) -C $(INFER_BIN).bc.exe $(INFER_BIN)
+ifeq ($(IS_FACEBOOK_TREE),yes)
+	$(INSTALL_PROGRAM) -C $(INFER_CREATE_TRACEVIEW_LINKS_BIN).bc.exe $(INFER_CREATE_TRACEVIEW_LINKS_BIN)
+endif
+	$(MAKE) $(INFER_BIN_ALIASES)
 
 INFER_BIN_ALIASES = $(foreach alias,$(INFER_COMMANDS),$(BIN_DIR)/$(alias))
-
 $(INFER_BIN_ALIASES): Makefile $(BIN_DIR)/$(INFER_MAIN)
 	$(REMOVE) $@
 	$(QUIET)cd $(@D) && $(LN_S) -f infer $(@F)
 	$(QUIET)touch $@
 
-$(INFER_BIN).exe: $(INFER_BUILD_DIR)/$(INFER_MAIN).exe
-	$(QUIET)$(MKDIR_P) $(BIN_DIR)
-ifeq ($(WINDOWS_BUILD),yes)
-# http://cygwin.1069669.n5.nabble.com/cp-utility-bug-when-dest-name-exe-file-exist-tp57955p58001.html
-	$(REMOVE) $(INFER_BIN) $(INFER_BIN).exe
-endif
-	$(INSTALL_PROGRAM) -C $(INFER_BUILD_DIR)/$(INFER_MAIN).exe $(INFER_BIN).exe
-ifeq ($(IS_FACEBOOK_TREE),yes)
-	$(INSTALL_PROGRAM) -C $(INFER_BUILD_DIR)/$(INFER_CREATE_TRACEVIEW_LINKS_MAIN).exe \
-		$(INFER_CREATE_TRACEVIEW_LINKS_BIN)
-endif
-
-
-.PHONY: infer
-infer: $(INFER_BIN).exe
-	$(INSTALL_PROGRAM) -C $(INFER_BIN).exe $(INFER_BIN)
-	$(MAKE) $(INFER_BIN_ALIASES)
-
-$(INFER_BUILD_DIR)/$(INFER_MAIN).bc: $(SRC_BUILD_COMMON) $(MAKEFILE_LIST)
-	dune build $(INFER_CONFIG_TARGETS:.exe=.bc)
-	$(QUIET)touch $@
-
-$(INFER_BIN).bc: $(INFER_BUILD_DIR)/$(INFER_MAIN).bc
-	$(QUIET)$(MKDIR_P) $(BIN_DIR)
-ifeq ($(WINDOWS_BUILD),yes)
-# http://cygwin.1069669.n5.nabble.com/cp-utility-bug-when-dest-name-exe-file-exist-tp57955p58001.html
-	$(REMOVE) $(INFER_BIN) $(INFER_BIN).exe
-endif
-	$(INSTALL_PROGRAM) -C $(INFER_BUILD_DIR)/$(INFER_MAIN).bc $(INFER_BIN).bc
-ifeq ($(IS_FACEBOOK_TREE),yes)
-	$(INSTALL_PROGRAM) -C $(INFER_BUILD_DIR)/$(INFER_CREATE_TRACEVIEW_LINKS_MAIN).bc \
-		$(INFER_CREATE_TRACEVIEW_LINKS_BIN)
-endif
-#	needed for dune to "install" the relevant dynamic libraries for the C stubs
-	cd c_stubs; dune build InferCStubs.install
-
-.PHONY: byte
-byte: $(INFER_BIN).bc
-	$(INSTALL_PROGRAM) -C $(INFER_BIN).byte $(INFER_BIN)
-	$(MAKE) $(INFER_BIN_ALIASES)
-
 roots:=Infer
 ifeq ($(IS_FACEBOOK_TREE),yes)
 roots += $(INFER_CREATE_TRACEVIEW_LINKS_MODULE)
 endif
-clusters:=base clang java IR
+clusters:=absint al atd backend base biabduction bufferoverrun checkers clang clang_stubs concurrency cost c_stubs deadcode integration IR istd java labs llvm nullsafe opensource pulse quandary scripts test_determinator topl unit
 
 ml_src_files:=$(shell find . -not -path "./*stubs*" -regex '\./[a-zA-Z].*\.ml\(i\)*')
 inc_flags:=$(foreach dir,$(shell find . -not -path './_build*' -type d),-I $(dir))
@@ -200,26 +182,6 @@ mod_dep.pdf: mod_dep.dot
 dsort:
 	$(QUIET)ocamldep.opt -sort $(inc_flags) $(ml_src_files)
 
-$(INFER_BUILD_DIR)/infertop.bc: $(SRC_DIR)/infertop.ml $(SRC_BUILD_COMMON) $(MAKEFILE_LIST)
-	dune build $@
-#	needed for dune to "install" the relevant dynamic libraries for the C stubs
-	cd c_stubs; dune build InferCStubs.install
-	$(QUIET)touch $@
-
-$(INFERTOP_BIN): $(INFER_BUILD_DIR)/infertop.bc
-	$(QUIET)$(INSTALL_PROGRAM) -C $< $@
-	$(QUIET)touch $@
-
-.PHONY: toplevel
-toplevel: $(INFERTOP_BIN)
-
-.PHONY: checkCopyright
-checkCopyright: $(CHECKCOPYRIGHT_BIN)
-
-$(CHECKCOPYRIGHT_BIN): $(SRC_BUILD_COMMON) $(MAKEFILE_LIST)
-	dune build $(INFER_BUILD_DIR)/scripts/$(CHECKCOPYRIGHT_MAIN).exe
-	$(INSTALL_PROGRAM) -C $(INFER_BUILD_DIR)/scripts/$(CHECKCOPYRIGHT_MAIN).exe $(CHECKCOPYRIGHT_BIN)
-
 define gen_atdgen_rules
 # generate files using atdgen
 # parameters:
@@ -234,11 +196,6 @@ $(2)_$(3).mli: $(1)
 # twice during parallel builds
 $(2)_$(3).ml: $(2)_$(3).mli
 endef
-
-$(foreach atd_type,$(INFER_ATDGEN_TYPES),\
-  $(foreach base,$(INFER_ATDGEN_STUB_BASES),\
-    $(eval \
-        $(call gen_atdgen_rules,$(base).atd,$(base),$(atd_type)))))
 
 # rebuild the artifacts of the AST files whenever they're upated in FCP
 $(foreach atd_type,$(CLANG_ATDGEN_TYPES),\
@@ -286,39 +243,37 @@ $(GENERATED_FROM_AUTOCONF): $(MAKEFILE_LIST)
 	cat "$$TMPFILE" > $@; \
 	$(REMOVE) "$$TMPFILE"
 dune.common: dune.common.in
-dune-workspace: dune-workspace.in
+../dune-workspace: ../dune-workspace.in
 base/Version.ml: base/Version.ml.in
 
 $(GENERATED_DUNES): dune.common
 	$(QUIET)cat $+ > $@
 
 dune: dune.in
-atd/dune: atd/dune.in
-base/dune: base/dune.in
-deadcode/dune: deadcode/dune.in
-IR/dune: IR/dune.in
-istd/dune: istd/dune.in
-scripts/dune: scripts/dune.in
+al/dune: al/dune.in
+clang/dune: clang/dune.in
+integration/dune: integration/dune.in
+java/dune: java/dune.in
+opensource/dune: opensource/dune.in
+unit/dune: unit/dune.in
 
 .PHONY: clean
 clean:
 	$(MAKE) -C deadcode clean
 	$(REMOVE) $(INFER_TARGET)
 	$(REMOVE) toplevel.mlpack
-	$(REMOVE_DIR) $(BUILD_DIR)
 	$(REMOVE) $(ETC_DIR)/clang_ast.dict
 	$(REMOVE) $(GENERATED_FROM_AUTOCONF)
 	$(REMOVE) $(GENERATED_DUNES)
 	$(REMOVE) base/Version.ml.tmp.* dune.tmp.* dune-workspace.tmp.*
 #	be a bit more aggressive than needed with what we remove here so that stale binaries that
 #	only existed in previous versions get removed as well
-	$(REMOVE) $(BIN_DIR)/Infer* $(BIN_DIR)/infer-* $(INFER_BIN){,.bc,.exe} $(INFER_BIN_ALIASES) \
-	  $(INFERUNIT_BIN) $(CHECKCOPYRIGHT_BIN)
+	$(REMOVE) $(INFER_BIN) $(INFER_BIN_ALIASES) $(INFER_CREATE_TRACEVIEW_LINKS_BIN)
 	$(REMOVE) $(BIN_DIR)/llvm_sil
-	$(REMOVE) $(INFER_CREATE_TRACEVIEW_LINKS_BIN)
 	$(REMOVE) atd/*_{j,t,v}.ml{,i} atd/clang_ast_*
 	$(REMOVE) mod_dep.dot
 	$(REMOVE) mod_dep.pdf
+	cd .. && dune clean
 
 .PHONY: fmt
 fmt:

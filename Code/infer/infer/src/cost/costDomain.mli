@@ -17,8 +17,43 @@ module BasicCost : sig
   (** version used to consistently compare at infer-reportdiff phase *)
 end
 
+module BasicCostWithReason : sig
+  (** This is for [Call] instruction. Most top cost function is caused by calling top-costed
+      function. The extension aims to find the root callee with top cost.
+
+      If the callee top cost and thus the caller has top cost, then
+
+      1. if for callee, [top_pname_opt] is [None], then callee is itself top cost, so for the
+      caller, we record [top_pname_opt = callee] ;
+
+      2. if for callee, [top_pname_opt] is [f], then we know that callee calls [f], which is top
+      cost, so for the caller, we record [top_pname_opt = f] *)
+
+  type t = {cost: BasicCost.t; top_pname_opt: Procname.t option}
+
+  val one : ?autoreleasepool_trace:Bounds.BoundTrace.t -> unit -> t
+
+  val zero : t
+
+  val is_top : t -> bool
+
+  val of_basic_cost : BasicCost.t -> t
+
+  val is_unreachable : t -> bool
+
+  val plus : t -> t -> t
+
+  val subst : Procname.t -> Location.t -> t -> Bounds.Bound.eval_sym -> t
+
+  val degree : t -> Polynomials.Degree.t option
+
+  val polynomial_traces : is_autoreleasepool_trace:bool -> t -> Errlog.loc_trace
+
+  val pp_hum : Format.formatter -> t -> unit
+end
+
 module VariantCostMap : sig
-  type t = BasicCost.t CostIssues.CostKindMap.t
+  type t = BasicCostWithReason.t CostIssues.CostKindMap.t
 
   val pp : F.formatter -> t -> unit
 end
@@ -29,26 +64,24 @@ type summary = {post: t; is_on_ui_thread: bool}
 
 val pp_summary : F.formatter -> summary -> unit
 
-val get_cost_kind : CostKind.t -> t -> BasicCost.t
+val get_cost_kind : CostKind.t -> t -> BasicCostWithReason.t
 
-val get_operation_cost : t -> BasicCost.t
+val get_operation_cost : t -> BasicCostWithReason.t
 
-val map : f:(BasicCost.t -> BasicCost.t) -> t -> t
+val set_autoreleasepool_size_zero : t -> t
+
+val find_opt : CostKind.t -> t -> BasicCostWithReason.t option
+
+val construct : f:(CostKind.t -> BasicCostWithReason.t) -> t
 
 val zero_record : t
-(** Map representing cost record {OperationCost:0; AllocationCost:0; IOCost:0} *)
+(** Map representing cost record \{OperationCost:0; AllocationCost:0; AutoreleasepoolSize:0\} *)
 
-val mult_by_scalar : t -> BasicCost.t -> t
-(** Map where each element is multiplied by a cost *)
+val mult_by : t -> nb_exec:BasicCost.t -> t
+(** Special map where each element is multiplied by the number of executions *)
 
 val plus : t -> t -> t
 (** Union of two maps where common costs are added together *)
 
 val unit_cost_atomic_operation : t
-(** Map representing cost record {OperationCost:1; AllocationCost:0; IOCost:0} *)
-
-val unit_cost_allocation : t
-(** Map representing cost record {OperationCost:0; AllocationCost:1; IOCost:0} *)
-
-val of_operation_cost : BasicCost.t -> t
-(** Map representing cost record {OperationCost:operation_cost; AllocationCost:0; IOCost:0} *)
+(** Map representing cost record \{OperationCost:1; AllocationCost:0; AutoreleasepoolSize:0\} *)

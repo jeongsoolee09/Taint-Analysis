@@ -6,8 +6,6 @@
  * LICENSE file in the root directory of this source tree.
  *)
 
-[@@@ocamlformat "parse-docstrings = false"]
-
 (** The Smallfoot Intermediate Language: Types *)
 
 open! IStd
@@ -121,23 +119,30 @@ and template_spec_info =
   | Template of
       { mangled: string option
             (** WARNING: because of type substitutions performed by [sub_type] and [sub_tname],
-                mangling is not guaranteed to be unique to a single type. All the information in
-                the template arguments is also needed for uniqueness. *)
+                mangling is not guaranteed to be unique to a single type. All the information in the
+                template arguments is also needed for uniqueness. *)
       ; args: template_arg list }
 [@@deriving compare]
 
 val pp_template_spec_info : Pp.env -> F.formatter -> template_spec_info -> unit [@@warning "-32"]
 
 val mk : ?default:t -> ?quals:type_quals -> desc -> t
-(** Create Typ.t from given desc. if [default] is passed then use its value to set other fields such as quals *)
+(** Create Typ.t from given desc. if [default] is passed then use its value to set other fields such
+    as quals *)
 
 val mk_array : ?default:t -> ?quals:type_quals -> ?length:IntLit.t -> ?stride:IntLit.t -> t -> t
-(** Create an array type from a given element type. If [length] or [stride] value is given, use them as static length and size. *)
+(** Create an array type from a given element type. If [length] or [stride] value is given, use them
+    as static length and size. *)
 
 val mk_struct : name -> t
 
+val mk_ptr : ?ptr_kind:ptr_kind -> t -> t
+(** make a pointer to [t], default kind is [Pk_pointer] *)
+
 val void : t
 (** void type *)
+
+val java_char : t
 
 val java_byte : t
 
@@ -161,6 +166,10 @@ val double : t
 
 val void_star : t
 (** void* type *)
+
+val pointer_to_java_lang_object : t
+
+val pointer_to_java_lang_string : t
 
 val get_ikind_opt : t -> ikind option
 (** Get ikind if the type is integer. *)
@@ -216,38 +225,23 @@ module Name : sig
   end
 
   module Java : sig
-    module Split : sig
-      type t [@@deriving compare, equal]
-
-      val make : ?package:string -> string -> t
-
-      val of_string : string -> t
-
-      val java_lang_object : t
-
-      val java_lang_string : t
-
-      val void : t
-
-      val package : t -> string option
-
-      val type_name : t -> string
-
-      val pp_type_verbosity : verbose:bool -> F.formatter -> t -> unit
-    end
-
     val from_string : string -> t
     (** Create a typename from a Java classname in the form "package.class" *)
 
     val is_class : t -> bool
     (** [is_class name] holds if [name] names a Java class *)
 
+    val get_java_class_name_exn : t -> JavaClassName.t
+    (** Ensure [name] is a java class name and return underlying JavaClassName *)
+
     val is_external : t -> bool
     (** return true if the typename is in the .inferconfig list of external classes *)
 
-    val is_anonymous_inner_class_name : t -> bool
+    val is_anonymous_inner_class_name_exn : t -> bool
+    (** Throws if it is not a Java class *)
 
-    val split_typename : t -> Split.t
+    val is_anonymous_inner_class_name_opt : t -> bool option
+    (** return None if it is not a Java class *)
 
     val java_lang_object : t
 
@@ -277,9 +271,9 @@ module Name : sig
     val protocol_from_qual_name : QualifiedCppName.t -> t
   end
 
-  module Set : Caml.Set.S with type elt = t
+  module Set : PrettyPrintable.PPSet with type elt = t
 
-  module Map : Caml.Map.S with type key = t
+  module Map : PrettyPrintable.PPMap with type key = t
 end
 
 val equal : t -> t -> bool
@@ -300,6 +294,9 @@ val pp_full : Pp.env -> F.formatter -> t -> unit
 val pp : Pp.env -> F.formatter -> t -> unit
 (** Pretty print a type. *)
 
+val pp_java : verbose:bool -> F.formatter -> t -> unit
+(** Pretty print a Java type. Raises if type isn't produced by the Java frontend *)
+
 val to_string : t -> string
 
 val d_full : t -> unit
@@ -318,8 +315,8 @@ val is_ptr_to_ignore_quals : t -> ptr:t -> bool
 (** check if [ptr] is a pointer type to [t], ignoring quals *)
 
 val array_elem : t option -> t -> t
-(** If an array type, return the type of the element.
-    If not, return the default type if given, otherwise raise an exception *)
+(** If an array type, return the type of the element. If not, return the default type if given,
+    otherwise raise an exception *)
 
 val is_objc_class : t -> bool
 
@@ -327,11 +324,15 @@ val is_cpp_class : t -> bool
 
 val is_pointer_to_cpp_class : t -> bool
 
+val is_pointer_to_objc_non_tagged_class : t -> bool
+
 val is_pointer_to_void : t -> bool
 
 val is_void : t -> bool
 
 val is_pointer_to_int : t -> bool
+
+val is_pointer_to_function : t -> bool
 
 val is_pointer : t -> bool
 
@@ -344,6 +345,9 @@ val is_int : t -> bool
 val is_unsigned_int : t -> bool
 
 val is_char : t -> bool
+
+val is_java_type : t -> bool
+(** is [t] a type produced by the Java frontend? *)
 
 val has_block_prefix : string -> bool
 

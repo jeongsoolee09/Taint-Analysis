@@ -10,8 +10,6 @@ open! IStd
 
 type t
 
-val initial : t
-
 val incr_summary_file_try_load : unit -> unit
 (** a query to the filesystem attempting to load a summary file *)
 
@@ -22,18 +20,19 @@ val incr_summary_cache_hits : unit -> unit
 
 val incr_summary_cache_misses : unit -> unit
 
-val incr_summary_has_model_queries : unit -> unit
-(** someone asked if a proc name has a biabduction model *)
-
 val incr_ondemand_procs_analyzed : unit -> unit
 
 val incr_ondemand_local_cache_hits : unit -> unit
 
 val incr_ondemand_local_cache_misses : unit -> unit
 
-val add_to_proc_locker_lock_sys_time : float -> unit
+val add_to_proc_locker_lock_time : ExecutionDuration.t -> unit
 
-val add_to_proc_locker_unlock_sys_time : float -> unit
+val add_to_proc_locker_unlock_time : ExecutionDuration.t -> unit
+
+val add_to_restart_scheduler_total_time : ExecutionDuration.t -> unit
+
+val add_to_restart_scheduler_useful_time : ExecutionDuration.t -> unit
 
 val reset : unit -> unit
 (** reset all stats *)
@@ -41,10 +40,5 @@ val reset : unit -> unit
 val get : unit -> t
 (** get the stats so far *)
 
-val pp : Format.formatter -> t -> unit
-
-val merge : t -> t -> t
-(** return a new value that adds up the stats in both arguments *)
-
-val log_to_scuba : t -> unit
-(** Log aggregated backend stats to Scuba. Use after the stats have been fully calculated *)
+val log_aggregate : t list -> unit
+(** log aggregated stats to infer's log file and to Scuba *)

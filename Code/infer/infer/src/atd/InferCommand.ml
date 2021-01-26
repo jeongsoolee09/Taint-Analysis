@@ -6,17 +6,8 @@
  *)
 open Core
 
-(* NOTE: All variants must be also added to `all_commands` below *)
-type t =
-  | Analyze
-  | Capture
-  | Compile
-  | Events
-  | Explore
-  | Report
-  | ReportDiff
-  | Run
-  | SpecHunter
+(* NOTE: All variants must be also added to [command_to_string] below *)
+type t = Analyze | Capture | Compile | Debug | Explore | Help | Report | ReportDiff | Run | SpecHunter
 [@@deriving compare]
 
 let equal = [%compare.equal: t]
@@ -25,12 +16,13 @@ let command_to_string =
   [ (Analyze, "analyze")
   ; (Capture, "capture")
   ; (Compile, "compile")
-  ; (Events, "events")
+  ; (Debug, "debug")
   ; (Explore, "explore")
+  ; (Help, "help")
   ; (Report, "report")
   ; (ReportDiff, "reportdiff")
   ; (Run, "run")
-  ; (SpecHunter, "spechunter")]
+  ; (SpecHunter, "spechunter") ]
 
 
 let all_commands = List.map ~f:fst command_to_string
@@ -49,4 +41,4 @@ let to_exe_name cmd = to_string cmd |> exe_name_of_command_string
 
 let of_exe_name exe_name =
   List.find_map command_to_string ~f:(function cmd, name ->
-      if String.equal exe_name (exe_name_of_command_string name) then Some cmd else None)
+      if String.equal exe_name (exe_name_of_command_string name) then Some cmd else None )

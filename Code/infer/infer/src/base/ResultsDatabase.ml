@@ -8,40 +8,64 @@
 open! IStd
 module L = Logging
 
-let database_filename = "results.db"
-
-let database_fullpath = Config.results_dir ^/ database_filename
+(** cannot use {!ResultsDir.get_path} due to circular dependency so re-implement it *)
+let results_dir_get_path entry = ResultsDirEntryName.get_path ~results_dir:Config.results_dir entry
 
 let procedures_schema prefix =
+  (* [proc_uid] is meant to only be used with [Procname.to_unique_id]
+     [Marshal]ed values must never be used as keys. *)
   Printf.sprintf
-    {|CREATE TABLE IF NOT EXISTS %sprocedures
-  ( proc_name TEXT PRIMARY KEY
-  , proc_name_hum TEXT
-  , attr_kind INTEGER NOT NULL
-  , source_file TEXT NOT NULL
-  , proc_attributes BLOB NOT NULL
-  , cfg BLOB
-  , callees BLOB NOT NULL
-  )|}
+    {|
+      CREATE TABLE IF NOT EXISTS %sprocedures
+        ( proc_uid TEXT PRIMARY KEY NOT NULL
+        , proc_name BLOB NOT NULL
+        , attr_kind INTEGER NOT NULL
+        , source_file TEXT NOT NULL
+        , proc_attributes BLOB NOT NULL
+        , cfg BLOB
+        , callees BLOB NOT NULL
+        )
+    |}
     prefix
 
 
 let source_files_schema prefix =
+  (* [Marshal]ed values must never be used as keys. [source_file] has a custom serialiser *)
   Printf.sprintf
-    {|CREATE TABLE IF NOT EXISTS %ssource_files
-  ( source_file TEXT PRIMARY KEY
-  , type_environment BLOB NOT NULL
-  , integer_type_widths BLOB
-  , procedure_names BLOB NOT NULL
-  , freshly_captured INT NOT NULL )|}
+    {|
+      CREATE TABLE IF NOT EXISTS %ssource_files
+        ( source_file TEXT PRIMARY KEY
+        , type_environment BLOB NOT NULL
+        , integer_type_widths BLOB
+        , procedure_names BLOB NOT NULL
+        , freshly_captured INT NOT NULL )
+    |}
     prefix
 
 
-let schema_hum = Printf.sprintf "%s;\n%s" (procedures_schema "") (source_files_schema "")
+let specs_schema prefix =
+  (* [proc_uid] is meant to only be used with [Procname.to_unique_id]
+     [Marshal]ed values must never be used as keys. *)
+  Printf.sprintf
+    {|
+      CREATE TABLE IF NOT EXISTS %sspecs
+        ( proc_uid TEXT PRIMARY KEY NOT NULL
+        , proc_name BLOB NOT NULL
+        , analysis_summary BLOB NOT NULL
+        , report_summary BLOB NOT NULL
+        )
+    |}
+    prefix
+
+
+let model_specs_schema prefix = specs_schema (prefix ^ "model_")
+
+let schema_hum =
+  String.concat ~sep:";\n"
+    [procedures_schema ""; source_files_schema ""; specs_schema ""; model_specs_schema ""]
+
 
 let create_procedures_table ~prefix db =
-  (* it would be nice to use "WITHOUT ROWID" here but ancient versions of sqlite do not support
-     it *)
   SqliteUtils.exec db ~log:"creating procedures table" ~stmt:(procedures_schema prefix)
 
 
@@ -49,13 +73,32 @@ let create_source_files_table ~prefix db =
   SqliteUtils.exec db ~log:"creating source_files table" ~stmt:(source_files_schema prefix)
 
 
+let create_specs_tables ~prefix db =
+  SqliteUtils.exec db ~log:"creating specs table" ~stmt:(specs_schema prefix) ;
+  SqliteUtils.exec db ~log:"creating model specs table" ~stmt:(model_specs_schema prefix)
+
+
 let create_tables ?(prefix = "") db =
   create_procedures_table ~prefix db ;
-  create_source_files_table ~prefix db
+  create_source_files_table ~prefix db ;
+  create_specs_tables ~prefix db
+
+
+let load_model_specs db =
+  if not Config.biabduction_models_mode then
+    try
+      let time0 = Mtime_clock.counter () in
+      SqliteUtils.exec db ~log:"begin transaction" ~stmt:"BEGIN IMMEDIATE TRANSACTION" ;
+      Utils.with_file_in Config.biabduction_models_sql
+        ~f:(In_channel.iter_lines ~f:(fun stmt -> SqliteUtils.exec db ~log:"load models" ~stmt)) ;
+      SqliteUtils.exec db ~log:"commit transaction" ~stmt:"COMMIT" ;
+      L.debug Capture Quiet "Loading models took %a@." Mtime.Span.pp (Mtime_clock.count time0)
+    with Sys_error _ ->
+      L.die ExternalError "Could not load model file %s@." Config.biabduction_models_sql
 
 
 let create_db () =
-  let temp_db = Filename.temp_file ~in_dir:Config.results_dir database_filename ".tmp" in
+  let temp_db = Filename.temp_file ~in_dir:(results_dir_get_path Temporary) "results.db" ".tmp" in
   let db = Sqlite3.db_open ~mutex:`FULL temp_db in
   SqliteUtils.exec db ~log:"sqlite page size"
     ~stmt:(Printf.sprintf "PRAGMA page_size=%d" Config.sqlite_page_size) ;
@@ -69,8 +112,10 @@ let create_db () =
   | Some _ ->
       (* Can't use WAL with custom VFS *)
       () ) ;
+  (* load biabduction models *)
+  load_model_specs db ;
   SqliteUtils.db_close db ;
-  try Sys.rename temp_db database_fullpath
+  try Sys.rename temp_db (results_dir_get_path CaptureDB)
   with Sys_error _ -> (* lost the race, doesn't matter *) ()
 
 
@@ -154,7 +199,7 @@ end = struct
     db_close () ;
     let db =
       Sqlite3.db_open ~mode:`NO_CREATE ~cache:`PRIVATE ~mutex:`FULL ?vfs:Config.sqlite_vfs
-        database_fullpath
+        (results_dir_get_path CaptureDB)
     in
     Sqlite3.busy_timeout db Config.sqlite_lock_timeout ;
     SqliteUtils.exec db ~log:"synchronous=OFF" ~stmt:"PRAGMA synchronous=OFF" ;

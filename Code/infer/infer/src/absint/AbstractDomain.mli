@@ -7,21 +7,17 @@
 
 open! IStd
 
+(** {1 Abstract domains and domain combinators} *)
+
 module Types : sig
   type 'astate bottom_lifted = Bottom | NonBottom of 'astate
 
-  type 'astate top_lifted = Top | NonTop of 'astate
+  type 'astate top_lifted = Top | NonTop of 'astate [@@deriving equal]
 
-  type ('below, 'above) below_above = Below of 'below | Above of 'above
+  type ('below, 'astate, 'above) below_above = Below of 'below | Above of 'above | Val of 'astate
 end
 
 open! Types
-
-exception Stop_analysis
-(** This exception can be raised by abstract interpreters to stop the analysis early without
-    triggering further errors. Clients who raise this exception should catch it eventually. *)
-
-(** Abstract domains and domain combinators *)
 
 module type NoJoin = sig
   include PrettyPrintable.PrintableType
@@ -42,8 +38,8 @@ include (* ocaml ignores the warning suppression at toplevel, hence the [include
   sig
   [@@@warning "-60"]
 
-  module Empty : S with type t = unit
   (** a trivial domain *)
+  module Empty : S with type t = unit
 end
 
 (** A domain with an explicit bottom value *)
@@ -73,6 +69,10 @@ module BottomLifted (Domain : S) : sig
   val map : f:(Domain.t -> Domain.t) -> t -> t
 end
 
+module BottomLiftedUtils : sig
+  val pp_bottom : Format.formatter -> unit
+end
+
 (** Create a domain with Top element from a pre-domain *)
 module TopLifted (Domain : S) : WithTop with type t = Domain.t top_lifted
 
@@ -97,43 +97,53 @@ end
 include sig
   [@@@warning "-60"]
 
-  (** Stacked abstract domain: tagged union of [Below] and [Above] domains where all elements of
-      [Below] are strictly smaller than elements of [Above] *)
-  module Stacked (Below : S) (Above : S) : S with type t = (Below.t, Above.t) below_above
+  (** Stacked abstract domain: tagged union of [Below], [Val], and [Above] domains where all
+      elements of [Below] are strictly smaller than all elements of [Val] which are strictly smaller
+      than all elements of [Above] *)
+  module Stacked (Below : S) (Val : S) (Above : S) :
+    S with type t = (Below.t, Val.t, Above.t) below_above
 end
 
 module StackedUtils : sig
   val leq :
        leq_below:(lhs:'b -> rhs:'b -> bool)
+    -> leq:(lhs:'v -> rhs:'v -> bool)
     -> leq_above:(lhs:'a -> rhs:'a -> bool)
-    -> lhs:('b, 'a) below_above
-    -> rhs:('b, 'a) below_above
+    -> lhs:('b, 'v, 'a) below_above
+    -> rhs:('b, 'v, 'a) below_above
     -> bool
 
   val compare :
-       ('b, 'a) below_above
-    -> ('b, 'a) below_above
+       ('b, 'v, 'a) below_above
+    -> ('b, 'v, 'a) below_above
     -> cmp_below:('b -> 'b -> int)
+    -> cmp:('v -> 'v -> int)
     -> cmp_above:('a -> 'a -> int)
     -> int
 
   val pp :
        pp_below:(Format.formatter -> 'b -> unit)
+    -> pp:(Format.formatter -> 'v -> unit)
     -> pp_above:(Format.formatter -> 'a -> unit)
     -> Format.formatter
-    -> ('b, 'a) below_above
+    -> ('b, 'v, 'a) below_above
     -> unit
 
   val combine :
        dir:[`Increasing | `Decreasing]
-    -> ('b, 'a) below_above
-    -> ('b, 'a) below_above
+    -> ('b, 'v, 'a) below_above
+    -> ('b, 'v, 'a) below_above
     -> f_below:('b -> 'b -> 'b)
+    -> f:('v -> 'v -> 'v)
     -> f_above:('a -> 'a -> 'a)
-    -> ('b, 'a) below_above
+    -> ('b, 'v, 'a) below_above
 
   val map :
-    ('b, 'a) below_above -> f_below:('b -> 'b2) -> f_above:('a -> 'a2) -> ('b2, 'a2) below_above
+       ('b, 'v, 'a) below_above
+    -> f_below:('b -> 'b2)
+    -> f:('v -> 'v2)
+    -> f_above:('a -> 'a2)
+    -> ('b2, 'v2, 'a2) below_above
 end
 
 (** Abstracts a set of [Element]s by keeping its smallest representative only. The widening is
@@ -243,13 +253,13 @@ include sig
   end
 end
 
-module BooleanAnd : S with type t = bool
 (** Boolean domain ordered by p || ~q. Useful when you want a boolean that's true only when it's
     true in both conditional branches. *)
+module BooleanAnd : S with type t = bool
 
-module BooleanOr : WithBottom with type t = bool
 (** Boolean domain ordered by ~p || q. Useful when you want a boolean that's true only when it's
     true in one conditional branch. *)
+module BooleanOr : WithBottom with type t = bool
 
 module type MaxCount = sig
   val max : int
@@ -261,8 +271,8 @@ end
 module CountDomain (MaxCount : MaxCount) : sig
   include WithBottom with type t = private int
 
-  include WithTop with type t := t
   (** top is maximum value *)
+  include WithTop with type t := t
 
   val increment : t -> t
   (** bump the count by one if it is less than the max *)
@@ -277,11 +287,11 @@ end
 (** Domain keeping a non-negative count with a bounded maximum value. [join] is minimum and [top] is
     zero. *)
 module DownwardIntDomain (MaxCount : MaxCount) : sig
-  include WithTop with type t = private int
   (** top is zero *)
+  include WithTop with type t = private int
 
-  include WithBottom with type t := t
   (** bottom is the provided maximum *)
+  include WithBottom with type t := t
 
   val increment : t -> t
   (** bump the count by one if this won't cross the maximum *)

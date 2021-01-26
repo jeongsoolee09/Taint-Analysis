@@ -52,7 +52,10 @@ module NodeMap = Caml.Hashtbl.Make (Int)
     [trim_id_map] makes the image equal to the domain of [node_map]. *)
 type t = {id_map: int IdMap.t; node_map: Node.t NodeMap.t}
 
-let reset {id_map; node_map} = IdMap.reset id_map ; NodeMap.reset node_map
+let reset {id_map; node_map} =
+  IdMap.reset id_map ;
+  NodeMap.reset node_map
+
 
 let create initial_capacity =
   {id_map= IdMap.create initial_capacity; node_map= NodeMap.create initial_capacity}
@@ -63,6 +66,8 @@ let id_of_procname {id_map} pname = IdMap.find_opt id_map pname
 let node_of_id {node_map} id = NodeMap.find_opt node_map id
 
 let mem {node_map} id = NodeMap.mem node_map id
+
+let mem_procname g pname = id_of_procname g pname |> Option.exists ~f:(mem g)
 
 (** [id_map] may contain undefined procedures, so use [node_map] for actual size *)
 let n_procs {node_map} = NodeMap.length node_map
@@ -78,7 +83,8 @@ let get_or_set_id ({id_map} as graph) procname =
   match id_of_procname graph procname with
   | None ->
       let id = IdMap.length id_map in
-      IdMap.replace id_map procname id ; id
+      IdMap.replace id_map procname id ;
+      id
   | Some id ->
       id
 
@@ -96,7 +102,8 @@ let get_or_init_node node_map id pname =
       node
   | None ->
       let new_node = Node.make id pname [] in
-      NodeMap.add node_map id new_node ; new_node
+      NodeMap.add node_map id new_node ;
+      new_node
 
 
 let add_edge ({node_map} as graph) ~pname ~successor_pname =
@@ -124,10 +131,6 @@ let flag_reachable g start_pname =
   node_of_procname g start_pname |> Option.iter ~f:(fun start_node -> flag_list [start_node])
 
 
-let trim_id_map (g : t) =
-  IdMap.filter_map_inplace (fun _pname id -> Option.some_if (mem g id) id) g.id_map
-
-
 let pp_dot fmt {node_map} =
   F.fprintf fmt "@\ndigraph callgraph {@\n" ;
   NodeMap.iter (fun _id n -> Node.pp_dot fmt n) node_map ;
@@ -137,14 +140,8 @@ let pp_dot fmt {node_map} =
 let to_dotty g filename =
   let outc = Filename.concat Config.results_dir filename |> Out_channel.create in
   let fmt = F.formatter_of_out_channel outc in
-  pp_dot fmt g ; Out_channel.close outc
-
-
-let remove_unflagged_and_unflag_all {id_map; node_map} =
-  NodeMap.filter_map_inplace
-    (fun _id (n : Node.t) ->
-      if n.flag then (Node.unset_flag n ; Some n) else (IdMap.remove id_map n.pname ; None) )
-    node_map
+  pp_dot fmt g ;
+  Out_channel.close outc
 
 
 let iter_unflagged_leaves ~f g =

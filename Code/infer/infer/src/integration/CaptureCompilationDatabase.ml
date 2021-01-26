@@ -26,13 +26,14 @@ let create_cmd (source_file, (compilation_data : CompilationDatabase.compilation
 
 let invoke_cmd (source_file, (cmd : CompilationDatabase.compilation_data)) =
   let argv = cmd.executable :: cmd.escaped_arguments in
-  ( match Spawn.spawn ~cwd:(Path cmd.directory) ~prog:cmd.executable ~argv () with
-  | pid ->
-      !ProcessPoolState.update_status (Mtime_clock.now ()) (SourceFile.to_string source_file) ;
-      Unix.waitpid (Pid.of_int pid)
-      |> Result.map_error ~f:(fun unix_error -> Unix.Exit_or_signal.to_string_hum (Error unix_error))
-  | exception Unix.Unix_error (err, f, arg) ->
-      Error (F.asprintf "%s(%s): %s@." f arg (Unix.Error.message err)) )
+  ( ( match Spawn.spawn ~cwd:(Path cmd.directory) ~prog:cmd.executable ~argv () with
+    | pid ->
+        !ProcessPoolState.update_status (Mtime_clock.now ()) (SourceFile.to_string source_file) ;
+        Unix.waitpid (Pid.of_int pid)
+        |> Result.map_error ~f:(fun unix_error ->
+               Unix.Exit_or_signal.to_string_hum (Error unix_error) )
+    | exception Unix.Unix_error (err, f, arg) ->
+        Error (F.asprintf "%s(%s): %s@." f arg (Unix.Error.message err)) )
   |> function
   | Ok () ->
       ()
@@ -42,7 +43,8 @@ let invoke_cmd (source_file, (cmd : CompilationDatabase.compilation_data)) =
         else L.die ExternalError fmt
       in
       log_or_die "Error running compilation for '%a': %a:@\n%s@." SourceFile.pp source_file
-        Pp.cli_args argv error
+        Pp.cli_args argv error ) ;
+  None
 
 
 let run_compilation_database compilation_database should_capture_file =
@@ -58,7 +60,11 @@ let run_compilation_database compilation_database should_capture_file =
   (* no stats to record so [child_epilogue] does nothing and we ignore the return
      {!Tasks.Runner.run} *)
   let runner =
-    Tasks.Runner.create ~jobs:Config.jobs ~f:invoke_cmd ~child_epilogue:(fun () -> ()) ~tasks
+    Tasks.Runner.create ~jobs:Config.jobs
+      ~child_prologue:(fun () -> ())
+      ~f:invoke_cmd
+      ~child_epilogue:(fun () -> ())
+      ~tasks
   in
   Tasks.Runner.run runner |> ignore ;
   L.progress "@." ;
@@ -68,7 +74,7 @@ let run_compilation_database compilation_database should_capture_file =
 (** Computes the compilation database files. *)
 let get_compilation_database_files_buck db_deps ~prog ~args =
   match
-    Buck.add_flavors_to_buck_arguments (ClangCompilationDB db_deps) ~filter_kind:`Yes
+    BuckFlavors.add_flavors_to_buck_arguments (ClangCompilationDB db_deps)
       ~extra_flavors:Config.append_buck_flavors args
   with
   | {targets} when List.is_empty targets ->
@@ -84,7 +90,7 @@ let get_compilation_database_files_buck db_deps ~prog ~args =
       in
       Logging.(debug Linters Quiet)
         "Processed buck command is: 'buck %a'@\n" (Pp.seq F.pp_print_string) build_args ;
-      Process.create_process_and_wait ~prog ~args:build_args ;
+      Buck.wrap_buck_call ~label:"compdb_build" (prog :: build_args) |> ignore ;
       let buck_targets_shell =
         prog :: "targets"
         :: List.rev_append
@@ -107,14 +113,13 @@ let get_compilation_database_files_buck db_deps ~prog ~args =
               | [_; filename] ->
                   `Raw filename :: compilation_database_files
               | _ ->
-                  L.(die ExternalError)
-                    "Failed to parse `buck targets --show-output ...` line of output:@\n%s" line
+                  L.internal_error
+                    "Failed to parse `buck targets --show-output ...` line of output:@\n%s" line ;
+                  compilation_database_files
             in
             List.fold ~f:scan_output ~init:[] lines
       in
-      Utils.with_process_lines
-        ~debug:L.(debug Capture Quiet)
-        ~cmd:buck_targets_shell ~tmp_prefix:"buck_targets_" ~f:on_target_lines
+      Buck.wrap_buck_call ~label:"compdb_targets" buck_targets_shell |> on_target_lines
   | _ ->
       Process.print_error_and_exit "Incorrect buck command: %s %a. Please use buck build <targets>"
         prog (Pp.seq F.pp_print_string) args
@@ -122,7 +127,7 @@ let get_compilation_database_files_buck db_deps ~prog ~args =
 
 (** Compute the compilation database files. *)
 let get_compilation_database_files_xcodebuild ~prog ~args =
-  let tmp_file = Filename.temp_file "cdb" ".json" in
+  let tmp_file = Filename.temp_file ~in_dir:(ResultsDir.get_path Temporary) "cdb" ".json" in
   let xcodebuild_prog, xcodebuild_args = (prog, prog :: args) in
   let xcpretty_prog = "xcpretty" in
   let xcpretty_args =
@@ -152,7 +157,3 @@ let capture_files_in_database ~changed_files compilation_database =
         fun source_file -> SourceFile.Set.mem source_file changed_files_set
   in
   run_compilation_database compilation_database filter_changed
-
-
-let capture_file_in_database compilation_database source_file =
-  run_compilation_database compilation_database (SourceFile.equal source_file)

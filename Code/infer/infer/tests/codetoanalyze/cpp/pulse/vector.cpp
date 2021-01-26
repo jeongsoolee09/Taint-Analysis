@@ -29,6 +29,11 @@ void deref_local_vector_element_after_push_back_bad() {
   std::cout << *elt << "\n";
 }
 
+void deref_null_local_vector_element_bad() {
+  std::vector<int*> vec = {nullptr};
+  std::cout << *vec[0] << "\n";
+}
+
 void two_push_back_ok(std::vector<int>& vec) {
   vec.push_back(32);
   vec.push_back(52);
@@ -66,16 +71,17 @@ void reserve_then_push_back_loop_ok(std::vector<int>& vec,
   std::cout << *elt << "\n";
 }
 
-void FP_init_fill_then_push_back_loop_ok(std::vector<int>& vec_other) {
+void FP_init_fill_then_push_back_ok(std::vector<int>& vec_other) {
   std::vector<int> vec(vec_other.size());
   int* elt = &vec[1];
-  for (const auto& i : vec_other) {
-    vec.push_back(i);
-  }
+  vec.push_back(0);
+  vec.push_back(0);
+  vec.push_back(0);
+  vec.push_back(0);
   std::cout << *elt << "\n";
 }
 
-void push_back_loop_bad(std::vector<int>& vec_other) {
+void push_back_loop_latent(std::vector<int>& vec_other) {
   std::vector<int> vec(2);
   int* elt = &vec[1];
   for (const auto& i : vec_other) {

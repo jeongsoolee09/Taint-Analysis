@@ -273,7 +273,6 @@ class ASTExporter : public ConstDeclVisitor<ASTExporter<ATDWriter>>,
   bool alwaysEmitParent(const Decl *D);
 
   void emitAPInt(bool isSigned, const llvm::APInt &value);
-  void evaluateAndEmitInteger(const Expr *expr);
 
   // C++ Utilities
   void dumpAccessSpecifier(AccessSpecifier AS);
@@ -443,6 +442,7 @@ class ASTExporter : public ConstDeclVisitor<ASTExporter<ATDWriter>>,
   DECLARE_VISITOR(ObjCAvailabilityCheckExpr)
   DECLARE_VISITOR(ObjCArrayLiteral)
   DECLARE_VISITOR(ObjCDictionaryLiteral)
+  DECLARE_VISITOR(ObjCBridgedCastExpr)
 
   // Comments.
   const char *getCommandName(unsigned CommandID);
@@ -1360,6 +1360,7 @@ void ASTExporter<ATDWriter>::dumpIntegerTypeWidths(const TargetInfo &info) {
 //@atd   input_path : source_file;
 //@atd   input_kind : input_kind;
 //@atd   integer_type_widths : integer_type_widths;
+//@atd   ~is_objc_arc_on : bool;
 //@atd   types : c_type list;
 //@atd } <ocaml field_prefix="tudi_">
 template <class ATDWriter>
@@ -1367,7 +1368,8 @@ void ASTExporter<ATDWriter>::VisitTranslationUnitDecl(
     const TranslationUnitDecl *D) {
   VisitDecl(D);
   VisitDeclContext(D);
-  ObjectScope Scope(OF, 4);
+  bool IsObjCArcOn = D->getASTContext().getLangOpts().ObjCAutoRefCount;
+  ObjectScope Scope(OF, 4 + IsObjCArcOn);
   OF.emitTag("input_path");
   OF.emitString(
       Options.normalizeSourcePath(Options.inputFile.getFile().str().c_str()));
@@ -1375,6 +1377,7 @@ void ASTExporter<ATDWriter>::VisitTranslationUnitDecl(
   dumpInputKind(Options.inputFile.getKind());
   OF.emitTag("integer_type_widths");
   dumpIntegerTypeWidths(Context.getTargetInfo());
+  OF.emitFlag("is_objc_arc_on", IsObjCArcOn);
   OF.emitTag("types");
   const auto &types = Context.getTypes();
   ArrayScope aScope(OF, types.size() + 1); // + 1 for nullptr
@@ -3368,6 +3371,40 @@ void ASTExporter<ATDWriter>::VisitExplicitCastExpr(
 }
 
 template <class ATDWriter>
+int ASTExporter<ATDWriter>::ObjCBridgedCastExprTupleSize() {
+  return ExplicitCastExprTupleSize() + 1;
+}
+
+
+//@atd type obj_c_bridge_cast_kind = [
+//@atd   OBC_BridgeRetained
+//@atd | OBC_Bridge
+//@atd | OBC_BridgeTransfer
+//@atd ]
+//@atd #define obj_c_bridged_cast_expr_tuple explicit_cast_expr_tuple * obj_c_bridged_cast_expr_info
+//@atd type obj_c_bridged_cast_expr_info = {
+//@atd   cast_kind : obj_c_bridge_cast_kind;
+//@atd } <ocaml field_prefix="obcei_">
+template <class ATDWriter>
+void ASTExporter<ATDWriter>::VisitObjCBridgedCastExpr(
+    const ObjCBridgedCastExpr *Node) {
+  VisitExplicitCastExpr(Node);
+  ObjectScope Scope(OF, 1);
+  OF.emitTag("cast_kind");
+  switch (Node->getBridgeKind()) {
+  case OBC_BridgeRetained:
+    OF.emitSimpleVariant("OBC_BridgeRetained");
+    break;
+  case OBC_Bridge:
+    OF.emitSimpleVariant("OBC_Bridge");
+    break;
+  case OBC_BridgeTransfer:
+    OF.emitSimpleVariant("OBC_BridgeTransfer");
+    break;
+  }
+}
+
+template <class ATDWriter>
 int ASTExporter<ATDWriter>::DeclRefExprTupleSize() {
   return ExprTupleSize() + 1;
 }
@@ -3614,24 +3651,26 @@ void ASTExporter<ATDWriter>::VisitStringLiteral(const StringLiteral *Str) {
 }
 
 template <class ATDWriter>
-void ASTExporter<ATDWriter>::evaluateAndEmitInteger(const Expr *expr) {
-  Expr::EvalResult result;
-  if (!expr->EvaluateAsInt(result, this->Context)) {
-    llvm_unreachable("Cannot evaluate expression down to an integer.");
-  }
-  llvm::APSInt IV = result.Val.getInt();
-  this->emitAPInt(IV.isSigned(), IV);
-}
-
-template <class ATDWriter>
 int ASTExporter<ATDWriter>::OffsetOfExprTupleSize() {
-  return IntegerLiteralTupleSize();
+  return ExprTupleSize() + 1;
 }
-//@atd #define offset_of_expr_tuple integer_literal_tuple
+//@atd #define offset_of_expr_tuple expr_tuple * offset_of_expr_info
+//@atd type offset_of_expr_info = {
+//@atd   ?literal : integer_literal_info option;
+//@atd } <ocaml field_prefix="ooe_">
 template <class ATDWriter>
 void ASTExporter<ATDWriter>::VisitOffsetOfExpr(const OffsetOfExpr *OOE) {
   VisitExpr(OOE);
-  this->evaluateAndEmitInteger(OOE);
+
+  Expr::EvalResult result;
+  bool isLiteral = OOE->EvaluateAsInt(result, this->Context);
+  ObjectScope Scope(OF, 0 + isLiteral);
+
+  if (isLiteral) {
+    OF.emitTag("literal");
+    llvm::APSInt IV = result.Val.getInt();
+    this->emitAPInt(IV.isSigned(), IV);
+  }
 }
 
 template <class ATDWriter>

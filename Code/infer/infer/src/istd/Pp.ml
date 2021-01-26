@@ -151,13 +151,6 @@ let comma_seq_diff pp pe0 f =
   doit
 
 
-(** Print the current time and date in a format similar to the "date" command *)
-let current_time f () =
-  let tm = Unix.localtime (Unix.time ()) in
-  F.fprintf f "%02d/%02d/%4d %02d:%02d" tm.Unix.tm_mday tm.Unix.tm_mon (tm.Unix.tm_year + 1900)
-    tm.Unix.tm_hour tm.Unix.tm_min
-
-
 let option pp fmt = function
   | None ->
       F.pp_print_string fmt "[None]"
@@ -209,3 +202,17 @@ let cli_args fmt args = cli_args_with_verbosity ~verbose:true fmt args
 let pair ~fst ~snd fmt (a, b) = F.fprintf fmt "(%a,@,%a)" fst a snd b
 
 let in_backticks pp fmt x = F.fprintf fmt "`%a`" pp x
+
+let collection :
+       fold:('t, 'item, _) Container.fold
+    -> sep:string
+    -> pp_item:(F.formatter -> 'item -> unit)
+    -> F.formatter
+    -> 't
+    -> unit =
+ fun ~fold ~sep ~pp_item fmt coll ->
+  let pp_coll_aux is_first item =
+    F.fprintf fmt "@[<h>%s%a@]" (if is_first then "" else sep) pp_item item ;
+    (* [is_first] not true anymore *) false
+  in
+  F.fprintf fmt "@[<hv>%t@]" (fun _fmt -> fold coll ~init:true ~f:pp_coll_aux |> ignore)

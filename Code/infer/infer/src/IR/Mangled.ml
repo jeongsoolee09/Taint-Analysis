@@ -48,14 +48,14 @@ let rename ~f {plain; mangled} =
   {plain; mangled}
 
 
-module Set = Caml.Set.Make (struct
-  type nonrec t = t
+module Set = PrettyPrintable.MakePPSet (struct
+  type nonrec t = t [@@deriving compare]
 
-  let compare = compare
+  let pp = pp
 end)
 
-module Map = Caml.Map.Make (struct
-  type nonrec t = t
+module Map = PrettyPrintable.MakePPMap (struct
+  type nonrec t = t [@@deriving compare]
 
-  let compare = compare
+  let pp = pp
 end)

@@ -19,23 +19,19 @@ module Java : sig
 
   type t [@@deriving compare]
 
-  type java_type = Typ.Name.Java.Split.t [@@deriving compare, equal]
+  val to_simplified_string : ?withclass:bool -> t -> string
 
   val constructor_method_name : string
 
   val class_initializer_method_name : string
 
-  val make : Typ.Name.t -> java_type option -> string -> java_type list -> kind -> t
-  (** Create a Java procedure name from its class_name method_name args_type_name return_type_name
-      method_kind. *)
-
   val replace_method_name : string -> t -> t
   (** Replace the method name of an existing java procname. *)
 
-  val replace_parameters : java_type list -> t -> t
+  val replace_parameters : Typ.t list -> t -> t
   (** Replace the parameters of a java procname. *)
 
-  val replace_return_type : java_type -> t -> t
+  val replace_return_type : Typ.t -> t -> t
   (** Replace the method of a java procname. *)
 
   val get_class_name : t -> string
@@ -53,7 +49,7 @@ module Java : sig
   val get_method : t -> string
   (** Return the method name of a java procedure name. *)
 
-  val get_parameters : t -> java_type list
+  val get_parameters : t -> Typ.t list
   (** Return the parameters of a java procedure name. *)
 
   val get_return_typ : t -> Typ.t
@@ -69,8 +65,12 @@ module Java : sig
   val is_autogen_method : t -> bool
   (** Check if the procedure name is of an auto-generated method containing '$'. *)
 
-  val is_anonymous_inner_class_constructor : t -> bool
-  (** Check if the procedure name is an anonymous inner class constructor. *)
+  val is_autogen_method_name : string -> bool
+  (** Check if the string of procedure name is of an auto-generated method containing '$'. *)
+
+  val is_anonymous_inner_class_constructor_exn : t -> bool
+  (** Check if the procedure name is an anonymous inner class constructor. Throws if it is not a
+      Java type *)
 
   val is_close : t -> bool
   (** Check if the method name is "close". *)
@@ -105,8 +105,7 @@ module Parameter : sig
   type clang_parameter = Typ.Name.t option [@@deriving compare, equal]
 
   (** Type for parameters in procnames, for java and clang. *)
-  type t = JavaParameter of Java.java_type | ClangParameter of clang_parameter
-  [@@deriving compare, equal]
+  type t = JavaParameter of Typ.t | ClangParameter of clang_parameter [@@deriving compare, equal]
 
   val of_typ : Typ.t -> clang_parameter
 end
@@ -197,10 +196,10 @@ type t =
   | Linters_dummy_method
   | Block of Block.t
   | ObjC_Cpp of ObjC_Cpp.t
-  | WithBlockParameters of t * Block.block_name list
+  | WithBlockParameters of t * Block.t list
 [@@deriving compare]
 
-val block_name_of_procname : t -> Block.block_name
+val block_of_procname : t -> Block.t
 
 val equal : t -> t -> bool
 
@@ -218,16 +217,24 @@ val is_java_access_method : t -> bool
 
 val is_java_class_initializer : t -> bool
 
+val is_java_anonymous_inner_class_method : t -> bool
+
+val is_java_autogen_method : t -> bool
+
 val is_objc_method : t -> bool
 
-module Hash : Caml.Hashtbl.S with type key = t
 (** Hash tables with proc names as keys. *)
+module Hash : Caml.Hashtbl.S with type key = t
 
-module Map : PrettyPrintable.PPMap with type key = t
+module LRUHash : LRUHashtbl.S with type key = t
+
+module HashQueue : Hash_queue.S with type key = t
+
 (** Maps from proc names. *)
+module Map : PrettyPrintable.PPMap with type key = t
 
-module Set : PrettyPrintable.PPSet with type elt = t
 (** Sets of proc names. *)
+module Set : PrettyPrintable.PPSet with type elt = t
 
 module SQLite : sig
   val serialize : t -> Sqlite3.Data.t
@@ -238,6 +245,25 @@ module SQLite : sig
 end
 
 module SQLiteList : SqliteUtils.Data with type t = t list
+
+(** One-sized cache for one procedure at a time. Returns getter and setter. *)
+module UnitCache : sig
+  val create : unit -> (t -> 'a option) * (t -> 'a -> unit)
+end
+
+val make_java :
+     class_name:Typ.Name.t
+  -> return_type:Typ.t option
+  -> method_name:string
+  -> parameters:Typ.t list
+  -> kind:Java.kind
+  -> unit
+  -> t
+(** Create a Java procedure name. *)
+
+val make_objc_dealloc : Typ.Name.t -> t
+(** Create a Objective-C dealloc name. This is a destructor for an Objective-C class. This procname
+    is given by the class name, since it is always an instance method with the name "dealloc" *)
 
 val empty_block : t
 (** Empty block name. *)
@@ -251,11 +277,11 @@ val get_method : t -> string
 val is_objc_block : t -> bool
 (** Return whether the procname is a block procname. *)
 
+val is_objc_dealloc : t -> bool
+(** Return whether the dealloc method of an Objective-C class. *)
+
 val is_c_method : t -> bool
 (** Return true this is an Objective-C/C++ method name. *)
-
-val is_clang : t -> bool
-(** Return true if this is a C, C++, or Objective-C procedure name *)
 
 val is_constructor : t -> bool
 (** Check if this is a constructor. *)
@@ -263,9 +289,12 @@ val is_constructor : t -> bool
 val is_java : t -> bool
 (** Check if this is a Java procedure name. *)
 
-val with_block_parameters : t -> Block.block_name list -> t
+val as_java_exn : explanation:string -> t -> Java.t
+(** Converts to a Java.t. Throws if [is_java] is false *)
+
+val with_block_parameters : t -> Block.t list -> t
 (** Create a procedure name instantiated with block parameters from a base procedure name and a list
-    of block procedure names (the arguments). *)
+    of block procedures. *)
 
 val objc_cpp_replace_method_name : t -> string -> t
 

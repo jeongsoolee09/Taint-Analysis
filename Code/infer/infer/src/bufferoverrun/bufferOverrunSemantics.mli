@@ -32,6 +32,9 @@ val eval_array_locs_length :
   AbsLoc.PowLoc.t -> _ BufferOverrunDomain.Mem.t0 -> BufferOverrunDomain.Val.t
 (** Evaluate length of array locations *)
 
+val eval_string_len : Exp.t -> BufferOverrunDomain.Mem.t -> BufferOverrunDomain.Val.t
+(** Evaluate length of C string *)
+
 val conservative_array_length :
      ?traces:BufferOverrunTrace.Set.t
   -> AbsLoc.PowLoc.t
@@ -80,6 +83,11 @@ val mk_eval_sym_cost :
 (** Make [eval_sym] function of [EvalCost] mode for on-demand symbol evaluation *)
 
 module Prune : sig
-  val prune : Typ.IntegerWidths.t -> Exp.t -> BufferOverrunDomain.Mem.t -> BufferOverrunDomain.Mem.t
+  val prune :
+       Location.t
+    -> Typ.IntegerWidths.t
+    -> Exp.t
+    -> BufferOverrunDomain.Mem.t
+    -> BufferOverrunDomain.Mem.t
   (** Prune memory with the given condition expression *)
 end

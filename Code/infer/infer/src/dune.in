@@ -7,120 +7,124 @@
  *)
 (* NOTE: prepend dune.common to this file! *)
 
-let ( ^/ ) = Filename.concat
-
-let source_dirs =
-  (if facebook then "facebook" else "opensource")
-  :: ( ( if clang then ["al"; "clang"; "unit" ^/ "clang"]
-       else ["clang_stubs"; "unit" ^/ "clang_stubs"] )
-     @ [ (if java then "java" else "java_stubs")
-       ; "absint"
-       ; "backend"
-       ; "biabduction"
-       ; "bufferoverrun"
-       ; "checkers"
-       ; "concurrency"
-       ; "cost"
-       ; "integration"
-       ; "labs"
-       ; "nullsafe"
-       ; "spechunter"
-       ; "pulse"
-       ; "quandary"
-       ; "scuba"
-       ; "test_determinator"
-       ; "topl"
-       ; "unit"
-       ; "unit" ^/ "nullsafe" ] )
+(*
+ * A known issue: At the moment of writing warning 14 (illegal backslash
+ * escape in string) does not manifest as an error, presumably due to
+ * peculiarities in communication between preprocessor and compiler.
+ * Still leave it for visibility and in hope that the issue will be
+ * fixed one day.
+ *)
+let fatal_warnings =
+  "+3+5+6+8+10+11+12+14+18+19+20+21+23+26+29+28+33+34+35+37+39+50+52+57+60"
 
 
-let infer_binaries = ["infer"; "inferunit"] @ if facebook then ["InferCreateTraceViewLinks"] else []
+let warnings = fatal_warnings ^ "-4-9-40-41-42-45-48"
 
-let infer_cflags =
-  common_cflags
-  @ [ "-open"
-    ; "Core"
-    ; "-open"
-    ; "InferStdlib"
-    ; "-open"
-    ; "IStd"
-    ; "-open"
-    ; "InferGenerated"
-    ; "-open"
-    ; "InferIR"
-    ; "-open"
-    ; "InferBase"
-    ; "-open"
-    ; "InferCStubs"
-    ; "-w"
-    ; "+A-4@8-9-40-41-42-44-45-48-60-66" ]
+let ocamlc_flags =
+  [ "-g"
+  ; "-short-paths"
+  ; "-safe-string"
+  ; "-principal"
+  ; "-strict-formats"
+  ; "-strict-sequence"
+  ; "-bin-annot" ]
+
+
+let lenient_flags = ocamlc_flags @ ["-w"; warnings] |> String.concat " "
+
+let strict_flags =
+  ocamlc_flags @ ["-w"; warnings; "-warn-error"; fatal_warnings] |> String.concat " "
+
+
+let env_stanza =
+  Format.sprintf
+    {|
+(env
+  (dev
+    (flags %s)
+    (inline_tests enabled))
+  (opt
+    (flags %s)
+    (ocamlopt_flags (:standard -O3)))
+  (dev-noerror
+    (flags %s)
+    (inline_tests enabled))
+  )
+|}
+    strict_flags lenient_flags lenient_flags
+
+
+(** Put this *first* in (libraries) specifications to prevent a clash between extlib's and base64's
+    versions of Base64. Only Javalib depends on extlib so do it conditionally to avoid introducing a
+    new dependency in the clang-only build. *)
+let extlib_if_java = if java then "extlib" else ""
+
+let infer_exe_stanza =
+  Printf.sprintf
+    {|(executable
+ (name infer)
+ (modes byte_complete exe)
+ (modules Infer)
+ (flags (:standard -open Core -open IStdlib -open IStd -open IBase -open IR -open Backend -open Integration -open Biabduction -open TestDeterminators -open ClangFrontend -open ASTLanguage %s -open JavaFrontend %s -open SpecHunter))
+ (libraries %s core IStdlib IBase IR Backend Integration Biabduction TestDeterminators ClangFrontend ASTLanguage SpecHunter)
+ (preprocess (pps ppx_compare))
+ (promote (until-clean) (into ../bin))
+)|}
+    (if clang then "" else "-open ClangFrontendStubs")
+    (if java then "" else "-open JavaFrontendStubs")
+    extlib_if_java
+
+
+let inferunit_stanza =
+  Printf.sprintf
+    {|(executable
+ (name inferunit)
+ (modes byte_complete exe)
+ (modules Inferunit)
+ (flags (:standard -open Core -open IStdlib -open IStd -open IBase -open Backend -open Integration -open UnitTests -open NullsafeUnitTests -open ClangFrontend %s))
+ (libraries %s oUnit core IStdlib IBase Backend Integration UnitTests NullsafeUnitTests %s)
+ (preprocess (pps ppx_compare))
+ (promote (until-clean) (into ../bin))
+)|}
+    (if clang then "-open ClangUnitTests" else "-open ClangFrontendStubs")
+    extlib_if_java
+    (if clang then "ClangUnitTests" else "")
+
+
+let infertop_stanza =
+  Format.sprintf
+    {|
+(executable
+ (name infertop)
+ (modes byte_complete)
+ (modules Infertop)
+ (flags (:standard -open Core -open IStdlib -open IStd))
+ (libraries %s utop Absint ASTLanguage ATDGenerated Backend IBase Biabduction BO Checkers Concurrency Costlib CStubs IR IStdlib Labs Nullsafe Pulselib Quandary Integration TestDeterminators TOPLlib UnitTests)
+ (link_flags (-linkall -warn-error -31))
+ (preprocess (pps ppx_compare))
+ (promote (until-clean) (into ../bin))
+)
+|}
+    extlib_if_java
+
+
+let inferCreateTraceViewLinks_stanza =
+  {|(executable
+ (name InferCreateTraceViewLinks)
+ (modes byte_complete exe)
+ (modules InferCreateTraceViewLinks)
+ (flags (:standard -open Core -open IStdlib -open IStd -open ATDGenerated -open IBase))
+ (libraries core async IStdlib ATDGenerated IBase)
+ (preprocess (pps ppx_compare))
+ (promote (until-clean) (into ../bin))
+)|}
 
 
 (** The build stanzas to be passed to dune *)
 let stanzas =
-  ( if clang then ["(ocamllex types_lexer ctl_lexer)"; "(menhir (modules types_parser ctl_parser))"]
-  else [] )
-  @ [ "(ocamllex ToplLexer)"
-    ; "(menhir (flags --unused-token INDENT --explain) (modules ToplParser))"
-    ; Format.sprintf
-        {|
-(library
- (name InferModules)
- (public_name infer)
- (flags (%s))
- (ocamlopt_flags (%s))
- (libraries %s)
- (modules :standard \ %s infertop)
- (preprocess (pps ppx_compare ppx_fields_conv ppx_hash ppx_sexp_conv ppx_variants_conv -no-check))
-)
-
-(documentation
- (package infer)
- (mld_files index)
-)
-|}
-        (String.concat " " infer_cflags)
-        (String.concat " " common_optflags)
-        (String.concat " " ("InferCStubs" :: "InferIR" :: common_libraries))
-        (String.concat " " infer_binaries)
-    ; Format.sprintf
-        {|
-(executables
- (names %s)
- (modes byte exe)
- (flags (%s -open InferModules))
- (ocamlopt_flags (%s))
- (libraries InferModules)
- (modules %s)
- (preprocess (pps ppx_compare ppx_fields_conv ppx_hash ppx_sexp_conv ppx_variants_conv -no-check))
-)
-|}
-        (String.concat " " infer_binaries)
-        (String.concat " " infer_cflags)
-        (String.concat " " common_optflags)
-        (String.concat " " infer_binaries)
-    ; Format.sprintf
-        {|
-(executable
- (name infertop)
- (modes byte)
- (flags (%s))
- (libraries utop InferModules)
- (modules Infertop)
- (preprocess (pps ppx_compare ppx_fields_conv ppx_hash ppx_sexp_conv ppx_variants_conv -no-check))
- (link_flags (-linkall -warn-error -31))
-)
-|}
-        (String.concat " " infer_cflags) ]
-  @ ( List.map
-        (fun source_dir ->
-          [ Printf.sprintf "(copy_files# %s/*.ml{,i,l})" source_dir
-          ; (* menhir doesn't support '# 1 "<source file>"' directives at the start of the file inserted by
-               copy# actions *)
-            Printf.sprintf "(copy_files %s/*.mly)" source_dir ] )
-        source_dirs
-    |> List.concat )
+  [env_stanza; infer_exe_stanza; inferunit_stanza; infertop_stanza]
+  @ if facebook then [inferCreateTraceViewLinks_stanza] else []
 
 
 ;;
-String.concat "\n" stanzas |> Jbuild_plugin.V1.send
+Jbuild_plugin.V1.send (String.concat "\n" stanzas)

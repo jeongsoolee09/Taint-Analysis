@@ -12,14 +12,17 @@ open PulseDomainInterface
 
 type t = AbductiveDomain.t
 
-type 'a access_result = ('a, Diagnostic.t) result
+type 'a access_result = ('a, Diagnostic.t * t) result
 
-(** Check that the [address] is not known to be invalid *)
+let ok_continue post = Ok [ExecutionDomain.ContinueProgram post]
+
 let check_addr_access location (address, history) astate =
   let access_trace = Trace.Immediate {location; history} in
   AddressAttributes.check_valid access_trace address astate
   |> Result.map_error ~f:(fun (invalidation, invalidation_trace) ->
-         Diagnostic.AccessToInvalidAddress {invalidation; invalidation_trace; access_trace} )
+         ( Diagnostic.AccessToInvalidAddress
+             {calling_context= []; invalidation; invalidation_trace; access_trace}
+         , astate ) )
 
 
 module Closures = struct
@@ -43,11 +46,8 @@ module Closures = struct
 
 
   let mk_capture_edges captured =
-    let fake_fields =
-      List.rev_mapi captured ~f:(fun id captured_addr_trace ->
-          (HilExp.Access.FieldAccess (mk_fake_field ~id), captured_addr_trace) )
-    in
-    Memory.Edges.of_seq (Caml.List.to_seq fake_fields)
+    List.foldi captured ~init:Memory.Edges.empty ~f:(fun id edges captured_addr_trace ->
+        Memory.Edges.add (HilExp.Access.FieldAccess (mk_fake_field ~id)) captured_addr_trace edges )
 
 
   let check_captured_addresses action lambda_addr (astate : t) =
@@ -58,9 +58,7 @@ module Closures = struct
         let+ () =
           IContainer.iter_result ~fold:Attributes.fold attributes ~f:(function
             | Attribute.Closure _ ->
-                IContainer.iter_result
-                  ~fold:(IContainer.fold_of_pervasives_map_fold ~fold:Memory.Edges.fold) edges
-                  ~f:(fun (access, addr_trace) ->
+                IContainer.iter_result ~fold:Memory.Edges.fold edges ~f:(fun (access, addr_trace) ->
                     if is_captured_fake_access access then
                       let+ _ = check_addr_access action addr_trace astate in
                       ()
@@ -73,14 +71,9 @@ module Closures = struct
 
   let record location pname captured astate =
     let captured_addresses =
-      List.rev_filter_map captured
-        ~f:(fun (captured_as, (address_captured, trace_captured), mode) ->
-          match mode with
-          | `ByValue ->
-              None
-          | `ByReference ->
-              let new_trace = ValueHistory.Capture {captured_as; location} :: trace_captured in
-              Some (address_captured, new_trace) )
+      List.filter_map captured ~f:(fun (captured_as, (address_captured, trace_captured), mode) ->
+          let new_trace = ValueHistory.Capture {captured_as; mode; location} :: trace_captured in
+          Some (address_captured, new_trace) )
     in
     let closure_addr_hist = (AbstractValue.mk_fresh (), [ValueHistory.Assignment location]) in
     let fake_capture_edges = mk_capture_edges captured_addresses in
@@ -97,82 +90,6 @@ let eval_var var astate = Stack.eval var astate
 let eval_access location addr_hist access astate =
   let+ astate = check_addr_access location addr_hist astate in
   Memory.eval_edge addr_hist access astate
-
-
-type operand = LiteralOperand of IntLit.t | AbstractValueOperand of AbstractValue.t
-
-let eval_arith_operand location binop_addr binop_hist bop op_lhs op_rhs astate =
-  let arith_of_op op astate =
-    match op with
-    | LiteralOperand i ->
-        Some (Arithmetic.equal_to i)
-    | AbstractValueOperand v ->
-        AddressAttributes.get_arithmetic v astate |> Option.map ~f:fst
-  in
-  match
-    Option.both (arith_of_op op_lhs astate) (arith_of_op op_rhs astate)
-    |> Option.bind ~f:(fun (addr_lhs, addr_rhs) -> Arithmetic.binop bop addr_lhs addr_rhs)
-  with
-  | None ->
-      astate
-  | Some binop_a ->
-      let binop_trace = Trace.Immediate {location; history= binop_hist} in
-      let astate =
-        AddressAttributes.add_one binop_addr (Arithmetic (binop_a, binop_trace)) astate
-      in
-      astate
-
-
-let eval_bo_itv_binop binop_addr bop op_lhs op_rhs astate =
-  let bo_itv_of_op op astate =
-    match op with
-    | LiteralOperand i ->
-        Itv.ItvPure.of_int_lit i
-    | AbstractValueOperand v ->
-        AddressAttributes.get_bo_itv v astate
-  in
-  let bo_itv =
-    Itv.ItvPure.arith_binop bop (bo_itv_of_op op_lhs astate) (bo_itv_of_op op_rhs astate)
-  in
-  AddressAttributes.add_one binop_addr (BoItv bo_itv) astate
-
-
-let eval_binop location binop op_lhs op_rhs binop_hist astate =
-  let binop_addr = AbstractValue.mk_fresh () in
-  let astate =
-    eval_arith_operand location binop_addr binop_hist binop op_lhs op_rhs astate
-    |> eval_bo_itv_binop binop_addr binop op_lhs op_rhs
-  in
-  (astate, (binop_addr, binop_hist))
-
-
-let eval_unop_arith location unop_addr unop operand_addr unop_hist astate =
-  match
-    AddressAttributes.get_arithmetic operand_addr astate
-    |> Option.bind ~f:(function a, _ -> Arithmetic.unop unop a)
-  with
-  | None ->
-      astate
-  | Some unop_a ->
-      let unop_trace = Trace.Immediate {location; history= unop_hist} in
-      AddressAttributes.add_one unop_addr (Arithmetic (unop_a, unop_trace)) astate
-
-
-let eval_unop_bo_itv unop_addr unop operand_addr astate =
-  match Itv.ItvPure.arith_unop unop (AddressAttributes.get_bo_itv operand_addr astate) with
-  | None ->
-      astate
-  | Some itv ->
-      AddressAttributes.add_one unop_addr (BoItv itv) astate
-
-
-let eval_unop location unop addr unop_hist astate =
-  let unop_addr = AbstractValue.mk_fresh () in
-  let astate =
-    eval_unop_arith location unop_addr unop addr unop_hist astate
-    |> eval_unop_bo_itv unop_addr unop addr
-  in
-  (astate, (unop_addr, unop_hist))
 
 
 let eval location exp0 astate =
@@ -194,148 +111,60 @@ let eval location exp0 astate =
     | Closure {name; captured_vars} ->
         let+ astate, rev_captured =
           List.fold_result captured_vars ~init:(astate, [])
-            ~f:(fun (astate, rev_captured) (capt_exp, captured_as, _) ->
+            ~f:(fun (astate, rev_captured) (capt_exp, captured_as, _, mode) ->
               let+ astate, addr_trace = eval capt_exp astate in
-              let mode =
-                (* HACK: the frontend follows this discipline *)
-                match (capt_exp : Exp.t) with Lvar _ -> `ByReference | _ -> `ByValue
-              in
               (astate, (captured_as, addr_trace, mode) :: rev_captured) )
         in
         Closures.record location name (List.rev rev_captured) astate
     | Cast (_, exp') ->
         eval exp' astate
     | Const (Cint i) ->
-        (* TODO: make identical const the same address *)
-        let addr = AbstractValue.mk_fresh () in
+        let v = AbstractValue.Constants.get_int i in
         let astate =
-          AddressAttributes.add_one addr
-            (Arithmetic (Arithmetic.equal_to i, Immediate {location; history= []}))
-            astate
-          |> AddressAttributes.add_one addr (BoItv (Itv.ItvPure.of_int_lit i))
+          PulseArithmetic.and_eq_int v i astate
           |> AddressAttributes.invalidate
-               (addr, [ValueHistory.Assignment location])
+               (v, [ValueHistory.Assignment location])
                (ConstantDereference i) location
         in
-        Ok (astate, (addr, []))
+        Ok (astate, (v, []))
     | UnOp (unop, exp, _typ) ->
         let+ astate, (addr, hist) = eval exp astate in
-        eval_unop location unop addr hist astate
+        let unop_addr = AbstractValue.mk_fresh () in
+        (PulseArithmetic.eval_unop unop_addr unop addr astate, (unop_addr, hist))
     | BinOp (bop, e_lhs, e_rhs) ->
         let* astate, (addr_lhs, hist_lhs) = eval e_lhs astate in
-        let+ ( astate
-             , ( addr_rhs
-               , (* NOTE: arbitrarily track only the history of the lhs, maybe not the brightest idea *)
-               _ ) ) =
-          eval e_rhs astate
-        in
-        eval_binop location bop (AbstractValueOperand addr_lhs) (AbstractValueOperand addr_rhs)
-          hist_lhs astate
+        (* NOTE: keeping track of only [hist_lhs] into the binop is not the best *)
+        let+ astate, (addr_rhs, _hist_rhs) = eval e_rhs astate in
+        let binop_addr = AbstractValue.mk_fresh () in
+        ( PulseArithmetic.eval_binop binop_addr bop (AbstractValueOperand addr_lhs)
+            (AbstractValueOperand addr_rhs) astate
+        , (binop_addr, hist_lhs) )
     | Const _ | Sizeof _ | Exn _ ->
         Ok (astate, (AbstractValue.mk_fresh (), (* TODO history *) []))
   in
   eval exp0 astate
 
 
-let eval_arith location exp astate =
+let eval_to_operand location exp astate =
   match (exp : Exp.t) with
   | Const (Cint i) ->
-      Ok
-        ( astate
-        , None
-        , Some
-            ( Arithmetic.equal_to i
-            , Trace.Immediate {location; history= [ValueHistory.Assignment location]} )
-        , Itv.ItvPure.of_int_lit i )
+      Ok (astate, PulseArithmetic.LiteralOperand i)
   | exp ->
       let+ astate, (value, _) = eval location exp astate in
-      ( astate
-      , Some value
-      , AddressAttributes.get_arithmetic value astate
-      , AddressAttributes.get_bo_itv value astate )
+      (astate, PulseArithmetic.AbstractValueOperand value)
 
 
-let record_abduced event location addr_opt orig_arith_hist_opt arith_opt astate =
-  match Option.both addr_opt arith_opt with
-  | None ->
-      astate
-  | Some (addr, arith) ->
-      let trace =
-        match orig_arith_hist_opt with
-        | None ->
-            Trace.Immediate {location; history= [event]}
-        | Some (_, trace) ->
-            Trace.add_event event trace
-      in
-      let attribute = Attribute.Arithmetic (arith, trace) in
-      AddressAttributes.abduce_attribute addr attribute astate
-      |> AddressAttributes.add_one addr attribute
-
-
-let prune ~is_then_branch if_kind location ~condition astate =
-  let prune_with_bop ~negated v_opt arith bop arith' astate =
-    match
-      Option.both v_opt (if negated then Binop.negate bop else Some bop)
-      |> Option.map ~f:(fun (v, positive_bop) ->
-             (v, Itv.ItvPure.prune_binop positive_bop arith arith') )
-    with
-    | None ->
-        (astate, true)
-    | Some (_, Bottom) ->
-        (astate, false)
-    | Some (v, NonBottom arith_pruned) ->
-        let attr_arith = Attribute.BoItv arith_pruned in
-        let astate =
-          AddressAttributes.abduce_attribute v attr_arith astate
-          |> AddressAttributes.add_one v attr_arith
-        in
-        (astate, true)
-  in
-  let bind_satisfiable ~satisfiable astate ~f = if satisfiable then f astate else (astate, false) in
+let prune location ~condition astate =
   let rec prune_aux ~negated exp astate =
     match (exp : Exp.t) with
-    | BinOp (bop, exp_lhs, exp_rhs) -> (
-        let* astate, value_lhs_opt, arith_lhs_opt, bo_itv_lhs =
-          eval_arith location exp_lhs astate
-        in
-        let+ astate, value_rhs_opt, arith_rhs_opt, bo_itv_rhs =
-          eval_arith location exp_rhs astate
-        in
-        match
-          Arithmetic.abduce_binop_is_true ~negated bop (Option.map ~f:fst arith_lhs_opt)
-            (Option.map ~f:fst arith_rhs_opt)
-        with
-        | Unsatisfiable ->
-            (astate, false)
-        | Satisfiable (abduced_lhs, abduced_rhs) ->
-            let event = ValueHistory.Conditional {is_then_branch; if_kind; location} in
-            let astate =
-              record_abduced event location value_lhs_opt arith_lhs_opt abduced_lhs astate
-              |> record_abduced event location value_rhs_opt arith_rhs_opt abduced_rhs
-            in
-            let satisfiable =
-              match Itv.ItvPure.arith_binop bop bo_itv_lhs bo_itv_rhs |> Itv.ItvPure.to_boolean with
-              | False ->
-                  negated
-              | True ->
-                  not negated
-              | Top ->
-                  true
-              | Bottom ->
-                  false
-            in
-            let astate, satisfiable =
-              bind_satisfiable ~satisfiable astate ~f:(fun astate ->
-                  prune_with_bop ~negated value_lhs_opt bo_itv_lhs bop bo_itv_rhs astate )
-            in
-            Option.value_map (Binop.symmetric bop) ~default:(astate, satisfiable) ~f:(fun bop' ->
-                bind_satisfiable ~satisfiable astate ~f:(fun astate ->
-                    prune_with_bop ~negated value_rhs_opt bo_itv_rhs bop' bo_itv_lhs astate ) ) )
+    | BinOp (bop, exp_lhs, exp_rhs) ->
+        let* astate, lhs_op = eval_to_operand location exp_lhs astate in
+        let+ astate, rhs_op = eval_to_operand location exp_rhs astate in
+        PulseArithmetic.prune_binop ~negated bop lhs_op rhs_op astate
     | UnOp (LNot, exp', _) ->
         prune_aux ~negated:(not negated) exp' astate
     | exp ->
-        let zero = Exp.Const (Cint IntLit.zero) in
-        prune_aux ~negated (Exp.BinOp (Ne, exp, zero)) astate
+        prune_aux ~negated (Exp.BinOp (Ne, exp, Exp.zero)) astate
   in
   prune_aux ~negated:false condition astate
 
@@ -368,21 +197,33 @@ let write_deref location ~ref:addr_trace_ref ~obj:addr_trace_obj astate =
   write_access location addr_trace_ref Dereference addr_trace_obj astate
 
 
-let write_field location addr_trace_ref field addr_trace_obj astate =
+let write_field location ~ref:addr_trace_ref field ~obj:addr_trace_obj astate =
   write_access location addr_trace_ref (FieldAccess field) addr_trace_obj astate
 
 
-let havoc_field location addr_trace field trace_obj astate =
-  write_field location addr_trace field (AbstractValue.mk_fresh (), trace_obj) astate
+let write_arr_index location ~ref:addr_trace_ref ~index ~obj:addr_trace_obj astate =
+  write_access location addr_trace_ref (ArrayAccess (Typ.void, index)) addr_trace_obj astate
 
+
+let havoc_field location addr_trace field trace_obj astate =
+  write_field location ~ref:addr_trace field ~obj:(AbstractValue.mk_fresh (), trace_obj) astate
+
+
+let allocate procname location addr_trace astate =
+  AddressAttributes.allocate procname addr_trace location astate
+
+
+let add_dynamic_type typ address astate = AddressAttributes.add_dynamic_type typ address astate
+
+let remove_allocation_attr address astate = AddressAttributes.remove_allocation_attr address astate
 
 let invalidate location cause addr_trace astate =
   check_addr_access location addr_trace astate
   >>| AddressAttributes.invalidate addr_trace cause location
 
 
-let invalidate_deref location cause ref_addr_hist astate =
-  let astate, (addr_obj, _) = Memory.eval_edge ref_addr_hist Dereference astate in
+let invalidate_access location cause ref_addr_hist access astate =
+  let astate, (addr_obj, _) = Memory.eval_edge ref_addr_hist access astate in
   invalidate location cause (addr_obj, snd ref_addr_hist) astate
 
 
@@ -392,14 +233,12 @@ let invalidate_array_elements location cause addr_trace astate =
   | None ->
       astate
   | Some edges ->
-      Memory.Edges.fold
-        (fun access dest_addr_trace astate ->
+      Memory.Edges.fold edges ~init:astate ~f:(fun astate (access, dest_addr_trace) ->
           match (access : Memory.Access.t) with
           | ArrayAccess _ ->
               AddressAttributes.invalidate dest_addr_trace cause location astate
           | _ ->
               astate )
-        edges astate
 
 
 let shallow_copy location addr_hist astate =
@@ -435,14 +274,15 @@ let check_address_escape escape_location proc_desc address history astate =
                    (* The returned address corresponds to a C++ temporary. It will have gone out of
                       scope by now except if it was bound to a global. *)
                    Error
-                     (Diagnostic.StackVariableAddressEscape
-                        {variable; location= escape_location; history})
+                     ( Diagnostic.StackVariableAddressEscape
+                         {variable; location= escape_location; history}
+                     , astate )
                | _ ->
                    Ok () ) )
   in
   let check_address_of_stack_variable () =
     let proc_name = Procdesc.get_proc_name proc_desc in
-    IContainer.iter_result ~fold:(IContainer.fold_of_pervasives_map_fold ~fold:Stack.fold) astate
+    IContainer.iter_result ~fold:(IContainer.fold_of_pervasives_map_fold Stack.fold) astate
       ~f:(fun (variable, (var_address, _)) ->
         if
           AbstractValue.equal var_address address
@@ -453,7 +293,8 @@ let check_address_escape escape_location proc_desc address history astate =
           L.d_printfln_escaped "Stack variable address &%a detected at address %a" Var.pp variable
             AbstractValue.pp address ;
           Error
-            (Diagnostic.StackVariableAddressEscape {variable; location= escape_location; history}) )
+            ( Diagnostic.StackVariableAddressEscape {variable; location= escape_location; history}
+            , astate ) )
         else Ok () )
   in
   let+ () = check_address_of_cpp_temporary () >>= check_address_of_stack_variable in
@@ -468,9 +309,60 @@ let mark_address_of_stack_variable history variable location address astate =
   AddressAttributes.add_one address (AddressOfStackVariable (variable, location, history)) astate
 
 
-let remove_vars vars location astate =
+let check_memory_leak_unreachable unreachable_addrs location astate =
+  let check_memory_leak result attributes =
+    let allocated_not_freed_opt =
+      Attributes.fold attributes ~init:(None (* allocation trace *), false (* freed *))
+        ~f:(fun acc attr ->
+          match (attr : Attribute.t) with
+          | Allocated (procname, trace) ->
+              (Some (procname, trace), snd acc)
+          | Invalid (CFree, _) ->
+              (fst acc, true)
+          | _ ->
+              acc )
+    in
+    match allocated_not_freed_opt with
+    | Some (procname, trace), false ->
+        (* allocated but not freed *)
+        Error (Diagnostic.MemoryLeak {procname; location; allocation_trace= trace}, astate)
+    | _ ->
+        result
+  in
+  List.fold unreachable_addrs ~init:(Ok ()) ~f:(fun res addr ->
+      match AbductiveDomain.AddressAttributes.find_opt addr astate with
+      | Some unreachable_attrs ->
+          check_memory_leak res unreachable_attrs
+      | None ->
+          res )
+
+
+let get_dynamic_type_unreachable_values vars astate =
+  (* For each unreachable address we find a root variable for it; if there is
+     more than one, it doesn't matter which *)
+  let find_var_opt astate addr =
+    Stack.fold
+      (fun var (var_addr, _) var_opt ->
+        if AbstractValue.equal addr var_addr then Some var else var_opt )
+      astate None
+  in
+  let astate' = Stack.remove_vars vars astate in
+  let _, _, unreachable_addrs = AbductiveDomain.discard_unreachable astate' in
+  let res =
+    List.fold unreachable_addrs ~init:[] ~f:(fun res addr ->
+        (let open IOption.Let_syntax in
+        let* attrs = AbductiveDomain.AddressAttributes.find_opt addr astate in
+        let* typ = Attributes.get_dynamic_type attrs in
+        let+ var = find_var_opt astate addr in
+        (var, addr, typ) :: res)
+        |> Option.value ~default:res )
+  in
+  List.map ~f:(fun (var, _, typ) -> (var, typ)) res
+
+
+let remove_vars vars location orig_astate =
   let astate =
-    List.fold vars ~init:astate ~f:(fun astate var ->
+    List.fold vars ~init:orig_astate ~f:(fun astate var ->
         match Stack.find_opt var astate with
         | Some (address, history) ->
             let astate =
@@ -485,7 +377,11 @@ let remove_vars vars location astate =
             astate )
   in
   let astate' = Stack.remove_vars vars astate in
-  if phys_equal astate' astate then astate else AbductiveDomain.discard_unreachable astate'
+  if phys_equal astate' astate then Ok astate
+  else
+    let astate, _, unreachable_addrs = AbductiveDomain.discard_unreachable astate' in
+    let+ () = check_memory_leak_unreachable unreachable_addrs location orig_astate in
+    astate
 
 
 let is_ptr_to_const formal_typ_opt =
@@ -512,8 +408,8 @@ let unknown_call call_loc reason ~ret ~actuals ~formals_opt astate =
   in
   let add_skipped_proc astate =
     match reason with
-    | PulseCallEvent.SkippedKnownCall proc_name ->
-        AbductiveDomain.add_skipped_calls proc_name
+    | CallEvent.SkippedKnownCall proc_name ->
+        AbductiveDomain.add_skipped_call proc_name
           (Trace.Immediate {location= call_loc; history= []})
           astate
     | _ ->
@@ -541,33 +437,114 @@ let unknown_call call_loc reason ~ret ~actuals ~formals_opt astate =
   |> havoc_ret ret |> add_skipped_proc
 
 
-let call ~caller_summary call_loc callee_pname ~ret ~actuals ~formals_opt astate =
-  match PulsePayload.read_full ~caller_summary ~callee_pname with
-  | Some (callee_proc_desc, preposts) ->
+let apply_callee ~caller_proc_desc callee_pname call_loc callee_exec_state ~ret
+    ~captured_vars_with_actuals ~formals ~actuals astate =
+  let apply callee_prepost ~f =
+    PulseInterproc.apply_prepost callee_pname call_loc ~callee_prepost ~captured_vars_with_actuals
+      ~formals ~actuals astate
+    >>= function
+    | None ->
+        (* couldn't apply pre/post pair *) Ok None
+    | Some (post, return_val_opt) ->
+        let event = ValueHistory.Call {f= Call callee_pname; location= call_loc; in_call= []} in
+        let post =
+          match return_val_opt with
+          | Some (return_val, return_hist) ->
+              write_id (fst ret) (return_val, event :: return_hist) post
+          | None ->
+              havoc_id (fst ret) [event] post
+        in
+        f post
+  in
+  let open ExecutionDomain in
+  match callee_exec_state with
+  | AbortProgram _ ->
+      (* Callee has failed; propagate the fact that a failure happened. TODO: should only do so if
+         we can apply the precondition? *)
+      Ok (Some callee_exec_state)
+  | ContinueProgram astate ->
+      apply astate ~f:(fun astate -> Ok (Some (ContinueProgram astate)))
+  | ExitProgram astate ->
+      apply astate ~f:(fun astate -> Ok (Some (ExitProgram astate)))
+  | LatentAbortProgram {astate; latent_issue} ->
+      apply
+        (astate :> AbductiveDomain.t)
+        ~f:(fun astate ->
+          let astate_summary = AbductiveDomain.summary_of_post caller_proc_desc astate in
+          if PulseArithmetic.is_unsat_cheap (astate_summary :> AbductiveDomain.t) then Ok None
+          else
+            let latent_issue =
+              LatentIssue.add_call (CallEvent.Call callee_pname, call_loc) latent_issue
+            in
+            if LatentIssue.should_report astate_summary then
+              Error (LatentIssue.to_diagnostic latent_issue, (astate_summary :> AbductiveDomain.t))
+            else Ok (Some (LatentAbortProgram {astate= astate_summary; latent_issue})) )
+
+
+let get_captured_actuals location ~captured_vars ~actual_closure astate =
+  let* astate, this_value_addr = eval_access location actual_closure Dereference astate in
+  let+ _, astate, captured_vars_with_actuals =
+    List.fold_result captured_vars ~init:(0, astate, []) ~f:(fun (id, astate, captured) var ->
+        let+ astate, captured_actual =
+          eval_access location this_value_addr (FieldAccess (Closures.mk_fake_field ~id)) astate
+        in
+        (id + 1, astate, (var, captured_actual) :: captured) )
+  in
+  (astate, captured_vars_with_actuals)
+
+
+let call ~caller_proc_desc ~(callee_data : (Procdesc.t * PulseSummary.t) option) call_loc
+    callee_pname ~ret ~actuals ~formals_opt (astate : AbductiveDomain.t) :
+    (ExecutionDomain.t list, Diagnostic.t * t) result =
+  match callee_data with
+  | Some (callee_proc_desc, exec_states) ->
       let formals =
         Procdesc.get_formals callee_proc_desc
         |> List.map ~f:(fun (mangled, _) -> Pvar.mk mangled callee_pname |> Var.of_pvar)
       in
+      let captured_vars =
+        Procdesc.get_captured callee_proc_desc
+        |> List.map ~f:(fun (mangled, _, _) ->
+               let pvar = Pvar.mk mangled callee_pname in
+               Var.of_pvar pvar )
+      in
+      let* astate, captured_vars_with_actuals =
+        match actuals with
+        | (actual_closure, _) :: _
+          when not (Procname.is_objc_block callee_pname || List.is_empty captured_vars) ->
+            (* Assumption: the first parameter will be a closure *)
+            get_captured_actuals call_loc ~captured_vars ~actual_closure astate
+        | _ ->
+            Ok (astate, [])
+      in
+      let is_blacklist =
+        Option.exists Config.pulse_cut_to_one_path_procedures_pattern ~f:(fun regex ->
+            Str.string_match regex (Procname.to_string callee_pname) 0 )
+      in
       (* call {!AbductiveDomain.PrePost.apply} on each pre/post pair in the summary. *)
-      List.fold_result preposts ~init:[] ~f:(fun posts pre_post ->
+      IContainer.fold_result_until
+        (exec_states :> ExecutionDomain.t list)
+        ~fold:List.fold ~init:[]
+        ~f:(fun posts callee_exec_state ->
           (* apply all pre/post specs *)
-          AbductiveDomain.PrePost.apply callee_pname call_loc pre_post ~formals ~actuals astate
-          >>| function
-          | None ->
-              (* couldn't apply pre/post pair *) posts
-          | Some (post, return_val_opt) ->
-              let event =
-                ValueHistory.Call {f= Call callee_pname; location= call_loc; in_call= []}
-              in
-              let post =
-                match return_val_opt with
-                | Some (return_val, return_hist) ->
-                    write_id (fst ret) (return_val, event :: return_hist) post
-                | None ->
-                    havoc_id (fst ret) [event] post
-              in
-              post :: posts )
+          match
+            apply_callee ~caller_proc_desc callee_pname call_loc callee_exec_state
+              ~captured_vars_with_actuals ~formals ~actuals ~ret astate
+          with
+          | Ok None ->
+              (* couldn't apply pre/post pair *)
+              Continue (Ok posts)
+          | Ok (Some post) when is_blacklist ->
+              L.d_printfln "Keep only one disjunct because %a is in blacklist" Procname.pp
+                callee_pname ;
+              Stop [post]
+          | Ok (Some post) ->
+              Continue (Ok (post :: posts))
+          | Error _ as x ->
+              Continue x )
+        ~finish:(fun x -> x)
   | None ->
       (* no spec found for some reason (unknown function, ...) *)
       L.d_printfln "No spec found for %a@\n" Procname.pp callee_pname ;
-      Ok [unknown_call call_loc (SkippedKnownCall callee_pname) ~ret ~actuals ~formals_opt astate]
+      unknown_call call_loc (SkippedKnownCall callee_pname) ~ret ~actuals ~formals_opt astate
+      |> ok_continue

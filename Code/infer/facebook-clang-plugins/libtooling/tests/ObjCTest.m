@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2013-present, Facebook, Inc.
+ * Copyright (c) Facebook, Inc. and its affiliates.
  *
  * This source code is licensed under the MIT license found in the
  * LICENSE file in the root directory of this source tree.
@@ -50,7 +50,6 @@
 
     NSDictionary *d = @{@"key" : @1};
     NSLog(@"%@\n", d[@"wrong key"]);
-    NSLog(@"%p\n", (void *)block);
   } @catch (NSException *e) {
     NSLog(@"Exception: %@", e);
   } @finally {
@@ -106,7 +105,7 @@ theend:
 
 int main(int argc, char **argv) {
   @autoreleasepool {
-    [[[[MyClass alloc] init] autorelease] foo:@"hello"];
+    [[[MyClass alloc] init] foo:@"hello"];
     [[MyClass new] bar:@"hello"];
   }
   return 0;

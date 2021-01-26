@@ -36,6 +36,20 @@ module Collection : sig
   (** Evaluate length of Java collection *)
 end
 
+module NSCollection : sig
+  val eval_collection_length : Exp.t -> BufferOverrunDomain.Mem.t -> BufferOverrunDomain.Val.t
+  (** Evaluate length of ObjC collection *)
+end
+
+module NSString : sig
+  val get_length :
+       BufferOverrunUtils.ModelEnv.model_env
+    -> Exp.t
+    -> BufferOverrunDomain.Mem.t
+    -> BufferOverrunDomain.Val.t
+  (** Get length of NSString string *)
+end
+
 module JavaString : sig
   val get_length :
        BufferOverrunUtils.ModelEnv.model_env

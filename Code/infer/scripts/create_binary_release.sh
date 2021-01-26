@@ -46,7 +46,7 @@ touch .release
     --prefix="/$RELEASE_NAME"
 
 make -j "$JOBS" \
-    install \
+    install-with-libs \
     BUILD_MODE=opt \
     DESTDIR="$ROOT_DIR" \
     libdir_relative_to_bindir=../lib
@@ -73,4 +73,6 @@ fi
 tar cJf "$RELEASE_TARBALL" "$RELEASE_NAME"
 rm -fr "$RELEASE_NAME"
 
-echo "$ROOT_DIR/$RELEASE_NAME"
+# special GitHub sauce for later steps to find the tarball
+echo
+echo "::set-output name=tarball-path::$RELEASE_TARBALL"

@@ -15,7 +15,9 @@ module VarSet = AbstractDomain.FiniteSet (Var)
 module Domain = VarSet
 
 (** only kill pvars that are local; don't kill those that can escape *)
-let is_always_in_scope pvar = Pvar.is_return pvar || Pvar.is_global pvar
+let is_always_in_scope proc_desc pvar =
+  Pvar.is_return pvar || Pvar.is_global pvar || Procdesc.is_captured_pvar proc_desc pvar
+
 
 let json_error ~option_name ~expected ~actual =
   L.die UserError "When parsing option %s: expected %s but got '%s'" option_name expected
@@ -92,7 +94,7 @@ module TransferFunctions (LConfig : LivenessConfig) (CFG : ProcCfg.S) = struct
   module CFG = CFG
   module Domain = Domain
 
-  type extras = ProcData.no_extras
+  type analysis_data = Procdesc.t
 
   (** add all of the vars read in [exp] to the live set *)
   let exp_add_live exp astate =
@@ -122,7 +124,7 @@ module TransferFunctions (LConfig : LivenessConfig) (CFG : ProcCfg.S) = struct
         add_live_actuals_ actuals live_acc
 
 
-  let exec_instr astate _ _ = function
+  let exec_instr astate proc_desc _ = function
     | Sil.Load {id= lhs_id} when Ident.is_none lhs_id ->
         (* dummy deref inserted by frontend--don't count as a read *)
         astate
@@ -130,7 +132,7 @@ module TransferFunctions (LConfig : LivenessConfig) (CFG : ProcCfg.S) = struct
         Domain.remove (Var.of_id lhs_id) astate |> exp_add_live rhs_exp
     | Sil.Store {e1= Lvar lhs_pvar; e2= rhs_exp} ->
         let astate' =
-          if is_always_in_scope lhs_pvar then astate (* never kill globals *)
+          if is_always_in_scope proc_desc lhs_pvar then astate (* never kill globals *)
           else Domain.remove (Var.of_pvar lhs_pvar) astate
         in
         exp_add_live rhs_exp astate'
@@ -147,7 +149,7 @@ module TransferFunctions (LConfig : LivenessConfig) (CFG : ProcCfg.S) = struct
         let actuals_to_read, astate =
           if cf_assign_last_arg then
             match IList.split_last_rev actuals with
-            | Some ((Exp.Lvar pvar, _), actuals') when not (is_always_in_scope pvar) ->
+            | Some ((Exp.Lvar pvar, _), actuals') when not (is_always_in_scope proc_desc pvar) ->
                 (actuals', Domain.remove (Var.of_pvar pvar) astate)
             | _ ->
                 (actuals, astate)
@@ -181,9 +183,9 @@ module CapturedByRefTransferFunctions (CFG : ProcCfg.S) = struct
   module CFG = CFG
   module Domain = VarSet
 
-  type extras = ProcData.no_extras
+  type analysis_data = unit
 
-  let exec_instr astate _ _ instr =
+  let exec_instr astate () _ instr =
     List.fold (Sil.exps_of_instr instr)
       ~f:(fun acc exp ->
         Exp.fold_captured exp
@@ -205,18 +207,15 @@ end
 module CapturedByRefAnalyzer =
   AbstractInterpreter.MakeRPO (CapturedByRefTransferFunctions (ProcCfg.Exceptional))
 
-let get_captured_by_ref_invariant_map proc_desc proc_data =
+let get_captured_by_ref_invariant_map proc_desc =
   let cfg = ProcCfg.Exceptional.from_pdesc proc_desc in
-  CapturedByRefAnalyzer.exec_cfg cfg proc_data ~initial:VarSet.empty
+  CapturedByRefAnalyzer.exec_cfg cfg () ~initial:VarSet.empty
 
 
-let checker {Callbacks.exe_env; summary} : Summary.t =
-  let proc_desc = Summary.get_proc_desc summary in
-  let tenv = Exe_env.get_tenv exe_env (Summary.get_proc_name summary) in
-  let proc_data = ProcData.make_default summary tenv in
-  let captured_by_ref_invariant_map = get_captured_by_ref_invariant_map proc_desc proc_data in
+let checker {IntraproceduralAnalysis.proc_desc; err_log} =
+  let captured_by_ref_invariant_map = get_captured_by_ref_invariant_map proc_desc in
   let cfg = CFG.from_pdesc proc_desc in
-  let invariant_map = CheckerAnalyzer.exec_cfg cfg proc_data ~initial:Domain.empty in
+  let invariant_map = CheckerAnalyzer.exec_cfg cfg proc_desc ~initial:Domain.empty in
   (* we don't want to report in harmless cases like int i = 0; if (...) { i = ... } else { i = ... }
      that create an intentional dead store as an attempt to imitate default value semantics.
      use dead stores to a "sentinel" value as a heuristic for ignoring this case *)
@@ -239,14 +238,16 @@ let checker {Callbacks.exe_env; summary} : Summary.t =
         false
   in
   let locals = Procdesc.get_locals proc_desc in
-  let is_constexpr pvar =
+  let is_constexpr_or_unused pvar =
     List.find locals ~f:(fun local_data ->
         Mangled.equal (Pvar.get_name pvar) local_data.ProcAttributes.name )
-    |> Option.exists ~f:(fun local -> local.ProcAttributes.is_constexpr)
+    |> Option.exists ~f:(fun local ->
+           local.ProcAttributes.is_constexpr || local.ProcAttributes.is_declared_unused )
   in
   let should_report pvar typ live_vars captured_by_ref_vars =
     not
-      ( Pvar.is_frontend_tmp pvar || Pvar.is_return pvar || Pvar.is_global pvar || is_constexpr pvar
+      ( Pvar.is_frontend_tmp pvar || Pvar.is_return pvar || Pvar.is_global pvar
+      || is_constexpr_or_unused pvar
       || VarSet.mem (Var.of_pvar pvar) captured_by_ref_vars
       || Domain.mem (Var.of_pvar pvar) live_vars
       || Procdesc.is_captured_pvar proc_desc pvar
@@ -259,7 +260,7 @@ let checker {Callbacks.exe_env; summary} : Summary.t =
         (Typ.pp_full Pp.text) typ
     in
     let ltr = [Errlog.make_trace_element 0 loc "Write of unused value" []] in
-    Reporting.log_error summary ~loc ~ltr IssueType.dead_store message
+    Reporting.log_issue proc_desc err_log ~loc ~ltr Liveness IssueType.dead_store message
   in
   let report_dead_store live_vars captured_by_ref_vars = function
     | Sil.Store {e1= Lvar pvar; typ; e2= rhs_exp; loc}
@@ -296,5 +297,4 @@ let checker {Callbacks.exe_env; summary} : Summary.t =
         | None ->
             () )
   in
-  Container.iter cfg ~fold:CFG.fold_nodes ~f:report_on_node ;
-  summary
+  Container.iter cfg ~fold:CFG.fold_nodes ~f:report_on_node

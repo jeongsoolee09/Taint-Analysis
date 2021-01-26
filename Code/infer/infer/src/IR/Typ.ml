@@ -6,8 +6,6 @@
  * LICENSE file in the root directory of this source tree.
  *)
 
-[@@@ocamlformat "parse-docstrings = false"]
-
 (** The Smallfoot Intermediate Language: Types *)
 
 open! IStd
@@ -267,13 +265,17 @@ let mk_array ?default ?quals ?length ?stride elt : t =
 
 let mk_struct name = mk (Tstruct name)
 
+let mk_ptr ?(ptr_kind = Pk_pointer) t = mk (Tptr (t, ptr_kind))
+
 let void = mk Tvoid
 
-let void_star = mk (Tptr (mk Tvoid, Pk_pointer))
+let void_star = mk (Tptr (void, Pk_pointer))
 
-let java_byte = mk (Tint IShort)
+let java_char = mk (Tint IUShort)
 
-let java_short = java_byte
+let java_byte = mk (Tint ISChar)
+
+let java_short = mk (Tint IShort)
 
 let boolean = mk (Tint IBool)
 
@@ -449,47 +451,6 @@ module Name = struct
   end
 
   module Java = struct
-    module Split = struct
-      (** e.g. {type_name="int"; package=None} for primitive types
-      * or {type_name="PrintWriter"; package=Some "java.io"} for objects.
-      *)
-      type t = {package: string option; type_name: string} [@@deriving compare, equal]
-
-      let make ?package type_name = {type_name; package}
-
-      (** Given a package.class_name string, it looks for the latest dot and split the string
-                in two (package, class_name) *)
-      let of_string package_classname =
-        match String.rsplit2 package_classname ~on:'.' with
-        | Some (package, type_name) ->
-            {type_name; package= Some package}
-        | None ->
-            {type_name= package_classname; package= None}
-
-
-      let of_java_class_name java_class_name =
-        let package = JavaClassName.package java_class_name in
-        let type_name = JavaClassName.classname java_class_name in
-        make ?package type_name
-
-
-      let package {package} = package
-
-      let type_name {type_name} = type_name
-
-      let java_lang_object = make ~package:"java.lang" "Object"
-
-      let java_lang_string = make ~package:"java.lang" "String"
-
-      let void = make "void"
-
-      let pp_type_verbosity ~verbose fmt = function
-        | {package= Some package; type_name} when verbose ->
-            F.fprintf fmt "%s.%s" package type_name
-        | {type_name} ->
-            F.pp_print_string fmt type_name
-    end
-
     let from_string name_str = JavaClass (JavaClassName.from_string name_str)
 
     let is_class = function JavaClass _ -> true | _ -> false
@@ -504,30 +465,26 @@ module Name = struct
 
     let java_lang_string = from_string "java.lang.String"
 
+    let get_java_class_name_opt typename =
+      match typename with JavaClass java_class_name -> Some java_class_name | _ -> None
+
+
     let get_java_class_name_exn typename =
-      match typename with
-      | JavaClass java_class_name ->
+      match get_java_class_name_opt typename with
+      | Some java_class_name ->
           java_class_name
-      | _ ->
+      | None ->
           L.die InternalError "Tried to split a non-java class name into a java split type@."
 
 
-    let split_typename typename = Split.of_java_class_name (get_java_class_name_exn typename)
-
-    let is_anonymous_inner_class_name class_name =
+    let is_anonymous_inner_class_name_exn class_name =
       let java_class_name = get_java_class_name_exn class_name in
-      let class_name_no_package = JavaClassName.classname java_class_name in
-      match String.rsplit2 class_name_no_package ~on:'$' with
-      | Some (_, s) ->
-          let is_int =
-            try
-              ignore (int_of_string (String.strip s)) ;
-              true
-            with Failure _ -> false
-          in
-          is_int
-      | None ->
-          false
+      JavaClassName.is_anonymous_inner_class_name java_class_name
+
+
+    let is_anonymous_inner_class_name_opt class_name =
+      get_java_class_name_opt class_name
+      |> Option.map ~f:JavaClassName.is_anonymous_inner_class_name
 
 
     let is_external t =
@@ -549,18 +506,38 @@ module Name = struct
     let protocol_from_qual_name qual_name = ObjcProtocol qual_name
 
     let is_class = function ObjcClass _ -> true | _ -> false
+
+    let is_non_tagged_class =
+      (* The list of tagged classes are from:
+         https://opensource.apple.com/source/objc4/objc4-781/runtime/objc-internal.h *)
+      let tagged_classes =
+        [ "CGColor"
+        ; "NSAtom"
+        ; "NSColor"
+        ; "NSDate"
+        ; "NSIndexPath"
+        ; "NSIndexSet"
+        ; "NSManagedObjectID"
+        ; "NSNumber"
+        ; "NSString"
+        ; "Photos"
+        ; "UIColor" ]
+        |> List.map ~f:QualifiedCppName.of_qual_string
+        |> QualifiedCppName.Set.of_list
+      in
+      function ObjcClass name -> not (QualifiedCppName.Set.mem name tagged_classes) | _ -> false
   end
 
-  module Set = Caml.Set.Make (struct
-    type nonrec t = t
+  module Set = PrettyPrintable.MakePPSet (struct
+    type nonrec t = t [@@deriving compare]
 
-    let compare = compare
+    let pp = pp
   end)
 
-  module Map = Caml.Map.Make (struct
-    type nonrec t = t
+  module Map = PrettyPrintable.MakePPMap (struct
+    type nonrec t = t [@@deriving compare]
 
-    let compare = compare
+    let pp = pp
   end)
 end
 
@@ -590,8 +567,8 @@ let is_ptr_to_ignore_quals t ~ptr =
   match ptr.desc with Tptr (t', _) -> equal_ignore_quals t t' | _ -> false
 
 
-(** If an array type, return the type of the element.
-    If not, return the default type if given, otherwise raise an exception *)
+(** If an array type, return the type of the element. If not, return the default type if given,
+    otherwise raise an exception *)
 let array_elem default_opt typ =
   match typ.desc with Tarray {elt} -> elt | _ -> unsome "array_elem" default_opt
 
@@ -601,6 +578,8 @@ let is_class_of_kind check_fun typ =
 
 
 let is_objc_class = is_class_of_kind Name.Objc.is_class
+
+let is_objc_non_tagged_class = is_class_of_kind Name.Objc.is_non_tagged_class
 
 let is_cpp_class = is_class_of_kind Name.Cpp.is_class
 
@@ -612,11 +591,17 @@ let is_struct typ = match typ.desc with Tstruct _ -> true | _ -> false
 
 let is_pointer_to_cpp_class typ = match typ.desc with Tptr (t, _) -> is_cpp_class t | _ -> false
 
+let is_pointer_to_objc_non_tagged_class typ =
+  match typ.desc with Tptr (t, _) -> is_objc_non_tagged_class t | _ -> false
+
+
 let is_pointer_to_void typ = match typ.desc with Tptr ({desc= Tvoid}, _) -> true | _ -> false
 
 let is_void typ = match typ.desc with Tvoid -> true | _ -> false
 
 let is_pointer_to_int typ = match typ.desc with Tptr ({desc= Tint _}, _) -> true | _ -> false
+
+let is_pointer_to_function typ = match typ.desc with Tptr ({desc= Tfun}, _) -> true | _ -> false
 
 let is_int typ = match typ.desc with Tint _ -> true | _ -> false
 
@@ -633,3 +618,74 @@ let has_block_prefix s =
 
 
 type typ = t
+
+let rec pp_java ~verbose f {desc} =
+  let string_of_int = function
+    | IInt ->
+        JConfig.int_st
+    | IBool ->
+        JConfig.boolean_st
+    | ISChar ->
+        JConfig.byte_st
+    | IUShort ->
+        JConfig.char_st
+    | ILong ->
+        JConfig.long_st
+    | IShort ->
+        JConfig.short_st
+    | _ ->
+        L.die InternalError "pp_java int"
+  in
+  let string_of_float = function
+    | FFloat ->
+        JConfig.float_st
+    | FDouble ->
+        JConfig.double_st
+    | _ ->
+        L.die InternalError "pp_java float"
+  in
+  match desc with
+  | Tint ik ->
+      F.pp_print_string f (string_of_int ik)
+  | Tfloat fk ->
+      F.pp_print_string f (string_of_float fk)
+  | Tvoid ->
+      F.pp_print_string f JConfig.void
+  | Tptr (typ, _) ->
+      pp_java ~verbose f typ
+  | Tstruct (JavaClass java_class_name) ->
+      JavaClassName.pp_with_verbosity ~verbose f java_class_name
+  | Tarray {elt} ->
+      F.fprintf f "%a[]" (pp_java ~verbose) elt
+  | _ ->
+      L.die InternalError "pp_java rec"
+
+
+let is_java_primitive_type {desc} =
+  let is_java_int = function
+    | IInt | IBool | ISChar | IUShort | ILong | IShort ->
+        true
+    | _ ->
+        false
+  in
+  let is_java_float = function FFloat | FDouble -> true | _ -> false in
+  match desc with Tint ik -> is_java_int ik | Tfloat fk -> is_java_float fk | _ -> false
+
+
+let rec is_java_type t =
+  match t.desc with
+  | Tvoid ->
+      true
+  | Tint _ | Tfloat _ ->
+      is_java_primitive_type t
+  | Tptr ({desc= Tstruct (JavaClass _)}, Pk_pointer) ->
+      true
+  | Tptr ({desc= Tarray {elt}}, Pk_pointer) ->
+      is_java_type elt
+  | _ ->
+      false
+
+
+let pointer_to_java_lang_object = mk_ptr (mk_struct Name.Java.java_lang_object)
+
+let pointer_to_java_lang_string = mk_ptr (mk_struct Name.Java.java_lang_string)

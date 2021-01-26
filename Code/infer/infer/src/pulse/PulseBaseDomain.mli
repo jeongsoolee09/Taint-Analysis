@@ -7,25 +7,13 @@
 
 open! IStd
 open PulseBasicInterface
+module F = Format
 
-module SkippedTrace : sig
-  type t = PulseTrace.t
-end
-
-module SkippedCalls :
-  PrettyPrintable.PPMonoMap with type key = Procname.t and type value = SkippedTrace.t
-
-type t =
-  { heap: PulseBaseMemory.t
-  ; stack: PulseBaseStack.t
-  ; skipped_calls: SkippedCalls.t
-  ; attrs: PulseBaseAddressAttributes.t }
+type t = {heap: PulseBaseMemory.t; stack: PulseBaseStack.t; attrs: PulseBaseAddressAttributes.t}
 
 type cell = PulseBaseMemory.Edges.t * Attributes.t
 
 val empty : t
-
-include AbstractDomain.NoJoin with type t := t
 
 val reachable_addresses : t -> AbstractValue.Set.t
 (** compute the set of abstract addresses that are "used" in the abstract state, i.e. reachable from
@@ -44,3 +32,5 @@ val isograph_map : lhs:t -> rhs:t -> mapping -> isograph_relation
 val is_isograph : lhs:t -> rhs:t -> mapping -> bool
 
 val find_cell_opt : AbstractValue.t -> t -> cell option
+
+val pp : F.formatter -> t -> unit

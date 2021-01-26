@@ -21,6 +21,7 @@ type t =
   | Nullable of nullable_origin
   | ThirdPartyNonnull
   | UncheckedNonnull of unchecked_nonnull_origin
+  | LocallyTrustedNonnull
   | LocallyCheckedNonnull
   | StrictNonnull of strict_nonnull_origin
 [@@deriving compare]
@@ -45,19 +46,38 @@ and unchecked_nonnull_origin =
           nullable *)
 
 and strict_nonnull_origin =
+  | ExplicitNonnullThirdParty
+      (** Third party annotated as [@Nonnull] is considered strict. This is a controversial choice
+          and might be an unsoundness issue. The reason is practical. The best we can do for third
+          party is to register it in third party signature repository. Though this typically
+          requires human review, in practice errors are inevitable. On the other hand, if the
+          library owner explicitly annotated a function as nonnull, we assume this was made for
+          reason. In practice, requiring such methods to be registered in third party folder, will
+          introduce user friction but will not significantly increase safety. So our approach here
+          is optimistic. If some particular method or library is known to contain wrong [@Nonnull]
+          annotations, third party repository is a way to override this. *)
   | ModelledNonnull  (** nullsafe knows it is non-nullable via its internal models *)
   | StrictMode  (** under strict mode we consider non-null declarations to be trusted *)
   | PrimitiveType  (** Primitive types are non-nullable by language design *)
   | EnumValue
       (** Java enum value are statically initialized with non-nulls according to language semantics *)
+  | SyntheticField
+      (** Fake field that is not part of user codebase, but rather artifact of codegen/annotation
+          processor *)
 [@@deriving compare]
 
 val get_nullability : t -> Nullability.t
 
 val of_type_and_annotation :
-  nullsafe_mode:NullsafeMode.t -> is_third_party:bool -> Typ.t -> Annot.Item.t -> t
+     is_callee_in_trust_list:bool
+  -> nullsafe_mode:NullsafeMode.t
+  -> is_third_party:bool
+  -> Typ.t
+  -> Annot.Item.t
+  -> t
 (** Given the type and its annotations, returns its nullability. NOTE: it does not take into account
     models etc., so this is intended to be used as a helper function for more high-level annotation
-    processing. *)
+    processing. [is_callee_in_trust_list] defines whether the callee class is in the caller's
+    explicitly provided trust list and therefore whether its nullability should be refined. *)
 
 val pp : Format.formatter -> t -> unit

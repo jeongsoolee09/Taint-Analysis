@@ -42,8 +42,8 @@ val is_self : t -> bool
 val rename : f:(string -> string) -> t -> t
 (** Maps over both the plain and the mangled components. *)
 
-module Set : Caml.Set.S with type elt = t
 (** Set of Mangled. *)
+module Set : PrettyPrintable.PPSet with type elt = t
 
-module Map : Caml.Map.S with type key = t
 (** Map with Mangled as key *)
+module Map : PrettyPrintable.PPMap with type key = t

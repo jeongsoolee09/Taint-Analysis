@@ -67,7 +67,7 @@ class UnknownCallsTest {
     throw new IllegalStateException();
   }
 
-  void call_throw_exception_linear() {
+  void call_throw_exception_unknown() {
     for (int i = 0; i < throw_exception(); i++) {}
   }
 

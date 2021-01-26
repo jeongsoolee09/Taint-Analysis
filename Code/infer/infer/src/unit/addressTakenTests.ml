@@ -16,7 +16,9 @@ let tests =
   let int_ptr_typ = Typ.mk (Tptr (int_typ, Pk_pointer)) in
   let fun_ptr_typ = Typ.mk (Tptr (Typ.mk Tfun, Pk_pointer)) in
   let closure_exp captureds =
-    let mk_captured_var str = (Exp.Var (ident_of_str str), pvar_of_str str, int_ptr_typ) in
+    let mk_captured_var str =
+      (Exp.Var (ident_of_str str), pvar_of_str str, int_ptr_typ, Pvar.ByReference)
+    in
     let captured_vars = List.map ~f:mk_captured_var captureds in
     let closure = {Exp.name= dummy_procname; captured_vars} in
     Exp.Closure closure
@@ -57,6 +59,6 @@ let tests =
         ; invariant "{ &b, &d }"
         ; var_assign_addrof_var ~rhs_typ:int_ptr_typ "e" "f"
         ; invariant "{ &b, &f, &d }" ] ) ]
-    |> TestInterpreter.create_tests ProcData.empty_extras ~initial:AddressTaken.Domain.empty
+    |> TestInterpreter.create_tests (fun _summary -> ()) ~initial:AddressTaken.Domain.empty
   in
   "address_taken_suite" >::: test_list

@@ -15,7 +15,8 @@ let register pname = builtin_decls := Procname.Set.add pname !builtin_decls
 
 let create_procname name =
   let pname = Procname.from_string_c_fun name in
-  register pname ; pname
+  register pname ;
+  pname
 
 
 let create_objc_class_method class_name method_name parameters =
@@ -25,7 +26,8 @@ let create_objc_class_method class_name method_name parameters =
     Procname.ObjC_Cpp
       (Procname.ObjC_Cpp.make tname method_name method_kind Typ.NoTemplate parameters)
   in
-  register pname ; pname
+  register pname ;
+  pname
 
 
 let is_declared pname = Procname.Set.mem pname !builtin_decls
@@ -42,6 +44,8 @@ let __builtin_va_end = create_procname "__builtin_va_end"
 
 let __builtin_va_start = create_procname "__builtin_va_start"
 
+let __builtin_offsetof = create_procname "__builtin_offsetof"
+
 let __cast = create_procname "__cast"
 
 let __cxx_typeid = create_procname "__cxx_typeid"
@@ -54,7 +58,7 @@ let __delete_locked_attribute = create_procname "__delete_locked_attribute"
 
 let __exit = create_procname "_exit"
 
-let __free_cf = create_procname "__free_cf"
+let __objc_bridge_transfer = create_procname "__objc_bridge_transfer"
 
 let __get_array_length = create_procname "__get_array_length"
 
@@ -69,6 +73,8 @@ let __infer_assume = create_procname "__infer_assume"
 let __infer_fail = create_procname "__infer_fail"
 
 let __infer_generic_selection_expr = Procname.from_string_c_fun "__infer_generic_selection_expr"
+
+let __infer_initializer_list = create_procname "__infer_initializer_list"
 
 let __infer_skip = create_procname "__infer_skip"
 
@@ -149,6 +155,10 @@ let nsArray_arrayWithObjectsCount =
   create_objc_class_method "NSArray" "arrayWithObjects:count:" [None; None]
 
 
+let objc_autorelease_pool_pop = create_procname "_objc_autoreleasePoolPop"
+
+let objc_autorelease_pool_push = create_procname "_objc_autoreleasePoolPush"
+
 let objc_cpp_throw = create_procname "__infer_objc_cpp_throw"
 
 let pthread_create = create_procname "pthread_create"
@@ -172,3 +182,5 @@ let vswscanf = create_procname "vswscanf"
 let vwscanf = create_procname "vwscanf"
 
 let wscanf = create_procname "wscanf"
+
+let zero_initialization = create_procname "__infer_zero_initialization"

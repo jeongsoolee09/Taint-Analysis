@@ -29,17 +29,24 @@ let pp_objc_accessor_type fmt objc_accessor_type =
     annots
 
 
-type var_data = {name: Mangled.t; typ: Typ.t; modify_in_block: bool; is_constexpr: bool}
+type var_data =
+  {name: Mangled.t; typ: Typ.t; modify_in_block: bool; is_constexpr: bool; is_declared_unused: bool}
 [@@deriving compare]
 
-let pp_var_data fmt {name; typ; modify_in_block} =
-  F.fprintf fmt "@[<h>{ name=@ %a;@ typ=@ %a;@ modify_in_block=@ %b@ }@]" Mangled.pp name
-    (Typ.pp_full Pp.text) typ modify_in_block
+let pp_var_data fmt {name; typ; modify_in_block; is_declared_unused} =
+  F.fprintf fmt "@[<h>{ name=@ %a;@ typ=@ %a;@ modify_in_block=@ %b;@ is_declared_unused=@ %b@ }@]"
+    Mangled.pp name (Typ.pp_full Pp.text) typ modify_in_block is_declared_unused
 
+
+type specialized_with_blocks_info =
+  { orig_proc: Procname.t
+  ; formals_to_procs_and_new_formals: (Procname.t * (Mangled.t * Typ.t) list) Mangled.Map.t }
+[@@deriving compare]
 
 type t =
   { access: PredSymb.access  (** visibility access *)
-  ; captured: (Mangled.t * Typ.t) list  (** name and type of variables captured in blocks *)
+  ; captured: (Mangled.t * Typ.t * Pvar.capture_mode) list
+        (** name and type of variables captured in blocks *)
   ; exceptions: string list  (** exceptions thrown by the procedure *)
   ; formals: (Mangled.t * Typ.t) list  (** name and type of formal parameters *)
   ; const_formals: int list  (** list of indices of formals that are const-qualified *)
@@ -52,10 +59,15 @@ type t =
         (** Present if the procedure is an Objective-C block that has been passed to the given
             method in a position annotated with the NS_NOESCAPE attribute. *)
   ; is_no_return: bool  (** the procedure is known not to return *)
+  ; is_objc_arc_on: bool  (** the ObjC procedure is compiled with ARC *)
   ; is_specialized: bool  (** the procedure is a clone specialized for dynamic dispatch handling *)
   ; is_synthetic_method: bool  (** the procedure is a synthetic method *)
   ; is_variadic: bool  (** the procedure is variadic, only supported for Clang procedures *)
   ; sentinel_attr: (int * int) option  (** __attribute__((sentinel(int, int))) *)
+  ; specialized_with_blocks_info: specialized_with_blocks_info option
+        (** the procedure is a clone specialized with calls to concrete closures, with link to the
+            original procedure, and a map that links the original formals to the elements of the
+            closure used to specialize the procedure. *)
   ; clang_method_kind: ClangMethodKind.t  (** the kind of method the procedure is *)
   ; loc: Location.t  (** location of this procedure in the source code *)
   ; translation_unit: SourceFile.t  (** translation unit to which the procedure belongs *)
@@ -65,6 +77,39 @@ type t =
   ; proc_name: Procname.t  (** name of the procedure *)
   ; ret_type: Typ.t  (** return type *)
   ; has_added_return_param: bool  (** whether or not a return param was added *) }
+
+let get_annotated_formals {method_annotation= {params}; formals} =
+  let rec zip_params ial parl =
+    match (ial, parl) with
+    | ia :: ial', param :: parl' ->
+        (param, ia) :: zip_params ial' parl'
+    | [], param :: parl' ->
+        (* List of annotations exhausted before the list of params -
+           treat lack of annotation info as an empty annotation *)
+        (param, Annot.Item.empty) :: zip_params [] parl'
+    | [], [] ->
+        []
+    | _ :: _, [] ->
+        (* List of params exhausted before the list of annotations -
+           this should never happen *)
+        assert false
+  in
+  (* zip formal params with annotation *)
+  List.rev (zip_params (List.rev params) (List.rev formals))
+
+
+let get_access attributes = attributes.access
+
+let get_formals attributes = attributes.formals
+
+let get_pvar_formals attributes =
+  let pname = attributes.proc_name in
+  List.map attributes.formals ~f:(fun (name, typ) -> (Pvar.mk name pname, typ))
+
+
+let get_proc_name attributes = attributes.proc_name
+
+let get_loc attributes = attributes.loc
 
 let default translation_unit proc_name =
   { access= PredSymb.Default
@@ -79,7 +124,9 @@ let default translation_unit proc_name =
   ; is_java_synchronized_method= false
   ; passed_as_noescape_block_to= None
   ; is_no_return= false
+  ; is_objc_arc_on= false
   ; is_specialized= false
+  ; specialized_with_blocks_info= None
   ; is_synthetic_method= false
   ; is_variadic= false
   ; sentinel_attr= None
@@ -98,6 +145,23 @@ let pp_parameters =
   Pp.semicolon_seq ~print_env:Pp.text_break (Pp.pair ~fst:Mangled.pp ~snd:(Typ.pp_full Pp.text))
 
 
+let pp_specialized_with_blocks_info fmt info =
+  let pp_new_formal fmt el =
+    F.fprintf fmt "%a:%a" Mangled.pp (fst el) (Typ.pp_full Pp.text) (snd el)
+  in
+  let pp_new_formals = Pp.semicolon_seq ~print_env:Pp.text_break pp_new_formal in
+  F.fprintf fmt "orig_procname=%a, formals_to_procs_and_new_formals=%a" Procname.pp info.orig_proc
+    (Mangled.Map.pp ~pp_value:(Pp.pair ~fst:Procname.pp ~snd:pp_new_formals))
+    info.formals_to_procs_and_new_formals
+
+
+let pp_captured_var fmt (var, typ, mode) =
+  F.fprintf fmt "(%a,@,%a,@,%s)" Mangled.pp var (Typ.pp_full Pp.text) typ
+    (Pvar.string_of_capture_mode mode)
+
+
+let pp_captured = Pp.semicolon_seq ~print_env:Pp.text_break pp_captured_var
+
 let pp f
     ({ access
      ; captured
@@ -111,7 +175,9 @@ let pp f
      ; is_java_synchronized_method
      ; passed_as_noescape_block_to
      ; is_no_return
+     ; is_objc_arc_on
      ; is_specialized
+     ; specialized_with_blocks_info
      ; is_synthetic_method
      ; is_variadic
      ; sentinel_attr
@@ -132,8 +198,8 @@ let pp f
     translation_unit ;
   if not (PredSymb.equal_access default.access access) then
     F.fprintf f "; access= %a@," (Pp.of_string ~f:PredSymb.string_of_access) access ;
-  if not ([%compare.equal: (Mangled.t * Typ.t) list] default.captured captured) then
-    F.fprintf f "; captured= [@[%a@]]@," pp_parameters captured ;
+  if not ([%compare.equal: (Mangled.t * Typ.t * Pvar.capture_mode) list] default.captured captured)
+  then F.fprintf f "; captured= [@[%a@]]@," pp_captured captured ;
   if not ([%compare.equal: string list] default.exceptions exceptions) then
     F.fprintf f "; exceptions= [@[%a@]]@,"
       (Pp.semicolon_seq ~print_env:Pp.text_break F.pp_print_string)
@@ -150,9 +216,24 @@ let pp f
   pp_bool_default ~default:default.is_defined "is_defined" is_defined f () ;
   pp_bool_default ~default:default.is_java_synchronized_method "is_java_synchronized_method"
     is_java_synchronized_method f () ;
-  F.fprintf f "; passed_as_noescape_block_to %a" (Pp.option Procname.pp) passed_as_noescape_block_to ;
+  if
+    not
+      ([%compare.equal: Procname.t option] default.passed_as_noescape_block_to
+         passed_as_noescape_block_to)
+  then
+    F.fprintf f "; passed_as_noescape_block_to %a" (Pp.option Procname.pp)
+      passed_as_noescape_block_to ;
   pp_bool_default ~default:default.is_no_return "is_no_return" is_no_return f () ;
+  pp_bool_default ~default:default.is_objc_arc_on "is_objc_arc_on" is_objc_arc_on f () ;
   pp_bool_default ~default:default.is_specialized "is_specialized" is_specialized f () ;
+  if
+    not
+      ([%compare.equal: specialized_with_blocks_info option] default.specialized_with_blocks_info
+         specialized_with_blocks_info)
+  then
+    F.fprintf f "; specialized_with_blocks_info %a@,"
+      (Pp.option pp_specialized_with_blocks_info)
+      specialized_with_blocks_info ;
   pp_bool_default ~default:default.is_synthetic_method "is_synthetic_method" is_synthetic_method f
     () ;
   pp_bool_default ~default:default.is_variadic "is_variadic" is_variadic f () ;

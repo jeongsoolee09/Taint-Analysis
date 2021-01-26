@@ -42,22 +42,17 @@ module Results_dir : sig
   val path_to_filename : path_kind -> path -> filename
   (** convert a path to a filename *)
 
-  val specs_dir : filename
-  (** directory of spec files *)
-
   val init : ?debug:bool -> SourceFile.t -> unit
   (** Initialize the results directory *)
-
-  val clean_specs_dir : unit -> unit
-  (** Clean up specs directory *)
 
   val create_file : path_kind -> path -> Unix.File_descr.t
   (** create a file at the given path, creating any missing directories *)
 end
 
-val append_crc_cutoff : ?key:string -> string -> string
+val append_crc_cutoff : ?key:string -> string -> string * string
 (** Append a crc to the string, using string_crc_hex32. Cut the string if it exceeds the cutoff
-    limit. Use an optional key to compute the crc. *)
+    limit. Use an optional key to compute the crc. Return a pair of the appended result and crc
+    string. *)
 
 val source_file_encoding : SourceFile.t -> string
 (** string encoding of a source file (including path) as a single filename *)

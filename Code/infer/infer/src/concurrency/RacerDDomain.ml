@@ -10,17 +10,6 @@ module AccessExpression = HilExp.AccessExpression
 module F = Format
 module MF = MarkupFormatter
 
-(** Master function for deciding whether RacerD should completely ignore a variable as the root of
-    an access expression. Currently fires on *static locals* and any variable which does not appear
-    in source code (eg, temporary variables and frontend introduced variables). This is because
-    currently reports on these variables would not be easily actionable.
-
-    This is here and not in RacerDModels to avoid dependency cycles. *)
-let should_skip_var v =
-  (not (Var.appears_in_source_code v))
-  || match v with Var.ProgramVar pvar -> Pvar.is_static_local pvar | _ -> false
-
-
 let pp_exp fmt exp =
   match !Language.curr_language with
   | Clang ->
@@ -29,13 +18,28 @@ let pp_exp fmt exp =
       AccessPath.pp fmt (AccessExpression.to_access_path exp)
 
 
+let rec should_keep_exp formals (exp : AccessExpression.t) =
+  match exp with
+  | FieldOffset (prefix, fld) ->
+      (not (String.is_substring ~substring:"$SwitchMap" (Fieldname.get_field_name fld)))
+      && should_keep_exp formals prefix
+  | ArrayOffset (prefix, _, _) | AddressOf prefix | Dereference prefix ->
+      should_keep_exp formals prefix
+  | Base (LogicalVar _, _) ->
+      false
+  | Base (((ProgramVar pvar as var), _) as base) ->
+      Var.appears_in_source_code var
+      && (not (Pvar.is_static_local pvar))
+      && (Pvar.is_global pvar || FormalMap.is_formal base formals)
+
+
 module Access = struct
   type t =
     | Read of {exp: AccessExpression.t}
     | Write of {exp: AccessExpression.t}
     | ContainerRead of {exp: AccessExpression.t; pname: Procname.t}
     | ContainerWrite of {exp: AccessExpression.t; pname: Procname.t}
-    | InterfaceCall of Procname.t
+    | InterfaceCall of {exp: AccessExpression.t; pname: Procname.t}
   [@@deriving compare]
 
   let make_field_access exp ~is_write = if is_write then Write {exp} else Read {exp}
@@ -43,6 +47,8 @@ module Access = struct
   let make_container_access exp pname ~is_write =
     if is_write then ContainerWrite {exp; pname} else ContainerRead {exp; pname}
 
+
+  let make_unannotated_call_access exp pname = InterfaceCall {exp; pname}
 
   let is_write = function
     | InterfaceCall _ | Read _ | ContainerRead _ ->
@@ -59,11 +65,11 @@ module Access = struct
 
 
   let get_access_exp = function
-    | Read {exp} | Write {exp} | ContainerWrite {exp} | ContainerRead {exp} ->
-        Some exp
-    | InterfaceCall _ ->
-        None
+    | Read {exp} | Write {exp} | ContainerWrite {exp} | ContainerRead {exp} | InterfaceCall {exp} ->
+        exp
 
+
+  let should_keep formals access = get_access_exp access |> should_keep_exp formals
 
   let map ~f access =
     match access with
@@ -79,8 +85,9 @@ module Access = struct
     | ContainerRead ({exp} as record) ->
         let exp' = f exp in
         if phys_equal exp exp' then access else ContainerRead {record with exp= exp'}
-    | InterfaceCall _ as intfcall ->
-        intfcall
+    | InterfaceCall ({exp} as record) ->
+        let exp' = f exp in
+        if phys_equal exp exp' then access else InterfaceCall {record with exp= exp'}
 
 
   let pp fmt = function
@@ -92,8 +99,9 @@ module Access = struct
         F.fprintf fmt "Read of container %a via %a" AccessExpression.pp exp Procname.pp pname
     | ContainerWrite {exp; pname} ->
         F.fprintf fmt "Write to container %a via %a" AccessExpression.pp exp Procname.pp pname
-    | InterfaceCall pname ->
-        F.fprintf fmt "Call to un-annotated interface method %a" Procname.pp pname
+    | InterfaceCall {exp; pname} ->
+        F.fprintf fmt "Call to un-annotated interface method %a.%a" AccessExpression.pp exp
+          Procname.pp pname
 
 
   let mono_lang_pp = MF.wrap_monospaced pp_exp
@@ -107,7 +115,7 @@ module Access = struct
     | ContainerWrite {exp; pname} ->
         F.fprintf fmt "Write to container %a via call to %s" mono_lang_pp exp
           (MF.monospaced_to_string (Procname.get_method pname))
-    | InterfaceCall pname ->
+    | InterfaceCall {pname} ->
         F.fprintf fmt "Call to un-annotated interface method %a" Procname.pp pname
 end
 
@@ -117,68 +125,19 @@ module CallPrinter = struct
   let pp fmt cs = F.fprintf fmt "call to %a" Procname.pp (CallSite.pname cs)
 end
 
-module TraceElem = struct
-  include ExplicitTrace.MakeTraceElemModuloLocation (Access) (CallPrinter)
-  (** This choice means the comparator is insensitive to the location access. This preserves
-      correctness only if the overlying comparator (AccessSnapshot) takes into account the
-      characteristics of the access (eg lock status). *)
+module LockDomain = struct
+  include AbstractDomain.CountDomain (struct
+    (** arbitrary threshold for max locks we expect to be held simultaneously *)
+    let max = 5
+  end)
 
-  let is_write {elem} = Access.is_write elem
+  let acquire_lock = increment
 
-  let is_container_write {elem} = Access.is_container_write elem
+  let release_lock = decrement
 
-  let map ~f trace_elem = map ~f:(Access.map ~f) trace_elem
+  let integrate_summary ~caller_astate ~callee_astate = add caller_astate callee_astate
 
-  let make_container_access access_exp pname ~is_write loc =
-    make (Access.make_container_access access_exp pname ~is_write) loc
-
-
-  let make_field_access access_exp ~is_write loc =
-    make (Access.make_field_access access_exp ~is_write) loc
-
-
-  let make_unannotated_call_access pname loc = make (Access.InterfaceCall pname) loc
-end
-
-module LockCount = AbstractDomain.CountDomain (struct
-  let max = 5
-
-  (* arbitrary threshold for max locks we expect to be held simultaneously *)
-end)
-
-module LocksDomain = struct
-  include AbstractDomain.Map (AccessPath) (LockCount)
-
-  (* TODO: eventually, we'll ask acquire_lock/release_lock to pass the lock name. for now, this is a hack
-     to model having a single lock used everywhere *)
-  let the_only_lock = ((Var.of_id (Ident.create Ident.knormal 0), Typ.void_star), [])
-
-  let is_locked astate =
-    (* we only add locks with positive count, so safe to just check emptiness *)
-    not (is_empty astate)
-
-
-  let lookup_count lock astate = find_opt lock astate |> Option.value ~default:LockCount.bottom
-
-  let acquire_lock astate =
-    let count = lookup_count the_only_lock astate in
-    add the_only_lock (LockCount.increment count) astate
-
-
-  let release_lock astate =
-    let count = lookup_count the_only_lock astate in
-    try
-      let count' = LockCount.decrement count in
-      if LockCount.is_bottom count' then remove the_only_lock astate
-      else add the_only_lock count' astate
-    with Caml.Not_found -> astate
-
-
-  let integrate_summary ~caller_astate ~callee_astate =
-    let caller_count = lookup_count the_only_lock caller_astate in
-    let callee_count = lookup_count the_only_lock callee_astate in
-    let sum = LockCount.add caller_count callee_count in
-    if LockCount.is_bottom sum then caller_astate else add the_only_lock sum caller_astate
+  let is_locked t = not (is_bottom t)
 end
 
 module ThreadsDomain = struct
@@ -245,75 +204,12 @@ module ThreadsDomain = struct
     match callee_astate with AnyThreadButSelf -> callee_astate | _ -> caller_astate
 end
 
-module AccessSnapshot = struct
-  module OwnershipPrecondition = struct
-    type t = Conjunction of IntSet.t | False [@@deriving compare]
-
-    (* precondition is true if the conjunction of owned indexes is empty *)
-    let is_true = function False -> false | Conjunction set -> IntSet.is_empty set
-
-    let pp fmt = function
-      | Conjunction indexes ->
-          F.fprintf fmt "Owned(%a)"
-            (PrettyPrintable.pp_collection ~pp_item:Int.pp)
-            (IntSet.elements indexes)
-      | False ->
-          F.pp_print_string fmt "False"
-  end
-
-  type t =
-    { access: TraceElem.t
-    ; thread: ThreadsDomain.t
-    ; lock: bool
-    ; ownership_precondition: OwnershipPrecondition.t }
-  [@@deriving compare]
-
-  let make_if_not_owned access lock thread ownership_precondition =
-    if not (OwnershipPrecondition.is_true ownership_precondition) then
-      Some {access; lock; thread; ownership_precondition}
-    else None
-
-
-  let make access lock thread ownership_precondition =
-    let lock = LocksDomain.is_locked lock in
-    make_if_not_owned access lock thread ownership_precondition
-
-
-  let make_from_snapshot access {lock; thread; ownership_precondition} =
-    make_if_not_owned access lock thread ownership_precondition
-
-
-  let is_unprotected {thread; lock; ownership_precondition} =
-    (not (ThreadsDomain.is_any_but_self thread))
-    && (not lock)
-    && not (OwnershipPrecondition.is_true ownership_precondition)
-
-
-  let pp fmt {access; thread; lock; ownership_precondition} =
-    F.fprintf fmt "Loc: %a Access: %a Thread: %a Lock: %b Pre: %a" Location.pp
-      (TraceElem.get_loc access) TraceElem.pp access ThreadsDomain.pp thread lock
-      OwnershipPrecondition.pp ownership_precondition
-end
-
-module AccessDomain = struct
-  include AbstractDomain.FiniteSet (AccessSnapshot)
-
-  let add ({AccessSnapshot.access= {elem}} as s) astate =
-    let skip =
-      Access.get_access_exp elem
-      |> Option.exists ~f:(fun exp -> AccessExpression.get_base exp |> fst |> should_skip_var)
-    in
-    if skip then astate else add s astate
-
-
-  let add_opt snapshot_opt astate =
-    Option.fold snapshot_opt ~init:astate ~f:(fun acc s -> add s acc)
-end
-
 module OwnershipAbstractValue = struct
   type t = OwnedIf of IntSet.t | Unowned [@@deriving compare]
 
   let owned = OwnedIf IntSet.empty
+
+  let is_owned = function OwnedIf set -> IntSet.is_empty set | Unowned -> false
 
   let unowned = Unowned
 
@@ -352,6 +248,87 @@ module OwnershipAbstractValue = struct
           F.fprintf fmt "OwnedIf%a"
             (PrettyPrintable.pp_collection ~pp_item:Int.pp)
             (IntSet.elements s)
+end
+
+module AccessSnapshot = struct
+  module AccessSnapshotElem = struct
+    type t =
+      { access: Access.t
+      ; thread: ThreadsDomain.t
+      ; lock: bool
+      ; ownership_precondition: OwnershipAbstractValue.t }
+    [@@deriving compare]
+
+    let pp fmt {access; thread; lock; ownership_precondition} =
+      F.fprintf fmt "Access: %a Thread: %a Lock: %b Pre: %a" Access.pp access ThreadsDomain.pp
+        thread lock OwnershipAbstractValue.pp ownership_precondition
+
+
+    let describe fmt {access} = Access.describe fmt access
+  end
+
+  include ExplicitTrace.MakeTraceElemModuloLocation (AccessSnapshotElem) (CallPrinter)
+
+  let is_write {elem= {access}} = Access.is_write access
+
+  let is_container_write {elem= {access}} = Access.is_container_write access
+
+  let filter formals t =
+    if
+      (not (OwnershipAbstractValue.is_owned t.elem.ownership_precondition))
+      && Access.should_keep formals t.elem.access
+    then Some t
+    else None
+
+
+  let make_if_not_owned formals access lock thread ownership_precondition loc =
+    make {access; lock; thread; ownership_precondition} loc |> filter formals
+
+
+  let make_unannotated_call_access formals exp pname lock ownership loc =
+    let lock = LockDomain.is_locked lock in
+    let access = Access.make_unannotated_call_access exp pname in
+    make_if_not_owned formals access lock ownership loc
+
+
+  let make_access formals acc_exp ~is_write loc lock thread ownership_precondition =
+    let lock = LockDomain.is_locked lock in
+    let access = Access.make_field_access acc_exp ~is_write in
+    make_if_not_owned formals access lock thread ownership_precondition loc
+
+
+  let make_container_access formals acc_exp ~is_write callee loc lock thread ownership_precondition
+      =
+    let lock = LockDomain.is_locked lock in
+    let access = Access.make_container_access acc_exp callee ~is_write in
+    make_if_not_owned formals access lock thread ownership_precondition loc
+
+
+  let map_opt formals ~f t =
+    map t ~f:(fun elem -> {elem with access= Access.map ~f elem.access}) |> filter formals
+
+
+  let update_callee_access formals snapshot callsite ownership_precondition threads locks =
+    let thread =
+      ThreadsDomain.integrate_summary ~callee_astate:snapshot.elem.thread ~caller_astate:threads
+    in
+    let lock = snapshot.elem.lock || LockDomain.is_locked locks in
+    with_callsite snapshot callsite
+    |> map ~f:(fun elem -> {elem with lock; thread; ownership_precondition})
+    |> filter formals
+
+
+  let is_unprotected {elem= {thread; lock; ownership_precondition}} =
+    (not (ThreadsDomain.is_any_but_self thread))
+    && (not lock)
+    && not (OwnershipAbstractValue.is_owned ownership_precondition)
+end
+
+module AccessDomain = struct
+  include AbstractDomain.FiniteSet (AccessSnapshot)
+
+  let add_opt snapshot_opt astate =
+    Option.fold snapshot_opt ~init:astate ~f:(fun acc s -> add s acc)
 end
 
 module OwnershipDomain = struct
@@ -409,103 +386,83 @@ module OwnershipDomain = struct
           IntSet.fold get_ownership formal_indexes OwnershipAbstractValue.owned
     in
     add ret_access_exp ret_ownership_wrt_actuals ownership
-
-
-  let get_precondition exp t =
-    match get_owned exp t with
-    | OwnedIf formal_indexes ->
-        (* access expression conditionally owned if [formal_indexes] are owned *)
-        AccessSnapshot.OwnershipPrecondition.Conjunction formal_indexes
-    | Unowned ->
-        (* access expression not rooted in a formal and not conditionally owned *)
-        AccessSnapshot.OwnershipPrecondition.False
-end
-
-module Choice = struct
-  type t = OnMainThread | LockHeld [@@deriving compare]
-
-  let pp fmt = function
-    | OnMainThread ->
-        F.pp_print_string fmt "OnMainThread"
-    | LockHeld ->
-        F.pp_print_string fmt "LockHeld"
 end
 
 module Attribute = struct
-  type t = Functional | Choice of Choice.t [@@deriving compare]
+  type t = Nothing | Functional | OnMainThread | LockHeld | Synchronized [@@deriving equal]
 
-  let pp fmt = function
+  let pp fmt t =
+    ( match t with
+    | Nothing ->
+        "Nothing"
     | Functional ->
-        F.pp_print_string fmt "Functional"
-    | Choice choice ->
-        Choice.pp fmt choice
+        "Functional"
+    | OnMainThread ->
+        "OnMainThread"
+    | LockHeld ->
+        "LockHeld"
+    | Synchronized ->
+        "Synchronized" )
+    |> F.pp_print_string fmt
+
+
+  let top = Nothing
+
+  let is_top = function Nothing -> true | _ -> false
+
+  let join t t' = if equal t t' then t else Nothing
+
+  let leq ~lhs ~rhs = equal (join lhs rhs) rhs
+
+  let widen ~prev ~next ~num_iters:_ = join prev next
 end
 
-module AttributeSetDomain = AbstractDomain.InvertedSet (Attribute)
-
 module AttributeMapDomain = struct
-  include AbstractDomain.InvertedMap (AccessExpression) (AttributeSetDomain)
+  include AbstractDomain.SafeInvertedMap (AccessExpression) (Attribute)
 
-  let add access_expression attribute_set t =
-    if AttributeSetDomain.is_empty attribute_set then t else add access_expression attribute_set t
+  let get acc_exp t = find_opt acc_exp t |> Option.value ~default:Attribute.top
 
-
-  let has_attribute access_expression attribute t =
-    try find access_expression t |> AttributeSetDomain.mem attribute with Caml.Not_found -> false
+  let is_functional t access_expression =
+    match find_opt access_expression t with Some Functional -> true | _ -> false
 
 
-  let get_choices access_expression t =
-    try
-      let attributes = find access_expression t in
-      AttributeSetDomain.fold
-        (fun cc acc -> match cc with Attribute.Choice c -> c :: acc | _ -> acc)
-        attributes []
-    with Caml.Not_found -> []
+  let is_synchronized t access_expression =
+    match find_opt access_expression t with Some Synchronized -> true | _ -> false
 
 
-  let add_attribute access_expression attribute t =
-    update access_expression
-      (function
-        | Some attrs ->
-            Some (AttributeSetDomain.add attribute attrs)
-        | None ->
-            Some (AttributeSetDomain.singleton attribute) )
-      t
-
-
-  let rec attributes_of_expr attribute_map (e : HilExp.t) =
+  let rec attribute_of_expr attribute_map (e : HilExp.t) =
     match e with
-    | AccessExpression access_expr -> (
-      try find access_expr attribute_map with Caml.Not_found -> AttributeSetDomain.empty )
+    | AccessExpression access_expr ->
+        get access_expr attribute_map
     | Constant _ ->
-        AttributeSetDomain.singleton Attribute.Functional
+        Attribute.Functional
     | Exception expr (* treat exceptions as transparent wrt attributes *) | Cast (_, expr) ->
-        attributes_of_expr attribute_map expr
+        attribute_of_expr attribute_map expr
     | UnaryOperator (_, expr, _) ->
-        attributes_of_expr attribute_map expr
+        attribute_of_expr attribute_map expr
     | BinaryOperator (_, expr1, expr2) ->
-        let attributes1 = attributes_of_expr attribute_map expr1 in
-        let attributes2 = attributes_of_expr attribute_map expr2 in
-        AttributeSetDomain.join attributes1 attributes2
+        let attribute1 = attribute_of_expr attribute_map expr1 in
+        let attribute2 = attribute_of_expr attribute_map expr2 in
+        Attribute.join attribute1 attribute2
     | Closure _ | Sizeof _ ->
-        AttributeSetDomain.empty
+        Attribute.top
 
 
   let propagate_assignment lhs_access_expression rhs_exp attribute_map =
-    let rhs_attributes = attributes_of_expr attribute_map rhs_exp in
-    add lhs_access_expression rhs_attributes attribute_map
+    let rhs_attribute = attribute_of_expr attribute_map rhs_exp in
+    add lhs_access_expression rhs_attribute attribute_map
 end
 
 type t =
   { threads: ThreadsDomain.t
-  ; locks: LocksDomain.t
+  ; locks: LockDomain.t
   ; accesses: AccessDomain.t
   ; ownership: OwnershipDomain.t
   ; attribute_map: AttributeMapDomain.t }
 
 let bottom =
   let threads = ThreadsDomain.bottom in
-  let locks = LocksDomain.empty in
+  let locks = LockDomain.bottom in
   let accesses = AccessDomain.empty in
   let ownership = OwnershipDomain.empty in
   let attribute_map = AttributeMapDomain.empty in
@@ -513,7 +470,7 @@ let bottom =
 
 
 let is_bottom {threads; locks; accesses; ownership; attribute_map} =
-  ThreadsDomain.is_bottom threads && LocksDomain.is_empty locks && AccessDomain.is_empty accesses
+  ThreadsDomain.is_bottom threads && LockDomain.is_bottom locks && AccessDomain.is_empty accesses
   && OwnershipDomain.is_empty ownership
   && AttributeMapDomain.is_empty attribute_map
 
@@ -522,7 +479,7 @@ let leq ~lhs ~rhs =
   if phys_equal lhs rhs then true
   else
     ThreadsDomain.leq ~lhs:lhs.threads ~rhs:rhs.threads
-    && LocksDomain.leq ~lhs:lhs.locks ~rhs:rhs.locks
+    && LockDomain.leq ~lhs:lhs.locks ~rhs:rhs.locks
     && AccessDomain.leq ~lhs:lhs.accesses ~rhs:rhs.accesses
     && AttributeMapDomain.leq ~lhs:lhs.attribute_map ~rhs:rhs.attribute_map
 
@@ -531,7 +488,7 @@ let join astate1 astate2 =
   if phys_equal astate1 astate2 then astate1
   else
     let threads = ThreadsDomain.join astate1.threads astate2.threads in
-    let locks = LocksDomain.join astate1.locks astate2.locks in
+    let locks = LockDomain.join astate1.locks astate2.locks in
     let accesses = AccessDomain.join astate1.accesses astate2.accesses in
     let ownership = OwnershipDomain.join astate1.ownership astate2.ownership in
     let attribute_map = AttributeMapDomain.join astate1.attribute_map astate2.attribute_map in
@@ -542,7 +499,7 @@ let widen ~prev ~next ~num_iters =
   if phys_equal prev next then prev
   else
     let threads = ThreadsDomain.widen ~prev:prev.threads ~next:next.threads ~num_iters in
-    let locks = LocksDomain.widen ~prev:prev.locks ~next:next.locks ~num_iters in
+    let locks = LockDomain.widen ~prev:prev.locks ~next:next.locks ~num_iters in
     let accesses = AccessDomain.widen ~prev:prev.accesses ~next:next.accesses ~num_iters in
     let ownership = OwnershipDomain.widen ~prev:prev.ownership ~next:next.ownership ~num_iters in
     let attribute_map =
@@ -553,33 +510,75 @@ let widen ~prev ~next ~num_iters =
 
 type summary =
   { threads: ThreadsDomain.t
-  ; locks: LocksDomain.t
+  ; locks: LockDomain.t
   ; accesses: AccessDomain.t
   ; return_ownership: OwnershipAbstractValue.t
-  ; return_attributes: AttributeSetDomain.t }
+  ; return_attribute: Attribute.t
+  ; attributes: AttributeMapDomain.t }
 
 let empty_summary =
   { threads= ThreadsDomain.bottom
-  ; locks= LocksDomain.empty
-  ; accesses= AccessDomain.empty
+  ; locks= LockDomain.bottom
+  ; accesses= AccessDomain.bottom
   ; return_ownership= OwnershipAbstractValue.unowned
-  ; return_attributes= AttributeSetDomain.empty }
+  ; return_attribute= Attribute.top
+  ; attributes= AttributeMapDomain.top }
 
 
-let pp_summary fmt {threads; locks; accesses; return_ownership; return_attributes} =
+let pp_summary fmt {threads; locks; accesses; return_ownership; return_attribute; attributes} =
   F.fprintf fmt
-    "@\nThreads: %a, Locks: %a @\nAccesses %a @\nOwnership: %a @\nReturn Attributes: %a @\n"
-    ThreadsDomain.pp threads LocksDomain.pp locks AccessDomain.pp accesses OwnershipAbstractValue.pp
-    return_ownership AttributeSetDomain.pp return_attributes
+    "@\n\
+     Threads: %a, Locks: %a @\n\
+     Accesses %a @\n\
+     Ownership: %a @\n\
+     Return Attribute: %a @\n\
+     Attributes: %a @\n"
+    ThreadsDomain.pp threads LockDomain.pp locks AccessDomain.pp accesses OwnershipAbstractValue.pp
+    return_ownership Attribute.pp return_attribute AttributeMapDomain.pp attributes
 
 
 let pp fmt {threads; locks; accesses; ownership; attribute_map} =
   F.fprintf fmt "Threads: %a, Locks: %a @\nAccesses %a @\nOwnership: %a @\nAttributes: %a @\n"
-    ThreadsDomain.pp threads LocksDomain.pp locks AccessDomain.pp accesses OwnershipDomain.pp
+    ThreadsDomain.pp threads LockDomain.pp locks AccessDomain.pp accesses OwnershipDomain.pp
     ownership AttributeMapDomain.pp attribute_map
 
 
-let add_unannotated_call_access pname loc (astate : t) =
-  let access = TraceElem.make_unannotated_call_access pname loc in
-  let snapshot = AccessSnapshot.make access astate.locks astate.threads False in
-  {astate with accesses= AccessDomain.add_opt snapshot astate.accesses}
+let add_unannotated_call_access formals pname actuals loc (astate : t) =
+  match actuals with
+  | [] ->
+      astate
+  | receiver_hilexp :: _ -> (
+    match HilExp.get_access_exprs receiver_hilexp with
+    | [] | _ :: _ :: _ ->
+        (* if no access exps involved, or if more than one (should be impossible), ignore *)
+        astate
+    | [receiver] ->
+        let snapshot =
+          AccessSnapshot.make_unannotated_call_access formals receiver pname astate.locks
+            astate.threads Unowned loc
+        in
+        {astate with accesses= AccessDomain.add_opt snapshot astate.accesses} )
+
+
+let astate_to_summary proc_desc formals {threads; locks; accesses; ownership; attribute_map} =
+  let proc_name = Procdesc.get_proc_name proc_desc in
+  let return_var_exp =
+    AccessExpression.base
+      (Var.of_pvar (Pvar.get_ret_pvar proc_name), Procdesc.get_ret_type proc_desc)
+  in
+  let return_ownership = OwnershipDomain.get_owned return_var_exp ownership in
+  let return_attribute = AttributeMapDomain.get return_var_exp attribute_map in
+  let locks =
+    (* if method is [synchronized] released the lock once. *)
+    if Procdesc.is_java_synchronized proc_desc then LockDomain.release_lock locks else locks
+  in
+  let attributes =
+    (* store only the [Synchronized] attribute for class initializers/constructors *)
+    if Procname.is_java_class_initializer proc_name || Procname.is_constructor proc_name then
+      AttributeMapDomain.filter
+        (fun exp attribute ->
+          match attribute with Synchronized -> should_keep_exp formals exp | _ -> false )
+        attribute_map
+    else AttributeMapDomain.top
+  in
+  {threads; locks; accesses; return_ownership; return_attribute; attributes}

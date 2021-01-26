@@ -9,12 +9,6 @@ open! IStd
 module F = Format
 module Domain = LithoDomain
 
-module Payload = SummaryPayload.Make (struct
-  type t = Domain.summary
-
-  let field = Payloads.Fields.litho_required_props
-end)
-
 (* VarProp is only for props that have a varArg parameter like
      @Prop(varArg = "var_prop") whereas Prop is for everything except. *)
 type required_prop = Prop of string | VarProp of {prop: string; var_prop: string}
@@ -65,7 +59,7 @@ let get_required_props typename tenv =
       []
 
 
-let report_missing_required_prop summary prop parent_typename ~create_loc call_chain =
+let report_missing_required_prop proc_desc err_log prop parent_typename ~create_loc call_chain =
   let message =
     let prop_string =
       match prop with
@@ -74,7 +68,9 @@ let report_missing_required_prop summary prop parent_typename ~create_loc call_c
       | VarProp {var_prop; prop} ->
           F.asprintf "Either @Prop %s or @Prop(varArg = %s)" prop var_prop
     in
-    F.asprintf "%a is required for component %s, but is not set before the call to build()"
+    F.asprintf
+      "%a is required for component %s, but is not set before the call to build(). Either set the \
+       missing @Prop or make @Prop(optional = true)."
       MarkupFormatter.pp_bold prop_string (Typ.Name.name parent_typename)
   in
   let make_single_trace loc message = Errlog.make_trace_element 0 loc message [] in
@@ -88,7 +84,8 @@ let report_missing_required_prop summary prop parent_typename ~create_loc call_c
            in
            Errlog.make_trace_element 0 location call_msg [] )
   in
-  Reporting.log_error summary ~loc:create_loc ~ltr IssueType.missing_required_prop message
+  Reporting.log_issue proc_desc err_log ~loc:create_loc ~ltr LithoRequiredProps
+    IssueType.missing_required_prop message
 
 
 let has_prop prop_set prop =
@@ -122,41 +119,40 @@ let is_litho_function = function
       false
 
 
-let is_component_builder procname tenv =
+let is_builder procname tenv =
   match procname with
   | Procname.Java java_procname ->
-      PatternMatch.is_subtype_of_str tenv
-        (Procname.Java.get_class_type_name java_procname)
-        "com.facebook.litho.Component$Builder"
+      let class_name = Procname.Java.get_class_type_name java_procname in
+      Domain.is_component_or_section_builder class_name tenv
   | _ ->
       false
 
 
-let is_component procname tenv =
+let is_component_or_section procname tenv =
   match procname with
   | Procname.Java java_procname ->
-      PatternMatch.is_subtype_of_str tenv
-        (Procname.Java.get_class_type_name java_procname)
-        "com.facebook.litho.Component"
+      let class_name = Procname.Java.get_class_type_name java_procname in
+      PatternMatch.is_subtype_of_str tenv class_name "com.facebook.litho.Component"
+      || PatternMatch.is_subtype_of_str tenv class_name "com.facebook.litho.sections.Section"
   | _ ->
       false
 
 
-let is_component_build_method procname tenv =
+let is_build_method procname tenv =
+  match Procname.get_method procname with "build" -> is_builder procname tenv | _ -> false
+
+
+let is_create_method procname tenv =
   match Procname.get_method procname with
-  | "build" ->
-      is_component_builder procname tenv
+  | "create" ->
+      is_component_or_section procname tenv
   | _ ->
       false
-
-
-let is_component_create_method procname tenv =
-  match Procname.get_method procname with "create" -> is_component procname tenv | _ -> false
 
 
 let get_component_create_typ_opt procname tenv =
   match procname with
-  | Procname.Java java_pname when is_component_create_method procname tenv ->
+  | Procname.Java java_pname when is_create_method procname tenv ->
       Some (Procname.Java.get_class_type_name java_pname)
   | _ ->
       None
@@ -169,8 +165,8 @@ let satisfies_heuristic ~callee_pname ~callee_summary_opt tenv =
     Option.value_map ~default:false callee_summary_opt ~f:(fun sum ->
         LithoDomain.Mem.contains_build sum )
   in
-  is_component_build_method callee_pname tenv
-  || is_component_create_method callee_pname tenv
+  is_build_method callee_pname tenv
+  || is_create_method callee_pname tenv
   ||
   match callee_pname with
   | Procname.Java java_callee_procname ->
@@ -179,31 +175,28 @@ let satisfies_heuristic ~callee_pname ~callee_summary_opt tenv =
       not build_exists_in_callees
 
 
-let should_report proc_desc tenv =
-  let pname = Procdesc.get_proc_name proc_desc in
-  (not (is_litho_function pname))
-  && (not (is_component_build_method pname tenv))
-  && not (PredSymb.equal_access (Procdesc.get_access proc_desc) Private)
+let should_report pname tenv = not (is_litho_function pname || is_build_method pname tenv)
 
-
-let report astate tenv summary =
+let report {InterproceduralAnalysis.proc_desc; tenv; err_log} astate =
   let check_on_string_set parent_typename create_loc call_chain prop_set =
     let required_props = get_required_props parent_typename tenv in
     List.iter required_props ~f:(fun required_prop ->
         if not (has_prop prop_set required_prop) then
-          report_missing_required_prop summary required_prop parent_typename ~create_loc call_chain
-    )
+          report_missing_required_prop proc_desc err_log required_prop parent_typename ~create_loc
+            call_chain )
   in
   Domain.check_required_props ~check_on_string_set astate
 
 
-type get_proc_summary_and_formals = Procname.t -> (Domain.summary * (Pvar.t * Typ.t) list) option
+type analysis_data =
+  { interproc: LithoDomain.summary InterproceduralAnalysis.t
+  ; get_proc_summary_and_formals: Procname.t -> (Domain.summary * (Pvar.t * Typ.t) list) option }
 
 module TransferFunctions = struct
   module CFG = ProcCfg.Normal
   module Domain = LithoDomain
 
-  type extras = {get_proc_summary_and_formals: get_proc_summary_and_formals}
+  type nonrec analysis_data = analysis_data
 
   let apply_callee_summary summary_opt callsite ~caller_pname ~callee_pname ret_id_typ formals
       actuals astate =
@@ -212,9 +205,16 @@ module TransferFunctions = struct
           ~caller:astate ~callee:callee_summary )
 
 
-  let exec_instr astate ProcData.{summary; tenv; extras= {get_proc_summary_and_formals}} _
+  let assume_null caller_pname x astate =
+    let access_path =
+      Domain.LocalAccessPath.make (HilExp.AccessExpression.to_access_path x) caller_pname
+    in
+    Domain.assume_null access_path astate
+
+
+  let exec_instr astate {interproc= {proc_desc; tenv}; get_proc_summary_and_formals} _
       (instr : HilInstr.t) : Domain.t =
-    let caller_pname = Summary.get_proc_name summary in
+    let caller_pname = Procdesc.get_proc_name proc_desc in
     match instr with
     | Call
         ( return_base
@@ -228,7 +228,7 @@ module TransferFunctions = struct
           Domain.LocalAccessPath.make_from_access_expression receiver_ae caller_pname
         in
         if
-          (is_component_builder callee_pname tenv || is_component_create_method callee_pname tenv)
+          (is_builder callee_pname tenv || is_create_method callee_pname tenv)
           (* track callee in order to report respective errors *)
           && satisfies_heuristic ~callee_pname ~callee_summary_opt tenv
         then
@@ -237,11 +237,14 @@ module TransferFunctions = struct
           | Some create_typ ->
               Domain.call_create return_access_path create_typ location astate
           | None ->
-              if is_component_build_method callee_pname tenv then
+              if is_build_method callee_pname tenv then
                 Domain.call_build_method ~ret:return_access_path ~receiver astate
-              else if is_component_builder callee_pname tenv then
-                let callee_prefix = Domain.MethodCallPrefix.make callee_pname location in
-                Domain.call_builder ~ret:return_access_path ~receiver callee_prefix astate
+              else if is_builder callee_pname tenv then
+                let callee_prefixes =
+                  Domain.MethodCallPrefix.make_with_prefixes callee_pname location
+                in
+                List.fold ~init:astate callee_prefixes ~f:(fun acc callee_prefix ->
+                    Domain.call_builder ~ret:return_access_path ~receiver callee_prefix acc )
               else astate
         else
           (* treat it like a normal call *)
@@ -276,6 +279,18 @@ module TransferFunctions = struct
               astate
         in
         if HilExp.AccessExpression.is_return_var lhs_ae then Domain.call_return astate else astate
+    | Assume (BinaryOperator (Eq, AccessExpression x, null), _, _, _)
+      when HilExp.is_null_literal null ->
+        assume_null caller_pname x astate
+    | Assume (BinaryOperator (Eq, null, AccessExpression x), _, _, _)
+      when HilExp.is_null_literal null ->
+        assume_null caller_pname x astate
+    | Assume (UnaryOperator (LNot, BinaryOperator (Ne, AccessExpression x, null), _), _, _, _)
+      when HilExp.is_null_literal null ->
+        assume_null caller_pname x astate
+    | Assume (UnaryOperator (LNot, BinaryOperator (Ne, null, AccessExpression x), _), _, _, _)
+      when HilExp.is_null_literal null ->
+        assume_null caller_pname x astate
     | _ ->
         astate
 
@@ -285,31 +300,25 @@ end
 
 module Analyzer = LowerHil.MakeAbstractInterpreter (TransferFunctions)
 
-let init_extras summary =
+let init_analysis_data ({InterproceduralAnalysis.analyze_dependency} as interproc) =
   let get_proc_summary_and_formals callee_pname =
-    Payload.read_full ~caller_summary:summary ~callee_pname
+    analyze_dependency callee_pname
     |> Option.map ~f:(fun (callee_pdesc, callee_summary) ->
            (callee_summary, Procdesc.get_pvar_formals callee_pdesc) )
   in
-  TransferFunctions.{get_proc_summary_and_formals}
+  {interproc; get_proc_summary_and_formals}
 
 
-let checker {Callbacks.summary; exe_env} =
-  let proc_desc = Summary.get_proc_desc summary in
-  let proc_name = Summary.get_proc_name summary in
-  let tenv = Exe_env.get_tenv exe_env (Summary.get_proc_name summary) in
-  let proc_data = ProcData.make summary tenv (init_extras summary) in
+let checker ({InterproceduralAnalysis.proc_desc; tenv} as analysis_data) =
+  let proc_name = Procdesc.get_proc_name proc_desc in
+  let ret_typ = Procdesc.get_ret_type proc_desc in
   let ret_path =
     let ret_var = Procdesc.get_ret_var proc_desc in
-    let ret_typ = Procdesc.get_ret_type proc_desc in
     Domain.LocalAccessPath.make_from_pvar ret_var ret_typ proc_name
   in
   let initial = Domain.init tenv proc_name (Procdesc.get_pvar_formals proc_desc) ret_path in
-  match Analyzer.compute_post proc_data ~initial with
-  | Some post ->
-      let is_void_func = Procdesc.get_ret_type proc_desc |> Typ.is_void in
-      let post = Domain.get_summary ~is_void_func post in
-      let post = if should_report proc_desc tenv then report post tenv summary else post in
-      Payload.update_summary post summary
-  | None ->
-      summary
+  Analyzer.compute_post (init_analysis_data analysis_data) ~initial proc_desc
+  |> Option.map ~f:(fun post ->
+         let is_void_func = Typ.is_void ret_typ in
+         let post = Domain.get_summary ~is_void_func post in
+         if should_report proc_name tenv then report analysis_data post else post )

@@ -26,12 +26,14 @@ val should_create_procdesc :
 
 val create_local_procdesc :
      ?set_objc_accessor_attr:bool
+  -> ?record_lambda_captured:bool
+  -> ?is_cpp_lambda_call_operator:bool
   -> CFrontend_config.translation_unit_context
   -> Cfg.t
   -> Tenv.t
   -> CMethodSignature.t
   -> Clang_ast_t.stmt list
-  -> (Pvar.t * Typ.t) list
+  -> (Pvar.t * Typ.t * Pvar.capture_mode) list
   -> bool
 
 val create_external_procdesc :
@@ -55,8 +57,14 @@ val method_signature_of_pointer : Tenv.t -> Clang_ast_t.pointer -> CMethodSignat
 val get_method_name_from_clang : Tenv.t -> CMethodSignature.t option -> Procname.t option
 
 val create_procdesc_with_pointer :
-  CContext.t -> Clang_ast_t.pointer -> Typ.Name.t option -> string -> Procname.t
+     ?captured_vars:(Pvar.t * Typ.t * Pvar.capture_mode) list
+  -> CContext.t
+  -> Clang_ast_t.pointer
+  -> Typ.Name.t option
+  -> string
+  -> Procname.t
 
-val get_procname_from_cpp_lambda : CContext.t -> Clang_ast_t.decl -> Procname.t
+val get_procname_from_cpp_lambda :
+  CContext.t -> Clang_ast_t.decl -> (Pvar.t * Typ.t * Pvar.capture_mode) list -> Procname.t
 
 val get_captures_from_cpp_lambda : Clang_ast_t.decl -> Clang_ast_t.lambda_capture_info list

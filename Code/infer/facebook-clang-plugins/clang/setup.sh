@@ -1,5 +1,5 @@
 #!/bin/bash
-# Copyright (c) 2014-present, Facebook, Inc.
+# Copyright (c) Facebook, Inc. and its affiliates.
 #
 # This source code is licensed under the MIT license found in the
 # LICENSE file in the root directory of this source tree.
@@ -10,8 +10,7 @@ set -e
 set -o pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-SCRIPT_RELATIVE_PATH="$(basename "${BASH_SOURCE[0]}")"
-CLANG_RELATIVE_SRC="src/llvm_clang_compiler-rt_libcxx_libcxxabi_openmp-9.0.0.tar.xz"
+CLANG_RELATIVE_SRC="src/download/llvm"
 CLANG_SRC="$SCRIPT_DIR/$CLANG_RELATIVE_SRC"
 CLANG_PREBUILD_PATCHES=(
     "$SCRIPT_DIR/src/err_ret_local_block.patch"
@@ -34,29 +33,54 @@ usage () {
     echo " options:"
     echo "    -c,--only-check-install    check if recompiling clang is needed"
     echo "    -h,--help                  show this message"
+    echo "    -n,--ninja                 use ninja for building"
+    echo "    -p,--clang-hash            print the installed clang hash"
     echo "    -r,--only-record-install   do not install clang but pretend we did"
+    echo "    -s,--sequential-link       only use one process for linking (ninja only)"
+}
+
+clang_hash () {
+    pushd "$SCRIPT_DIR" > /dev/null
+    HASH=$($SHASUM setup.sh src/prepare_clang_src.sh | $SHASUM)
+    printf "%s" "$HASH" | cut -d ' ' -f 1
+    popd > /dev/null
 }
 
 check_installed () {
     pushd "$SCRIPT_DIR" > /dev/null
-    $SHASUM -c "$CLANG_INSTALLED_VERSION_FILE" >& /dev/null
-    local result=$?
+    HASH=$(clang_hash)
+    RESULT=1
+    if [ -f "$CLANG_INSTALLED_VERSION_FILE" ]; then
+        FILE_HASH=$(cat "$CLANG_INSTALLED_VERSION_FILE")
+        if [ "$HASH" == "$FILE_HASH" ]; then
+            RESULT=0
+        fi
+    fi
     popd > /dev/null
-    return $result
+    return $RESULT
 }
 
 record_installed () {
     pushd "$SCRIPT_DIR" > /dev/null
-    $SHASUM "$CLANG_RELATIVE_SRC" "$SCRIPT_RELATIVE_PATH" > "$CLANG_INSTALLED_VERSION_FILE"
+    HASH=$(clang_hash)
+    echo $HASH > "$CLANG_INSTALLED_VERSION_FILE"
     popd > /dev/null
 }
 
 ONLY_CHECK=
 ONLY_RECORD=
+PRINT_CLANG_HASH=
+USE_NINJA=
+SEQUENTIAL_LINK=
 
 while [[ $# -gt 0 ]]; do
     opt_key="$1"
     case $opt_key in
+        -p|--clang-hash)
+            PRINT_CLANG_HASH=yes
+            shift
+            continue
+            ;;
         -c|--only-check-install)
             ONLY_CHECK=yes
             shift
@@ -64,6 +88,16 @@ while [[ $# -gt 0 ]]; do
             ;;
         -r|--only-record-install)
             ONLY_RECORD=yes
+            shift
+            continue
+            ;;
+        -n|--ninja)
+            USE_NINJA=yes
+            shift
+            continue
+            ;;
+        -s|--sequential-link)
+            SEQUENTIAL_LINK=yes
             shift
             continue
             ;;
@@ -77,6 +111,11 @@ while [[ $# -gt 0 ]]; do
     esac
     shift
 done
+
+if [ "$PRINT_CLANG_HASH" = "yes" ]; then
+    clang_hash
+    exit 0
+fi
 
 if [ "$ONLY_RECORD" = "yes" ]; then
     record_installed
@@ -141,7 +180,44 @@ else
     )
 fi
 
+if [ "$USE_NINJA" = "yes" ]; then
+    CMAKE_GENERATOR="Ninja"
+    BUILD_BIN="ninja"
+    # Do not set a 'j' build default for Ninja (let Ninja decide)
+    BUILD_ARGS=""
+else
+    CMAKE_GENERATOR="Unix Makefiles"
+    BUILD_BIN="make"
+    BUILD_ARGS="-j $JOBS"
+fi
+
+if [ "$SEQUENTIAL_LINK" = "yes" ]; then
+    if [[ x"$USE_NINJA" = x ]]; then
+        echo "Linking with a single process is only supported with the Ninja generator."
+        echo "Unable to proceed, exiting."
+        exit 1
+    fi
+    # For Ninja, the compile jobs is the number of CPUs *not* $JOBS
+    CMAKE_ARGS+=(
+        -DCMAKE_JOB_POOLS:STRING="compile=$NCPUS;link=1"
+        -DCMAKE_JOB_POOL_COMPILE:STRING="compile"
+        -DCMAKE_JOB_POOL_LINK:STRING="link"
+    )
+fi
+
 # start the installation
+if [ ! -d "$CLANG_SRC" ]; then
+    echo "Clang src (${CLANG_SRC}) missing, please run src/prepare_clang_src.sh"
+    exit 1
+fi
+
+# apply prebuild patch
+pushd "${SCRIPT_DIR}/src/download"
+for PATCH_FILE in ${CLANG_PREBUILD_PATCHES[*]}; do
+    "$PATCH" --batch -p 1 < "$PATCH_FILE"
+done
+popd
+
 if [ -n "$CLANG_TMP_DIR" ]; then
     TMP=$CLANG_TMP_DIR
 else
@@ -149,27 +225,15 @@ else
 fi
 pushd "$TMP"
 
-if tar --version | grep -q 'GNU'; then
-    # GNU tar is too verbose if the tarball was created on MacOS
-    QUIET_TAR="--warning=no-unknown-keyword"
-fi
-echo "unpacking '$CLANG_SRC'..."
-tar --extract $QUIET_TAR --file "$CLANG_SRC"
-
-# apply prebuild patch
-for PATCH_FILE in ${CLANG_PREBUILD_PATCHES[*]}; do
-    "$PATCH" --batch -p 1 < "$PATCH_FILE"
-done
-
 mkdir -p build
 pushd build
 
 # workaround install issue with ocaml llvm bindings and ocamldoc
 mkdir -p docs/ocamldoc/html
 
-cmake -G "Unix Makefiles" ../llvm "${CMAKE_ARGS[@]}" $CLANG_CMAKE_ARGS
+cmake -G "$CMAKE_GENERATOR" "$CLANG_SRC" "${CMAKE_ARGS[@]}" $CLANG_CMAKE_ARGS
 
-make -j $JOBS
+$BUILD_BIN $BUILD_ARGS
 
 echo "testing clang build"
 ./bin/clang --version
@@ -177,7 +241,7 @@ echo "testing clang build"
 # "uninstall" previous clang
 rm -fr "$CLANG_PREFIX"
 
-make -j $JOBS install
+$BUILD_BIN $BUILD_ARGS install
 
 popd # build
 popd # $TMP

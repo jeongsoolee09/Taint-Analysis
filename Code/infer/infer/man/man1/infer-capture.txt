@@ -126,6 +126,10 @@ BUCK OPTIONS
            Activates: Buck integration for clang-based targets
            (C/C++/Objective-C/Objective-C++). (Conversely: --no-buck-clang)
 
+       --buck-combined
+           Activates: Buck integration for clang-based and Java targets.
+           (Conversely: --no-buck-combined)
+
        --buck-compilation-database { no-deps | deps }
            Buck integration using the compilation database, with or without
            dependencies. Only includes clang targets, as per Buck's
@@ -139,15 +143,21 @@ BUCK OPTIONS
            Activates: Buck integration for Java targets. (Conversely:
            --no-buck-java)
 
+       --buck-java-flavor
+           Activates: Buck integration for Java which uses the buck flavor
+           #infer-java-capture instead of genrules like buck-java.
+           (Conversely: --no-buck-java-flavor)
+
+       --buck-java-flavor-suppress-config
+           Activates: Suppress setting buck config values for the infer
+           binary and its version in the buck-java-flavor integration.
+           (Conversely: --no-buck-java-flavor-suppress-config)
+
        --buck-merge-all-deps
            Activates: Find and merge all infer dependencies produced by buck.
            Use this flag if infer doesn't find any files to analyze after a
            successful capture. Only valid for --buck-clang. (Conversely:
            --no-buck-merge-all-deps)
-
-       --buck-out dir
-           Specify the root directory of buck-out. Only valid for
-           --buck-java.
 
        --buck-targets-blacklist +regex
            Skip capture of buck targets matched by the specified regular
@@ -173,14 +183,6 @@ CLANG LINTERS OPTIONS
        --no-default-linters
            Deactivates: Use the default linters for the analysis.
            (Conversely: --default-linters)
-
-       --iphoneos-target-sdk-version string
-           Specify the target SDK version to use for iphoneos
-
-       --iphoneos-target-sdk-version-path-regex +string
-           To pass a specific target SDK version to use for iphoneos in a
-           particular path, with the format path:version (can be specified
-           multiple times)
 
        --linter string
            From the linters available, only run this one linter. (Useful
@@ -222,6 +224,11 @@ CLANG OPTIONS
        --clang-blacklisted-flags-with-arg +string
            Clang flags (taking args) to filter out
 
+       --clang-compound-literal-init-limit int
+           Limit after which initialization of compound types (structs and
+           arrays) is not done element by element but using a builtin
+           function that each analysis has to model.
+
        --compilation-database +path
            File that contain compilation commands (can be specified multiple
            times)
@@ -230,11 +237,6 @@ CLANG OPTIONS
            File that contain compilation commands where all entries are
            escaped for the shell, eg coming from Xcode (can be specified
            multiple times)
-
-       --compute-analytics
-           Activates: Emit analytics as info-level issues, like component kit
-           line count and component kit file cyclomatic complexity
-           (Conversely: --no-compute-analytics)
 
        --no-cxx
            Deactivates: Analyze C++ methods (Conversely: --cxx)

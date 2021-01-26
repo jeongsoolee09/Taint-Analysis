@@ -28,31 +28,55 @@
 ROOT_DIR = ../../..
 include $(ROOT_DIR)/Makefile.config
 
-INFER_BUILD_DIR = ../_build/test
+INFER_BUILD_DIR = $(INFER_DIR)/_build/default/src
+DEADCODE_DIR = $(INFER_DIR)/src/deadcode
 
 ALL_INFER_IN_ONE_FILE_ML = all_infer_in_one_file.ml
 ALL_ML_FILES = all_ml_files
+ALL_MLI_FILES = all_mli_files
 ALL_ML_FILES_COPIED = all_ml_files_copied
+ALL_MLI_FILES_COPIED = all_mli_files_copied
 
 default: detect_dead_code
 
-ml_src_files_from_mlly:=$(shell find .. -not -path "../*clang_stubs/*" -not -path "../*java_stubs/*" -not -path "../_build/*" -regex '\.\./[a-zA-Z].*\.ml[ly]')
+# Annoying find being different on OSX/BSD and GNU/Linux
+ifeq ($(PLATFORM),Linux)
+DEPTH_ONE = -mindepth 1 -maxdepth 1
+else
+DEPTH_ONE = -depth 1
+endif
 
-ml_src_files:=$(shell for i in $$(find .. -not -path "../*clang_stubs/*" -not -path "../*java_stubs/*" -not -path "../_build/*" -regex '\.\./[a-zA-Z].*\.ml'); do echo $${i\#"../"}; done)
+# ./ is necessary for find to work correctly.
+# Note that we run find under _build directory. Since we copy some
+# sources from subfolders to src/ folder to avoid duplicates we use
+# $(DEPTH_ONE) and iteration over main and library folders.
+LIBRARY_FOLDERS = . ./IR ./absint ./al ./atd ./backend ./base ./biabduction ./bufferoverrun ./c_stubs ./checkers ./clang ./clang/unit ./concurrency ./cost ./integration ./istd ./java ./labs ./nullsafe ./nullsafe/unit ./pulse ./quandary ./scripts ./test_determinator ./topl ./unit
+INCLUDE_FOLDERS = -I IR -I absint -I al -I atd -I backend -I base -I biabduction -I bufferoverrun -I c_stubs -I checkers -I clang -I clang/unit -I concurrency -I cost -I integration -I istd -I java -I labs -I nullsafe -I nullsafe/unit -I pulse -I quandary -I scripts -I test_determinator -I topl -I unit
 
-mli_src_files:=$(shell for i in $$(find .. -not -path "../*clang_stubs/*" -not -path "../*java_stubs/*" -not -path "../_build/*" -regex '\.\./[a-zA-Z].*\.mli'); do echo $${i\#"../"}; done)
+ml_src_files = $(shell \
+  cd $(INFER_BUILD_DIR); \
+  for d in $(LIBRARY_FOLDERS); do \
+  [ -d $$d ] && echo $$(find $$d $(DEPTH_ONE) -regex '\./[a-zA-Z].*\.ml' \( -not -regex '.*\.pp\.ml' \) \
+                | sed 's/^\.\///'); \
+  done)
 
-ml_src_files_without_mli:=$(shell for i in $$(find .. -not -path "../*clang_stubs/*" -not -path "../*java_stubs/*" -not -path "../_build/*" -regex '\.\./[a-zA-Z].*\.ml'); do [ -f $${i}i ] || echo $${i\#"../"}; done)
+mli_src_files = $(shell \
+  cd $(INFER_BUILD_DIR); \
+  for d in $(LIBRARY_FOLDERS); do \
+  [ -d $$d ] && echo $$(find $$d $(DEPTH_ONE) -regex '\./[a-zA-Z].*\.mli' \( -not -regex '.*\.pp\.mli' \) \
+                | sed 's/^\.\///'); \
+  done)
+
+ml_src_files_without_mli:=$(shell \
+  cd $(INFER_BUILD_DIR); \
+  for i in $(ml_src_files); do [ -f $${i}i ] || echo $$i; done)
 
 .PHONY: depend
 depend:
-	cd .. && \
+	cd $(INFER_BUILD_DIR) && \
 	ocamldep -native \
-	  -I IR -I absint -I al -I atd -I backend -I base -I biabduction -I bufferoverrun \
-	  -I c_stubs -I checkers -I cost -I clang -I concurrency -I facebook -I integration -I istd -I java \
-	  -I labs -I nullsafe -I pulse -I scuba -I quandary -I topl -I unit -I unit/clang -I unit/nullsafe -I deadcode \
-	  -I test_determinator \
-	  $(ml_src_files) $(mli_src_files) > deadcode/.depend
+	  $(INCLUDE_FOLDERS) \
+	  $(ml_src_files) $(mli_src_files) > $(DEADCODE_DIR)/.depend
 
 # circular dependency... not sure how to fix properly
 %.cmi: %.cmx
@@ -71,12 +95,12 @@ depend:
 	$(QUIET)echo "  = sig " >> $(ALL_INFER_IN_ONE_FILE_ML)
 #	pre-processor directive to get errors in the original files and not in all_infer_in_one_file.ml
 	$(QUIET)echo '# 1 "$*.mli"' >> $(ALL_INFER_IN_ONE_FILE_ML)
-	cat ../$*.mli >> $(ALL_INFER_IN_ONE_FILE_ML)
+	cat $(INFER_BUILD_DIR)/$*.mli >> $(ALL_INFER_IN_ONE_FILE_ML)
 	$(QUIET)echo "  end end " >> $(ALL_INFER_IN_ONE_FILE_ML)
 #	silence "unused module" warnings for executables
 	$(QUIET)if [ $@ = "infer.cmi" ] \
-	        || [ $@ = "unit/inferunit.cmi" ] \
-	        || [ $@ = "facebook/InferCreateTraceViewLinks.cmi" ] \
+	        || [ $@ = "inferunit.cmi" ] \
+	        || [ $@ = "InferCreateTraceViewLinks.cmi" ] \
 	        ; then \
 	  echo '[@warning "-60"] ' >> $(ALL_INFER_IN_ONE_FILE_ML); \
 	fi
@@ -91,18 +115,19 @@ depend:
 	$(QUIET)echo $(shell basename $*) | $(GNU_SED) -e "s/\b\(.\)/  \u\1/g" >> $(ALL_INFER_IN_ONE_FILE_ML)
 	$(QUIET)echo "  = struct " >> $(ALL_INFER_IN_ONE_FILE_ML)
 	$(QUIET)echo '# 1 "$*.ml"' >> $(ALL_INFER_IN_ONE_FILE_ML)
-	cat ../$*.ml >> $(ALL_INFER_IN_ONE_FILE_ML)
+	cat $(INFER_BUILD_DIR)/$*.ml >> $(ALL_INFER_IN_ONE_FILE_ML)
 	$(QUIET)echo "  end end" >> $(ALL_INFER_IN_ONE_FILE_ML)
 	$(QUIET)echo "(* END OF MODULE $*.ml *)" >> $(ALL_INFER_IN_ONE_FILE_ML)
 #	silence "unused module" warnings for executables
 	$(QUIET)if [ $@ = "infer.cmi" ] \
-	        || [ $@ = "unit/inferunit.cmi" ] \
-	        || [ $@ = "facebook/InferCreateTraceViewLinks.cmi" ] \
+	        || [ $@ = "inferunit.cmi" ] \
+	        || [ $@ = "InferCreateTraceViewLinks.cmi" ] \
 	        || [ $@ = "scripts/checkCopyright.cmi" ] \
 	        ; then \
 	  echo '[@warning "-60"] ' >> $(ALL_INFER_IN_ONE_FILE_ML);\
 	fi
 	$(QUIET)echo >> $(ALL_INFER_IN_ONE_FILE_ML)
+	$(QUIET)echo "$*.mli" >> $(ALL_MLI_FILES_COPIED)
 	$(QUIET)echo "$*.ml" >> $(ALL_ML_FILES_COPIED)
 
 $(ml_src_files_without_mli:.ml=.cmx):
@@ -113,7 +138,7 @@ $(ml_src_files_without_mli:.ml=.cmx):
 	$(QUIET)echo $(shell basename $@ .cmx) | $(GNU_SED) -e "s/\b\(.\)/  \u\1/g" >> $(ALL_INFER_IN_ONE_FILE_ML)
 	$(QUIET)echo "  = struct " >> $(ALL_INFER_IN_ONE_FILE_ML)
 	$(QUIET)echo "# 1 \"$$(echo $@ | $(GNU_SED) -e 's/\.cmx$$/.ml/')\"" >> $(ALL_INFER_IN_ONE_FILE_ML)
-	cat ../$$(echo $@ | $(GNU_SED) -e "s/\.cmx$$/.ml/") >> $(ALL_INFER_IN_ONE_FILE_ML)
+	cat $(INFER_BUILD_DIR)/$$(echo $@ | $(GNU_SED) -e "s/\.cmx$$/.ml/") >> $(ALL_INFER_IN_ONE_FILE_ML)
 	$(QUIET)echo "  end " >> $(ALL_INFER_IN_ONE_FILE_ML)
 	$(QUIET)echo "(* END OF MODULE $@ *)" >> $(ALL_INFER_IN_ONE_FILE_ML)
 	$(QUIET)echo >> $(ALL_INFER_IN_ONE_FILE_ML)
@@ -129,79 +154,86 @@ $(ml_src_files_without_mli:.ml=.cmx):
 # root .cmx to include all the code. Any code not used in the construction of these "root .cmx" will
 # be considered dead.
 .PHONY: flatten_infer
-flatten_infer: infer.cmx unit/inferunit.cmx facebook/InferCreateTraceViewLinks.cmx scripts/checkCopyright.cmx
+flatten_infer: infer.cmx inferunit.cmx InferCreateTraceViewLinks.cmx scripts/checkCopyright.cmx
 	$(QUIET)echo "see results in $(ALL_INFER_IN_ONE_FILE_ML)"
 
+# copy dune.in to dune only when needed to avoid dune trying to build
+# all_infer_in_one_file as part of the rest of the build
+dune: dune.in
+	$(QUIET)$(INSTALL_DATA) $< $@
+
 .PHONY: detect_dead_code
-detect_dead_code:
-	$(MAKE) clean
+detect_dead_code: dune
 #	create a dummy implementation file to keep dune happy, as we are about to generate the
 #	dune file for this directory
 	touch $(ALL_INFER_IN_ONE_FILE_ML) $(ALL_INFER_IN_ONE_FILE_ML:.ml=.mli)
-#	needed to get dune generated, and the generated code for the lexers and parsers in ../_build
-	$(MAKE) GENERATED_DUNES=deadcode/dune -C .. test
-#	copy generated source files from ../_build
-	for file in $(ml_src_files_from_mlly); do \
-	  set +e; \
-	  [ -f "$(INFER_BUILD_DIR)/$$(basename $$file .mly).ml" ] && \
-	    $(COPY) $(INFER_BUILD_DIR)/$$(basename $$file .mly).ml .; \
-	  [ -f "$(INFER_BUILD_DIR)/$$(basename $$file .mly).mli" ] && \
-	    $(COPY) $(INFER_BUILD_DIR)/$$(basename $$file .mly).mli .; \
-	  [ -f "$(INFER_BUILD_DIR)/$$(basename $$file .mll).ml" ] && \
-	    $(COPY) $(INFER_BUILD_DIR)/$$(basename $$file .mll).ml .; \
-	  [ -f "$(INFER_BUILD_DIR)/$$(basename $$file .mll).mli" ] && \
-	    $(COPY) $(INFER_BUILD_DIR)/$$(basename $$file .mll).mli .; \
-	  set -e; \
-	done
+#	needed to get the generated code for the lexers and parsers in ../_build
+	$(MAKE) -C ..
 	$(MAKE) depend
 #	Need to be sequential to avoid getting a garbled file. Need to re-include .depend as it may
 #	have changed. For both of these reasons, run another `make`.
 #	Create a temp file so that the build doesn't break if this step gets interrupted.
 	tmp_file=$$(mktemp -t all_infer_in_one_file_XXXXX.ml); \
-	tmp_file_copied=$$(mktemp -t all_ml_files_copied); \
+	tmp_file_copied=$$(mktemp -t all_ml_files_copied_XXXXX); \
 	$(MAKE) -j 1 ALL_INFER_IN_ONE_FILE_ML="$$tmp_file" ALL_ML_FILES_COPIED="$$tmp_file_copied" flatten_infer; \
 	mv "$$tmp_file" $(ALL_INFER_IN_ONE_FILE_ML); \
-	sort -u "$$tmp_file_copied" > $(ALL_ML_FILES_COPIED)
-	$(MAKE) -j 1 detect_dead_ml_file
-#	build and get dead code warnings; clean in case of errors so as not to leave rubbish around
-	if ! dune build $(INFER_BUILD_DIR)/deadcode/all_infer_in_one_file.bc; then \
-	  $(MAKE) clean; \
-	  exit 1; \
-	fi
-#	be paranoid about cleaning because we do not want to include infer_in_one_file into infer by
-#	accident and I don't know enough dune to be positive that it won't happen
-	$(MAKE) clean
+	sort -u "$$tmp_file_copied" > $(ALL_ML_FILES_COPIED); \
+	rm "$$tmp_file_copied"
+#	build and get dead code warnings
+	$(DUNE_BUILD) all_infer_in_one_file.bc
+	$(REMOVE) dune
+	$(MAKE) -j 1 detect_dead_src_file
 
-.PHONY: detect_dead_ml_file
-detect_dead_ml_file:
+.PHONY: detect_dead_src_file
+detect_dead_src_file:
 	function is_in_blacklist { \
-	  if [ "$$1" = "infertop.ml" ] \
-	  || [ "$$1" = "deadcode/all_infer_in_one_file.ml" ] \
-	  || [[ "$$1" =~ ^"labs/" ]] \
-	  || [[ "$$1" =~ ^"llvm/" ]] \
-	  || [[ "$$1" =~ ^"opensource/" ]]; then \
+	  if [ $$1 = infertop.ml ] \
+	  || [ $$1 = infertop.mli ] \
+	  || [ $$1 = deadcode/all_infer_in_one_file.ml ] \
+	  || [ $$1 = deadcode/all_infer_in_one_file.mli ] \
+	  || [[ $$1 =~ .*FrontendStubs.mli?$$ ]] \
+	  || [[ $$1 =~ ^labs/ ]] \
+	  || [[ $$1 =~ ^llvm/ ]] \
+	  || [[ $$1 =~ ^opensource/ ]] \
+	  || grep -q -F 'let%test_module' $(INFER_BUILD_DIR)/$$1 ; then \
 	    exit 0; \
           else \
 	    exit 1; \
 	  fi; \
 	}; \
-	tmp_file=$$(mktemp -t all_ml_files); \
+	\
+	tmp_file=$$(mktemp -t all_ml_files_XXXXX); \
 	for i in $(ml_src_files) $(ml_src_files_without_mli); do \
 	  (is_in_blacklist "$$i") || (echo "$$i" >> "$$tmp_file"); \
 	done; \
 	sort -u "$$tmp_file" > $(ALL_ML_FILES); \
-	tmp_file=$$(mktemp -t all_ml_files_copied); \
+	rm "$$tmp_file"; \
+	\
+	tmp_file=$$(mktemp -t all_mli_files_XXXXX); \
+	for i in $(mli_src_files); do \
+	  (is_in_blacklist "$$i") || (echo "$$i" >> "$$tmp_file"); \
+	done; \
+	sort -u "$$tmp_file" > $(ALL_MLI_FILES); \
+	rm "$$tmp_file"; \
+	\
+	tmp_file=$$(mktemp -t all_ml_files_copied_XXXXX); \
 	for i in $$(cat $(ALL_ML_FILES_COPIED)); do \
 	  (is_in_blacklist "$$i") || (echo "$$i" >> "$$tmp_file"); \
 	done; \
-	sort -u "$$tmp_file" > $(ALL_ML_FILES_COPIED)
-
-	if ! diff $(ALL_ML_FILES) $(ALL_ML_FILES_COPIED) 1>&2; then \
-	  $(MAKE) clean; \
-	  exit 1; \
-	fi
+	sort -u "$$tmp_file" > $(ALL_ML_FILES_COPIED); \
+	rm "$$tmp_file"; \
+	\
+	tmp_file=$$(mktemp -t all_mli_files_copied_XXXXX); \
+	for i in $$(cat $(ALL_MLI_FILES_COPIED)); do \
+	  (is_in_blacklist "$$i") || (echo "$$i" >> "$$tmp_file"); \
+	done; \
+	sort -u "$$tmp_file" > $(ALL_MLI_FILES_COPIED); \
+	rm "$$tmp_file"
+	diff $(ALL_ML_FILES) $(ALL_ML_FILES_COPIED) 1>&2
+	diff $(ALL_MLI_FILES) $(ALL_MLI_FILES_COPIED) 1>&2
 
 .PHONY: clean
 clean:
-	$(REMOVE) .depend *.ml *.mli dune $(ALL_ML_FILES) $(ALL_ML_FILES_COPIED)
+	$(REMOVE) .depend *.ml *.mli $(ALL_ML_FILES) $(ALL_MLI_FILES) $(ALL_ML_FILES_COPIED) \
+	  $(ALL_MLI_FILES_COPIED) dune
 

@@ -12,19 +12,9 @@ module Memory = PulseBaseMemory
 module Stack = PulseBaseStack
 module AddressAttributes = PulseBaseAddressAttributes
 
-module SkippedTrace = struct
-  type t = PulseTrace.t [@@deriving compare]
-
-  let pp fmt =
-    PulseTrace.pp fmt ~pp_immediate:(fun fmt ->
-        F.pp_print_string fmt "call to skipped function occurs here" )
-end
-
-module SkippedCalls = PrettyPrintable.MakePPMonoMap (Procname) (SkippedTrace)
-
 (* {2 Abstract domain description } *)
 
-type t = {heap: Memory.t; stack: Stack.t; skipped_calls: SkippedCalls.t; attrs: AddressAttributes.t}
+type t = {heap: Memory.t; stack: Stack.t; attrs: AddressAttributes.t}
 
 let empty =
   { heap=
@@ -32,7 +22,6 @@ let empty =
       (* TODO: we could record that 0 is an invalid address at this point but this makes the
          analysis go a bit overboard with the Nullptr reports. *)
   ; stack= Stack.empty
-  ; skipped_calls= SkippedCalls.empty
   ; attrs= AddressAttributes.empty }
 
 
@@ -190,14 +179,9 @@ module GraphComparison = struct
     match isograph_map ~lhs ~rhs mapping with IsomorphicUpTo _ -> true | NotIsomorphic -> false
 end
 
-let leq ~lhs ~rhs =
-  phys_equal lhs rhs || GraphComparison.is_isograph ~lhs ~rhs GraphComparison.empty_mapping
-
-
-let pp fmt {heap; stack; skipped_calls; attrs} =
-  F.fprintf fmt
-    "{@[<v1> roots=@[<hv>%a@];@;mem  =@[<hv>%a@];@;attrs=@[<hv>%a@];@;skipped_calls=@[<hv>%a@];@]}"
-    Stack.pp stack Memory.pp heap AddressAttributes.pp attrs SkippedCalls.pp skipped_calls
+let pp fmt {heap; stack; attrs} =
+  F.fprintf fmt "{@[<v1> roots=@[<hv>%a@];@;mem  =@[<hv>%a@];@;attrs=@[<hv>%a@];@]}" Stack.pp stack
+    Memory.pp heap AddressAttributes.pp attrs
 
 
 module GraphVisit : sig
@@ -247,9 +231,8 @@ end = struct
 
   and visit_edges orig_var ~f rev_accesses ~edges astate visited_accum =
     let finish visited_accum = Continue visited_accum in
-    Container.fold_until edges
-      ~fold:(IContainer.fold_of_pervasives_map_fold ~fold:Memory.Edges.fold)
-      ~finish ~init:visited_accum ~f:(fun visited_accum (access, (address, _trace)) ->
+    Container.fold_until edges ~fold:Memory.Edges.fold ~finish ~init:visited_accum
+      ~f:(fun visited_accum (access, (address, _trace)) ->
         match visit_address orig_var ~f (access :: rev_accesses) astate address visited_accum with
         | Continue _ as cont ->
             cont
@@ -260,9 +243,8 @@ end = struct
   let fold ~var_filter astate ~init ~f ~finish =
     let finish (visited, accum) = (visited, finish accum) in
     let init = (AbstractValue.Set.empty, init) in
-    Container.fold_until astate.stack
-      ~fold:(IContainer.fold_of_pervasives_map_fold ~fold:Stack.fold) ~init ~finish
-      ~f:(fun visited_accum (var, (address, _loc)) ->
+    Container.fold_until astate.stack ~fold:(IContainer.fold_of_pervasives_map_fold Stack.fold)
+      ~init ~finish ~f:(fun visited_accum (var, (address, _loc)) ->
         if var_filter var then visit_address var ~f [] astate address visited_accum
         else Continue visited_accum )
 end

@@ -27,7 +27,7 @@ let find_first_arg_id ~fun_name ~class_name_f ~lhs_f = function
 
 
 let implements_map tenv s =
-  PatternMatch.implements_map tenv s || PatternMatch.implements_androidx_map tenv s
+  PatternMatch.Java.implements_map tenv s || PatternMatch.Java.implements_androidx_map tenv s
 
 
 (** If given a node that has 4 instructions and calls fun_name, pickup bcvarY, i.e. variable for the
@@ -52,7 +52,7 @@ let find_first_arg_pvar node ~fun_name ~class_name_f =
   else None
 
 
-let report_matching_get tenv summary pvar loop_nodes : unit =
+let report_matching_get proc_desc err_log tenv pvar loop_nodes : unit =
   LoopNodes.iter
     (fun node ->
       let instrs = Procdesc.Node.get_instrs node in
@@ -75,8 +75,8 @@ let report_matching_get tenv summary pvar loop_nodes : unit =
                         in
                         let loc = Procdesc.Node.get_loc node in
                         let ltr = [Errlog.make_trace_element 0 loc exp_desc []] in
-                        Reporting.log_error summary ~loc ~ltr IssueType.inefficient_keyset_iterator
-                          exp_desc ) ) )
+                        Reporting.log_issue proc_desc err_log ~loc ~ltr InefficientKeysetIterator
+                          IssueType.inefficient_keyset_iterator exp_desc ) ) )
     loop_nodes
 
 
@@ -102,9 +102,7 @@ let when_dominating_preds_satisfy idom my_node ~fun_name ~class_name_f ~f =
   aux my_node 4
 
 
-let checker Callbacks.{summary; exe_env} : Summary.t =
-  let proc_desc = Summary.get_proc_desc summary in
-  let tenv = Exe_env.get_tenv exe_env (Summary.get_proc_name summary) in
+let checker {IntraproceduralAnalysis.proc_desc; tenv; err_log} =
   let cfg = CFG.from_pdesc proc_desc in
   let _, loop_head_to_loop_nodes = Loop_control.get_loop_control_maps cfg in
   let idom = Dominators.get_idoms proc_desc in
@@ -112,13 +110,12 @@ let checker Callbacks.{summary; exe_env} : Summary.t =
     (fun loop_head loop_nodes ->
       if
         find_first_arg_pvar loop_head ~fun_name:"hasNext"
-          ~class_name_f:(PatternMatch.implements_iterator tenv)
+          ~class_name_f:(PatternMatch.Java.implements_iterator tenv)
         |> Option.is_some
       then
         when_dominating_preds_satisfy idom loop_head ~fun_name:"iterator"
-          ~class_name_f:(PatternMatch.implements_set tenv) ~f:(fun itr_node _ ->
+          ~class_name_f:(PatternMatch.Java.implements_set tenv) ~f:(fun itr_node _ ->
             when_dominating_preds_satisfy idom itr_node ~fun_name:"keySet"
               ~class_name_f:(implements_map tenv) ~f:(fun _keySet_node get_pvar ->
-                report_matching_get tenv summary get_pvar loop_nodes ) ) )
-    loop_head_to_loop_nodes ;
-  summary
+                report_matching_get proc_desc err_log tenv get_pvar loop_nodes ) ) )
+    loop_head_to_loop_nodes

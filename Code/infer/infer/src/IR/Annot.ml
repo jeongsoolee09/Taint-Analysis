@@ -14,7 +14,7 @@ module F = Format
 (** Type to represent an [@Annotation] with potentially complex parameter values such as arrays or
     other annotations. *)
 type t = {class_name: string  (** name of the annotation *); parameters: parameter list}
-[@@deriving compare]
+[@@deriving compare, equal]
 
 and parameter = {name: string option; value: value} [@@deriving compare]
 
@@ -85,13 +85,8 @@ and pp fmt annotation =
 
 
 module Item = struct
-  (* Don't use nonrec due to https://github.com/janestreet/ppx_compare/issues/2 *)
-  (* type nonrec t = list (t, bool) [@@deriving compare]; *)
-
   (** Annotation for one item: a list of annotations with visibility. *)
-  type t_ = (t * bool) list [@@deriving compare]
-
-  type t = t_ [@@deriving compare]
+  type nonrec t = (t * bool) list [@@deriving compare, equal]
 
   (** Pretty print an item annotation. *)
   let pp fmt ann =

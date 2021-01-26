@@ -23,9 +23,49 @@ let get_location source_file impl pc =
   {Location.line= line_number; col= -1; file= source_file}
 
 
-let get_start_location source_file bytecode =
+let get_start_location_heuristics =
+  let lines_to_find = 10 (* This is set by an arbitrary number. *) in
+  (* [is_proc_line ~name line] checks two conditions:
+     - [line] starts with [name] or [line] includes [" " ^ name].
+     - The [name] found should be followed by a space, '<', '(', or end of line. *)
+  let is_proc_line ~name line =
+    let found_idx =
+      if String.is_prefix line ~prefix:name then Some 0
+      else String.substr_index ~pos:0 line ~pattern:(" " ^ name) |> Option.map ~f:(( + ) 1)
+    in
+    Option.value_map found_idx ~default:false ~f:(fun i ->
+        let next_char_idx = i + String.length name in
+        if next_char_idx < String.length line then
+          match line.[next_char_idx] with ' ' | '<' | '(' -> true | _ -> false
+        else false )
+  in
+  let line_reader = lazy (LineReader.create ()) in
+  let rec find_proc_loc_backward name ~lines_to_find loc =
+    if lines_to_find <= 0 || loc.Location.line <= 0 then None
+    else
+      match LineReader.from_loc (Lazy.force_val line_reader) loc with
+      | None ->
+          None
+      | Some line when is_proc_line line ~name ->
+          Some loc
+      | Some _ ->
+          find_proc_loc_backward name ~lines_to_find:(lines_to_find - 1)
+            Location.{loc with line= loc.line - 1}
+  in
+  fun ~default pname ->
+    let name = Procname.get_method pname in
+    if
+      (not (Procname.Java.is_autogen_method_name name))
+      && (not (String.equal name Procname.Java.constructor_method_name))
+      && not (String.equal name Procname.Java.class_initializer_method_name)
+    then Option.value ~default (find_proc_loc_backward name ~lines_to_find default)
+    else default
+
+
+let get_start_location source_file proc_name bytecode =
   let line_number = Option.value (JCode.get_source_line_number 0 bytecode) ~default:(-1) in
-  {Location.line= line_number; col= -1; file= source_file}
+  let loc = {Location.line= line_number; col= -1; file= source_file} in
+  get_start_location_heuristics ~default:loc proc_name
 
 
 let get_exit_location source_file bytecode =
@@ -62,7 +102,8 @@ let formals_from_signature program tenv cn ms kind =
   let method_name = JBasics.ms_name ms in
   let get_arg_name () =
     let arg = method_name ^ "_arg_" ^ string_of_int !counter in
-    incr counter ; Mangled.from_string arg
+    incr counter ;
+    Mangled.from_string arg
   in
   let collect l vt =
     let arg_name = get_arg_name () in
@@ -241,6 +282,11 @@ let get_jbir_representation cm bytecode =
     bytecode
 
 
+let pp_jbir fmt jbir =
+  (Format.pp_print_list ~pp_sep:Format.pp_print_newline Format.pp_print_string)
+    fmt (JBir.print jbir)
+
+
 let trans_access = function
   | `Default ->
       PredSymb.Default
@@ -286,7 +332,7 @@ let create_callee_attributes tenv program cn ms procname =
         ; is_abstract }
     with Caml.Not_found -> None
   in
-  Option.bind ~f (JClasspath.lookup_node cn program)
+  Option.bind ~f (JProgramDesc.lookup_node cn program)
 
 
 let create_empty_cfg source_file procdesc =
@@ -353,7 +399,7 @@ let create_empty_procdesc source_file program icfg cm proc_name =
   let m = Javalib.ConcreteMethod cm in
   let cn, ms = JBasics.cms_split (Javalib.get_class_method_signature m) in
   let bytecode = get_bytecode cm in
-  let loc_start = get_start_location source_file bytecode in
+  let loc_start = get_start_location source_file proc_name bytecode in
   let formals = formals_from_signature program tenv cn ms (JTransType.get_method_kind m) in
   let method_annotation = JAnnotation.translate_method cm.Javalib.cm_annotations in
   let proc_attributes =
@@ -382,13 +428,17 @@ let create_cm_procdesc source_file program icfg cm proc_name =
   try
     let bytecode = get_bytecode cm in
     let jbir_code = get_jbir_representation cm bytecode in
-    let loc_start = get_start_location source_file bytecode in
+    if Config.print_jbir then
+      L.(debug Capture Verbose)
+        "Printing JBir of: %a@\n@[%a@]@." Procname.pp proc_name pp_jbir jbir_code ;
+    let loc_start = get_start_location source_file proc_name bytecode in
     let loc_exit = get_exit_location source_file bytecode in
     let formals = translate_formals program tenv cn jbir_code in
     let locals_ = translate_locals program tenv formals bytecode jbir_code in
     let locals =
       List.map locals_ ~f:(fun (name, typ) ->
-          ({name; typ; modify_in_block= false; is_constexpr= false} : ProcAttributes.var_data) )
+          ( {name; typ; modify_in_block= false; is_constexpr= false; is_declared_unused= false}
+            : ProcAttributes.var_data ) )
     in
     let method_annotation = JAnnotation.translate_method cm.Javalib.cm_annotations in
     let proc_attributes =
@@ -558,28 +608,47 @@ let rec expression (context : JContext.t) pc expr =
 
 let method_invocation (context : JContext.t) loc pc var_opt cn ms sil_obj_opt expr_list invoke_code
     method_kind =
-  (* This function tries to recursively search for the classname of the class *)
-  (* where the method is defined. It returns the classname given as argument*)
-  (* when this classname cannot be found *)
+  (* This function tries to recursively search for the classname of the class
+     where the method is defined. Following Java8 invokevirtual spec, it
+     searches first in parent classes. Then, if nothing is found, it searches in super
+     interfaces. If nothing is found, it returns the classname given as argument. *)
+  let contains_ms_implem node ms =
+    match node with
+    | Javalib.JInterface {i_methods= mmap} | Javalib.JClass {c_methods= mmap} ->
+        if JBasics.MethodMap.mem ms mmap then
+          match JBasics.MethodMap.find ms mmap with
+          | Javalib.AbstractMethod _ ->
+              false
+          | Javalib.ConcreteMethod _ ->
+              true
+        else false
+  in
   let resolve_method (context : JContext.t) cn ms =
-    let rec loop fallback_cn cn =
-      match JClasspath.lookup_node cn context.program with
+    let rec search_in_parents get_parents cn =
+      match JProgramDesc.lookup_node cn context.program with
       | None ->
-          fallback_cn
-      | Some node -> (
-          if Javalib.defines_method node ms then cn
-          else
-            match node with
-            | Javalib.JInterface _ ->
-                fallback_cn
-            | Javalib.JClass jclass -> (
-              match jclass.Javalib.c_super_class with
-              | None ->
-                  fallback_cn
-              | Some super_cn ->
-                  loop fallback_cn super_cn ) )
+          None
+      | Some node ->
+          if contains_ms_implem node ms then Some cn
+          else List.find_map (get_parents node) ~f:(search_in_parents get_parents)
     in
-    loop cn cn
+    let super_classes = function
+      | Javalib.JInterface _ ->
+          []
+      | Javalib.JClass {c_super_class} ->
+          Option.to_list c_super_class
+    in
+    let super_interfaces = function
+      | Javalib.JInterface {i_interfaces} ->
+          i_interfaces
+      | Javalib.JClass {c_interfaces} ->
+          c_interfaces
+    in
+    match search_in_parents super_classes cn with
+    | None ->
+        Option.value ~default:cn (search_in_parents super_interfaces cn)
+    | Some cn_implem ->
+        cn_implem
   in
   let cn' = resolve_method context cn ms in
   let tenv = JContext.get_tenv context in
@@ -678,7 +747,7 @@ let method_invocation (context : JContext.t) loc pc var_opt cn ms sil_obj_opt ex
   let instrs =
     match call_args with
     (* modeling a class bypasses the treatment of Closeable *)
-    | _ when Config.biabduction_models_mode || JClasspath.is_model callee_procname ->
+    | _ when Config.biabduction_models_mode || BiabductionModels.mem callee_procname ->
         call_instrs
     | ((_, {Typ.desc= Typ.Tptr ({desc= Tstruct typename}, _)}) as exp) :: _
     (* add a file attribute when calling the constructor of a subtype of Closeable *)
@@ -1002,17 +1071,7 @@ let instruction (context : JContext.t) pc instr : translation =
           let call_node = create_node node_kind (instrs @ call_instrs) in
           call_node
         in
-        let trans_virtual_call original_cn invoke_kind =
-          let cn' =
-            match JTransType.extract_cn_no_obj sil_obj_type with
-            | Some cn ->
-                cn
-            | None ->
-                original_cn
-          in
-          let call_node = create_call_node cn' invoke_kind in
-          Instr call_node
-        in
+        let trans_virtual_call cn invoke_kind = Instr (create_call_node cn invoke_kind) in
         match call_kind with
         | JBir.VirtualCall obj_type ->
             let cn =

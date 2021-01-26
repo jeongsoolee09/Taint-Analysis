@@ -35,6 +35,107 @@ module AddAbstractionInstructions = struct
     Procdesc.iter_nodes do_node pdesc
 end
 
+(** Find synthetic (including access and bridge) Java methods in the procedure and inline them in
+    the cfg.
+
+    This is a horrible hack that inlines only *one* instruction ouf of the callee. This works only
+    on some synthetic methods that have a particular shape. *)
+module InlineJavaSyntheticMethods = struct
+  (** Inline a synthetic (access or bridge) method. *)
+  let inline_synthetic_method ((ret_id, _) as ret) etl pdesc loc_call : Sil.instr option =
+    let found instr instr' =
+      L.debug Analysis Verbose
+        "inline_synthetic_method translated the call %a as %a (original instr %a)@\n" Procname.pp
+        (Procdesc.get_proc_name pdesc)
+        (Sil.pp_instr ~print_types:true Pp.text)
+        instr'
+        (Sil.pp_instr ~print_types:true Pp.text)
+        instr ;
+      Some instr'
+    in
+    let do_instr instr =
+      match (instr, etl) with
+      | ( Sil.Load {e= Exp.Lfield (Exp.Var _, fn, ft); root_typ; typ}
+        , [(* getter for fields *) (e1, _)] ) ->
+          let instr' =
+            Sil.Load {id= ret_id; e= Exp.Lfield (e1, fn, ft); root_typ; typ; loc= loc_call}
+          in
+          found instr instr'
+      | Sil.Load {e= Exp.Lfield (Exp.Lvar pvar, fn, ft); root_typ; typ}, [] when Pvar.is_global pvar
+        ->
+          (* getter for static fields *)
+          let instr' =
+            Sil.Load
+              {id= ret_id; e= Exp.Lfield (Exp.Lvar pvar, fn, ft); root_typ; typ; loc= loc_call}
+          in
+          found instr instr'
+      | ( Sil.Store {e1= Exp.Lfield (_, fn, ft); root_typ; typ}
+        , [(* setter for fields *) (e1, _); (e2, _)] ) ->
+          let instr' = Sil.Store {e1= Exp.Lfield (e1, fn, ft); root_typ; typ; e2; loc= loc_call} in
+          found instr instr'
+      | Sil.Store {e1= Exp.Lfield (Exp.Lvar pvar, fn, ft); root_typ; typ}, [(e1, _)]
+        when Pvar.is_global pvar ->
+          (* setter for static fields *)
+          let instr' =
+            Sil.Store {e1= Exp.Lfield (Exp.Lvar pvar, fn, ft); root_typ; typ; e2= e1; loc= loc_call}
+          in
+          found instr instr'
+      | Sil.Call (_, Exp.Const (Const.Cfun pn), etl', _, cf), _
+        when Int.equal (List.length etl') (List.length etl) ->
+          let instr' = Sil.Call (ret, Exp.Const (Const.Cfun pn), etl, loc_call, cf) in
+          found instr instr'
+      | Sil.Call (_, Exp.Const (Const.Cfun pn), etl', _, cf), _
+        when Int.equal (List.length etl' + 1) (List.length etl) ->
+          let etl1 =
+            match List.rev etl with
+            (* remove last element *)
+            | _ :: l ->
+                List.rev l
+            | [] ->
+                assert false
+          in
+          let instr' = Sil.Call (ret, Exp.Const (Const.Cfun pn), etl1, loc_call, cf) in
+          found instr instr'
+      | _ ->
+          None
+    in
+    Procdesc.find_map_instrs ~f:do_instr pdesc
+
+
+  let process pdesc =
+    let is_generated_for_lambda proc_name =
+      String.is_substring ~substring:Config.java_lambda_marker_infix (Procname.get_method proc_name)
+    in
+    let should_inline proc_name =
+      (not (is_generated_for_lambda proc_name))
+      &&
+      match Attributes.load proc_name with
+      | None ->
+          false
+      | Some attributes ->
+          let is_access =
+            match proc_name with
+            | Procname.Java java_proc_name ->
+                Procname.Java.is_access_method java_proc_name
+            | _ ->
+                false
+          in
+          let is_synthetic = attributes.is_synthetic_method in
+          let is_bridge = attributes.is_bridge_method in
+          is_access || is_bridge || is_synthetic
+    in
+    let instr_inline_synthetic_method _node (instr : Sil.instr) =
+      match instr with
+      | Call (ret_id_typ, Const (Cfun pn), etl, loc, _) when should_inline pn ->
+          Option.bind (Procdesc.load pn) ~f:(fun proc_desc_callee ->
+              inline_synthetic_method ret_id_typ etl proc_desc_callee loc )
+          |> Option.value ~default:instr
+      | _ ->
+          instr
+    in
+    Procdesc.replace_instrs pdesc ~f:instr_inline_synthetic_method |> ignore
+end
+
 (** perform liveness analysis and insert Nullify/Remove_temps instructions into the IR to make it
     easy for analyses to do abstract garbage collection *)
 module Liveness = struct
@@ -55,12 +156,12 @@ module Liveness = struct
       instructions for each pvar in to_nullify afer we finish the analysis. Nullify instructions
       speed up the analysis by enabling it to GC state that will no longer be read. *)
   module NullifyTransferFunctions = struct
-    module Domain = AbstractDomain.Pair (VarDomain) (VarDomain)
     (** (reaching non-nullified vars) * (vars to nullify) *)
+    module Domain = AbstractDomain.Pair (VarDomain) (VarDomain)
 
     module CFG = ProcCfg.Exceptional
 
-    type extras = LivenessAnalysis.invariant_map
+    type analysis_data = LivenessAnalysis.invariant_map ProcData.t
 
     let postprocess ((reaching_defs, _) as astate) node {ProcData.extras} =
       let node_id = Procdesc.Node.get_id (CFG.Node.underlying_node node) in
@@ -128,23 +229,24 @@ module Liveness = struct
   module NullifyAnalysis = AbstractInterpreter.MakeRPO (NullifyTransferFunctions)
 
   let add_nullify_instrs summary tenv liveness_inv_map =
+    let proc_desc = Summary.get_proc_desc summary in
     let address_taken_vars =
       if Procname.is_java (Summary.get_proc_name summary) then AddressTaken.Domain.empty
         (* can't take the address of a variable in Java *)
       else
         let initial = AddressTaken.Domain.empty in
-        match AddressTaken.Analyzer.compute_post (ProcData.make_default summary tenv) ~initial with
+        match AddressTaken.Analyzer.compute_post () ~initial proc_desc with
         | Some post ->
             post
         | None ->
             AddressTaken.Domain.empty
     in
-    let nullify_proc_cfg = ProcCfg.Exceptional.from_pdesc (Summary.get_proc_desc summary) in
-    let nullify_proc_data = ProcData.make summary tenv liveness_inv_map in
+    let nullify_proc_cfg = ProcCfg.Exceptional.from_pdesc proc_desc in
+    let nullify_proc_data = {ProcData.summary; tenv; extras= liveness_inv_map} in
     let initial = (VarDomain.empty, VarDomain.empty) in
     let nullify_inv_map = NullifyAnalysis.exec_cfg nullify_proc_cfg nullify_proc_data ~initial in
     (* only nullify pvars that are local; don't nullify those that can escape *)
-    let is_local pvar = not (Pvar.is_return pvar || Pvar.is_global pvar) in
+    let is_local pvar = not (Liveness.is_always_in_scope proc_desc pvar) in
     let prepend_node_nullify_instructions loc pvars instrs =
       List.fold pvars ~init:instrs ~f:(fun instrs pvar ->
           if is_local pvar then Sil.Metadata (Nullify (pvar, loc)) :: instrs else instrs )
@@ -194,25 +296,17 @@ module Liveness = struct
 
 
   let process summary tenv =
-    let liveness_proc_cfg = BackwardCfg.from_pdesc (Summary.get_proc_desc summary) in
+    let proc_desc = Summary.get_proc_desc summary in
+    let liveness_proc_cfg = BackwardCfg.from_pdesc proc_desc in
     let initial = Liveness.Domain.empty in
-    let liveness_inv_map =
-      LivenessAnalysis.exec_cfg liveness_proc_cfg (ProcData.make_default summary tenv) ~initial
-    in
+    let liveness_inv_map = LivenessAnalysis.exec_cfg liveness_proc_cfg proc_desc ~initial in
     add_nullify_instrs summary tenv liveness_inv_map
-end
-
-module FunctionPointerSubstitution = struct
-  let process summary tenv =
-    let updated = FunctionPointers.substitute_function_pointers summary tenv in
-    let pdesc = Summary.get_proc_desc summary in
-    if updated then Attributes.store ~proc_desc:(Some pdesc) (Procdesc.get_attributes pdesc)
 end
 
 (** pre-analysis to cut control flow after calls to functions whose type indicates they do not
     return *)
 module NoReturn = struct
-  let has_noreturn_call node =
+  let has_noreturn_call tenv node =
     Procdesc.Node.get_instrs node
     |> Instrs.exists ~f:(fun (instr : Sil.instr) ->
            match instr with
@@ -221,24 +315,70 @@ module NoReturn = struct
              | Some {ProcAttributes.is_no_return= true} ->
                  true
              | _ ->
-                 false )
+                 NoReturnModels.dispatch tenv proc_name |> Option.value ~default:false )
            | _ ->
                false )
 
 
-  let process proc_desc =
+  let has_throw_call node =
+    Procdesc.Node.get_instrs node
+    |> Instrs.exists ~f:(fun (instr : Sil.instr) ->
+           match instr with
+           | Call (_, Const (Cfun proc_name), _, _, _) ->
+               String.equal
+                 (Procname.get_method BuiltinDecl.objc_cpp_throw)
+                 (Procname.get_method proc_name)
+           | _ ->
+               false )
+
+
+  let get_all_reachable_catch_nodes start_node =
+    let rec worklist ~todo ~visited result =
+      if Procdesc.NodeSet.is_empty todo then result
+      else
+        let el = Procdesc.NodeSet.choose todo in
+        let todo = Procdesc.NodeSet.remove el todo in
+        if Procdesc.NodeSet.mem el visited then worklist ~todo ~visited result
+        else
+          let succs = Procdesc.Node.get_succs el |> Procdesc.NodeSet.of_list in
+          let visited = Procdesc.NodeSet.add el visited in
+          worklist
+            ~todo:(Procdesc.NodeSet.union succs todo)
+            ~visited
+            (Procdesc.Node.get_exn el @ result)
+    in
+    worklist ~todo:(Procdesc.NodeSet.singleton start_node) ~visited:Procdesc.NodeSet.empty []
+
+
+  let process tenv proc_desc =
+    let exit_node = Procdesc.get_exit_node proc_desc in
     Procdesc.iter_nodes
       (fun node ->
-        if has_noreturn_call node then Procdesc.set_succs node ~normal:(Some []) ~exn:None )
+        if has_noreturn_call tenv node then
+          Procdesc.set_succs node ~normal:(Some [exit_node]) ~exn:None
+        else if has_throw_call node then
+          let catch_nodes = get_all_reachable_catch_nodes node in
+          let catch_or_exit_nodes =
+            if List.is_empty catch_nodes then (* throw with no catch *)
+              [exit_node] else catch_nodes
+          in
+          Procdesc.set_succs node ~normal:(Some catch_or_exit_nodes) ~exn:None )
       proc_desc
 end
 
 let do_preanalysis exe_env pdesc =
   let summary = Summary.OnDisk.reset pdesc in
   let tenv = Exe_env.get_tenv exe_env (Procdesc.get_proc_name pdesc) in
-  if Config.function_pointer_specialization && not (Procname.is_java (Procdesc.get_proc_name pdesc))
-  then FunctionPointerSubstitution.process summary tenv ;
+  let proc_name = Procdesc.get_proc_name pdesc in
+  if Procname.is_java proc_name then InlineJavaSyntheticMethods.process pdesc ;
+  if Config.function_pointer_specialization && not (Procname.is_java proc_name) then
+    FunctionPointers.substitute pdesc ;
+  (* NOTE: It is important that this preanalysis stays before Liveness *)
+  if not (Procname.is_java proc_name) then (
+    ClosuresSubstitution.process_closure_call summary ;
+    ClosureSubstSpecializedMethod.process summary ) ;
   Liveness.process summary tenv ;
   AddAbstractionInstructions.process pdesc ;
-  NoReturn.process pdesc ;
+  if Procname.is_java proc_name then Devirtualizer.process summary tenv ;
+  NoReturn.process tenv pdesc ;
   ()

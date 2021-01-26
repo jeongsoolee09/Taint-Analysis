@@ -11,9 +11,7 @@ module L = Logging
 
 (** Generic serializer *)
 type 'a serializer =
-  { read_from_string: string -> 'a option
-  ; read_from_file: DB.filename -> 'a option
-  ; write_to_file: data:'a -> DB.filename -> unit }
+  {read_from_file: DB.filename -> 'a option; write_to_file: data:'a -> DB.filename -> unit}
 
 module Key = struct
   type t =
@@ -24,10 +22,7 @@ module Key = struct
 
   (** Current keys for various serializable objects. The keys are computed using the [generate_keys]
       function below *)
-  let tenv, summary, issues =
-    ( {name= "tenv"; key= 425184201}
-    , {name= "summary"; key= 160179325}
-    , {name= "issues"; key= 852343110} )
+  let tenv, issues = ({name= "tenv"; key= 425184201}, {name= "issues"; key= 852343110})
 end
 
 (** version of the binary files, to be incremented for each change *)
@@ -48,9 +43,6 @@ let create_serializer (key : Key.t) : 'a serializer =
         key.name source_msg ;
       None )
     else Some value
-  in
-  let read_from_string (str : string) : 'a option =
-    read_data (Marshal.from_string str 0) "string"
   in
   let read_from_file (fname : DB.filename) : 'a option =
     (* The serialization is based on atomic file renames,
@@ -73,10 +65,8 @@ let create_serializer (key : Key.t) : 'a serializer =
         Marshal.to_channel outc (key.key, version, data) [] ) ;
     PerfEvent.(log (fun logger -> log_end_event logger ()))
   in
-  {read_from_string; read_from_file; write_to_file}
+  {read_from_file; write_to_file}
 
-
-let read_from_string s = s.read_from_string
 
 let read_from_file s = s.read_from_file
 
@@ -88,4 +78,4 @@ let generate_keys () =
   Random.self_init () ;
   let max_rand_int = 0x3FFFFFFF (* determined by Rand library *) in
   let gen () = Random.int max_rand_int in
-  (gen (), gen (), gen (), gen (), gen ())
+  (gen (), gen (), gen ())

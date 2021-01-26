@@ -17,6 +17,7 @@ public class RequiredProps {
   public MyComponent mMyComponent;
   public MyLithoComponent mMyLithoComponent;
   public ResPropComponent mResPropComponent;
+  public ResPropDoubleComponent mResPropDoubleComponent;
   public VarArgPropComponent mVarArgPropComponent;
 
   public Component buildWithAllOk() {
@@ -251,6 +252,18 @@ public class RequiredProps {
 
   public void buildPropResWithPxOk() {
     mResPropComponent.create().propPx(new Object()).build();
+  }
+
+  public void buildPropResWithPxDoubleOk() {
+    mResPropDoubleComponent.create().propPx(new Object()).propPx(0).build();
+  }
+
+  public void buildPropResWithPxDoubleAlsoOk() {
+    mResPropDoubleComponent.create().prop(new Object()).propPx(0).build();
+  }
+
+  public void buildPropResWithPxDoubleBad() {
+    mResPropDoubleComponent.create().prop(new Object()).build();
   }
 
   public void buildPropResWithSpOk() {
@@ -520,5 +533,37 @@ public class RequiredProps {
     MyComponent.Builder builder2 = createWrapper();
     builder1.prop1(new Object()).prop3(new Object()).build();
     builder2.prop3(new Object()).build();
+  }
+
+  public void nullableBuilderOk(boolean b) {
+    MyComponent.Builder builderOk =
+        mMyComponent.create().prop1(new Object()).prop2(new Object()).prop3(new Object());
+    MyComponent.Builder builder = null;
+    if (b) {
+      builder = mMyComponent.create().prop1(new Object()).prop2(new Object());
+    }
+    (builder == null ? builderOk : builder.prop3(new Object())).build();
+  }
+
+  public void nullableBuilderBad(boolean b) {
+    MyComponent.Builder builderOk =
+        mMyComponent.create().prop1(new Object()).prop2(new Object()).prop3(new Object());
+    MyComponent.Builder builder = null;
+    if (b) {
+      builder = mMyComponent.create().prop2(new Object());
+    }
+    (builder == null ? builderOk : builder.prop3(new Object())).build();
+  }
+
+  public void nullableBuilderAliasOk_FP(boolean b) {
+    MyComponent.Builder builder =
+        mMyComponent.create().prop1(new Object()).prop2(new Object()).prop3(new Object());
+    MyComponent.Builder alias = builder;
+    if (b) {
+      builder = null;
+    }
+    if (builder == null) {
+      alias.build();
+    }
   }
 }

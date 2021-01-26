@@ -50,8 +50,10 @@ type op2 =
   | Add  (** Addition *)
   | Sub  (** Subtraction *)
   | Mul  (** Multiplication *)
-  | Div  (** Division *)
-  | Rem  (** Remainder of division *)
+  | Div  (** Division, for integers result is truncated toward zero *)
+  | Rem
+      (** Remainder of division, satisfies [a = b * div a b + rem a b] and
+          for integers [rem a b] has same sign as [a], and [|rem a b| < |b|] *)
   | Udiv  (** Unsigned division *)
   | Urem  (** Remainder of unsigned division *)
   | And  (** Conjunction, boolean or bitwise *)
@@ -66,20 +68,11 @@ type op2 =
 type op3 = Conditional  (** If-then-else *)
 [@@deriving compare, equal, hash, sexp]
 
-type opN =
-  | Record  (** Record (array / struct) constant *)
-  | Struct_rec
-      (** Struct constant that may recursively refer to itself
-          (transitively) from [elts]. NOTE: represented by cyclic values. *)
+type opN = Record  (** Record (array / struct) constant *)
 [@@deriving compare, equal, hash, sexp]
 
-type t = private {desc: desc; term: Term.t}
-
-and desc = private
-  | Reg of {name: string; typ: Typ.t}  (** Virtual register *)
-  | Nondet of {msg: string; typ: Typ.t}
-      (** Anonymous register with arbitrary value, representing
-          non-deterministic approximation of value described by [msg] *)
+type t = private
+  | Reg of {name: string; global: bool; typ: Typ.t}  (** Virtual register *)
   | Label of {parent: string; name: string}
       (** Address of named code block within parent function *)
   | Integer of {data: Z.t; typ: Typ.t}  (** Integer constant *)
@@ -87,10 +80,9 @@ and desc = private
   | Ap1 of op1 * Typ.t * t
   | Ap2 of op2 * Typ.t * t * t
   | Ap3 of op3 * Typ.t * t * t * t
-  | ApN of opN * Typ.t * t vector
+  | ApN of opN * Typ.t * t iarray
+  | RecRecord of int * Typ.t  (** Reference to ancestor recursive record *)
 [@@deriving compare, equal, hash, sexp]
-
-include Comparator.S with type t := t
 
 val pp : t pp
 
@@ -101,40 +93,28 @@ module Reg : sig
   type exp := t
   type t = private exp [@@deriving compare, equal, hash, sexp]
 
-  include Comparator.S with type t := t
-
   module Set : sig
-    type reg := t
+    include Set.S with type elt := t
 
-    type t = (reg, comparator_witness) Set.t
-    [@@deriving compare, equal, sexp]
-
+    val sexp_of_t : t -> Sexp.t
+    val t_of_sexp : Sexp.t -> t
     val pp : t pp
-    val empty : t
-    val of_list : reg list -> t
-    val union_list : t list -> t
-    val vars : t -> Var.Set.t
   end
 
-  module Map : sig
-    type reg := t
+  module Map : Map.S with type key := t
 
-    type 'a t = (reg, 'a, comparator_witness) Map.t
-    [@@deriving compare, equal, sexp]
-
-    val empty : 'a t
-  end
-
+  val demangle : (string -> string option) ref
   val pp : t pp
   val pp_demangled : t pp
 
   include Invariant.S with type t := t
 
+  val of_ : exp -> t
   val of_exp : exp -> t option
   val program : ?global:unit -> Typ.t -> string -> t
-  val var : t -> Var.t
   val name : t -> string
   val typ : t -> Typ.t
+  val is_global : t -> bool
 end
 
 (** Construct *)
@@ -143,7 +123,6 @@ end
 val reg : Reg.t -> t
 
 (* constants *)
-val nondet : Typ.t -> string -> t
 val label : parent:string -> name:string -> t
 val null : t
 val bool : bool -> t
@@ -193,26 +172,14 @@ val ashr : ?typ:Typ.t -> t -> t -> t
 (* if-then-else *)
 val conditional : ?typ:Typ.t -> cnd:t -> thn:t -> els:t -> t
 
-(* memory *)
+(* sequences *)
 val splat : Typ.t -> t -> t
 
 (* records (struct / array values) *)
-val record : Typ.t -> t vector -> t
+val record : Typ.t -> t iarray -> t
 val select : Typ.t -> t -> int -> t
 val update : Typ.t -> rcd:t -> int -> elt:t -> t
-
-val struct_rec :
-     (module Hashtbl.Key.S with type t = 'id)
-  -> (id:'id -> Typ.t -> t lazy_t vector -> t) Staged.t
-(** [struct_rec Id id element_thunks] constructs a possibly-cyclic [Struct]
-    value. Cycles are detected using [Id]. The caller of [struct_rec Id]
-    must ensure that a single unstaging of [struct_rec Id] is used for each
-    complete cyclic value. Also, the caller must ensure that recursive calls
-    to [struct_rec Id] provide [id] values that uniquely identify at least
-    one point on each cycle. Failure to obey these requirements will lead to
-    stack overflow. *)
-
-val size_of : t -> t
+val rec_record : int -> Typ.t -> t
 
 (** Traverse *)
 
@@ -220,7 +187,5 @@ val fold_regs : t -> init:'a -> f:('a -> Reg.t -> 'a) -> 'a
 
 (** Query *)
 
-val term : t -> Term.t
-val typ : t -> Typ.t
 val is_true : t -> bool
 val is_false : t -> bool

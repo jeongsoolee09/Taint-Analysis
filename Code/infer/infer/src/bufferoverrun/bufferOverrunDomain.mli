@@ -8,8 +8,8 @@
 open! IStd
 open AbstractDomain.Types
 
-module ItvThresholds : AbstractDomain.FiniteSetS with type elt = Z.t
 (** Set of integers for threshold widening *)
+module ItvThresholds : AbstractDomain.FiniteSetS with type elt = Z.t
 
 (** Domain for recording which operations are used for evaluating interval values *)
 module ItvUpdatedBy : sig
@@ -33,32 +33,12 @@ module ModeledRange : sig
   val of_modeled_function : Procname.t -> Location.t -> Bounds.Bound.t -> t
 end
 
-module type TaintS = sig
-  include AbstractDomain.WithBottom
-
-  val compare : t -> t -> int
-
-  val pp : Format.formatter -> t -> unit
-
-  val is_tainted : t -> bool
-
-  val param_of_path : Symb.SymbolPath.partial -> t
-
-  val tainted_of_path : Symb.SymbolPath.partial -> t
-
-  type eval_taint = Symb.SymbolPath.partial -> t
-
-  val subst : t -> eval_taint -> t
-end
-
-module Taint : TaintS
-
 (** type for on-demand symbol evaluation in Inferbo *)
 type eval_sym_trace =
   { eval_sym: Bounds.Bound.eval_sym  (** evaluating symbol *)
-  ; trace_of_sym: Symb.Symbol.t -> BufferOverrunTrace.Set.t  (** getting traces of symbol *)
   ; eval_locpath: AbsLoc.PowLoc.eval_locpath  (** evaluating path *)
-  ; eval_taint: Taint.eval_taint  (** evaluating taint of path *) }
+  ; eval_func_ptrs: FuncPtr.Set.eval_func_ptrs  (** evaluating function pointers *)
+  ; trace_of_sym: Symb.Symbol.t -> BufferOverrunTrace.Set.t  (** getting traces of symbol *) }
 
 module Val : sig
   type t =
@@ -66,9 +46,9 @@ module Val : sig
     ; itv_thresholds: ItvThresholds.t
     ; itv_updated_by: ItvUpdatedBy.t
     ; modeled_range: ModeledRange.t
-    ; taint: Taint.t
     ; powloc: AbsLoc.PowLoc.t  (** Simple pointers *)
     ; arrayblk: ArrayBlk.t  (** Array blocks *)
+    ; func_ptrs: FuncPtr.Set.t  (** Function pointers *)
     ; traces: BufferOverrunTrace.Set.t }
 
   include AbstractDomain.S with type t := t
@@ -95,7 +75,7 @@ module Val : sig
 
   val of_int_lit : IntLit.t -> t
 
-  val of_itv : ?traces:BufferOverrunTrace.Set.t -> ?taint:Taint.t -> Itv.t -> t
+  val of_itv : ?traces:BufferOverrunTrace.Set.t -> Itv.t -> t
 
   val of_literal_string : Typ.IntegerWidths.t -> string -> t
 
@@ -103,10 +83,15 @@ module Val : sig
 
   val of_pow_loc : traces:BufferOverrunTrace.Set.t -> AbsLoc.PowLoc.t -> t
 
+  val of_func_ptrs : FuncPtr.Set.t -> t
+
   val unknown_locs : t
 
   val unknown_from : Typ.t -> callee_pname:Procname.t option -> location:Location.t -> t
   (** Unknown return value of [callee_pname] *)
+
+  val is_bot : t -> bool
+  (** Check if the value is bottom *)
 
   val is_mone : t -> bool
   (** Check if the value is [\[-1,-1\]] *)
@@ -132,7 +117,7 @@ module Val : sig
 
   val get_pow_loc : t -> AbsLoc.PowLoc.t
 
-  val get_taint : t -> Taint.t
+  val get_func_ptrs : t -> FuncPtr.Set.t
 
   val get_traces : t -> BufferOverrunTrace.Set.t
 
@@ -242,6 +227,10 @@ module Val : sig
   (** Pruning semantics for [Binop.Lt]. This prunes value of [x] when given [x < y], i.e.,
       [prune_lt x y]. *)
 
+  val prune_le : t -> t -> t
+  (** Pruning semantics for [Binop.Lt]. This prunes value of [x] when given [x <= y], i.e.,
+      [prune_le x y]. *)
+
   val prune_ne_zero : t -> t
   (** Prune value of [x] when given [x != 0] *)
 
@@ -294,6 +283,9 @@ module Val : sig
 
     val zero : t
     (** [\[0,0\]] *)
+
+    val one : t
+    (** [\[1,1\]] *)
 
     val zero_255 : t
     (** [\[0,255\]] *)
@@ -352,6 +344,9 @@ module AliasTarget : sig
     | IteratorHasNext of {java_tmp: AbsLoc.Loc.t option}
         (** This is for tracking return values of the [hasNext] function. If [%r] has an alias to
             [HasNext {l}], which means that [%r] is same to [l.hasNext()]. *)
+    | IteratorNextObject of {objc_tmp: AbsLoc.Loc.t option}
+        (** This is for tracking the return values of [nextObject] function. If [%r] has an alias to
+            [nextObject {l}], which means that [%r] is the same to [l.nextObject()]. *)
     | Top
 
   include AbstractDomain.S with type t := t
@@ -461,9 +456,6 @@ end
 module Mem : sig
   type 'has_oenv t0 =
     | Unreachable  (** Memory of unreachable node *)
-    | Error
-        (** Error status due to Inferbo's incorrect semantics/models, e.g., when a value of an
-            abstract location is not found from the abstract memory inadvertently *)
     | ExcRaised
         (** Memory of node that can be reachable only with exception raises that we want to ignore *)
     | Reachable of 'has_oenv MemReach.t0
@@ -482,15 +474,11 @@ module Mem : sig
 
   val unreachable : t
 
-  val error : t
-
   type get_summary = Procname.t -> no_oenv_t option
 
   val init : get_summary -> BufferOverrunOndemandEnv.t -> t
 
   val exc_raised : t
-
-  val is_exc_raised : _ t0 -> bool
 
   val is_rep_multi_loc : AbsLoc.Loc.t -> _ t0 -> bool
   (** Check if an abstract location represents multiple concrete locations. *)
@@ -517,7 +505,7 @@ module Mem : sig
 
   val get_latest_prune : _ t0 -> LatestPrune.t
 
-  val get_reachable_locs_from : (Pvar.t * Typ.t) list -> AbsLoc.PowLoc.t -> _ t0 -> AbsLoc.PowLoc.t
+  val get_reachable_locs_from : (Pvar.t * Typ.t) list -> AbsLoc.LocSet.t -> _ t0 -> AbsLoc.LocSet.t
   (** Get reachable locations from [formals] and [locs] when called
       [get_reachable_locs_from formals locs mem] *)
 
@@ -604,12 +592,17 @@ module Mem : sig
   val add_iterator_has_next_alias : Ident.t -> Exp.t -> t -> t
   (** Add an [AliasTarget.IteratorHasNext] alias when [ident = iterator.hasNext()] is called *)
 
+  val add_iterator_next_object_alias : Ident.t -> Exp.t -> t -> t
+  (** Add an [AliasTarget.IteratorNextObject] alias when [ident = iterator.nextObject()] is called *)
+
   val incr_iterator_simple_alias_on_call : eval_sym_trace -> callee_exit_mem:no_oenv_t -> t -> t
   (** Update [AliasTarget.IteratorSimple] alias at function calls *)
 
   val add_iterator_alias : Ident.t -> t -> t
   (** Add [AliasTarget.IteratorSimple] and [AliasTarget.IteratorOffset] aliases when
       [Iteratable.iterator()] is called *)
+
+  val add_iterator_alias_objc : Ident.t -> t -> t
 
   val incr_iterator_offset_alias : Exp.t -> t -> t
   (** Update iterator offset alias when [iterator.next()] is called *)

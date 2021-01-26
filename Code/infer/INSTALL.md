@@ -15,22 +15,24 @@ Here are the prerequisites to be able to compile Infer on MacOSX. This
 is required to compile everything from source.
 
 - opam >= 2.0.0 (instructions [here](https://opam.ocaml.org/doc/Install.html#OSX))
-- Python 2.7
 - sqlite
 - pkg-config
 - Java (only needed for the Java analysis)
-- cmake (only needed for the C/Objective-C analysis)
+- CMake (only needed for the C/Objective-C analysis)
+- Ninja (optional, if you wish to use sequential linking when building the
+  C/Objective-C analysis)
 - clang in Xcode command line tools. You can install them with the command
   `xcode-select --install` (only needed for the C/Objective-C analysis)
 - Xcode >= 6.1 (only needed for the C/Objective-C analysis)
 - autoconf >= 2.63 and automake >= 1.11.1 (if building from git)
 - gmp
+- mpfr
 
 You can install some of these dependencies using
 [Homebrew](http://brew.sh/):
 
 ```sh
-brew install autoconf automake cmake opam pkg-config sqlite gmp
+brew install autoconf automake cmake opam pkg-config sqlite gmp mpfr
 brew cask install java
 ```
 
@@ -41,11 +43,13 @@ Here are the prerequisites to be able to compile Infer on Linux. This
 is required to compile everything from source.
 
 - opam >= 2.0.0
-- Python 2.7
 - pkg-config
 - Java (only needed for the Java analysis)
 - gcc >= 5.X or clang >= 3.4 (only needed for the C/Objective-C analysis)
 - autoconf >= 2.63 and automake >= 1.11.1 (if building from git)
+- CMake (only needed for the C/Objective-C analysis)
+- Ninja (optional, if you wish to use sequential linking when building the
+  C/Objective-C analysis)
 
 See also the distro-specific instructions for Ubuntu and Debian below.
 

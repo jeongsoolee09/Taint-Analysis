@@ -8,11 +8,11 @@
 
 open! IStd
 
-val initial_times : Unix.process_times
-(** initial process times *)
-
 val find_files : path:string -> extension:string -> string list
 (** recursively traverse a path for files ending with a given extension *)
+
+val fold_folders : init:'acc -> f:('acc -> string -> 'acc) -> path:string -> 'acc
+(** recursively traverse a path for folders, returning resuls by a given fold function *)
 
 val string_crc_hex32 : string -> string
 (** Compute a 32-character hexadecimal crc using the Digest module *)
@@ -84,15 +84,6 @@ val with_channel_in : f:(string -> unit) -> In_channel.t -> unit
 
 val with_process_in : string -> (In_channel.t -> 'a) -> 'a * Unix.Exit_or_signal.t
 
-val with_process_lines :
-     debug:((string -> unit, Format.formatter, unit) format -> string -> unit)
-  -> cmd:string list
-  -> tmp_prefix:string
-  -> f:(string list -> 'res)
-  -> 'res
-(** Runs the command [cmd] and calls [f] on the output lines. Uses [debug] to print debug
-    information, and [tmp_prefix] as a prefix for temporary files. *)
-
 val create_dir : string -> unit
 (** recursively create a directory if it does not exist already *)
 
@@ -107,11 +98,6 @@ val realpath : ?warn_on_error:bool -> string -> string
 val suppress_stderr2 : ('a -> 'b -> 'c) -> 'a -> 'b -> 'c
 (** wraps a function expecting 2 arguments in another that temporarily redirects stderr to /dev/null
     for the duration of the function call *)
-
-val compare_versions : string -> string -> int
-(** [compare_versions v1 v2] returns 1 if v1 is newer than v2, -1 if v1 is older than v2 and 0 if
-    they are the same version. The versions are strings of the shape "n.m.t", the order is
-    lexicographic. *)
 
 val rmtree : string -> unit
 (** [rmtree path] removes [path] and, if [path] is a directory, recursively removes its contents *)
@@ -167,3 +153,14 @@ val get_available_memory_MB : unit -> int option
 val iter_infer_deps : project_root:string -> f:(string -> unit) -> string -> unit
 (** Parse each line of the given infer_deps.txt file (split on tabs, assume 3 elements per line) and
     run [f] on the third element. [project_root] is an argument to avoid dependency cycles. *)
+
+val numcores : int
+(** - On Linux return the number of physical cores (sockets * cores per socket).
+    - On Darwin and Windows returns half of the number of CPUs since most processors have 2 hardware
+      threads per core. *)
+
+val set_best_cpu_for : int -> unit
+(** Pins processes to CPUs aiming to saturate physical cores evenly *)
+
+val zip_fold_filenames : init:'a -> f:('a -> string -> 'a) -> zip_filename:string -> 'a
+(** fold over each filename in the given [zip_filename]. *)

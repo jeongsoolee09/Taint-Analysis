@@ -16,10 +16,7 @@ module L = Logging
 *)
 
 type t =
-  { nullsafe_mode: NullsafeMode.t
-  ; model_source: model_source option
-  ; ret: ret_signature
-  ; params: param_signature list }
+  {nullsafe_mode: NullsafeMode.t; kind: kind; ret: ret_signature; params: param_signature list}
 [@@deriving compare]
 
 and ret_signature = {ret_annotation_deprecated: Annot.Item.t; ret_annotated_type: AnnotatedType.t}
@@ -31,15 +28,24 @@ and param_signature =
   ; param_annotated_type: AnnotatedType.t }
 [@@deriving compare]
 
-and model_source = InternalModel | ThirdPartyRepo of {filename: string; line_number: int}
+and kind = FirstParty | ThirdParty of third_party_model_source [@deriving compare]
+
+and third_party_model_source =
+  | Unregistered
+  | ModelledInternally
+  | InThirdPartyRepo of {filename: string; line_number: int}
 [@@deriving compare]
 
+let get_non_virtual_params {params} =
+  match params with x :: tail when Mangled.is_this x.mangled -> tail | _ -> params
+
+
 (* get nullability of method's return type given its annotations and information about its params *)
-let nullability_for_return ret_type ret_annotations ~nullsafe_mode ~is_third_party
-    ~has_propagates_nullable_in_param =
+let nullability_for_return ~is_callee_in_trust_list ~nullsafe_mode ~is_third_party ret_type
+    ret_annotations ~has_propagates_nullable_in_param =
   let nullability =
-    AnnotatedNullability.of_type_and_annotation ~nullsafe_mode ~is_third_party ret_type
-      ret_annotations
+    AnnotatedNullability.of_type_and_annotation ~is_callee_in_trust_list ~nullsafe_mode
+      ~is_third_party ret_type ret_annotations
   in
   (* if any param is annotated with propagates nullable, then the result is nullable *)
   match nullability with
@@ -54,12 +60,12 @@ let nullability_for_return ret_type ret_annotations ~nullsafe_mode ~is_third_par
 
 (* Given annotations for method signature, extract nullability information
    for return type and params *)
-let extract_nullability ~nullsafe_mode ~is_third_party ret_type ret_annotations
-    param_annotated_types =
+let extract_nullability ~is_callee_in_trust_list ~nullsafe_mode ~is_third_party ret_type
+    ret_annotations param_annotated_types =
   let params_nullability =
     List.map param_annotated_types ~f:(fun (typ, annotations) ->
-        AnnotatedNullability.of_type_and_annotation typ annotations ~nullsafe_mode ~is_third_party
-    )
+        AnnotatedNullability.of_type_and_annotation ~is_callee_in_trust_list ~nullsafe_mode
+          ~is_third_party typ annotations )
   in
   let has_propagates_nullable_in_param =
     List.exists params_nullability ~f:(function
@@ -69,48 +75,31 @@ let extract_nullability ~nullsafe_mode ~is_third_party ret_type ret_annotations
           false )
   in
   let return_nullability =
-    nullability_for_return ret_type ret_annotations ~nullsafe_mode ~is_third_party
-      ~has_propagates_nullable_in_param
+    nullability_for_return ~is_callee_in_trust_list ~nullsafe_mode ~is_third_party ret_type
+      ret_annotations ~has_propagates_nullable_in_param
   in
   (return_nullability, params_nullability)
 
 
-let get ~nullsafe_mode proc_attributes : t =
-  let Annot.Method.{return= ret_annotation; params= original_params_annotation} =
-    proc_attributes.ProcAttributes.method_annotation
+let get ~is_callee_in_trust_list ~nullsafe_mode
+    ( {ProcAttributes.proc_name; ret_type; method_annotation= {return= ret_annotation}} as
+    proc_attributes ) : t =
+  let proc_name =
+    Procname.as_java_exn ~explanation:"AnnotatedSignature.get:: should call only for Java methods"
+      proc_name
   in
-  let formals = proc_attributes.ProcAttributes.formals in
-  let ret_type = proc_attributes.ProcAttributes.ret_type in
-  let procname = proc_attributes.ProcAttributes.proc_name in
   let is_third_party =
     ThirdPartyAnnotationInfo.is_third_party_proc
       (ThirdPartyAnnotationGlobalRepo.get_repo ())
-      procname
+      proc_name
   in
-  (* zip formal params with annotation *)
-  let params_with_annotations =
-    let rec zip_params ial parl =
-      match (ial, parl) with
-      | ia :: ial', param :: parl' ->
-          (param, ia) :: zip_params ial' parl'
-      | [], param :: parl' ->
-          (* List of annotations exhausted before the list of params -
-             treat lack of annotation info as an empty annotation *)
-          (param, Annot.Item.empty) :: zip_params [] parl'
-      | [], [] ->
-          []
-      | _ :: _, [] ->
-          (* List of params exhausted before the list of annotations -
-             this should never happen *)
-          assert false
-    in
-    List.rev (zip_params (List.rev original_params_annotation) (List.rev formals))
-  in
+  let params_with_annotations = ProcAttributes.get_annotated_formals proc_attributes in
   let param_annotated_types =
     List.map params_with_annotations ~f:(fun ((_, typ), annotations) -> (typ, annotations))
   in
   let return_nullability, params_nullability =
-    extract_nullability ~nullsafe_mode ~is_third_party ret_type ret_annotation param_annotated_types
+    extract_nullability ~is_callee_in_trust_list ~nullsafe_mode ~is_third_party ret_type
+      ret_annotation param_annotated_types
   in
   let ret =
     { ret_annotation_deprecated= ret_annotation
@@ -123,22 +112,34 @@ let get ~nullsafe_mode proc_attributes : t =
         ; mangled
         ; param_annotated_type= AnnotatedType.{nullability; typ} } )
   in
-  {nullsafe_mode; model_source= None; ret; params}
+  let kind = if is_third_party then ThirdParty Unregistered else FirstParty in
+  {nullsafe_mode; kind; ret; params}
 
 
-let param_has_annot predicate pvar ann_sig =
-  List.exists
-    ~f:(fun {mangled; param_annotation_deprecated} ->
-      Mangled.equal mangled (Pvar.get_name pvar) && predicate param_annotation_deprecated )
-    ann_sig.params
+let get_for_class_under_analysis tenv proc_attributes =
+  (* Signature makes special meaning when the method is inside the class we are currently analysing.
+     Various non-nullable levels (as dictated by nullsafe mode of the class)
+     make sense only for external (for the class under analysis) methods.
+     But in context of currently analyzed class we effectively have two levels of nullability for signatures:
+     nullable and (strict) non-null.
+     We achieve it via passing Strict mode to the signature extractor.
+  *)
+  let result =
+    get ~is_callee_in_trust_list:false ~nullsafe_mode:NullsafeMode.Strict proc_attributes
+  in
+  (* Don't forget about the original mode *)
+  let nullsafe_mode = NullsafeMode.of_procname tenv proc_attributes.ProcAttributes.proc_name in
+  {result with nullsafe_mode}
+
+
+let pp_ia fmt ia = if not (List.is_empty ia) then F.fprintf fmt "%a " Annot.Item.pp ia
+
+let pp_annotated_param fmt {mangled; param_annotation_deprecated; param_annotated_type} =
+  F.fprintf fmt " %a%a %a" pp_ia param_annotation_deprecated AnnotatedType.pp param_annotated_type
+    Mangled.pp mangled
 
 
 let pp proc_name fmt annotated_signature =
-  let pp_ia fmt ia = if not (List.is_empty ia) then F.fprintf fmt "%a " Annot.Item.pp ia in
-  let pp_annotated_param fmt {mangled; param_annotation_deprecated; param_annotated_type} =
-    F.fprintf fmt " %a%a %a" pp_ia param_annotation_deprecated AnnotatedType.pp param_annotated_type
-      Mangled.pp mangled
-  in
   let {ret_annotation_deprecated; ret_annotated_type} = annotated_signature.ret in
   F.fprintf fmt "[%a] %a%a %a (%a )" NullsafeMode.pp annotated_signature.nullsafe_mode pp_ia
     ret_annotation_deprecated AnnotatedType.pp ret_annotated_type
@@ -154,8 +155,8 @@ let mk_ia_nullable ia =
 
 let mark_ia_nullability ia x = if x then mk_ia_nullable ia else ia
 
-(* Override existing information about nullability for a given type and
-   set it to either nullable or nonnull *)
+(** Override existing information about nullability for a given type and set it to either nullable
+    or nonnull *)
 let set_modelled_nullability_for_annotated_type annotated_type should_set_nullable =
   let nullability =
     if should_set_nullable then AnnotatedNullability.Nullable ModelledNullable
@@ -201,7 +202,11 @@ let set_modelled_nullability proc_name asig model_source (nullability_for_ret, p
     in
     model_param_nullability asig.params params_nullability
   in
-  { asig with
-    ret= set_modelled_nullability_for_ret asig.ret nullability_for_ret
-  ; model_source= Some model_source
-  ; params= final_params }
+  match model_source with
+  | Unregistered ->
+      Logging.die InternalError "the method should be either internally or externally modelled"
+  | ModelledInternally | InThirdPartyRepo _ ->
+      { asig with
+        ret= set_modelled_nullability_for_ret asig.ret nullability_for_ret
+      ; kind= ThirdParty model_source
+      ; params= final_params }

@@ -43,20 +43,34 @@ module MaybeUninitVars = struct
         maybe_uninit_vars
 
 
-  let remove_all_fields tenv base maybe_uninit_vars =
-    match base with
-    | _, {Typ.desc= Tptr ({Typ.desc= Tstruct name_struct}, _)} | _, {Typ.desc= Tstruct name_struct}
-      -> (
-      match Tenv.lookup tenv name_struct with
-      | Some {fields} ->
-          List.fold fields ~init:maybe_uninit_vars ~f:(fun acc (fn, _, _) ->
-              remove
-                (HilExp.AccessExpression.field_offset (HilExp.AccessExpression.base base) fn)
-                acc )
+  let find_access_expr_typ tenv access_expr vars =
+    try HilExp.AccessExpression.get_typ (find access_expr vars) tenv with Caml.Not_found -> None
+
+
+  let remove_all_fields tenv ?(locals = empty) base maybe_uninit_vars =
+    let remove_all_fields_inner base_type =
+      match base_type.Typ.desc with
+      | Typ.Tptr ({Typ.desc= Tstruct name_struct}, _) | Typ.Tstruct name_struct -> (
+        match Tenv.lookup tenv name_struct with
+        | Some {fields} ->
+            List.fold fields ~init:maybe_uninit_vars ~f:(fun acc (fn, _, _) ->
+                remove
+                  (HilExp.AccessExpression.field_offset (HilExp.AccessExpression.base base) fn)
+                  acc )
+        | _ ->
+            maybe_uninit_vars )
       | _ ->
-          maybe_uninit_vars )
-    | _ ->
-        maybe_uninit_vars
+          maybe_uninit_vars
+    in
+    let typ_of_arg_in_locals =
+      match base with
+      | _, {Typ.desc= Tptr _} ->
+          find_access_expr_typ tenv (HilExp.AccessExpression.base base) locals
+      | _ ->
+          None
+    in
+    let typ_to_remove = Option.value ~default:(snd base) typ_of_arg_in_locals in
+    remove_all_fields_inner typ_to_remove
 
 
   let remove_dereference_access base maybe_uninit_vars =
@@ -79,9 +93,10 @@ module MaybeUninitVars = struct
         maybe_uninit_vars
 
 
-  let remove_everything_under tenv access_expr maybe_uninit_vars =
+  let remove_everything_under tenv locals access_expr maybe_uninit_vars =
     let base = HilExp.AccessExpression.get_base access_expr in
-    maybe_uninit_vars |> remove access_expr |> remove_all_fields tenv base
+    maybe_uninit_vars |> remove access_expr
+    |> remove_all_fields tenv ~locals base
     |> remove_all_array_elements base |> remove_dereference_access base
 end
 

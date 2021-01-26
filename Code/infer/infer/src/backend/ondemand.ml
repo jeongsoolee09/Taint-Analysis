@@ -15,20 +15,25 @@ module F = Format
 let exe_env_ref = ref None
 
 module LocalCache = struct
-  let results = lazy (Procname.Hash.create 128)
+  let results =
+    lazy
+      (Procname.LRUHash.create ~initial_size:Config.summaries_caches_max_size
+         ~max_size:Config.summaries_caches_max_size)
 
-  let clear () = Procname.Hash.clear (Lazy.force results)
 
-  let remove pname = Procname.Hash.remove (Lazy.force results) pname
+  let clear () = Procname.LRUHash.clear (Lazy.force results)
+
+  let remove pname = Procname.LRUHash.remove (Lazy.force results) pname
 
   let get proc_name =
-    let summ_opt_opt = Procname.Hash.find_opt (Lazy.force results) proc_name in
+    let summ_opt_opt = Procname.LRUHash.find_opt (Lazy.force results) proc_name in
     if Option.is_some summ_opt_opt then BackendStats.incr_ondemand_local_cache_hits ()
     else BackendStats.incr_ondemand_local_cache_misses () ;
     summ_opt_opt
 
 
-  let add proc_name summary_option = Procname.Hash.add (Lazy.force results) proc_name summary_option
+  let add proc_name summary_option =
+    Procname.LRUHash.replace (Lazy.force results) proc_name summary_option
 end
 
 let set_exe_env (env : Exe_env.t) = exe_env_ref := Some env
@@ -76,10 +81,6 @@ let get_proc_attr proc_name =
 
 let procedure_should_be_analyzed proc_name =
   match get_proc_attr proc_name with
-  | Some proc_attributes when Config.reactive_capture && not proc_attributes.is_defined ->
-      (* try to capture procedure first *)
-      let defined_proc_attributes = OndemandCapture.try_capture proc_attributes in
-      Option.value_map ~f:should_be_analyzed ~default:false defined_proc_attributes
   | Some proc_attributes ->
       should_be_analyzed proc_attributes
   | None ->
@@ -95,8 +96,9 @@ type global_state =
   ; name_generator: Ident.NameGenerator.t
   ; proc_analysis_time: (Mtime.Span.t * string) option
         (** the time elapsed doing [status] so far *)
-  ; pulse_address_generator: PulseAbstractValue.state
-  ; symexec_state: State.t }
+  ; pulse_address_generator: PulseAbstractValue.State.t
+  ; absint_state: AnalysisState.t
+  ; biabduction_state: State.t }
 
 let save_global_state () =
   Timeout.suspend_existing_timeout ~keep_symop_total:false ;
@@ -110,8 +112,9 @@ let save_global_state () =
   ; proc_analysis_time=
       Option.map !current_taskbar_status ~f:(fun (t0, status) ->
           (Mtime.span t0 (Mtime_clock.now ()), status) )
-  ; pulse_address_generator= PulseAbstractValue.get_state ()
-  ; symexec_state= State.save_state () }
+  ; pulse_address_generator= PulseAbstractValue.State.get ()
+  ; absint_state= AnalysisState.save ()
+  ; biabduction_state= State.save_state () }
 
 
 let restore_global_state st =
@@ -121,8 +124,9 @@ let restore_global_state st =
   BiabductionConfig.footprint := st.footprint_mode ;
   Printer.curr_html_formatter := st.html_formatter ;
   Ident.NameGenerator.set_current st.name_generator ;
-  PulseAbstractValue.set_state st.pulse_address_generator ;
-  State.restore_state st.symexec_state ;
+  PulseAbstractValue.State.set st.pulse_address_generator ;
+  AnalysisState.restore st.absint_state ;
+  State.restore_state st.biabduction_state ;
   current_taskbar_status :=
     Option.map st.proc_analysis_time ~f:(fun (suspended_span, status) ->
         (* forget about the time spent doing a nested analysis and resend the status of the outer
@@ -153,9 +157,7 @@ let analyze callee_summary =
   in
   current_taskbar_status := Some (t0, status) ;
   !ProcessPoolState.update_status t0 status ;
-  let summary = Callbacks.iterate_procedure_callbacks exe_env callee_summary in
-  if Topl.is_active () then Topl.add_errors exe_env summary ;
-  summary
+  Callbacks.iterate_procedure_callbacks exe_env callee_summary
 
 
 let run_proc_analysis ~caller_pdesc callee_pdesc =
@@ -175,20 +177,23 @@ let run_proc_analysis ~caller_pdesc callee_pdesc =
     incr nesting ;
     Preanal.do_preanalysis (Option.value_exn !exe_env_ref) callee_pdesc ;
     if Config.debug_mode then
-      DotCfg.emit_proc_desc (Procdesc.get_attributes callee_pdesc).translation_unit callee_pdesc ;
+      DotCfg.emit_proc_desc (Procdesc.get_attributes callee_pdesc).translation_unit callee_pdesc
+      |> ignore ;
     let initial_callee_summary = Summary.OnDisk.reset callee_pdesc in
-    add_active callee_pname ; initial_callee_summary
+    add_active callee_pname ;
+    initial_callee_summary
   in
   let postprocess summary =
     decr nesting ;
-    Summary.OnDisk.store summary ;
+    Summary.OnDisk.store_analyzed summary ;
     remove_active callee_pname ;
     Printer.write_proc_html callee_pdesc ;
     log_elapsed_time () ;
     summary
   in
   let log_error_and_continue exn (summary : Summary.t) kind =
-    Reporting.log_error_using_state summary exn ;
+    BiabductionReporting.log_issue_using_state (Summary.get_proc_desc summary)
+      (Summary.get_err_log summary) exn ;
     let stats = Summary.Stats.update summary.stats ~failure_kind:kind in
     let payloads =
       let biabduction =
@@ -197,7 +202,7 @@ let run_proc_analysis ~caller_pdesc callee_pdesc =
       {summary.payloads with biabduction}
     in
     let new_summary = {summary with stats; payloads} in
-    Summary.OnDisk.store new_summary ;
+    Summary.OnDisk.store_analyzed new_summary ;
     remove_active callee_pname ;
     log_elapsed_time () ;
     new_summary
@@ -219,8 +224,10 @@ let run_proc_analysis ~caller_pdesc callee_pdesc =
     let backtrace = Printexc.get_backtrace () in
     IExn.reraise_if exn ~f:(fun () ->
         match exn with
-        | ProcessPool.ProcnameAlreadyLocked ->
-            clear_actives () ; true
+        | TaskSchedulerTypes.ProcnameAlreadyLocked _ ->
+            clear_actives () ;
+            restore_global_state old_state ;
+            true
         | _ ->
             if not !logged_error then (
               let source_file = attributes.ProcAttributes.translation_unit in
@@ -275,8 +282,8 @@ let dump_duplicate_procs source_file procs =
             None )
   in
   let output_to_file duplicate_procs =
-    Out_channel.with_file (Config.results_dir ^/ Config.duplicates_filename)
-      ~append:true ~perm:0o666 ~f:(fun outc ->
+    Out_channel.with_file (ResultsDir.get_path DuplicateFunctions) ~append:true ~perm:0o666
+      ~f:(fun outc ->
         let fmt = F.formatter_of_out_channel outc in
         List.iter duplicate_procs ~f:(fun (pname, source_captured) ->
             F.fprintf fmt "DUPLICATE_SYMBOLS source:%a source_captured:%a pname:%a@\n" SourceFile.pp
@@ -284,11 +291,6 @@ let dump_duplicate_procs source_file procs =
         F.pp_print_flush fmt () )
   in
   if not (List.is_empty duplicate_procs) then output_to_file duplicate_procs
-
-
-let create_perf_stats_report source_file =
-  PerfStats.register_report PerfStats.TimeAndMemory (PerfStats.Backend source_file) ;
-  PerfStats.get_reporter (PerfStats.Backend source_file) ()
 
 
 let register_callee ?caller_summary callee_pname =
@@ -351,9 +353,7 @@ let analyze_callee ?caller_summary callee =
                 Some callee_summary
             | None ->
                 Summary.OnDisk.get callee_pname
-          else (
-            EventLogger.log_skipped_pname (F.asprintf "%a" Procname.pp callee_pname) ;
-            Summary.OnDisk.get callee_pname )
+          else Summary.OnDisk.get callee_pname
         in
         LocalCache.add callee_pname summ_opt ;
         summ_opt
@@ -373,21 +373,20 @@ let analyze_proc_name_no_caller callee_pname =
 
 let analyze_procedures exe_env procs_to_analyze source_file_opt =
   let saved_language = !Language.curr_language in
-  Option.iter source_file_opt ~f:(fun source_file ->
-      if Config.dump_duplicate_symbols then dump_duplicate_procs source_file procs_to_analyze ) ;
   set_exe_env exe_env ;
   let analyze_proc_name_call pname =
     ignore (analyze_proc_name_no_caller pname : Summary.t option)
   in
   List.iter ~f:analyze_proc_name_call procs_to_analyze ;
   Option.iter source_file_opt ~f:(fun source_file ->
-      Callbacks.iterate_cluster_callbacks procs_to_analyze exe_env source_file ;
-      create_perf_stats_report source_file ) ;
+      if Config.dump_duplicate_symbols then dump_duplicate_procs source_file procs_to_analyze ) ;
+  Option.iter source_file_opt ~f:(fun source_file ->
+      Callbacks.iterate_file_callbacks_and_store_issues procs_to_analyze exe_env source_file ) ;
   unset_exe_env () ;
   Language.curr_language := saved_language
 
 
-(** Invoke all procedure and cluster callbacks on a given environment. *)
+(** Invoke all procedure-level and file-level callbacks on a given environment. *)
 let analyze_file (exe_env : Exe_env.t) source_file =
   let procs_to_analyze = SourceFiles.proc_names_of_source source_file in
   analyze_procedures exe_env procs_to_analyze (Some source_file)

@@ -13,7 +13,7 @@
 open! IStd
 module F = Format
 
-type closure = {name: Procname.t; captured_vars: (t * Pvar.t * Typ.t) list}
+type closure = {name: Procname.t; captured_vars: (t * Pvar.t * Typ.t * Pvar.capture_mode) list}
 
 (** This records information about a [sizeof(typ)] expression.
 
@@ -46,14 +46,14 @@ and t =
 val equal : t -> t -> bool
 (** Equality for expressions. *)
 
-module Set : Caml.Set.S with type elt = t
 (** Set of expressions. *)
+module Set : Caml.Set.S with type elt = t
 
-module Map : Caml.Map.S with type key = t
 (** Map with expression keys. *)
+module Map : Caml.Map.S with type key = t
 
-module Hash : Caml.Hashtbl.S with type key = t
 (** Hashtable with expression keys. *)
+module Hash : Caml.Hashtbl.S with type key = t
 
 val is_null_literal : t -> bool
 
@@ -141,6 +141,8 @@ val fold_captured : f:('a -> t -> 'a) -> t -> 'a -> 'a
 val pp_diff : ?print_types:bool -> Pp.env -> F.formatter -> t -> unit
 
 val pp : F.formatter -> t -> unit
+
+val pp_closure : F.formatter -> closure -> unit
 
 val to_string : t -> string
 

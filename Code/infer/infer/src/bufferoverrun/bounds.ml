@@ -5,8 +5,6 @@
  * LICENSE file in the root directory of this source tree.
  *)
 
-[@@@ocamlformat "parse-docstrings = false"]
-
 open! IStd
 open! AbstractDomain.Types
 module F = Format
@@ -38,10 +36,8 @@ end
 module SymLinear = struct
   module M = Symb.SymbolMap
 
-  (**
-     Map from symbols to integer coefficients.
-     { x -> 2, y -> 5 } represents the value 2 * x + 5 * y
-  *)
+  (** Map from symbols to integer coefficients. [{ x -> 2, y -> 5 }] represents the value
+      [2 * x + 5 * y] *)
   type t = NonZeroInt.t M.t [@@deriving compare]
 
   let empty : t = M.empty
@@ -78,8 +74,12 @@ module SymLinear = struct
     let c = (c :> Z.t) in
     let c =
       if is_beginning then c
-      else if Z.gt c Z.zero then (F.pp_print_string f " + " ; c)
-      else (F.pp_print_string f " - " ; Z.neg c)
+      else if Z.gt c Z.zero then (
+        F.pp_print_string f " + " ;
+        c )
+      else (
+        F.pp_print_string f " - " ;
+        Z.neg c )
     in
     if Z.(equal c one) then (Symb.Symbol.pp_mark ~markup) f s
     else if Z.(equal c minus_one) then F.fprintf f "-%a" (Symb.Symbol.pp_mark ~markup) s
@@ -90,7 +90,11 @@ module SymLinear = struct
    fun ~markup ~is_beginning f x ->
     if M.is_empty x then if is_beginning then F.pp_print_string f "0" else ()
     else
-      ( M.fold (fun s c is_beginning -> pp1 ~markup ~is_beginning f s c ; false) x is_beginning
+      ( M.fold
+          (fun s c is_beginning ->
+            pp1 ~markup ~is_beginning f s c ;
+            false )
+          x is_beginning
         : bool )
       |> ignore
 
@@ -100,6 +104,12 @@ module SymLinear = struct
   let is_zero : t -> bool = M.is_empty
 
   let neg : t -> t = fun x -> M.map NonZeroInt.( ~- ) x
+
+  let remove_positive_length_symbol : t -> t =
+    M.filter (fun symb coeff ->
+        let path = Symb.Symbol.path symb in
+        not (NonZeroInt.is_positive coeff && Symb.SymbolPath.is_length path) )
+
 
   let plus : t -> t -> t =
    fun x y ->
@@ -179,7 +189,8 @@ module SymLinear = struct
 
   let big_int_ub x = if is_le_zero x then Some Z.zero else None
 
-  (** When two following symbols are from the same path, simplify what would lead to a zero sum. E.g. 2 * x.lb - x.ub = x.lb *)
+  (** When two following symbols are from the same path, simplify what would lead to a zero sum.
+      E.g. 2 * x.lb - x.ub = x.lb *)
   let simplify_bound_ends_from_paths : t -> t =
    fun x ->
     let f (prev_opt, to_add) symb coeff =
@@ -232,11 +243,11 @@ module Bound = struct
     | Linear of Z.t * SymLinear.t
         (** [Linear (c, se)] represents [c+se] where [se] is Σ(c⋅x). *)
     | MinMax of Z.t * Sign.t * MinMax.t * Z.t * Symb.Symbol.t
-        (** [MinMax] represents a bound of "int [+|-] [min|max](int, symbol)" format.  For example,
+        (** [MinMax] represents a bound of "int [+|-] [min|max](int, symbol)" format. For example,
             [MinMax (1, Minus, Max, 2, s)] represents [1-max(2,s)]. *)
     | MinMaxB of MinMax.t * t * t  (** [MinMaxB] represents a min/max of two bounds. *)
     | MultB of Z.t * t * t
-        (** [MultB] represents a multiplication of two bounds.  For example, [MultB (1, x, y)]
+        (** [MultB] represents a multiplication of two bounds. For example, [MultB (1, x, y)]
             represents [1 + x × y]. *)
     | PInf  (** +oo *)
   [@@deriving compare]
@@ -320,7 +331,7 @@ module Bound = struct
 
   let of_sym : SymLinear.t -> t = fun s -> Linear (Z.zero, s)
 
-  let of_pulse_value v = of_sym (SymLinear.singleton_one (Symb.Symbol.of_pulse_value v))
+  let of_foreign_id id = of_sym (SymLinear.singleton_one (Symb.Symbol.of_foreign_id id))
 
   let of_path path_of_partial make_symbol ~unsigned ?non_int partial =
     let s = make_symbol ~unsigned ?non_int (path_of_partial partial) in
@@ -337,7 +348,9 @@ module Bound = struct
     of_path (Symb.SymbolPath.length ~is_void) ~unsigned:true ~non_int:false
 
 
-  let of_modeled_path = of_path Symb.SymbolPath.modeled ~unsigned:true ~non_int:false
+  let of_modeled_path ~is_expensive =
+    of_path (Symb.SymbolPath.modeled ~is_expensive) ~unsigned:true ~non_int:false
+
 
   let is_path_of ~f = function
     | Linear (n, se) when Z.(equal n zero) ->
@@ -605,6 +618,22 @@ module Bound = struct
         mk_MinMaxB (MinMax.neg m, neg x, neg y)
     | MultB (c, x, y) ->
         mk_MultB (Z.neg c, neg x, y)
+
+
+  let rec remove_positive_length_symbol b =
+    match b with
+    | MInf | PInf ->
+        b
+    | Linear (c, x) ->
+        Linear (c, SymLinear.remove_positive_length_symbol x)
+    | MinMax (c, sign, min_max, d, x) ->
+        if Symb.Symbol.is_length x then
+          Linear (Sign.eval_big_int sign c (MinMax.eval_big_int min_max d Z.zero), SymLinear.empty)
+        else b
+    | MinMaxB (m, x, y) ->
+        mk_MinMaxB (m, remove_positive_length_symbol x, remove_positive_length_symbol y)
+    | MultB (c, x, y) ->
+        mk_MultB (c, remove_positive_length_symbol x, remove_positive_length_symbol y)
 
 
   let exact_min : otherwise:(t -> t -> t) -> t -> t -> t =
@@ -1055,7 +1084,8 @@ module Bound = struct
 
   let are_similar b1 b2 = Symb.SymbolSet.equal (get_symbols b1) (get_symbols b2)
 
-  (** Substitutes ALL symbols in [x] with respect to [eval_sym]. Under/over-Approximate as good as possible according to [subst_pos]. *)
+  (** Substitutes ALL symbols in [x] with respect to [eval_sym]. Under/over-Approximate as good as
+      possible according to [subst_pos]. *)
   let rec subst : subst_pos:Symb.BoundEnd.t -> t -> eval_sym -> t bottom_lifted =
     let lift1 : (t -> t) -> t bottom_lifted -> t bottom_lifted =
      fun f x -> match x with Bottom -> Bottom | NonBottom x -> NonBottom (f x)
@@ -1219,6 +1249,20 @@ module Bound = struct
         if phys_equal a a' && phys_equal b b' then x else mk_MultB (c, a', b')
 
 
+  let simplify_minimum_length x =
+    match x with
+    | MultB _ | Linear _ | MInf | PInf | MinMaxB _ ->
+        x
+    | MinMax (c1, sign, Min, c2, symb) ->
+        let path = Symb.Symbol.path symb in
+        if Symb.SymbolPath.is_length path then
+          let z = Sign.eval_big_int sign c1 (Z.min c2 Z.zero) in
+          Linear (z, SymLinear.empty)
+        else x
+    | MinMax _ ->
+        x
+
+
   let get_same_one_symbol b1 b2 =
     match (b1, b2) with
     | Linear (n1, se1), Linear (n2, se2) when Z.(equal n1 zero) && Z.(equal n2 zero) ->
@@ -1247,10 +1291,11 @@ module BoundTrace = struct
     | Loop of Location.t
     | Call of {callee_pname: Procname.t; callee_trace: t; location: Location.t}
     | ModeledFunction of {pname: string; location: Location.t}
+    | ArcFromNonArc of {pname: string; location: Location.t}
   [@@deriving compare]
 
   let rec length = function
-    | Loop _ | ModeledFunction _ ->
+    | Loop _ | ModeledFunction _ | ArcFromNonArc _ ->
         1
     | Call {callee_trace} ->
         1 + length callee_trace
@@ -1265,6 +1310,8 @@ module BoundTrace = struct
         F.fprintf f "Loop (%a)" Location.pp loc
     | ModeledFunction {pname; location} ->
         F.fprintf f "ModeledFunction `%s` (%a)" pname Location.pp location
+    | ArcFromNonArc {pname; location} ->
+        F.fprintf f "ArcFromNonArc `%s` (%a)" pname Location.pp location
     | Call {callee_pname; callee_trace; location} ->
         F.fprintf f "%a -> Call `%a` (%a)" pp callee_trace Procname.pp callee_pname Location.pp
           location
@@ -1275,21 +1322,28 @@ module BoundTrace = struct
   let rec make_err_trace ~depth trace =
     match trace with
     | Loop loop_head_loc ->
-        let desc = F.asprintf "Loop at %a" Location.pp loop_head_loc in
-        [Errlog.make_trace_element depth loop_head_loc desc []]
+        [Errlog.make_trace_element depth loop_head_loc "Loop" []]
     | Call {callee_pname; location; callee_trace} ->
-        let desc = F.asprintf "call to %a" Procname.pp callee_pname in
+        let desc = F.asprintf "Call to %a" Procname.pp callee_pname in
         Errlog.make_trace_element depth location desc []
         :: make_err_trace ~depth:(depth + 1) callee_trace
     | ModeledFunction {pname; location} ->
         let desc = F.asprintf "Modeled call to %s" pname in
         [Errlog.make_trace_element depth location desc []]
+    | ArcFromNonArc {pname; location} ->
+        let desc = F.asprintf "ARC function call to %s from non-ARC caller" pname in
+        [Errlog.make_trace_element depth location desc []]
 
 
   let of_loop location = Loop location
+
+  let of_modeled_function pname location = ModeledFunction {pname; location}
+
+  let of_arc_from_non_arc pname location = ArcFromNonArc {pname; location}
 end
 
-(** A NonNegativeBound is a Bound that is either non-negative or symbolic but will be evaluated to a non-negative value once instantiated *)
+(** A NonNegativeBound is a Bound that is either non-negative or symbolic but will be evaluated to a
+    non-negative value once instantiated *)
 module NonNegativeBound = struct
   type t = Bound.t * BoundTrace.t [@@deriving compare]
 

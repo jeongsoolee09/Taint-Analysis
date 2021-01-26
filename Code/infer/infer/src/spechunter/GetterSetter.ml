@@ -1,7 +1,6 @@
 (** methods 중에서 단순 Getter와 Setter를 찾아낸다. *)
 
 open! IStd
-open DefLocAlias.TransferFunctions
 open DefLocAliasSearches
 open DefLocAliasLogicTests
 open DefLocAliasDomain
@@ -168,8 +167,9 @@ let to_json_repr (labelled_methods:methods list) : json =
     | Getter name ->
         (Procname.to_string name, `String "getter")
     | Setter name -> 
-        ((Procname.to_string name, `String "setter"))
-    | Nothing -> L.die InternalError "trying to write a non-getter/setter method\n" in
+        (Procname.to_string name, `String "setter")
+    | Nothing -> L.die InternalError
+                   "trying to write a non-getter/setter method\n" in
   let key_attr_list = List.fold ~f:(fun acc labelled_method ->
       (to_key_attr labelled_method)::acc) ~init:[] labelled_methods in
   `Assoc key_attr_list
@@ -188,7 +188,7 @@ let write_json_to_file (json_repr:json) : unit =
 
 let main () : unit =
   L.progress "Determining feature value for all methods...\n";
-  load_summary_from_disk_to method_summary_table;
+  SummaryLoader.load_summary_from_disk_to method_summary_table;
   let meths = Hashtbl.fold (fun k _ acc -> k::acc) method_summary_table [] in
   let getter_methods = collect_getter meths in
   let setter_methods = collect_setter meths in

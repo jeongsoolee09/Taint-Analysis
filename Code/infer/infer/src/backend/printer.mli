@@ -10,23 +10,8 @@ open! IStd
 
 (** Printers for the analysis results *)
 
-(** Module to read specific lines from files. The data from any file will stay in memory until the
-    handle is collected by the gc *)
-module LineReader : sig
-  type t
-
-  val create : unit -> t
-  (** create a line reader *)
-
-  val from_loc : t -> Location.t -> string option
-  (** get the line from a location looking for the copy of the file in the results dir *)
-end
-
 val curr_html_formatter : Format.formatter ref
 (** Current html formatter *)
-
-val force_delayed_prints : unit -> unit
-(** Execute the delayed print actions *)
 
 val node_finish_session : Procdesc.Node.t -> unit
 (** Finish a session, and perform delayed print actions if required *)
@@ -38,4 +23,5 @@ val write_proc_html : Procdesc.t -> unit
 (** Write html file for the procedure. *)
 
 val write_all_html_files : SourceFile.t -> unit
-(** Create filename.ext.html for each file in the cluster. *)
+(** Group procedures used in the file by their corresponding source files, and create
+    filename.ext.html for each such a file. *)

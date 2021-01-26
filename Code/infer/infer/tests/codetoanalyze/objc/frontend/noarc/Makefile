@@ -10,6 +10,7 @@ CLANG_OPTIONS = -c $(OBJC_CLANG_OPTIONS)
 SOURCES = \
   ../block/retain_cycle.m \
   ../block/static.m \
+  ../block/specialized_method_with_block_params.m \
   ../boxing/Boxing.m \
   ../boxing/array.m \
   ../boxing/array_literal.c \
@@ -40,9 +41,7 @@ SOURCES = \
   ../shared/category_procdesc/main.c \
   ../shared/field_superclass/SuperExample.m \
   ../shared/memory_leaks_benchmark/AutoreleaseExample.m \
-  ../shared/memory_leaks_benchmark/MemoryLeakExample.m \
   ../shared/memory_leaks_benchmark/RetainReleaseExample.m \
-  ../shared/memory_leaks_benchmark/TollBridgeExample.m \
   ../shared/npe/npe_malloc.m \
   ../shared/property/GetterExample.m \
   ../shared/property/PropertyAttributes.m \

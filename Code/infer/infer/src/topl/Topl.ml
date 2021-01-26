@@ -43,24 +43,42 @@ let get_transitions_count () = ToplAutomaton.tcount (Lazy.force automaton)
 
 (** Checks whether the method name and the number of arguments matches the conditions in a
     transition label. Possible optimization: also evaluate if arguments equal certain constants. *)
-let evaluate_static_guard label (e_fun, arg_ts) =
-  let match_name () =
-    match e_fun with
-    | Exp.Const (Const.Cfun n) ->
-        (* TODO: perhaps handle inheritance *)
-        let name = Procname.hashable_name n in
-        let re = Str.regexp label.ToplAst.procedure_name in
-        let result = Str.string_match re name 0 in
-        tt "match name='%s' re='%s' result=%b@\n" name label.ToplAst.procedure_name result ;
-        result
-    | _ ->
-        false
+let evaluate_static_guard label_o (e_fun, arg_ts) =
+  let evaluate_nonany label =
+    let match_name () =
+      match e_fun with
+      | Exp.Const (Const.Cfun n) ->
+          (* TODO: perhaps handle inheritance *)
+          let name = Procname.hashable_name n in
+          let re = Str.regexp label.ToplAst.procedure_name in
+          let result = Str.string_match re name 0 in
+          tt "  check name='%s'@\n" name ;
+          result
+      | _ ->
+          tt "  check name-unknown@\n" ;
+          false
+    in
+    let pattern_len = Option.map ~f:List.length label.ToplAst.arguments in
+    let match_args () =
+      let arg_len = 1 + List.length arg_ts in
+      (* patterns include the return value *)
+      tt "  check arg-len=%d@\n" arg_len ;
+      Option.value_map ~default:true ~f:(Int.equal arg_len) pattern_len
+    in
+    tt "match name-pattern='%s' arg-len-pattern=%a@\n" label.ToplAst.procedure_name
+      (Pp.option Int.pp) pattern_len ;
+    let log f =
+      f ()
+      ||
+      ( tt "  match result FALSE@\n" ;
+        false )
+    in
+    log match_args && log match_name
+    &&
+    ( tt "  match result TRUE@\n" ;
+      true )
   in
-  let match_args () =
-    let same_length xs ys = Int.equal (Caml.List.compare_lengths xs ys) 0 in
-    Option.value_map label.ToplAst.arguments ~f:(same_length arg_ts) ~default:true
-  in
-  match_name () && match_args ()
+  Option.value_map ~default:true ~f:evaluate_nonany label_o
 
 
 (** For each transition in the automaton, evaluate its static guard. *)
@@ -86,7 +104,7 @@ let set_transitions loc active_transitions =
 let call_save_args loc ret_id ret_typ arg_ts =
   let dummy_ret_id = Ident.create_fresh Ident.knormal in
   [| ToplUtils.topl_call dummy_ret_id Tvoid loc ToplName.save_args
-       ((Exp.Var ret_id, ret_typ) :: arg_ts) |]
+       (arg_ts @ [(Exp.Var ret_id, ret_typ)]) |]
 
 
 let call_execute loc =
@@ -102,7 +120,7 @@ let instrument_instruction = function
         let is_interesting t active = active && not (ToplAutomaton.is_skip a t) in
         Array.existsi ~f:is_interesting active_transitions
       in
-      if not instrument then (* optimization*) [|i|]
+      if not instrument then (* optimization *) [|i|]
       else
         let i1s = set_transitions loc active_transitions in
         let i2s = call_save_args loc ret_id ret_typ arg_ts in
@@ -117,15 +135,24 @@ let add_types tenv =
   let get_registers () =
     let a = Lazy.force automaton in
     let h = String.Table.create () in
-    let record =
-      let open ToplAst in
-      function
-      | SaveInRegister reg | EqualToRegister reg -> Hashtbl.set h ~key:reg ~data:() | _ -> ()
+    let record reg = Hashtbl.set h ~key:reg ~data:() in
+    let record_value = function ToplAst.Register reg -> record reg | _ -> () in
+    let record_predicate =
+      ToplAst.(
+        function
+        | Binop (_, v1, v2) ->
+            record_value v1 ;
+            record_value v2
+        | Value v ->
+            record_value v)
+    in
+    let record_assignment (reg, _) = record reg in
+    let record_label label =
+      List.iter ~f:record_predicate label.ToplAst.condition ;
+      List.iter ~f:record_assignment label.ToplAst.action
     in
     for i = 0 to ToplAutomaton.tcount a - 1 do
-      let label = (ToplAutomaton.transition a i).label in
-      record label.return ;
-      Option.iter ~f:(List.iter ~f:record) label.arguments
+      Option.iter ~f:record_label (ToplAutomaton.transition a i).label
     done ;
     Hashtbl.keys h
   in
@@ -136,22 +163,23 @@ let add_types tenv =
   let register_field name = (ToplUtils.make_field (ToplName.reg name), ToplUtils.any_type, []) in
   let statics =
     let state = (ToplUtils.make_field ToplName.state, Typ.mk (Tint IInt), []) in
-    let retval = (ToplUtils.make_field ToplName.retval, ToplUtils.any_type, []) in
     let transitions = List.init (get_transitions_count ()) ~f:transition_field in
     let saved_args = List.init (ToplAutomaton.max_args (Lazy.force automaton)) ~f:saved_arg_field in
     let registers = List.map ~f:register_field (get_registers ()) in
-    List.concat [[retval; state]; transitions; saved_args; registers]
+    List.concat [[state]; transitions; saved_args; registers]
   in
   let _topl_class = Tenv.mk_struct tenv ToplUtils.topl_class_name ~statics in
   ()
 
 
-let instrument tenv procdesc =
-  if not (ToplUtils.is_synthesized (Procdesc.get_proc_name procdesc)) then (
+let instrument {InterproceduralAnalysis.proc_desc; tenv; _} =
+  if not (ToplUtils.is_synthesized (Procdesc.get_proc_name proc_desc)) then (
     let f _node = instrument_instruction in
     tt "instrument@\n" ;
-    let _updated = Procdesc.replace_instrs_by procdesc ~f in
-    tt "add types@\n" ; add_types tenv ; tt "done@\n" )
+    let _updated = Procdesc.replace_instrs_by proc_desc ~f in
+    tt "add types@\n" ;
+    add_types tenv ;
+    tt "done@\n" )
 
 
 (** [lookup_static_var var prop] expects [var] to have the form [Exp.Lfield (obj, fieldname)], and
@@ -199,6 +227,11 @@ let conjoin_props env post pre =
   List.fold ~init:post ~f:(Prop.prop_atom_and env) (Prop.get_pure pre)
 
 
+let message_of_state state =
+  let property, _vname = ToplAutomaton.vname (Lazy.force automaton) state in
+  Printf.sprintf "property %s reaches error" property
+
+
 (** For each (pre, post) pair of symbolic heaps and each (start, error) pair of Topl automata
     states, define
 
@@ -215,20 +248,17 @@ let conjoin_props env post pre =
     To compute (pre & post) the function [conjoin_props] from above is used, which returns a weaker
     formula: in particular, the spatial part of pre is dropped. To get around some limitations of
     the prover we also use [lookup_static_var]; if a call to this function fails, we don't warn. *)
-let add_errors exe_env summary =
-  let proc_desc = summary.Summary.proc_desc in
+let add_errors_biabduction {InterproceduralAnalysis.proc_desc; tenv; err_log} biabduction_summary =
   let proc_name = Procdesc.get_proc_name proc_desc in
   if not (ToplUtils.is_synthesized proc_name) then
-    let env = Exe_env.get_tenv exe_env proc_name in
     let preposts : Prop.normal BiabductionSummary.spec list =
-      let biabduction_summary = summary.Summary.payloads.Payloads.biabduction in
       let check_phase x =
         if not BiabductionSummary.(equal_phase x.phase RE_EXECUTION) then
           L.die InternalError "Topl.add_errors should only be called after RE_EXECUTION"
       in
       let extract_specs x = BiabductionSummary.(normalized_specs_to_specs x.preposts) in
-      Option.iter ~f:check_phase biabduction_summary ;
-      Option.value_map ~default:[] ~f:extract_specs biabduction_summary
+      check_phase biabduction_summary ;
+      extract_specs biabduction_summary
     in
     let subscript varname sub = Printf.sprintf "%s_%s" varname sub in
     let subscript_pre varname = subscript varname "pre" in
@@ -241,26 +271,26 @@ let add_errors exe_env summary =
         let start_exp = Exp.int (IntLit.of_int start) in
         let error_exp = Exp.int (IntLit.of_int error) in
         let pre_start =
-          Prop.normalize env (Prop.prop_expmap (Exp.rename_pvars ~f:subscript_pre) pre)
+          Prop.normalize tenv (Prop.prop_expmap (Exp.rename_pvars ~f:subscript_pre) pre)
         in
-        let pre_start = Prop.conjoin_eq env start_exp start_pre_value pre_start in
+        let pre_start = Prop.conjoin_eq tenv start_exp start_pre_value pre_start in
         let handle_post (post, _path (* TODO: use for getting a trace*)) =
           let handle_state_post_value state_post_value =
             tt "POST = %a@\n" (Prop.pp_prop Pp.text) post ;
             let loc = Procdesc.get_loc proc_desc in
             let post =
-              Prop.normalize env (Prop.prop_expmap (Exp.rename_pvars ~f:subscript_post) post)
+              Prop.normalize tenv (Prop.prop_expmap (Exp.rename_pvars ~f:subscript_post) post)
             in
-            let phi = conjoin_props env post pre_start in
-            let psi = Prop.conjoin_neq env error_exp state_post_value phi in
-            if (not (is_inconsistent env phi)) && is_inconsistent env psi then (
-              let property, _vname = ToplAutomaton.vname (Lazy.force automaton) error in
-              let message = Printf.sprintf "property %s reaches error" property in
+            let phi = conjoin_props tenv post pre_start in
+            let psi = Prop.conjoin_neq tenv error_exp state_post_value phi in
+            if (not (is_inconsistent tenv phi)) && is_inconsistent tenv psi then (
+              let message = message_of_state error in
               tt "WARN@\n" ;
-              Reporting.log_error summary IssueType.topl_error ~loc message )
+              Reporting.log_issue proc_desc err_log ToplOnBiabduction IssueType.topl_biabd_error
+                ~loc message )
           in
           (* Don't warn if [lookup_static_var] fails. *)
-          Option.iter ~f:handle_state_post_value (lookup_static_var env state_var post)
+          Option.iter ~f:handle_state_post_value (lookup_static_var tenv state_var post)
         in
         List.iter ~f:handle_post posts
       in
@@ -269,9 +299,53 @@ let add_errors exe_env summary =
         List.iter ~f:(handle_start_error state_pre_value) start_error_pairs
       in
       (* Don't warn if [lookup_static_var] fails. *)
-      Option.iter ~f:handle_state_pre_value (lookup_static_var env state_var pre)
+      Option.iter ~f:handle_state_pre_value (lookup_static_var tenv state_var pre)
     in
     List.iter ~f:handle_preposts preposts
+
+
+let add_errors_pulse {InterproceduralAnalysis.proc_desc; err_log} (pulse_summary : PulseSummary.t) =
+  let pulse_summary =
+    let f = function PulseExecutionDomain.ContinueProgram s -> Some s | _ -> None in
+    List.filter_map ~f (pulse_summary :> PulseExecutionDomain.t list)
+  in
+  let proc_name = Procdesc.get_proc_name proc_desc in
+  if not (ToplUtils.is_synthesized proc_name) then
+    let start_to_error =
+      Lazy.force automaton |> ToplAutomaton.get_start_error_pairs |> Int.Table.of_alist_exn
+    in
+    let topl_property_var = Var.of_pvar ToplUtils.topl_class_pvar in
+    let topl_state_field = HilExp.Access.FieldAccess (ToplUtils.make_field ToplName.state) in
+    let check_pre_post pre_post =
+      let open IOption.Let_syntax in
+      let path_condition = pre_post.PulseAbductiveDomain.path_condition in
+      let get_topl_state_opt pulse_state =
+        let stack = pulse_state.PulseBaseDomain.stack in
+        let heap = pulse_state.PulseBaseDomain.heap in
+        let* topl_property_addr, _ = PulseBaseStack.find_opt topl_property_var stack in
+        let* state_addr, _ =
+          PulseBaseMemory.find_edge_opt topl_property_addr topl_state_field heap
+        in
+        let* state_val, _ =
+          PulseBaseMemory.find_edge_opt state_addr HilExp.Access.Dereference heap
+        in
+        PulsePathCondition.as_int path_condition state_val
+      in
+      let* pre_topl = get_topl_state_opt (pre_post.PulseAbductiveDomain.pre :> PulseBaseDomain.t) in
+      let* post_topl =
+        get_topl_state_opt (pre_post.PulseAbductiveDomain.post :> PulseBaseDomain.t)
+      in
+      let* error_topl = Int.Table.find start_to_error pre_topl in
+      if Int.equal post_topl error_topl then Some error_topl else None
+    in
+    let errors = List.filter_map ~f:check_pre_post pulse_summary in
+    let errors = Int.Set.to_list (Int.Set.of_list errors) in
+    let loc = Procdesc.get_loc proc_desc in
+    let report error_state =
+      let m = message_of_state error_state in
+      Reporting.log_issue proc_desc err_log ToplOnPulse IssueType.topl_pulse_error ~loc m
+    in
+    List.iter ~f:report errors
 
 
 let sourcefile () =
@@ -282,3 +356,17 @@ let sourcefile () =
 let cfg () =
   if not (is_active ()) then L.die InternalError "Called Topl.cfg when Topl is inactive" ;
   ToplMonitor.cfg ()
+
+
+let analyze_with analyze postprocess analysis_data =
+  if is_active () then instrument analysis_data ;
+  let summary = analyze analysis_data in
+  if is_active () then Option.iter ~f:(postprocess analysis_data) summary ;
+  summary
+
+
+let analyze_with_biabduction biabduction analysis_data =
+  analyze_with biabduction add_errors_biabduction analysis_data
+
+
+let analyze_with_pulse pulse analysis_data = analyze_with pulse add_errors_pulse analysis_data

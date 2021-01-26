@@ -88,4 +88,18 @@ class Test {
   static long systemNanoTime_impure() {
     return System.nanoTime();
   }
+
+  void exit_impure() {
+    System.exit(1);
+  }
+
+  void modify_exit_impure(int[] a) {
+    a[0] = 0;
+    System.exit(1);
+  }
+
+  // We get no pulse summary, hence consider this as impure
+  void while_true_impure() {
+    while (true) {}
+  }
 }

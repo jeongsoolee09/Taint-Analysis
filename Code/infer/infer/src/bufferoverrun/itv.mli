@@ -31,6 +31,9 @@ module ItvPure : sig
 
   val nat : t
 
+  val pos : t
+  (** [1, +oo] *)
+
   val of_int : int -> t
 
   val lb : t -> Bound.t
@@ -105,7 +108,7 @@ module ItvPure : sig
 
   val of_int_lit : IntLit.t -> t
 
-  val of_pulse_value : PulseAbstractValue.t -> t
+  val of_foreign_id : int -> t
 
   val get_bound : t -> Symb.BoundEnd.t -> Bound.t
 
@@ -144,6 +147,9 @@ val top : t
 
 val zero : t
 (** 0 *)
+
+val one : t
+(** 1 *)
 
 val zero_one : t
 (** [0, 1] *)
@@ -263,7 +269,7 @@ val of_offset_path : is_void:bool -> Symb.SymbolPath.partial -> t
 
 val of_length_path : is_void:bool -> Symb.SymbolPath.partial -> t
 
-val of_modeled_path : Symb.SymbolPath.partial -> t
+val of_modeled_path : is_expensive:bool -> Symb.SymbolPath.partial -> t
 
 val is_offset_path_of : Symb.SymbolPath.partial -> t -> bool
 

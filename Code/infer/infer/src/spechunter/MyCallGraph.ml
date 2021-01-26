@@ -2,18 +2,49 @@
  *   각 파일의 각 Procdesc.t의 각 노드의 각 instr를 뽑아서 해당 메소드의 콜리를 계산해 낸다. **)
 
 open! IStd
-open DefLocAlias.TransferFunctions
 
 module Hashtbl = Caml.Hashtbl
+module Map = Caml.Map.Make (Procname)
+module L = Logging
 
-(** 디스크에서 pdesc를 읽어와서 해시테이블에 (caller, callee) 등록 *)
-let load_summary_from_disk_to (hashtbl:(Procname.t, Procname.t) Hashtbl.t) : unit =
-  let all_source_files = SourceFiles.get_all ~filter:(fun _ -> true) () in
-  let all_procnames_list = List.map ~f:SourceFiles.proc_names_of_source all_source_files in
-  let all_procnames = List.concat all_procnames_list in
-  let all_pnames_and_pdesc_opts = List.map ~f:(fun pname -> (pname, Procdesc.load pname)) all_procnames in
-  let all_pnames_and_pdesc_opts_ = List.filter ~f:(fun (_, opt) -> match opt with Some _ -> true | None -> false) all_pnames_and_pdesc_opts in
-  let all_pnames_and_pdesc = catMaybes_tuplist all_pnames_and_pdesc_opts_ in
-  let callees_and_callers = List.map ~f:(fun (p, pdesc) -> (p, Procdesc.get_static_callees pdesc)) all_pnames_and_pdesc in
-  List.iter callees_and_callers ~f:(fun (k,values) ->
-      List.iter ~f:(fun v -> Hashtbl.add hashtbl k v) values)
+
+let rec catMaybes_tuplist (optlist:('a*'b option) list) : ('a*'b) list =
+  match optlist with
+  | [] -> []
+  | (sth1, Some sth2) :: t -> (sth1, sth2)::catMaybes_tuplist t
+  | (_, None) :: _ -> L.die InternalError "catMaybes_tuplist failed"
+
+
+(** load callgraph from disk to the given hashtable. *)
+let load_callgraph_from_disk_to hashtbl =
+  let callees_and_callers =
+    SourceFiles.get_all ~filter:(fun _ -> true) ()
+    |> List.map ~f:SourceFiles.proc_names_of_source
+    |> List.concat
+    |> List.map ~f:(fun pname ->
+        (pname, Procdesc.load pname))
+    |> List.filter ~f:(fun (_, opt) ->
+        Option.is_some opt)
+    |> catMaybes_tuplist
+    |> List.map ~f:(fun (p, pdesc) ->
+        (p, Procdesc.get_static_callees pdesc)) in
+  List.iter callees_and_callers ~f:(fun (k, values) ->
+    List.iter ~f:(fun v -> Hashtbl.add hashtbl k v) values)
+
+
+(** The map version of the above. *)
+let load_callgraph_from_disk_to_map map =
+  let callees_and_callers =
+    SourceFiles.get_all ~filter:(fun _ -> true) ()
+    |> List.map ~f:SourceFiles.proc_names_of_source
+    |> List.concat
+    |> List.map ~f:(fun pname ->
+        (pname, Procdesc.load pname))
+    |> List.filter ~f:(fun (_, opt) ->
+        Option.is_some opt)
+    |> catMaybes_tuplist
+    |> List.map ~f:(fun (p, pdesc) ->
+        (p, Procdesc.get_static_callees pdesc)) in
+  List.fold ~f:(fun acc (caller, callees) ->
+      List.fold ~f:(fun acc_ callee ->
+          Map.add caller callee acc_) ~init:acc callees) ~init:map callees_and_callers

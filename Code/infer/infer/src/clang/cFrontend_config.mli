@@ -11,18 +11,27 @@ open! IStd
 
 type clang_lang = C | CPP | ObjC | ObjCPP [@@deriving compare]
 
-val string_of_clang_lang : clang_lang -> string
-
 val equal_clang_lang : clang_lang -> clang_lang -> bool
 
 type translation_unit_context =
-  {lang: clang_lang; source_file: SourceFile.t; integer_type_widths: Typ.IntegerWidths.t}
+  { lang: clang_lang
+  ; source_file: SourceFile.t
+  ; integer_type_widths: Typ.IntegerWidths.t
+  ; is_objc_arc_on: bool }
 
-type decl_trans_context = [`DeclTraversal | `Translation]
+type decl_trans_context = [`DeclTraversal | `Translation | `CppLambdaExprTranslation]
 
 (** Constants *)
 
 val alloc : string
+
+val allocWithZone : string
+
+val arrayWithObjects_count : string
+
+val dictionaryWithObjects_forKeys_count : string
+
+val dealloc : string
 
 val assert_fail : string
 
@@ -69,6 +78,8 @@ val new_str : string
 
 val next_object : string
 
+val nsenumerator_cl : string
+
 val nsproxy_cl : string
 
 val nsobject_cl : string
@@ -78,6 +89,8 @@ val nsstring_cl : string
 val objc_class : string
 
 val objc_object : string
+
+val object_enumerator : string
 
 val return_param : string
 

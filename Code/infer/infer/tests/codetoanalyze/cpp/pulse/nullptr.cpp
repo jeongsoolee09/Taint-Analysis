@@ -6,6 +6,8 @@
  */
 
 #include <type_traits>
+#include <atomic>
+#include <cstdlib>
 
 void assign_zero_ok() {
   int x[2];
@@ -89,4 +91,106 @@ void std_false_type_deref_bad() {
   if (!return_false()) {
     *x = 42;
   }
+}
+
+std::atomic<bool> global_var{true};
+
+namespace ns1 {
+namespace ns2 {
+void fun_abort(bool b) {
+  bool abort = true;
+  if (b) {
+    abort = global_var.load();
+  } else {
+    abort = true;
+  }
+  if (abort) {
+    std::abort();
+  }
+}
+} // namespace ns2
+} // namespace ns1
+
+X* getX(bool b) {
+  if (b) {
+    return new X();
+  } else {
+    ns1::ns2::fun_abort(true);
+  }
+
+  return nullptr;
+}
+
+void call_modeled_abort_ok() { getX(false)->foo(); }
+
+struct S {
+  int field;
+};
+
+void set_S();
+
+struct T {
+  static S*& get() {
+    auto& s = T::getRaw();
+    if (T::getRaw() == nullptr) {
+      set_S();
+    }
+    return s;
+  }
+
+  static S*& getRaw() {
+    thread_local S* s = nullptr;
+    return s;
+  }
+};
+
+void set_S() {
+  auto& s = T::getRaw();
+  if (s != nullptr) {
+    return;
+  }
+
+  s = (S*)calloc(1, sizeof(S));
+}
+
+int thread_local_was_set_ok() { return T::get()->field; }
+
+struct Item {
+  X* get() const;
+};
+
+struct Handle {
+  X* get() const noexcept {
+    return item_.get() == nullptr ? nullptr : toX(item_);
+  }
+
+  X* operator->() const noexcept {
+    // dynamic check get() != null
+    return get();
+  }
+
+ private:
+  Item item_{};
+  static X* toX(Item item);
+};
+
+// We do not want to report nullptr dereference in this case
+// as we "know" that Item::get does not return null, however
+// at the moment we are not able to show it in pulse.
+// That's why as a workaround we model the analysis of Handle::get`
+// to return non-null
+void explicit_check_for_null_ok(Handle h) { return h->foo(); }
+
+X* checks_for_null() { return getX(true) == nullptr ? nullptr : new X(); }
+
+void cannot_be_null_ok() { return checks_for_null()->foo(); }
+
+void free_nullptr_ok() {
+  int* p = nullptr;
+  free(p);
+}
+
+void delete_nullptr_ok() {
+  int* p = nullptr;
+  delete p;
 }

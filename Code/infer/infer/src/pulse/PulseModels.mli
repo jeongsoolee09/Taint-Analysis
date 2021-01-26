@@ -6,15 +6,15 @@
  *)
 open! IStd
 open PulseBasicInterface
+open PulseDomainInterface
 
-type exec_fun =
-     caller_summary:Summary.t
+type model =
+     PulseSummary.t InterproceduralAnalysis.t
+  -> callee_procname:Procname.t
   -> Location.t
   -> ret:Ident.t * Typ.t
-  -> PulseAbductiveDomain.t
-  -> PulseAbductiveDomain.t list PulseOperations.access_result
-
-type model = exec_fun
+  -> AbductiveDomain.t
+  -> ExecutionDomain.t list PulseOperations.access_result
 
 val dispatch :
      Tenv.t

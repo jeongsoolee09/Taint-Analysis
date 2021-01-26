@@ -84,13 +84,20 @@ val extract_stmt_from_singleton :
 
 val is_null_stmt : Clang_ast_t.stmt -> bool
 
+val dereference_var_sil : Exp.t * Typ.t -> Location.t -> Sil.instr * Exp.t
+
 val dereference_value_from_result :
   ?strip_pointer:bool -> Clang_ast_t.source_range -> Location.t -> trans_result -> trans_result
 (** Given a [trans_result], create a temporary variable with dereferenced value of an expression
     assigned to it *)
 
 val cast_operation :
-  Clang_ast_t.cast_kind -> Exp.t * Typ.t -> Typ.t -> Location.t -> Sil.instr list * (Exp.t * Typ.t)
+     ?objc_bridge_cast_kind:Clang_ast_t.obj_c_bridge_cast_kind
+  -> Clang_ast_t.cast_kind
+  -> Exp.t * Typ.t
+  -> Typ.t
+  -> Location.t
+  -> Sil.instr list * (Exp.t * Typ.t)
 
 val trans_assertion : trans_state -> Location.t -> trans_result
 

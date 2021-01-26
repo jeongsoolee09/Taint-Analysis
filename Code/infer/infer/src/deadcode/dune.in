@@ -1,26 +1,17 @@
-(* -*- tuareg -*- *)
-(*
- * Copyright (c) Facebook, Inc. and its affiliates.
- *
- * This source code is licensed under the MIT license found in the
- * LICENSE file in the root directory of this source tree.
- *)
-(* NOTE: prepend dune.common to this file! *)
+; Copyright (c) Facebook, Inc. and its affiliates.
+;
+; This source code is licensed under the MIT license found in the
+; LICENSE file in the root directory of this source tree.
 
-;;
-Format.sprintf
-  {|
 (executable
  (name all_infer_in_one_file)
  (modes byte)
- (flags (%s -w +60))
- (ocamlopt_flags (%s))
- (libraries %s)
+ (flags
+  (:standard -w +60))
+ (libraries javalib ANSITerminal async atdgen base base64 cmdliner core
+   mtime.clock.os ocamlgraph oUnit parmap re sawja sqlite3 str unix xmlm
+   yojson zarith zip CStubs)
  (modules All_infer_in_one_file)
- (preprocess (pps ppx_compare ppx_fields_conv ppx_hash ppx_sexp_conv ppx_variants_conv -no-check))
-)
-|}
-  (String.concat " " common_cflags)
-  (String.concat " " common_optflags)
-  (String.concat " " ("InferCStubs" :: common_libraries))
-|> Jbuild_plugin.V1.send
+ (preprocess
+  (pps ppx_blob ppx_compare ppx_enumerate ppx_fields_conv ppx_hash
+    ppx_sexp_conv ppx_variants_conv -no-check)))

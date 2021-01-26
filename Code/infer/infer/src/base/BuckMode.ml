@@ -20,24 +20,29 @@ let pp_clang_compilation_db_deps fmt = function
       F.pp_print_string fmt "DepsAllDepths"
 
 
-type t = ClangFlavors | ClangCompilationDB of clang_compilation_db_deps | JavaGenruleMaster
+type t =
+  | CombinedGenrule
+  | ClangFlavors
+  | ClangCompilationDB of clang_compilation_db_deps
+  | JavaFlavor
+  | JavaGenruleMaster
 
-let is_java_genrule_master = function
-  | JavaGenruleMaster ->
+let is_java_genrule_master_or_combined = function
+  | JavaGenruleMaster | CombinedGenrule ->
       true
-  | ClangFlavors | ClangCompilationDB _ ->
+  | ClangFlavors | ClangCompilationDB _ | JavaFlavor ->
       false
 
 
 let is_clang_compilation_db = function
   | ClangCompilationDB _ ->
       true
-  | ClangFlavors | JavaGenruleMaster ->
+  | ClangFlavors | JavaGenruleMaster | CombinedGenrule | JavaFlavor ->
       false
 
 
 let is_clang_flavors = function
   | ClangFlavors ->
       true
-  | ClangCompilationDB _ | JavaGenruleMaster ->
+  | ClangCompilationDB _ | JavaGenruleMaster | CombinedGenrule | JavaFlavor ->
       false

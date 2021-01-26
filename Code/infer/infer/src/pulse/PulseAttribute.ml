@@ -6,7 +6,6 @@
  *)
 open! IStd
 module F = Format
-module Arithmetic = PulseArithmetic
 module Invalidation = PulseInvalidation
 module Trace = PulseTrace
 module ValueHistory = PulseValueHistory
@@ -28,9 +27,10 @@ module Attribute = struct
   type t =
     | AddressOfCppTemporary of Var.t * ValueHistory.t
     | AddressOfStackVariable of Var.t * Location.t * ValueHistory.t
-    | Arithmetic of Arithmetic.t * Trace.t
-    | BoItv of Itv.ItvPure.t
+    | Allocated of Procname.t * Trace.t
     | Closure of Procname.t
+    | DynamicType of Typ.Name.t
+    | EndOfCollection
     | Invalid of Invalidation.t * Trace.t
     | MustBeValid of Trace.t
     | StdVectorReserve
@@ -38,6 +38,8 @@ module Attribute = struct
   [@@deriving compare, variants]
 
   let equal = [%compare.equal: t]
+
+  type rank = int
 
   let to_rank = Variants.to_rank
 
@@ -62,9 +64,11 @@ module Attribute = struct
 
   let std_vector_reserve_rank = Variants.to_rank StdVectorReserve
 
-  let const_rank = Variants.to_rank (Arithmetic (Arithmetic.equal_to IntLit.zero, dummy_trace))
+  let allocated_rank = Variants.to_rank (Allocated (Procname.Linters_dummy_method, dummy_trace))
 
-  let bo_itv_rank = Variants.to_rank (BoItv Itv.ItvPure.zero)
+  let dynamic_type_rank = Variants.to_rank (DynamicType (Typ.Name.Objc.from_string ""))
+
+  let end_of_collection_rank = Variants.to_rank EndOfCollection
 
   let pp f attribute =
     let pp_string_if_debug string fmt =
@@ -75,12 +79,17 @@ module Attribute = struct
         F.fprintf f "t&%a (%a)" Var.pp var ValueHistory.pp history
     | AddressOfStackVariable (var, location, history) ->
         F.fprintf f "s&%a (%a) at %a" Var.pp var ValueHistory.pp history Location.pp location
-    | BoItv bo_itv ->
-        F.fprintf f "BoItv (%a)" Itv.ItvPure.pp bo_itv
+    | Allocated (procname, trace) ->
+        F.fprintf f "Allocated %a"
+          (Trace.pp
+             ~pp_immediate:(pp_string_if_debug ("allocation with " ^ Procname.to_string procname)))
+          trace
     | Closure pname ->
         Procname.pp f pname
-    | Arithmetic (phi, trace) ->
-        F.fprintf f "Arith %a" (Trace.pp ~pp_immediate:(fun fmt -> Arithmetic.pp fmt phi)) trace
+    | DynamicType typ ->
+        F.fprintf f "DynamicType %a" Typ.Name.pp typ
+    | EndOfCollection ->
+        F.pp_print_string f "EndOfCollection"
     | Invalid (invalidation, trace) ->
         F.fprintf f "Invalid %a"
           (Trace.pp ~pp_immediate:(fun fmt -> Invalidation.pp fmt invalidation))
@@ -94,7 +103,7 @@ module Attribute = struct
 end
 
 module Attributes = struct
-  module Set = PrettyPrintable.MakePPUniqRankSet (Attribute)
+  module Set = PrettyPrintable.MakePPUniqRankSet (Int) (Attribute)
 
   let get_invalid attrs =
     Set.find_rank attrs Attribute.invalid_rank
@@ -131,6 +140,10 @@ module Attributes = struct
            (var, loc, history) )
 
 
+  let is_end_of_collection attrs =
+    Set.find_rank attrs Attribute.end_of_collection_rank |> Option.is_some
+
+
   let is_std_vector_reserved attrs =
     Set.find_rank attrs Attribute.std_vector_reserve_rank |> Option.is_some
 
@@ -140,18 +153,18 @@ module Attributes = struct
     || Option.is_some (Set.find_rank attrs Attribute.invalid_rank)
 
 
-  let get_arithmetic attrs =
-    Set.find_rank attrs Attribute.const_rank
+  let get_allocation attrs =
+    Set.find_rank attrs Attribute.allocated_rank
     |> Option.map ~f:(fun attr ->
-           let[@warning "-8"] (Attribute.Arithmetic (a, trace)) = attr in
-           (a, trace) )
+           let[@warning "-8"] (Attribute.Allocated (procname, trace)) = attr in
+           (procname, trace) )
 
 
-  let get_bo_itv attrs =
-    Set.find_rank attrs Attribute.bo_itv_rank
+  let get_dynamic_type attrs =
+    Set.find_rank attrs Attribute.dynamic_type_rank
     |> Option.map ~f:(fun attr ->
-           let[@warning "-8"] (Attribute.BoItv itv) = attr in
-           itv )
+           let[@warning "-8"] (Attribute.DynamicType typ) = attr in
+           typ )
 
 
   include Set
@@ -160,12 +173,33 @@ end
 include Attribute
 
 let is_suitable_for_pre = function
-  | Arithmetic _ | BoItv _ | MustBeValid _ ->
+  | MustBeValid _ ->
       true
   | AddressOfCppTemporary _
   | AddressOfStackVariable _
+  | Allocated _
   | Closure _
+  | DynamicType _
+  | EndOfCollection
   | Invalid _
   | StdVectorReserve
   | WrittenTo _ ->
       false
+
+
+let map_trace ~f = function
+  | Allocated (procname, trace) ->
+      Allocated (procname, f trace)
+  | Invalid (invalidation, trace) ->
+      Invalid (invalidation, f trace)
+  | MustBeValid trace ->
+      MustBeValid (f trace)
+  | WrittenTo trace ->
+      WrittenTo (f trace)
+  | ( AddressOfCppTemporary _
+    | AddressOfStackVariable _
+    | Closure _
+    | DynamicType _
+    | EndOfCollection
+    | StdVectorReserve ) as attr ->
+      attr

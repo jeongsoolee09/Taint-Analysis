@@ -57,15 +57,18 @@ module Make (Set : Set) = struct
 
     let is_a_repr (t : t) e = not (H.mem t e)
 
-    let rec find (t : t) e : Repr.t =
-      match H.find_opt t e with
-      | None ->
-          Repr.of_elt e
-      | Some r ->
-          let r' = find t (r :> Set.elt) in
-          if not (phys_equal r r') then H.replace t e r' ;
-          r'
+    let rec find_opt (t : t) e : Repr.t option =
+      H.find_opt t e
+      |> Option.map ~f:(fun (r : Repr.t) ->
+             match find_opt t (r :> Set.elt) with
+             | None ->
+                 r
+             | Some r' ->
+                 if not (phys_equal r r') then H.replace t e r' ;
+                 r' )
 
+
+    let find (t : t) e : Repr.t = match find_opt t e with Some r -> r | None -> Repr.of_elt e
 
     let merge (t : t) ~(from : Repr.t) ~(to_ : Repr.t) = H.replace t (from :> Set.elt) to_
   end
@@ -83,7 +86,8 @@ module Make (Set : Set) = struct
           set
       | None ->
           let set = Set.create (r :> Set.elt) in
-          H.replace t r set ; set
+          H.replace t r set ;
+          set
 
 
     let fold = H.fold
@@ -146,7 +150,8 @@ module Make (Set : Set) = struct
     t.nb_iterators <- t.nb_iterators + 1 ;
     match IContainer.filter ~fold:Sets.fold ~filter:(is_still_a_repr t) t.sets ~init ~f with
     | result ->
-        after_fold t ; result
+        after_fold t ;
+        result
     | exception e ->
         (* Ensures [nb_iterators] is correct *)
         IExn.reraise_after ~f:(fun () -> after_fold t) e

@@ -23,9 +23,9 @@ let print_upper_bound_map bound_map =
 
 
 let filter_loc vars_to_keep = function
-  | AbsLoc.Loc.Var (Var.LogicalVar _) ->
+  | BufferOverrunField.Prim (AbsLoc.Loc.Var (Var.LogicalVar _)) ->
       None
-  | AbsLoc.Loc.Var var ->
+  | BufferOverrunField.Prim (AbsLoc.Loc.Var var) ->
       Control.ControlMap.find_opt var vars_to_keep
   | _ ->
       None
@@ -36,7 +36,7 @@ let compute_upperbound_map node_cfg inferbo_invariant_map control_invariant_map 
     let node_id = NodeCFG.Node.id node in
     match Procdesc.Node.get_kind node with
     | Procdesc.Node.Exit_node ->
-        Node.IdMap.add node_id BasicCost.one bound_map
+        Node.IdMap.add node_id (BasicCost.one ()) bound_map
     | _ -> (
         let exit_state_opt =
           let instr_node_id = InstrCFG.last_of_underlying_node node |> InstrCFG.Node.id in
@@ -56,27 +56,23 @@ let compute_upperbound_map node_cfg inferbo_invariant_map control_invariant_map 
             let bound =
               match entry_mem with
               | Unreachable ->
+                  let node_loc = NodeCFG.Node.loc node in
                   L.debug Analysis Medium
-                    "@\n\
-                     [COST ANALYSIS INTERNAL WARNING:] No 'env' found. This location is \
-                     unreachable returning cost 0 \n" ;
-                  BasicCost.zero
-              | Error ->
-                  L.debug Analysis Medium
-                    "@\n\
-                     [COST ANALYSIS INTERNAL WARNING:] No 'env' found. The Inferbo memory of this \
-                     location is erroneous \n" ;
-                  BasicCost.zero
+                    "@\n[COST ANALYSIS INTERNAL WARNING:] This location is unreachable \n" ;
+                  BasicCost.of_unreachable node_loc
               | ExcRaised ->
-                  BasicCost.one
+                  BasicCost.one ()
               | Reachable mem ->
                   let cost =
                     BufferOverrunDomain.MemReach.range ~filter_loc:(filter_loc control_map) ~node_id
                       mem
                   in
-                  (* The zero cost of node does not make sense especially when the abstract memory
-                     is non-bottom. *)
-                  if BasicCost.is_zero cost then BasicCost.one else cost
+                  (* The zero number of executions for a node
+                     (corresponding to getting the range of bottom
+                     values) does not make sense especially when the
+                     abstract memory is non-bottom. This is a source
+                     of unsoundness in the analysis. *)
+                  if BasicCost.is_zero cost then BasicCost.one () else cost
             in
             L.(debug Analysis Medium)
               "@\n>>>Setting bound for node = %a  to %a@\n\n" Node.pp_id node_id BasicCost.pp bound ;
@@ -85,7 +81,8 @@ let compute_upperbound_map node_cfg inferbo_invariant_map control_invariant_map 
             Node.IdMap.add node_id BasicCost.zero bound_map )
   in
   let bound_map = NodeCFG.fold_nodes node_cfg ~f:compute_node_upper_bound ~init:Node.IdMap.empty in
-  print_upper_bound_map bound_map ; bound_map
+  print_upper_bound_map bound_map ;
+  bound_map
 
 
 let lookup_upperbound bound_map nid =

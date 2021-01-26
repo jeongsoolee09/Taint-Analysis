@@ -131,7 +131,9 @@ module Node = struct
     ; loc: Location.t  (** location in the source code *)
     ; mutable preds: t list  (** predecessor nodes in the cfg *)
     ; pname: Procname.t  (** name of the procedure the node belongs to *)
-    ; mutable succs: t list  (** successor nodes in the cfg *) }
+    ; mutable succs: t list  (** successor nodes in the cfg *)
+    ; mutable code_block_exit: t option
+          (** exit node corresponding to start node in a code block *) }
 
   let exn_handler_kind = Stmt_node ExceptionHandler
 
@@ -149,7 +151,8 @@ module Node = struct
     ; pname
     ; succs= []
     ; preds= []
-    ; exn= [] }
+    ; exn= []
+    ; code_block_exit= None }
 
 
   let compare node1 node2 = Int.compare node1.id node2.id
@@ -176,9 +179,7 @@ module Node = struct
   end)
 
   module IdMap = PrettyPrintable.MakePPMap (struct
-    type t = id
-
-    let compare = compare_id
+    type t = id [@@deriving compare]
 
     let pp = pp_id
   end)
@@ -190,6 +191,8 @@ module Node = struct
 
   (** Get the predecessors of the node *)
   let get_preds node = node.preds
+
+  let is_dangling node = List.is_empty (get_preds node) && List.is_empty (get_succs node)
 
   (** Get siblings *)
   let get_siblings node =
@@ -246,7 +249,17 @@ module Node = struct
 
   (** Map and replace the instructions to be executed *)
   let replace_instrs node ~f =
-    let instrs' = Instrs.map_changed ~equal:phys_equal node.instrs ~f:(f node) in
+    let instrs' = Instrs.map node.instrs ~f:(f node) in
+    if phys_equal instrs' node.instrs then false
+    else (
+      node.instrs <- instrs' ;
+      true )
+
+
+  (** Map and replace the instructions to be executed using a context *)
+  let replace_instrs_using_context node ~f ~update_context ~context_at_node =
+    let f node context instr = (update_context context instr, f node context instr) in
+    let instrs' = Instrs.map_and_fold node.instrs ~f:(f node) ~init:context_at_node in
     if phys_equal instrs' node.instrs then false
     else (
       node.instrs <- instrs' ;
@@ -255,7 +268,7 @@ module Node = struct
 
   (** Like [replace_instrs], but 1 instr gets replaced by 0, 1, or more instructions. *)
   let replace_instrs_by node ~f =
-    let instrs' = Instrs.concat_map_changed ~equal:phys_equal node.instrs ~f:(f node) in
+    let instrs' = Instrs.concat_map node.instrs ~f:(f node) in
     if phys_equal instrs' node.instrs then false
     else (
       node.instrs <- instrs' ;
@@ -391,6 +404,10 @@ module Node = struct
     F.asprintf "%s@\n%a" str_kind (Instrs.pp pe) (get_instrs node)
 
 
+  let set_code_block_exit node ~code_block_exit = node.code_block_exit <- Some code_block_exit
+
+  let get_code_block_exit node = node.code_block_exit
+
   (** simple key for a node: just look at the instructions *)
   let simple_key node =
     let add_instr instr =
@@ -420,17 +437,17 @@ end
 
 (* =============== END of module Node =============== *)
 
-module NodeMap = Caml.Map.Make (Node)
 (** Map over nodes *)
+module NodeMap = Caml.Map.Make (Node)
 
-module NodeHash = Hashtbl.Make (Node)
 (** Hash table with nodes as keys. *)
+module NodeHash = Hashtbl.Make (Node)
 
-module NodeSet = Node.NodeSet
 (** Set of nodes. *)
+module NodeSet = Node.NodeSet
 
-module IdMap = Node.IdMap
 (** Map with node id keys. *)
+module IdMap = Node.IdMap
 
 (** procedure description *)
 type t =
@@ -500,8 +517,6 @@ let get_access pdesc = pdesc.attributes.access
 
 let get_nodes pdesc = pdesc.nodes
 
-let get_nodes_num pdesc = pdesc.nodes_num
-
 (** Return the return type of the procedure *)
 let get_ret_type pdesc = pdesc.attributes.ret_type
 
@@ -513,6 +528,8 @@ let get_start_node pdesc = pdesc.start_node
 let is_defined pdesc = pdesc.attributes.is_defined
 
 let is_java_synchronized pdesc = pdesc.attributes.is_java_synchronized_method
+
+let is_objc_arc_on pdesc = pdesc.attributes.is_objc_arc_on
 
 let iter_nodes f pdesc = List.iter ~f (get_nodes pdesc)
 
@@ -557,6 +574,14 @@ let update_nodes pdesc ~(update : Node.t -> bool) : bool =
 
 let replace_instrs pdesc ~f =
   let update node = Node.replace_instrs ~f node in
+  update_nodes pdesc ~update
+
+
+let replace_instrs_using_context pdesc ~f ~update_context ~context_at_node =
+  let update node =
+    Node.replace_instrs_using_context ~f ~update_context ~context_at_node:(context_at_node node)
+      node
+  in
   update_nodes pdesc ~update
 
 
@@ -615,7 +640,8 @@ let create_node_from_not_reversed pdesc loc kind instrs =
     ; preds= []
     ; pname= pdesc.attributes.proc_name
     ; succs= []
-    ; exn= [] }
+    ; exn= []
+    ; code_block_exit= None }
   in
   pdesc.nodes <- node :: pdesc.nodes ;
   node
@@ -623,6 +649,15 @@ let create_node_from_not_reversed pdesc loc kind instrs =
 
 let create_node pdesc loc kind instrs =
   create_node_from_not_reversed pdesc loc kind (Instrs.of_list instrs)
+
+
+let shallow_copy_code_from_pdesc ~orig_pdesc ~dest_pdesc =
+  dest_pdesc.nodes <- orig_pdesc.nodes ;
+  dest_pdesc.nodes_num <- orig_pdesc.nodes_num ;
+  dest_pdesc.start_node <- orig_pdesc.start_node ;
+  dest_pdesc.exit_node <- orig_pdesc.exit_node ;
+  dest_pdesc.loop_heads <- orig_pdesc.loop_heads ;
+  dest_pdesc.wto <- orig_pdesc.wto
 
 
 (** Set the successor and exception nodes. If this is a join node right before the exit node, add an
@@ -725,6 +760,15 @@ let pp_variable_list fmt etl =
       etl
 
 
+let pp_captured_list fmt etl =
+  List.iter
+    ~f:(fun (id, ty, mode) ->
+      Format.fprintf fmt " [%s] %a:%a"
+        (Pvar.string_of_capture_mode mode)
+        Mangled.pp id (Typ.pp_full Pp.text) ty )
+    etl
+
+
 let pp_objc_accessor fmt accessor =
   match accessor with
   | Some (ProcAttributes.Objc_getter field) ->
@@ -744,7 +788,7 @@ let pp_signature fmt pdesc =
     attributes.ProcAttributes.objc_accessor pp_variable_list (get_formals pdesc) pp_locals_list
     (get_locals pdesc) ;
   if not (List.is_empty (get_captured pdesc)) then
-    Format.fprintf fmt ", Captured: %a" pp_variable_list (get_captured pdesc) ;
+    Format.fprintf fmt ", Captured: %a" pp_captured_list (get_captured pdesc) ;
   let method_annotation = attributes.ProcAttributes.method_annotation in
   ( if not (Annot.Method.is_empty method_annotation) then
     let pname_string = Procname.to_string pname in
@@ -776,9 +820,11 @@ let is_captured_pvar procdesc pvar =
     | _ ->
         false
   in
+  let pvar_matches_in_captured (name, _, _) = Mangled.equal name pvar_name in
   let is_captured_var_objc_block =
     (* var is captured if the procedure is a objc block and the var is in the captured *)
-    Procname.is_objc_block procname && List.exists ~f:pvar_matches (get_captured procdesc)
+    Procname.is_objc_block procname
+    && List.exists ~f:pvar_matches_in_captured (get_captured procdesc)
   in
   is_captured_var_cpp_lambda || is_captured_var_objc_block
 
@@ -795,81 +841,17 @@ let has_modify_in_block_attr procdesc pvar =
   List.exists ~f:pvar_local_matches (get_locals procdesc)
 
 
-let is_connected proc_desc =
-  let is_exit_node n = match Node.get_kind n with Node.Exit_node -> true | _ -> false in
-  let is_between_join_and_exit_node n =
-    match Node.get_kind n with
-    | Node.Stmt_node (BetweenJoinAndExit | Destruction _) -> (
-      match Node.get_succs n with [n'] when is_exit_node n' -> true | _ -> false )
-    | _ ->
-        false
-  in
-  let rec is_consecutive_join_nodes n visited =
-    match Node.get_kind n with
-    | Node.Join_node -> (
-        if NodeSet.mem n visited then false
-        else
-          let succs = Node.get_succs n in
-          match succs with
-          | [n'] ->
-              is_consecutive_join_nodes n' (NodeSet.add n visited)
-          | _ ->
-              false )
-    | _ ->
-        is_between_join_and_exit_node n
-  in
-  let find_broken_node n =
-    let succs = Node.get_succs n in
-    let preds = Node.get_preds n in
-    match Node.get_kind n with
-    | Node.Start_node ->
-        if List.is_empty succs || not (List.is_empty preds) then Error `Other else Ok ()
-    | Node.Exit_node ->
-        if (not (List.is_empty succs)) || List.is_empty preds then Error `Other else Ok ()
-    | Node.Stmt_node _ | Node.Prune_node _ | Node.Skip_node _ ->
-        if List.is_empty succs || List.is_empty preds then Error `Other else Ok ()
-    | Node.Join_node ->
-        (* Join node has the exception that it may be without predecessors
-           and pointing to between_join_and_exit which points to an exit node.
-           This happens when the if branches end with a return.
-           Nested if statements, where all branches have return statements,
-           introduce a sequence of join nodes *)
-        if
-          (List.is_empty preds && not (is_consecutive_join_nodes n NodeSet.empty))
-          || ((not (List.is_empty preds)) && List.is_empty succs)
-        then Error `Join
-        else Ok ()
-  in
-  (* unconnected nodes generated by Join nodes are expected *)
-  let skip_join_errors current_status node =
-    match find_broken_node node with
-    | Ok () ->
-        Ok current_status
-    | Error `Join ->
-        Ok (Some `Join)
-    | Error _ as other_error ->
-        other_error
-  in
-  match List.fold_result (get_nodes proc_desc) ~init:None ~f:skip_join_errors with
-  | Ok (Some `Join) ->
-      Error `Join
-  | Ok None ->
-      Ok ()
-  | Error _ as error ->
-      error
-
-
 module SQLite = SqliteUtils.MarshalledNullableDataNOTForComparison (struct
   type nonrec t = t
 end)
 
-let load_statement =
-  ResultsDatabase.register_statement "SELECT cfg FROM procedures WHERE proc_name = :k"
-
-
-let load pname =
-  ResultsDatabase.with_registered_statement load_statement ~f:(fun db stmt ->
-      Procname.SQLite.serialize pname |> Sqlite3.bind stmt 1
-      |> SqliteUtils.check_result_code db ~log:"load bind proc name" ;
-      SqliteUtils.result_single_column_option ~finalize:false ~log:"Procdesc.load" db stmt
-      |> Option.bind ~f:SQLite.deserialize )
+let load =
+  let load_statement =
+    ResultsDatabase.register_statement "SELECT cfg FROM procedures WHERE proc_uid = :k"
+  in
+  fun pname ->
+    ResultsDatabase.with_registered_statement load_statement ~f:(fun db stmt ->
+        Sqlite3.bind stmt 1 (Sqlite3.Data.TEXT (Procname.to_unique_id pname))
+        |> SqliteUtils.check_result_code db ~log:"load bind proc_uid" ;
+        SqliteUtils.result_single_column_option ~finalize:false ~log:"Procdesc.load" db stmt
+        |> Option.bind ~f:SQLite.deserialize )

@@ -113,7 +113,7 @@ let debug_eval_end result =
 let save_dotty_when_in_debug_mode source_file =
   match !ctl_evaluation_tracker with
   | Some tracker ->
-      let dotty_dir = Config.results_dir ^/ Config.lint_dotty_dir_name in
+      let dotty_dir = ResultsDir.get_path LintDotty in
       Utils.create_dir dotty_dir ;
       let source_file_basename = Filename.basename (SourceFile.to_abs_path source_file) in
       let file = dotty_dir ^/ source_file_basename ^ ".dot" in
@@ -548,10 +548,6 @@ let eval_Atomic pred_name_ args an lcxt =
         assert false )
   | "declaration_ref_name", [decl_name], an ->
       CPredicates.declaration_ref_name an decl_name
-  | "decl_unavailable_in_supported_ios_sdk", [], an ->
-      CPredicates.decl_unavailable_in_supported_ios_sdk lcxt an
-  | "class_unavailable_in_supported_ios_sdk", [], an ->
-      CPredicates.class_unavailable_in_supported_ios_sdk lcxt an
   | "has_cast_kind", [name], an ->
       CPredicates.has_cast_kind an name
   | "has_type", [typ], an ->
@@ -710,8 +706,6 @@ let eval_Atomic pred_name_ args an lcxt =
       CPredicates.is_receiver_super an
   | "is_receiver_self", [], an ->
       CPredicates.is_receiver_self an
-  | "iphoneos_target_sdk_version_greater_or_equal", [version], _ ->
-      CPredicates.iphoneos_target_sdk_version_greater_or_equal lcxt (ALVar.alexp_to_string version)
   | "method_return_type", [typ], an ->
       CPredicates.method_return_type an typ
   | "within_responds_to_selector_block", [], an ->
@@ -785,11 +779,7 @@ and eval_AndWithWitnesses an lcxt f1 f2 pred_name_ args =
   match eval_AndWithW an lcxt f1 f2 with
   | Some (witness1, witness2) -> (
     try if eval_Atomic_with_witness pred_name_ args witness1 witness2 lcxt then Some an else None
-    with CFrontend_errors.IncorrectAssumption e ->
-      let trans_unit_ctx = lcxt.CLintersContext.translation_unit_context in
-      ClangLogging.log_caught_exception trans_unit_ctx "IncorrectAssumption" e.position
-        e.source_range e.ast_node ;
-      None )
+    with CFrontend_errors.IncorrectAssumption _ -> None )
   | None ->
       None
 
@@ -966,11 +956,7 @@ and eval_formula ?keep_witness f an lcxt : Ctl_parser_types.ast_node option =
         None
     | Atomic (name, params) -> (
       try if eval_Atomic name params an lcxt then Some an else None
-      with CFrontend_errors.IncorrectAssumption e ->
-        let trans_unit_ctx = lcxt.CLintersContext.translation_unit_context in
-        ClangLogging.log_caught_exception trans_unit_ctx "IncorrectAssumption" e.position
-          e.source_range e.ast_node ;
-        None )
+      with CFrontend_errors.IncorrectAssumption _ -> None )
     | InNode (node_type_list, f1) ->
         in_node node_type_list f1 an lcxt
     | Not f1 -> (
@@ -1007,4 +993,5 @@ and eval_formula ?keep_witness f an lcxt : Ctl_parser_types.ast_node option =
     | InObjCClass (f1, f2) ->
         eval_InObjCClass an lcxt f1 f2
   in
-  debug_eval_end res ; res
+  debug_eval_end res ;
+  res

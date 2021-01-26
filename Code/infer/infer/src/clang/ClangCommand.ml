@@ -15,13 +15,6 @@ type t =
   ; quoting_style: ClangQuotes.style
   ; is_driver: bool }
 
-let fcp_dir =
-  Config.bin_dir ^/ Filename.parent_dir_name ^/ Filename.parent_dir_name ^/ "facebook-clang-plugins"
-
-
-(** path of the plugin to load in clang *)
-let plugin_path = fcp_dir ^/ "libtooling" ^/ "build" ^/ "FacebookClangPlugin.dylib"
-
 (** name of the plugin to use *)
 let plugin_name = "BiniouASTExporter"
 
@@ -148,7 +141,7 @@ let filter_and_replace_unsupported_args ?(replace_options_arg = fun _ s -> s) ?(
 let clang_cc1_cmd_sanitizer cmd =
   let replace_args arg = function
     | Some override_regex when Str.string_match override_regex arg 0 ->
-        fcp_dir ^/ "clang" ^/ "install" ^/ "lib" ^/ "clang" ^/ "9.0.0" ^/ "include"
+        Config.fcp_dir ^/ "clang" ^/ "install" ^/ "lib" ^/ "clang" ^/ "9.0.0" ^/ "include"
     | _ ->
         arg
   in
@@ -175,14 +168,11 @@ let clang_cc1_cmd_sanitizer cmd =
       match libcxx_include_to_override_regex with
       | Some libcxx_include_to_override_regex
         when Str.string_match libcxx_include_to_override_regex arg 0 ->
-          fcp_dir ^/ "clang" ^/ "install" ^/ "include" ^/ "c++" ^/ "v1"
+          Config.fcp_dir ^/ "clang" ^/ "install" ^/ "include" ^/ "c++" ^/ "v1"
       | _ ->
           arg )
     | _ ->
         arg
-  in
-  let args_defines =
-    if Config.bufferoverrun && not Config.biabduction then ["-D__INFER_BUFFEROVERRUN"] else []
   in
   let explicit_sysroot_passed = has_flag cmd "-isysroot" in
   (* supply isysroot only when SDKROOT is not set up and explicit isysroot is not provided,
@@ -197,7 +187,6 @@ let clang_cc1_cmd_sanitizer cmd =
   let post_args_rev =
     []
     |> List.rev_append ["-include"; Config.lib_dir ^/ "clang_wrappers" ^/ "global_defines.h"]
-    |> List.rev_append args_defines
     |> (* Never error on warnings. Clang is often more strict than Apple's version.  These arguments
           are appended at the end to override previous opposite settings.  How it's done: suppress
           all the warnings, since there are no warnings, compiler can't elevate them to error
@@ -250,7 +239,7 @@ let with_plugin_args args =
     argv_cons "-cc1"
     |> List.rev_append
          [ "-load"
-         ; plugin_path
+         ; Config.clang_plugin_path
          ; (* (t7400979) this is a workaround to avoid that clang crashes when the -fmodules flag and the
               YojsonASTExporter plugin are used. Since the -plugin argument disables the generation of .o
               files, we invoke apple clang again to generate the expected artifacts. This will keep

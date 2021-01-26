@@ -9,11 +9,7 @@ default: infer
 ROOT_DIR = .
 include $(ROOT_DIR)/Makefile.config
 
-ORIG_SHELL_BUILD_MODE = $(BUILD_MODE)
-# override this for faster builds (but slower infer)
-BUILD_MODE ?= opt
-
-MAKE_SOURCE = $(MAKE) -C $(SRC_DIR) INFER_BUILD_DIR=_build/$(BUILD_MODE)
+MAKE_SOURCE = $(MAKE) -C $(SRC_DIR)
 
 ifneq ($(UTOP),no)
 BUILD_SYSTEMS_TESTS += infertop
@@ -24,7 +20,7 @@ BUILD_SYSTEMS_TESTS += \
   annotation-reachability-sources-override \
   assembly \
   backtrack_level \
-  ck_analytics ck_imports \
+  ck_imports \
   clang_compilation_db_escaped clang_compilation_db_relpath \
   clang_multiple_files \
   clang_translation \
@@ -41,7 +37,7 @@ BUILD_SYSTEMS_TESTS += \
   linters \
   project_root_rel \
   reactive \
-  run_hidden_linters \
+  results_xml \
   tracebugs \
   utf8_in_procname \
   export_changed_functions \
@@ -52,31 +48,27 @@ BUILD_SYSTEMS_TESTS += \
 DIRECT_TESTS += \
   c_biabduction \
   c_bufferoverrun \
-  c_errors \
   c_frontend \
   c_performance \
+  c_pulse \
   c_purity \
   c_uninit \
   cpp_annotation-reachability \
+  cpp_biabduction \
   cpp_bufferoverrun \
   cpp_conflicts \
-  cpp_errors \
   cpp_frontend \
   cpp_impurity \
   cpp_linters \
   cpp_linters-for-test-only \
   cpp_liveness \
-  cpp_nullable \
+  cpp_performance \
   cpp_pulse \
-  cpp_quandary cpp_quandaryBO \
+  cpp_quandary \
   cpp_racerd \
   cpp_siof \
   cpp_starvation \
   cpp_uninit \
-
-ifeq ($(IS_FACEBOOK_TREE),yes)
-DIRECT_TESTS += cpp_fb-taint
-endif
 
 ifneq ($(BUCK),no)
 BUILD_SYSTEMS_TESTS += \
@@ -96,37 +88,34 @@ endif
 ifneq ($(NDKBUILD),no)
 BUILD_SYSTEMS_TESTS += ndk_build
 endif
-ifneq ($(PYTHON_lxml),no)
-BUILD_SYSTEMS_TESTS += results_xml
-endif
 ifeq ($(HAS_OBJC),yes)
 BUILD_SYSTEMS_TESTS += \
   clang_test_determinator \
   objc_getters_setters \
   objc_missing_fld \
   objc_retain_cycles \
-  objc_retain_cycles_weak
+  objc_retain_cycles_weak \
+  differential_of_costs_report_objc \
 
 DIRECT_TESTS += \
-  objc_errors \
+  objc_autoreleasepool \
+  objc_bufferoverrun \
+  objc_biabduction \
   objc_frontend \
-  objc_ioslints \
   objc_linters \
   objc_linters-def-folder \
   objc_linters-for-test-only \
   objc_liveness \
-  objc_nullable \
   objc_performance \
   objc_pulse \
   objc_quandary \
   objc_self-in-block \
   objc_uninit \
-  objcpp_errors \
+  objcpp_biabduction \
   objcpp_frontend \
   objcpp_linters \
   objcpp_linters-for-test-only \
   objcpp_liveness \
-  objcpp_nullable \
   objcpp_pulse \
   objcpp_racerd \
   objcpp_retain-cycles \
@@ -143,12 +132,13 @@ endif # BUILD_C_ANALYZERS
 ifeq ($(BUILD_JAVA_ANALYZERS),yes)
 BUILD_SYSTEMS_TESTS += \
   differential_interesting_paths_filter \
-  differential_of_costs_report \
+  differential_of_costs_report_java \
   incremental_analysis_cost_change \
   differential_skip_anonymous_class_renamings \
   differential_skip_duplicated_types_on_filenames \
   differential_skip_duplicated_types_on_filenames_with_renamings \
   gradle \
+  java_source_parser \
   java_test_determinator \
   javac \
   resource_leak_exception_lines \
@@ -159,17 +149,18 @@ BUILD_SYSTEMS_TESTS += \
 
 DIRECT_TESTS += \
   java_annotreach \
+  java_biabduction \
   java_bufferoverrun \
   java_checkers \
-  java_classloads \
-  java_nullsafe-default \
+  java_nullsafe \
   java_hoisting \
   java_hoistingExpensive \
   java_impurity \
   java_inefficientKeysetIterator \
-  java_infer \
   java_litho-required-props \
   java_performance \
+  java_performance-exclusive \
+  java_pulse \
   java_purity \
   java_quandary \
   java_racerd \
@@ -179,7 +170,9 @@ DIRECT_TESTS += \
   java_topl \
 
 ifeq ($(IS_FACEBOOK_TREE),yes)
-DIRECT_TESTS += java_fb-performance
+DIRECT_TESTS += \
+  java_fb-gk-interaction \
+  java_fb-performance
 endif
 
 ifneq ($(ANT),no)
@@ -189,7 +182,7 @@ endif
 
 
 ifneq ($(BUCK),no)
-BUILD_SYSTEMS_TESTS += genrule genrulecapture
+BUILD_SYSTEMS_TESTS += genrulecapture buck_java_flavor
 endif
 ifneq ($(MVN),no)
 BUILD_SYSTEMS_TESTS += mvn
@@ -223,21 +216,21 @@ fb-setup:
 
 .PHONY: fmt
 fmt:
-	parallel $(OCAMLFORMAT_EXE) -i ::: $$(git diff --name-only --diff-filter=ACMRU $$(git merge-base origin/master HEAD) | grep "\.mli\?$$")
+	parallel $(OCAMLFORMAT_EXE) $(OCAMLFORMAT_ARGS) -i ::: $$(git diff --name-only --diff-filter=ACMRU $$(git merge-base origin/master HEAD) | grep "\.mli\?$$")
 
-DUNE_ML:=$(shell find * -name 'dune*.in' | grep -v workspace)
+DUNE_ML:=$(shell find * -name 'dune*.in' | grep -v workspace | grep -v infer-source | grep -v infer/src/deadcode/dune.in)
 
 .PHONY: fmt_dune
 fmt_dune:
-	parallel $(OCAMLFORMAT_EXE) -i ::: $(DUNE_ML)
+	parallel $(OCAMLFORMAT_EXE) $(OCAMLFORMAT_ARGS) -i ::: $(DUNE_ML)
 
 SRC_ML:=$(shell find * \( -name _build -or -name facebook-clang-plugins -or -path facebook/dependencies -or -path sledge/llvm -or -path sledge/.llvm_build \) -not -prune -or -type f -and -name '*'.ml -or -name '*'.mli 2>/dev/null)
 
 .PHONY: fmt_all
 fmt_all:
-	parallel $(OCAMLFORMAT_EXE) -i ::: $(SRC_ML) $(DUNE_ML)
+	parallel $(OCAMLFORMAT_EXE) $(OCAMLFORMAT_ARGS) -i ::: $(SRC_ML) $(DUNE_ML)
 
-# pre-building these avoids race conditions when building, eg src_build and test_build in parallel
+# pre-building these avoids race conditions when doing multiple builds in parallel
 .PHONY: src_build_common
 src_build_common:
 	$(QUIET)$(call silent_on_success,Generating source dependencies,\
@@ -258,14 +251,11 @@ check: src_build_common
 	$(QUIET)$(call silent_on_success,Building artifacts for tooling support,\
 	$(MAKE_SOURCE) check)
 
-.PHONY: test_build
-test_build: src_build_common
-	$(QUIET)$(call silent_on_success,Testing Infer builds without warnings,\
-	$(MAKE_SOURCE) test)
-
 # deadcode analysis: only do the deadcode detection on Facebook builds and if GNU sed is available
 .PHONY: real_deadcode
 real_deadcode: src_build_common
+	$(QUIET)$(call silent_on_success,Building all OCaml code,\
+	$(MAKE_SOURCE) build_all)
 	$(QUIET)$(call silent_on_success,Testing there is no dead OCaml code,\
 	$(MAKE) -C $(SRC_DIR)/deadcode)
 
@@ -295,16 +285,20 @@ toplevel:
 	$(QUIET)echo "You can now use the infer REPL:"
 	$(QUIET)echo "  \"$(ABSOLUTE_ROOT_DIR)/scripts/infer_repl\""
 
-toplevel_test: test_build
-	$(QUIET)$(call silent_on_success,Building Infer REPL (test mode),\
-	$(MAKE_SOURCE) BUILD_MODE=test toplevel)
+toplevel_test:
+	$(QUIET)$(call silent_on_success,Building Infer REPL,\
+	$(MAKE_SOURCE) toplevel)
 
 ifeq ($(IS_FACEBOOK_TREE),yes)
-byte src_build_common src_build test_build: fb-setup
+byte src_build_common src_build: fb-setup
 endif
 
 ifeq ($(BUILD_C_ANALYZERS),yes)
-byte src_build src_build_common test_build: clang_plugin
+byte src_build src_build_common: clang_plugin
+endif
+
+ifneq ($(NINJA),no)
+FCP_COMPILE_ARGS = --ninja --sequential-link
 endif
 
 $(INFER_COMMAND_MANUALS): src_build $(MAKEFILE_LIST)
@@ -331,18 +325,20 @@ $(INFER_GROFF_MANUALS_GZIPPED): %.gz: %
 	$(QUIET)$(REMOVE) $@
 	gzip $<
 
-infer_models: src_build
-ifeq ($(BUILD_JAVA_ANALYZERS),yes)
-	$(MAKE) -C $(ANNOTATIONS_DIR)
-endif
-	$(MAKE) -C $(MODELS_DIR) all
-
-.PHONY: infer byte_infer
-infer byte_infer:
-	$(QUIET)$(call silent_on_success,Building Infer models,\
-	$(MAKE) infer_models)
+manuals:
 	$(QUIET)$(call silent_on_success,Building Infer manuals,\
 	$(MAKE) $(INFER_MANUALS))
+
+infer_models: src_build
+ifeq ($(BUILD_JAVA_ANALYZERS),yes)
+	$(QUIET)$(call silent_on_success,Building infer annotations,\
+	$(MAKE) -C $(ANNOTATIONS_DIR))
+endif
+	$(QUIET)$(call silent_on_success,Building infer models,\
+	$(MAKE) -C $(MODELS_DIR) all)
+
+.PHONY: infer byte_infer
+infer byte_infer: infer_models
 infer: src_build
 byte_infer: byte
 
@@ -367,7 +363,7 @@ clang_setup:
 	    echo '$(TERM_INFO)(TIP: you can also force a clang rebuild by removing $(FCP_DIR)/clang/installed.version)$(TERM_RESET)' >&2; \
 	    echo >&2 ; \
 	  fi; \
-	  $(FCP_DIR)/clang/setup.sh; \
+	  $(FCP_DIR)/clang/setup.sh $(FCP_COMPILE_ARGS); \
 	}
 
 .PHONY: clang_plugin
@@ -416,7 +412,7 @@ clang_plugin_test: clang_setup
 	  SDKPATH=$(XCODE_ISYSROOT) \
 	)
 
-.PHONY: clang_plugin_test
+.PHONY: clang_plugin_test_replace
 clang_plugin_test_replace: clang_setup
 	$(QUIET)$(call silent_on_success,Running facebook-clang-plugins/libtooling/ record tests,\
 	$(MAKE) -C $(FCP_DIR)/libtooling record-test-outputs \
@@ -440,12 +436,9 @@ clang_plugin_test_replace: clang_setup
 	)
 
 .PHONY: ocaml_unit_test
-ocaml_unit_test: test_build
-	$(QUIET)$(REMOVE_DIR) infer-out-unit-tests
+ocaml_unit_test: src_build_common infer_models
 	$(QUIET)$(call silent_on_success,Running OCaml unit tests,\
-	INFER_ARGS=--results-dir^infer-out-unit-tests \
-	BUILD_DIR=$(BUILD_DIR)/test \
-	$(SCRIPT_DIR)/dune_exec_shim.sh $(BUILD_DIR)/test/inferunit.bc)
+	$(MAKE_SOURCE) unit)
 
 define silence_make
   $(1) 2> >(grep -v 'warning: \(ignoring old\|overriding\) \(commands\|recipe\) for target')
@@ -485,6 +478,30 @@ $(DIRECT_TESTS:%=direct_%_replace): infer
 
 .PHONY: direct_tests
 direct_tests: $(DIRECT_TESTS:%=direct_%_test)
+
+COST_TESTS += \
+  c_performance \
+  java_hoistingExpensive \
+  java_performance \
+  java_performance-exclusive \
+  objc_autoreleasepool \
+  objc_performance \
+
+ifeq ($(IS_FACEBOOK_TREE),yes)
+   COST_TESTS += java_fb-performance
+endif
+
+.PHONY: cost_tests
+cost_tests: $(COST_TESTS:%=direct_%_test)
+
+.PHONY: cost_tests_clean
+cost_tests_clean: $(COST_TESTS:%=direct_%_clean)
+
+.PHONY: cost_tests_replace
+cost_tests_replace: $(COST_TESTS:%=direct_%_replace)
+
+.PHONY: cost_tests_print
+cost_tests_print: $(COST_TESTS:%=direct_%_print)
 
 .PHONY: $(BUILD_SYSTEMS_TESTS:%=build_%_test)
 $(BUILD_SYSTEMS_TESTS:%=build_%_test): infer
@@ -564,11 +581,13 @@ mod_dep: src_build_common
 	$(MAKE) -C $(SRC_DIR) mod_dep.dot)
 
 .PHONY: config_tests
-config_tests: test_build ocaml_unit_test endtoend_test checkCopyright validate-skel mod_dep
+config_tests: ocaml_unit_test validate-skel mod_dep
+	$(MAKE) endtoend_test checkCopyright
+	$(MAKE) manuals
 
-ifneq ($(filter config_tests test,${MAKECMDGOALS}),)
-test_build: src_build
-checkCopyright: src_build test_build
+ifneq ($(filter endtoend_test,$(MAKECMDGOALS)),)
+checkCopyright: src_build
+toplevel_test: checkCopyright
 endif
 
 .PHONY: test
@@ -576,9 +595,6 @@ test: crash_if_not_all_analyzers_enabled config_tests
 ifeq (,$(findstring s,$(MAKEFLAGS)))
 	$(QUIET)echo "$(TERM_INFO)ALL TESTS PASSED$(TERM_RESET)"
 endif
-
-.PHONY: quick-test
-quick-test: test_build ocaml_unit_test
 
 .PHONY: test-replace
 test-replace: $(BUILD_SYSTEMS_TESTS:%=build_%_replace) $(DIRECT_TESTS:%=direct_%_replace) \
@@ -628,17 +644,11 @@ endif
 	  $(MKDIR_P) '$(DESTDIR)$(libdir)/infer/infer/annotations/'
 	test -d      '$(DESTDIR)$(libdir)/infer/infer/lib/wrappers/' || \
 	  $(MKDIR_P) '$(DESTDIR)$(libdir)/infer/infer/lib/wrappers/'
-	test -d      '$(DESTDIR)$(libdir)/infer/infer/lib/specs/' || \
-	  $(MKDIR_P) '$(DESTDIR)$(libdir)/infer/infer/lib/specs/'
-	test -d      '$(DESTDIR)$(libdir)/infer/infer/lib/python/' || \
-	  $(MKDIR_P) '$(DESTDIR)$(libdir)/infer/infer/lib/python/'
-	test -d      '$(DESTDIR)$(libdir)/infer/infer/lib/python/inferlib/' || \
-	  $(MKDIR_P) '$(DESTDIR)$(libdir)/infer/infer/lib/python/inferlib/'
-	test -d      '$(DESTDIR)$(libdir)/infer/infer/lib/python/inferlib/capture/' || \
-	  $(MKDIR_P) '$(DESTDIR)$(libdir)/infer/infer/lib/python/inferlib/capture/'
 	test -d      '$(DESTDIR)$(libdir)/infer/infer/bin/' || \
 	  $(MKDIR_P) '$(DESTDIR)$(libdir)/infer/infer/bin/'
 # copy files
+	$(INSTALL_DATA) -C          'infer/lib/models.sql' \
+	  '$(DESTDIR)$(libdir)/infer/infer/lib/models.sql'
 ifeq ($(BUILD_C_ANALYZERS),yes)
 	$(INSTALL_DATA) -C          'facebook-clang-plugins/libtooling/build/FacebookClangPlugin.dylib' \
 	  '$(DESTDIR)$(libdir)/infer/facebook-clang-plugins/libtooling/build/FacebookClangPlugin.dylib'
@@ -656,8 +666,6 @@ ifeq ($(BUILD_C_ANALYZERS),yes)
 	  [ $(cc) -ef '$(INFER_BIN)' ] && \
 	  $(REMOVE) '$(notdir $(cc))' && \
 	  $(LN_S) ../../bin/infer '$(notdir $(cc))';))
-	find infer/lib/specs/* -print0 | xargs -0 -I \{\} \
-	  $(INSTALL_DATA) -C \{\} '$(DESTDIR)$(libdir)'/infer/\{\}
 	$(INSTALL_DATA) -C          'infer/lib/linter_rules/linters.al' \
 	  '$(DESTDIR)$(libdir)/infer/infer/lib/linter_rules/linters.al'
 	$(INSTALL_DATA) -C          'infer/etc/clang_ast.dict' \
@@ -671,14 +679,6 @@ ifeq ($(BUILD_JAVA_ANALYZERS),yes)
 	$(INSTALL_PROGRAM) -C      '$(LIB_DIR)'/wrappers/javac \
 	  '$(DESTDIR)$(libdir)'/infer/infer/lib/wrappers/
 endif
-	find infer/lib/python/inferlib/* -type f -print0 | xargs -0 -I \{\} \
-	  $(INSTALL_DATA) -C \{\} '$(DESTDIR)$(libdir)'/infer/\{\}
-	$(INSTALL_PROGRAM) -C       infer/lib/python/infer.py \
-	  '$(DESTDIR)$(libdir)'/infer/infer/lib/python/infer.py
-	$(INSTALL_PROGRAM) -C       infer/lib/python/inferTraceBugs \
-	  '$(DESTDIR)$(libdir)'/infer/infer/lib/python/inferTraceBugs
-	$(INSTALL_PROGRAM) -C       infer/lib/python/report.py \
-	  '$(DESTDIR)$(libdir)'/infer/infer/lib/python/report.py
 	$(INSTALL_PROGRAM) -C '$(INFER_BIN)' '$(DESTDIR)$(libdir)'/infer/infer/bin/
 	(cd '$(DESTDIR)$(bindir)/' && \
 	 $(REMOVE) infer && \
@@ -707,6 +707,63 @@ else
 	$(MAKE) -C facebook install
 endif
 endif
+
+# install dynamic libraries
+# use this if you want to distribute infer binaries
+install-with-libs: install
+	test -d      '$(DESTDIR)$(libdir)'/infer/infer/libso || \
+	  $(MKDIR_P) '$(DESTDIR)$(libdir)'/infer/infer/libso
+ifneq ($(LDD),no)
+ifneq ($(PATCHELF),no)
+#	this sort of assumes Linux
+#	figure out where libgmp, libmpfr, and libsqlite3 are using ldd
+	set -x; \
+	for lib in $$($(LDD) $(INFER_BIN) \
+	              | cut -d ' ' -f 3 \
+	              | grep -e 'lib\(gmp\|mpfr\|sqlite\)'); do \
+	  $(INSTALL_PROGRAM) -C "$$lib" '$(DESTDIR)$(libdir)'/infer/infer/libso/; \
+	done
+#	update rpath of executables
+	for sofile in '$(DESTDIR)$(libdir)'/infer/infer/libso/*.so*; do \
+	  $(PATCHELF) --set-rpath '$$ORIGIN' --force-rpath "$$sofile"; \
+	done
+	$(PATCHELF) --set-rpath '$$ORIGIN/../libso' --force-rpath '$(DESTDIR)$(libdir)'/infer/infer/bin/infer
+ifeq ($(IS_FACEBOOK_TREE),yes)
+	$(PATCHELF) --set-rpath '$$ORIGIN/../libso' --force-rpath '$(DESTDIR)$(libdir)'/infer/infer/bin/InferCreateTraceViewLinks
+endif
+else # ldd found but not patchelf
+	echo "ERROR: ldd (Linux?) found but not patchelf, please install patchelf" >&2; exit 1
+endif
+else # ldd not found
+ifneq ($(OTOOL),no)
+ifneq ($(INSTALL_NAME_TOOL),no)
+#	this sort of assumes osx
+#	figure out where libgmp, libmpfr, and libsqlite3 are using otool
+	set -e; \
+	set -x; \
+	for lib in $$($(OTOOL) -L $(INFER_BIN) \
+	              | cut -d ' ' -f 1 | tr -d '\t' \
+	              | grep -e 'lib\(gmp\|mpfr\|sqlite\)'); do \
+	  $(INSTALL_PROGRAM) -C "$$lib" '$(DESTDIR)$(libdir)'/infer/infer/libso/; \
+	done
+	set -x; \
+	for sofile in '$(DESTDIR)$(libdir)'/infer/infer/libso/*.dylib; do \
+	  $(INSTALL_NAME_TOOL) -add_rpath "@executable_path" "$$sofile"; \
+	  scripts/set_libso_path.sh '$(DESTDIR)$(libdir)'/infer/infer/libso "$$sofile"; \
+	done
+	$(INSTALL_NAME_TOOL) -add_rpath '@executable_path/../libso' '$(DESTDIR)$(libdir)'/infer/infer/bin/infer
+	scripts/set_libso_path.sh '$(DESTDIR)$(libdir)'/infer/infer/libso '$(DESTDIR)$(libdir)'/infer/infer/bin/infer
+ifeq ($(IS_FACEBOOK_TREE),yes)
+	$(INSTALL_NAME_TOOL) -add_rpath '@executable_path/../libso' '$(DESTDIR)$(libdir)'/infer/infer/bin/InferCreateTraceViewLinks
+	scripts/set_libso_path.sh '$(DESTDIR)$(libdir)'/infer/infer/libso '$(DESTDIR)$(libdir)'/infer/infer/bin/InferCreateTraceViewLinks
+endif
+else # install_name_tool not found
+	echo "ERROR: otool (OSX?) found but not install_name_tool, please install install_name_tool" >&2; exit 1
+endif
+else # otool not found
+	echo "ERROR: need ldd + patchelf (Linux) or otool + install_name_tool (OSX) available" >&2; exit 1
+endif
+endif # ldd
 
 # Nuke objects built from OCaml. Useful when changing the OCaml compiler, for instance.
 .PHONY: ocaml_clean
@@ -741,8 +798,6 @@ endif
 
 .PHONY: conf-clean
 conf-clean: clean
-	$(REMOVE) $(PYTHON_DIR)/inferlib/*.pyc
-	$(REMOVE) $(PYTHON_DIR)/inferlib/*/*.pyc
 	$(REMOVE) .buckversion
 	$(REMOVE) Makefile.autoconf
 	$(REMOVE) acinclude.m4
@@ -822,19 +877,8 @@ devsetup: Makefile.autoconf
 	  if [ "$$infer_repo_is_in_manpath" != "0" ]; then \
 	    printf "$(TERM_INFO)  echo 'export MANPATH=\"%s/infer/man\":\$$MANPATH' >> \"$$shell_config_file\"$(TERM_RESET)\n" "$(ABSOLUTE_ROOT_DIR)" >&2; \
 	  fi; \
-	fi; \
-	if [ -z "$(ORIG_SHELL_BUILD_MODE)" ]; then \
-	  echo >&2; \
-	  echo '$(TERM_INFO)*** NOTE: Set `BUILD_MODE=default` in your shell to disable flambda by default.$(TERM_RESET)' >&2; \
-	  echo '$(TERM_INFO)*** NOTE: Compiling with flambda is ~5 times slower than without, so unless you are$(TERM_RESET)' >&2; \
-	  echo '$(TERM_INFO)*** NOTE: testing infer on a very large project it will not be worth it. Use the$(TERM_RESET)' >&2; \
-	  echo '$(TERM_INFO)*** NOTE: commands below to set the default build mode. You can then use `make opt`$(TERM_RESET)' >&2; \
-	  echo '$(TERM_INFO)*** NOTE: when you really do want to enable flambda.$(TERM_RESET)' >&2; \
-	  echo >&2; \
-	  printf "$(TERM_INFO)  export BUILD_MODE=default$(TERM_RESET)\n" >&2; \
-	  printf "$(TERM_INFO)  echo 'export BUILD_MODE=default' >> \"$$shell_config_file\"$(TERM_RESET)\n" >&2; \
 	fi
-	$(QUIET)PATH=$(ORIG_SHELL_PATH); if [ "$$(ocamlc -where 2>/dev/null)" != "$$($(OCAMLC) -where)" ]; then \
+	$(QUIET)PATH='$(ORIG_SHELL_PATH)'; if [ "$$(ocamlc -where 2>/dev/null)" != "$$($(OCAMLC) -where)" ]; then \
 	  echo >&2; \
 	  echo '$(TERM_INFO)*** NOTE: The current shell is not set up for the right opam switch.$(TERM_RESET)' >&2; \
 	  echo '$(TERM_INFO)*** NOTE: Please run:$(TERM_RESET)' >&2; \
@@ -849,9 +893,9 @@ doc: src_build_common
 	$(QUIET)$(call silent_on_success,Generating infer documentation,\
 	$(MAKE_SOURCE) doc)
 # do not call the browser if we are publishing the docs
-ifeq ($(filter doc-publish,${MAKECMDGOALS}),)
+ifneq ($(NO_BROWSE_DOC),yes)
 	$(QUIET)$(call silent_on_success,Opening in browser,\
-	browse $(SRC_DIR)/_build/$(BUILD_MODE)/_doc/_html/index.html)
+	browse $(INFER_DIR)/_build/default/_doc/_html/index.html)
 	$(QUIET)echo "Tip: you can generate the doc for all the opam dependencies of infer like this:"
 	$(QUIET)echo
 	$(QUIET)echo "  odig odoc # takes a while, run it only when the dependencies change"
@@ -859,32 +903,61 @@ ifeq ($(filter doc-publish,${MAKECMDGOALS}),)
 endif
 
 .PHONY: doc-publish
-doc-publish: doc $(INFER_GROFF_MANUALS)
-ifeq ($(GHPAGES),no)
-	$(QUIET)echo "$(TERM_ERROR)Please set GHPAGES to a checkout of the gh-pages branch of the GitHub repo of infer$(TERM_RESET)" >&2
-	$(QUIET)exit 1
+doc-publish:
+ifeq ($(IS_FACEBOOK_TREE),yes)
+	$(QUIET)$(call silent_on_success,Cleaning up FB-only files,\
+	$(MAKE) -C $(SRC_DIR) clean; \
+	$(MAKE) -C facebook clean)
 endif
-#	sanity check to avoid cryptic error messages and potentially annoying side-effects
-	$(QUIET)if ! [ -d "$(GHPAGES)"/static/man ]; then \
-	  echo "$(TERM_ERROR)ERROR: GHPAGES doesn't seem to point to a checkout of the gh-pages branch of the GitHub repo of infer:$(TERM_RESET)" >&2; \
-	  echo "$(TERM_ERROR)ERROR:   '$(GHPAGES)/static/man' not found or not a directory.$(TERM_RESET)" >&2; \
-	  echo "$(TERM_ERROR)ERROR: Please fix this and try again.$(TERM_RESET)" >&2; \
-	  exit 1; \
-	fi
+	$(QUIET)$(call silent_on_success,Building infer and manuals,\
+	$(MAKE) IS_FACEBOOK_TREE=no $(INFER_GROFF_MANUALS))
+	$(QUIET)$(MKDIR_P) "$(WEBSITE_DIR)"/static/man/next "$(WEBSITE_DIR)"/static/odoc/next
 	$(QUIET)$(call silent_on_success,Copying man pages,\
-	$(REMOVE_DIR) "$(GHPAGES)"/static/man/*; \
+	$(REMOVE) "$(WEBSITE_DIR)"/static/man/*; \
 	for man in $(INFER_GROFF_MANUALS); do \
-	  groff -Thtml "$$man" > "$(GHPAGES)"/static/man/$$(basename "$$man").html; \
+	  groff -Thtml "$$man" \
+	  | grep -v '^<!-- CreationDate: .*>$$' \
+	  > "$(WEBSITE_DIR)"/static/man/next/$$(basename "$$man").html; \
 	done)
-ifeq ($(IS_FACEBOOK_TREE),no)
+	$(QUIET)$(call silent_on_success,Building OCaml modules documentation,\
+	$(MAKE) IS_FACEBOOK_TREE=no NO_BROWSE_DOC=yes doc)
 	$(QUIET)$(call silent_on_success,Copying OCaml modules documentation,\
-	version=$$($(INFER_BIN) --version | head -1 | cut -d ' ' -f 3 | cut -c 2-); \
-	rsync -a --delete $(SRC_DIR)/_build/$(BUILD_MODE)/_doc/_html/ "$(GHPAGES)"/static/odoc/"$$version"; \
-	$(REMOVE) "$(GHPAGES)"/static/odoc/latest; \
-	$(LN_S) "$$version" "$(GHPAGES)"/static/odoc/latest)
-else
-	$(QUIET)echo "Not an open-source tree, skipping the API docs generation"
-endif
+	rsync -a --delete $(BUILD_DIR)/default/_doc/_html/ "$(WEBSITE_DIR)"/static/odoc/next/)
+	$(QUIET)$(call silent_on_success,Building infer,\
+	$(MAKE) IS_FACEBOOK_TREE=no src_build)
+	$(QUIET)$(call silent_on_success,Calling 'infer help --write-website',\
+	$(INFER_BIN) help --write-website "$(WEBSITE_DIR)")
+
+.PHONY: new-website-version
+# note: deletes already-created new version if already there to make it easier to update new
+# versions while preparing a release
+new-website-version: doc-publish
+#	this will version docs/ appropriately
+	cd $(WEBSITE_DIR) && \
+	rm -rf versioned_*/version-$(INFER_MAJOR).$(INFER_MINOR).$(INFER_PATCH)* ; \
+	sed -i -e '/"$(INFER_MAJOR).$(INFER_MINOR).$(INFER_PATCH)"/d' versions.json ; \
+	yarn run docusaurus docs:version $(INFER_MAJOR).$(INFER_MINOR).$(INFER_PATCH)
+#	copy static versioned resources
+	cd $(WEBSITE_DIR)/static/man && \
+	rm -fr $(INFER_MAJOR).$(INFER_MINOR).$(INFER_PATCH)/ ; \
+	cp -a next/ $(INFER_MAJOR).$(INFER_MINOR).$(INFER_PATCH)/
+	cd $(WEBSITE_DIR)/static/odoc && \
+	rm -fr $(INFER_MAJOR).$(INFER_MINOR).$(INFER_PATCH)/ ; \
+	cp -a next/ $(INFER_MAJOR).$(INFER_MINOR).$(INFER_PATCH)/
+#	adjust intra-doc paths in new doc version
+	cd $(WEBSITE_DIR)/versioned_docs/version-$(INFER_MAJOR).$(INFER_MINOR).$(INFER_PATCH)/ && \
+	find . -type f -not -name versions.md \
+	  -exec sed -i -e 's#/docs/next/#/docs/#g' \{\} \+
+#	adjust paths to static versioned resources in new doc version
+	cd $(WEBSITE_DIR)/versioned_docs/version-$(INFER_MAJOR).$(INFER_MINOR).$(INFER_PATCH)/ && \
+	find . -type f -not -name versions.md \
+	  -exec sed -i -e 's#/next/#/$(INFER_MAJOR).$(INFER_MINOR).$(INFER_PATCH)/#g' \{\} \+
+#	adjust versions.md, the page where users can navigate to other versions of the docs, unless
+#	it was already changed by an earlier run of this rule
+	cd $(WEBSITE_DIR)/ && \
+	grep -q -F 'latest released version ($(INFER_MAJOR).$(INFER_MINOR).$(INFER_PATCH))' docs/versions.md || \
+	find docs versioned_docs -name versions.md \
+	  -exec sed -i -e 's#^- \[latest released version (\([^)]*\))\](/docs/getting-started)$$#- [latest released version ($(INFER_MAJOR).$(INFER_MINOR).$(INFER_PATCH))](/docs/getting-started)\n- [previous version (\1)](/docs/\1/getting-started)#' \{\} \+
 
 # print list of targets
 .PHONY: show-targets

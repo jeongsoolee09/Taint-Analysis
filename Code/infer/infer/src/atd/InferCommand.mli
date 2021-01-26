@@ -13,12 +13,13 @@ type t =
   | Compile
       (** set up the infer environment then run the compilation commands without capturing the
           source files *)
-  | Events  (** dump logged events into stdout *)
+  | Debug  (** print information about internal structures *)
   | Explore  (** explore infer reports *)
+  | Help  (** documentation about various aspects of infer *)
   | Report  (** post-process infer results and reports *)
   | ReportDiff  (** compute the difference of two infer reports *)
   | Run  (** orchestrate the capture, analysis, and reporting of a compilation command *)
-  | SpecHunter (** run a predefined DFA for SpecHunter *)
+  | SpecHunter
 [@@deriving compare]
 
 val of_string : string -> t

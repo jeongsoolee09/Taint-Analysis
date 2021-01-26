@@ -8,18 +8,12 @@
 open! IStd
 module F = Format
 
-module D = UninitDomain.Domain
 (** Forward analysis to compute uninitialized variables at each program point *)
+module D = UninitDomain.Domain
 
 module MaybeUninitVars = UninitDomain.MaybeUninitVars
 module AliasedVars = AbstractDomain.FiniteSet (UninitDomain.VarPair)
 module RecordDomain = UninitDomain.Record (MaybeUninitVars) (AliasedVars) (D)
-
-module Payload = SummaryPayload.Make (struct
-  type t = UninitDomain.Summary.t
-
-  let field = Payloads.Fields.uninit
-end)
 
 module Models = struct
   let initializing_all_args = [BuiltinDecl.__set_array_length]
@@ -38,28 +32,62 @@ let should_report_on_type t =
       false
 
 
-type extras = {formals: FormalMap.t; summary: Summary.t}
+type analysis_data =
+  {analysis_data: UninitDomain.Summary.t InterproceduralAnalysis.t; formals: FormalMap.t}
+
+module Initial = struct
+  let get_locals tenv pdesc =
+    List.fold (Procdesc.get_locals pdesc) ~init:[]
+      ~f:(fun acc (var_data : ProcAttributes.var_data) ->
+        let pvar = Pvar.mk var_data.name (Procdesc.get_proc_name pdesc) in
+        let base_access_expr = HilExp.AccessExpression.base (Var.of_pvar pvar, var_data.typ) in
+        match var_data.typ.Typ.desc with
+        | Typ.Tstruct qual_name
+        (* T30105165 remove filtering after we improve union translation *)
+          when not (Typ.Name.is_union qual_name) -> (
+          match Tenv.lookup tenv qual_name with
+          | Some {fields} ->
+              let flist =
+                List.fold
+                  ~f:(fun acc' (fn, _, _) ->
+                    HilExp.AccessExpression.field_offset base_access_expr fn :: acc' )
+                  ~init:acc fields
+              in
+              base_access_expr :: flist
+              (* for struct we take the struct address, and the access_path
+                 to the fields one level down *)
+          | _ ->
+              acc )
+        | Typ.Tarray {elt} ->
+            HilExp.AccessExpression.array_offset base_access_expr elt None :: acc
+        | Typ.Tptr _ ->
+            base_access_expr :: HilExp.AccessExpression.dereference base_access_expr :: acc
+        | _ ->
+            base_access_expr :: acc )
+end
 
 module TransferFunctions (CFG : ProcCfg.S) = struct
   module CFG = CFG
   module Domain = RecordDomain
 
-  type nonrec extras = extras
+  type nonrec analysis_data = analysis_data
 
-  let report_intra access_expr loc summary =
+  let report_intra access_expr loc {InterproceduralAnalysis.proc_desc; err_log} =
     let message =
       F.asprintf "The value read from %a was never initialized" HilExp.AccessExpression.pp
         access_expr
     in
     let ltr = [Errlog.make_trace_element 0 loc "" []] in
-    Reporting.log_error summary ~loc ~ltr IssueType.uninitialized_value message
+    Reporting.log_issue proc_desc err_log ~loc ~ltr Uninit IssueType.uninitialized_value message
 
 
   let is_struct t = match t.Typ.desc with Typ.Tstruct _ -> true | _ -> false
 
   let is_array t = match t.Typ.desc with Typ.Tarray _ -> true | _ -> false
 
-  let get_formals pname = Ondemand.get_proc_desc pname |> Option.map ~f:Procdesc.get_formals
+  let get_formals pname =
+    AnalysisCallbacks.proc_resolve_attributes pname |> Option.map ~f:ProcAttributes.get_formals
+
 
   let should_report_var pdesc tenv maybe_uninit_vars access_expr =
     let base = HilExp.AccessExpression.get_base access_expr in
@@ -67,6 +95,7 @@ module TransferFunctions (CFG : ProcCfg.S) = struct
     | Some typ, (Var.ProgramVar pv, _) ->
         (not (Pvar.is_frontend_tmp pv))
         && (not (Procdesc.is_captured_pvar pdesc pv))
+        && (not (Procdesc.has_modify_in_block_attr pdesc pv))
         && MaybeUninitVars.mem access_expr maybe_uninit_vars
         && should_report_on_type typ
     | _, _ ->
@@ -98,18 +127,19 @@ module TransferFunctions (CFG : ProcCfg.S) = struct
     || is_array_element_passed_by_ref callee_formals t access_expr idx
 
 
-  let report_on_function_params tenv maybe_uninit_vars actuals loc summary callee_formals_opt =
+  let report_on_function_params ({InterproceduralAnalysis.proc_desc; tenv} as analysis_data)
+      maybe_uninit_vars actuals loc callee_formals_opt =
     List.iteri actuals ~f:(fun idx e ->
         match HilExp.ignore_cast e with
         | HilExp.AccessExpression access_expr ->
             let _, t = HilExp.AccessExpression.get_base access_expr in
             if
-              should_report_var (Summary.get_proc_desc summary) tenv maybe_uninit_vars access_expr
+              should_report_var proc_desc tenv maybe_uninit_vars access_expr
               && (not (Typ.is_pointer t))
               && not
                    (Option.exists callee_formals_opt ~f:(fun callee_formals ->
                         is_struct_field_passed_by_ref callee_formals t access_expr idx ))
-            then report_intra access_expr loc summary
+            then report_intra access_expr loc analysis_data
         | _ ->
             () )
 
@@ -151,9 +181,10 @@ module TransferFunctions (CFG : ProcCfg.S) = struct
         else None
 
 
-  let remove_initialized_params summary call maybe_uninit_vars idx access_expr remove_fields =
-    match Payload.read ~caller_summary:summary ~callee_pname:call with
-    | Some {pre= init_formals; post= _} -> (
+  let remove_initialized_params {InterproceduralAnalysis.analyze_dependency} call maybe_uninit_vars
+      idx access_expr remove_fields =
+    match analyze_dependency call with
+    | Some (_, {UninitDomain.pre= init_formals; post= _}) -> (
       match init_nth_actual_param call idx init_formals with
       | Some var_formal ->
           let maybe_uninit_vars = MaybeUninitVars.remove access_expr maybe_uninit_vars in
@@ -169,20 +200,19 @@ module TransferFunctions (CFG : ProcCfg.S) = struct
 
 
   (* true if a function initializes at least a param or a field of a struct param *)
-  let function_initializes_some_formal_params summary call =
-    match Payload.read ~caller_summary:summary ~callee_pname:call with
-    | Some {pre= initialized_formal_params; post= _} ->
+  let function_initializes_some_formal_params {InterproceduralAnalysis.analyze_dependency} call =
+    match analyze_dependency call with
+    | Some (_, {UninitDomain.pre= initialized_formal_params; post= _}) ->
         not (D.is_empty initialized_formal_params)
     | _ ->
         false
 
 
-  let exec_instr (astate : Domain.t) {ProcData.summary; extras= {formals}; tenv} _
+  let exec_instr (astate : Domain.t) {analysis_data= {proc_desc; tenv} as analysis_data; formals} _
       (instr : HilInstr.t) =
-    let pdesc = Summary.get_proc_desc summary in
     let check_access_expr ~loc rhs_access_expr =
-      if should_report_var pdesc tenv astate.maybe_uninit_vars rhs_access_expr then
-        report_intra rhs_access_expr loc summary
+      if should_report_var proc_desc tenv astate.maybe_uninit_vars rhs_access_expr then
+        report_intra rhs_access_expr loc analysis_data
     in
     let rec check_hil_expr ~loc = function
       | HilExp.Cast (_, e) ->
@@ -232,7 +262,7 @@ module TransferFunctions (CFG : ProcCfg.S) = struct
         (* if it's a default constructor, we use the following heuristic: we assume that it initializes
            correctly all fields when there is an implementation of the constructor that initilizes at least one
            field. If there is no explicit implementation we cannot assume fields are initialized *)
-        if function_initializes_some_formal_params summary call then
+        if function_initializes_some_formal_params analysis_data call then
           let maybe_uninit_vars =
             (* in HIL/SIL the default constructor has only one param: the struct *)
             MaybeUninitVars.remove_all_fields tenv base astate.maybe_uninit_vars
@@ -240,8 +270,6 @@ module TransferFunctions (CFG : ProcCfg.S) = struct
           {astate with maybe_uninit_vars}
         else astate
     | Call (_, call, actuals, _, loc) ->
-        (* in case of intraprocedural only analysis we assume that parameters passed by reference
-           to a function will be initialized inside that function *)
         let pname_opt = match call with Direct pname -> Some pname | Indirect _ -> None in
         let callee_formals_opt = Option.bind pname_opt ~f:get_formals in
         let is_initializing_all_args =
@@ -267,18 +295,24 @@ module TransferFunctions (CFG : ProcCfg.S) = struct
                            ~f:(is_fld_or_array_elem_passed_by_ref t access_expr idx) -> (
                     match pname_opt with
                     | Some pname when Config.uninit_interproc ->
-                        remove_initialized_params summary pname acc idx access_expr_to_remove false
+                        remove_initialized_params analysis_data pname acc idx access_expr_to_remove
+                          false
                     | _ ->
                         MaybeUninitVars.remove access_expr_to_remove acc )
                   | base when Option.exists pname_opt ~f:Procname.is_constructor ->
                       MaybeUninitVars.remove_all_fields tenv base
                         (MaybeUninitVars.remove access_expr_to_remove acc)
                   | _, {Typ.desc= Tptr _} -> (
+                    (* in case of intraprocedural only analysis we assume that parameters passed by reference
+                       to a function will be initialized inside that function *)
                     match pname_opt with
                     | Some pname when Config.uninit_interproc ->
-                        remove_initialized_params summary pname acc idx access_expr_to_remove true
+                        remove_initialized_params analysis_data pname acc idx access_expr_to_remove
+                          true
                     | _ ->
-                        MaybeUninitVars.remove_everything_under tenv access_expr_to_remove acc )
+                        let locals = MaybeUninitVars.of_list (Initial.get_locals tenv proc_desc) in
+                        MaybeUninitVars.remove_everything_under tenv locals access_expr_to_remove
+                          acc )
                   | _ ->
                       acc )
               | HilExp.Closure (_, apl) ->
@@ -290,12 +324,13 @@ module TransferFunctions (CFG : ProcCfg.S) = struct
         in
         ( match call with
         | Direct _ ->
-            report_on_function_params tenv maybe_uninit_vars actuals loc summary callee_formals_opt
+            report_on_function_params analysis_data maybe_uninit_vars actuals loc callee_formals_opt
         | Indirect _ ->
             () ) ;
         {astate with maybe_uninit_vars}
     | Assume (expr, _, _, loc) ->
-        check_hil_expr expr ~loc ; astate
+        check_hil_expr expr ~loc ;
+        astate
     | Metadata _ ->
         astate
 
@@ -306,41 +341,7 @@ end
 module CFG = ProcCfg.Normal
 module Analyzer = LowerHil.MakeAbstractInterpreter (TransferFunctions (CFG))
 
-module Initial = struct
-  let get_locals tenv pdesc =
-    List.fold (Procdesc.get_locals pdesc) ~init:[]
-      ~f:(fun acc (var_data : ProcAttributes.var_data) ->
-        let pvar = Pvar.mk var_data.name (Procdesc.get_proc_name pdesc) in
-        let base_access_expr = HilExp.AccessExpression.base (Var.of_pvar pvar, var_data.typ) in
-        match var_data.typ.Typ.desc with
-        | Typ.Tstruct qual_name
-        (* T30105165 remove filtering after we improve union translation *)
-          when not (Typ.Name.is_union qual_name) -> (
-          match Tenv.lookup tenv qual_name with
-          | Some {fields} ->
-              let flist =
-                List.fold
-                  ~f:(fun acc' (fn, _, _) ->
-                    HilExp.AccessExpression.field_offset base_access_expr fn :: acc' )
-                  ~init:acc fields
-              in
-              base_access_expr :: flist
-              (* for struct we take the struct address, and the access_path
-                 to the fields one level down *)
-          | _ ->
-              acc )
-        | Typ.Tarray {elt} ->
-            HilExp.AccessExpression.array_offset base_access_expr elt None :: acc
-        | Typ.Tptr _ ->
-            base_access_expr :: HilExp.AccessExpression.dereference base_access_expr :: acc
-        | _ ->
-            base_access_expr :: acc )
-end
-
-let checker {Callbacks.exe_env; summary} : Summary.t =
-  let proc_desc = Summary.get_proc_desc summary in
-  let proc_name = Summary.get_proc_name summary in
-  let tenv = Exe_env.get_tenv exe_env proc_name in
+let checker ({InterproceduralAnalysis.proc_desc; tenv} as analysis_data) =
   (* start with empty set of uninit local vars and empty set of init formal params *)
   let maybe_uninit_vars = Initial.get_locals tenv proc_desc in
   let initial =
@@ -350,10 +351,7 @@ let checker {Callbacks.exe_env; summary} : Summary.t =
   in
   let proc_data =
     let formals = FormalMap.make proc_desc in
-    ProcData.make summary tenv {formals; summary}
+    {analysis_data; formals}
   in
-  match Analyzer.compute_post proc_data ~initial with
-  | Some {RecordDomain.prepost} ->
-      Payload.update_summary prepost summary
-  | None ->
-      summary
+  Analyzer.compute_post proc_data ~initial proc_desc
+  |> Option.map ~f:(fun {RecordDomain.prepost; _} -> prepost)

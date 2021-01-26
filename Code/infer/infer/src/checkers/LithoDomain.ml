@@ -8,6 +8,12 @@
 open! IStd
 module F = Format
 
+let is_component_or_section_builder class_typ_name tenv =
+  PatternMatch.is_subtype_of_str tenv class_typ_name "com.facebook.litho.Component$Builder"
+  || PatternMatch.is_subtype_of_str tenv class_typ_name
+       "com.facebook.litho.sections.Section$Builder"
+
+
 module LocalAccessPath = struct
   type t = {access_path: AccessPath.t; parent: Procname.t} [@@deriving compare]
 
@@ -31,13 +37,15 @@ module MethodCallPrefix = struct
     {prefix: string; procname: Procname.t [@compare.ignore]; location: Location.t [@compare.ignore]}
   [@@deriving compare]
 
-  let make procname location =
+  let make_with_prefixes procname location =
     let method_name = Procname.get_method procname in
     let prefix_opt =
       String.Set.find_map suffixes ~f:(fun suffix -> String.chop_suffix method_name ~suffix)
     in
-    let prefix = Option.value prefix_opt ~default:method_name in
-    {prefix; procname; location}
+    let default = [{prefix= method_name; procname; location}] in
+    Option.value_map prefix_opt ~default ~f:(fun prefix ->
+        (* We have to add the default as well as the stripped prefix since there could be a required prop which actually includes the suffix. *)
+        {prefix; procname; location} :: default )
 
 
   let pp fmt {procname} = Procname.pp fmt procname
@@ -138,8 +146,8 @@ module Created = struct
 end
 
 module MethodCalls = struct
-  module IsChecked = AbstractDomain.BooleanOr
   (** if the method calls are checked and reported *)
+  module IsChecked = AbstractDomain.BooleanOr
 
   module S = AbstractDomain.InvertedSet (MethodCallPrefix)
 
@@ -381,9 +389,7 @@ module Mem = struct
         match ptr_typ with
         | Typ.{desc= Tptr (typ, _)} -> (
           match Typ.name typ with
-          | Some typ_name
-            when PatternMatch.is_subtype_of_str tenv typ_name "com.facebook.litho.Component$Builder"
-            ->
+          | Some typ_name when is_component_or_section_builder typ_name tenv ->
               let formal_ae = LocalAccessPath.make_from_pvar pvar ptr_typ pname in
               let created_location = CreatedLocation.ByParameter formal_ae in
               { created= Created.add formal_ae (CreatedLocations.singleton created_location) created
@@ -399,6 +405,17 @@ module Mem = struct
 
   let assign ~lhs ~rhs ({created} as x) =
     {x with created= Created.add lhs (Created.lookup rhs created) created}
+
+
+  let assume_null path ({created; method_called} as x) =
+    match CreatedLocations.is_singleton_or_more (Created.lookup path created) with
+    | Singleton loc ->
+        let method_called =
+          MethodCalled.remove {created_location= loc; is_build_called= false} method_called
+        in
+        {x with method_called}
+    | Empty | More ->
+        x
 
 
   let call_create lhs typ_name location ({created} as x) =
@@ -520,6 +537,8 @@ let init tenv pname formals ret_path =
 let map_no_return_called f x = {x with no_return_called= f x.no_return_called}
 
 let assign ~lhs ~rhs = map_no_return_called (Mem.assign ~lhs ~rhs)
+
+let assume_null x = map_no_return_called (Mem.assume_null x)
 
 let call_create lhs typ_name location = map_no_return_called (Mem.call_create lhs typ_name location)
 

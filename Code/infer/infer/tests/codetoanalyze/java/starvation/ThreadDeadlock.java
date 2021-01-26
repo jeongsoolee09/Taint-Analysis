@@ -79,4 +79,22 @@ class ThreadDeadlock {
       }
     }
   }
+
+  Object lockE, lockF, lockG;
+
+  public void sequentialEandGOk() {
+    synchronized (lockE) {
+      synchronized (lockF) {
+      }
+    }
+    synchronized (lockG) {
+    }
+  }
+
+  public void nestedGthenEOk() {
+    synchronized (lockG) {
+      synchronized (lockE) {
+      }
+    }
+  }
 }

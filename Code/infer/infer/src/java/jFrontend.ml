@@ -67,7 +67,8 @@ let add_edges (context : JContext.t) start_node exn_node exit_nodes method_body_
     | JTrans.Instr node ->
         connect node pc
     | JTrans.Prune (node_true, node_false) ->
-        connect node_true pc ; connect node_false pc
+        connect node_true pc ;
+        connect node_false pc
     | JTrans.Loop (join_node, node_true, node_false) ->
         Procdesc.node_set_succs context.procdesc join_node ~normal:[node_true; node_false] ~exn:[] ;
         connect node_true pc ;
@@ -88,8 +89,10 @@ let add_edges (context : JContext.t) start_node exn_node exit_nodes method_body_
 (** Add a concrete method. *)
 let add_cmethod source_file program icfg cm proc_name =
   let cn, _ = JBasics.cms_split cm.Javalib.cm_class_method_signature in
-  if Inferconfig.skip_implementation_matcher source_file proc_name then
-    ignore (JTrans.create_empty_procdesc source_file program icfg cm proc_name)
+  if
+    Inferconfig.skip_implementation_matcher source_file proc_name
+    || SourceFile.has_extension source_file ~ext:Config.kotlin_source_extension
+  then ignore (JTrans.create_empty_procdesc source_file program icfg cm proc_name)
   else
     match JTrans.create_cm_procdesc source_file program icfg cm proc_name with
     | None ->
@@ -101,7 +104,7 @@ let add_cmethod source_file program icfg cm proc_name =
 
 
 let path_of_cached_classname cn =
-  let root_path = Config.(results_dir ^/ classnames_dir_name) in
+  let root_path = ResultsDir.get_path JavaClassnamesCache in
   let package_path = List.fold ~f:Filename.concat ~init:root_path (JBasics.cn_package cn) in
   Filename.concat package_path (JBasics.cn_simple_name cn ^ ".java")
 
@@ -132,16 +135,35 @@ let cache_classname cn =
 
 let is_classname_cached cn = Sys.file_exists (path_of_cached_classname cn) = `Yes
 
+let test_source_file_location source_file program cn node =
+  let is_synthetic = function
+    | Javalib.JInterface _ ->
+        false
+    | Javalib.JClass jc ->
+        jc.Javalib.c_synthetic
+  in
+  if not (is_synthetic node) then
+    match JProgramDesc.get_java_location program cn with
+    | None ->
+        L.(debug Capture Verbose)
+          "WARNING SOURCE FILE PARSER: location not found for class %s in source file %s \n"
+          (JBasics.cn_name cn)
+          (SourceFile.to_abs_path source_file)
+    | Some _ ->
+        ()
+
+
 (* Given a source file and a class, translates the code of this class.
    In init - mode, finds out whether this class contains initializers at all,
    in this case translates it. In standard mode, all methods are translated *)
 let create_icfg source_file program tenv icfg cn node =
   L.(debug Capture Verbose) "\tclassname: %s@." (JBasics.cn_name cn) ;
   if Config.dependency_mode && not (is_classname_cached cn) then cache_classname cn ;
+  test_source_file_location source_file program cn node ;
   let translate m =
     let proc_name = JTransType.translate_method_name program tenv m in
-    JClasspath.set_callee_translated program proc_name ;
-    if JClasspath.is_model proc_name then
+    JProgramDesc.set_callee_translated program proc_name ;
+    if BiabductionModels.mem proc_name then
       (* do not translate the method if there is a model for it *)
       L.debug Capture Verbose "Skipping method with a model: %a@." Procname.pp proc_name
     else
@@ -163,7 +185,7 @@ let create_icfg source_file program tenv icfg cn node =
 
 
 (* returns true for the set of classes that are selected to be translated in the given
-   progam *)
+   program *)
 let should_capture program package_opt source_basename node =
   let classname = Javalib.get_name node in
   let match_package pkg cn =
@@ -173,7 +195,7 @@ let should_capture program package_opt source_basename node =
     | Some found_pkg ->
         String.equal found_pkg pkg
   in
-  if JClasspath.mem_classmap classname program then
+  if JProgramDesc.mem_classmap classname program then
     match Javalib.get_sourcefile node with
     | None ->
         false
@@ -194,12 +216,14 @@ let compute_source_icfg program tenv source_basename package_opt source_file =
   let select test procedure cn node =
     if test node then try procedure cn node with Bir.Subroutine -> ()
   in
+  (* we must set the java location for all classes in the source file before translation *)
+  JSourceFileInfo.collect_class_location program source_file ;
   let () =
     JBasics.ClassMap.iter
       (select
          (should_capture program package_opt source_basename)
          (create_icfg source_file program tenv icfg))
-      (JClasspath.get_classmap program)
+      (JProgramDesc.get_classmap program)
   in
   icfg.JContext.cfg
 

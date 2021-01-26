@@ -7,16 +7,16 @@
 
 open! IStd
 
-exception Error of string
 (** The functions in this module tend to raise more often than their counterparts in [Sqlite3]. In
     particular, they may raise if the [Sqlite3.Rc.t] result of certain operations is unexpected. *)
+exception Error of string
 
 val check_result_code : Sqlite3.db -> log:string -> Sqlite3.Rc.t -> unit
 (** Assert that the result is either [Sqlite3.Rc.OK] or [Sqlite3.Rc.ROW]. If the result is not
-    valid, then if [fatal] is set raise {!Error}, otherwise log the error and proceed. *)
+    valid, raise {!Error}. *)
 
 val exec : Sqlite3.db -> log:string -> stmt:string -> unit
-(** Execute the given Sqlite [stmt] and check the result with {!check_result_code ~fatal:true}. *)
+(** Execute the given Sqlite [stmt] and check the result with {!check_result_code}. *)
 
 val finalize : Sqlite3.db -> log:string -> Sqlite3.stmt -> unit
 (** Finalize the given [stmt]. Raises {!Error} on failure. *)
@@ -60,9 +60,6 @@ val result_unit : ?finalize:bool -> Sqlite3.db -> log:string -> Sqlite3.stmt -> 
 val db_close : Sqlite3.db -> unit
 (** Close the given database and asserts that it was effective. Raises {!Error} if not. *)
 
-val with_transaction : Sqlite3.db -> f:(unit -> unit) -> unit
-(** Execute [f] within an explicit sqlite transaction. *)
-
 (** An API commonly needed to store and retrieve objects from the database *)
 module type Data = sig
   type t
@@ -71,12 +68,6 @@ module type Data = sig
 
   val deserialize : Sqlite3.Data.t -> t
 end
-
-(** A default implementation of the Data API that encodes every objects as marshalled blobs with no
-    sharing *)
-module MarshalledDataForComparison (D : sig
-  type t
-end) : Data with type t = D.t
 
 (** A default implementation of the Data API that encodes every objects as marshalled blobs *)
 module MarshalledDataNOTForComparison (D : sig

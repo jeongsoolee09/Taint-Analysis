@@ -7,18 +7,12 @@
 
 open! IStd
 
-(** Eradicate NPEs. *)
+(** The main entry point for Nullsafe typechecker. *)
 
-val callback_eradicate : Callbacks.proc_callback_t
+val analyze_procedure : IntraproceduralAnalysis.t -> NullsafeSummary.t option
+(** Proc-level callback for nullsafe. *)
 
-val callback_check_return_type : TypeCheck.check_return_type -> Callbacks.proc_callback_t
-
-(** Type for a module that provides a main callback function *)
-module type CallBackT = sig
-  val callback : TypeCheck.checks -> Callbacks.proc_callback_t
-end
-
-(** Extension to the type checker. *)
-module type ExtensionT = sig
-  val update_payloads : TypeState.t option -> Payloads.t -> Payloads.t
-end
+val analyze_for_immutable_cast_checker :
+  TypeCheck.check_return_type -> IntraproceduralAnalysis.t -> NullsafeSummary.t option
+(** For checkers that explore eradicate/nullsafe infra, but not part of nullsafe.Annot Call the
+    given check_return_type at the end of every procedure. *)

@@ -15,12 +15,6 @@ let dummy_constructor_annot = "__infer_is_constructor"
 
 module Domain = AnnotationReachabilityDomain
 
-module Payload = SummaryPayload.Make (struct
-  type t = Domain.t
-
-  let field = Payloads.Fields.annot_map
-end)
-
 let is_modeled_expensive tenv = function
   | Procname.Java proc_name_java as proc_name ->
       (not (BuiltinDecl.is_declared proc_name))
@@ -39,7 +33,7 @@ let is_allocator tenv pname =
   | Procname.Java pname_java ->
       let is_throwable () =
         let class_name = Procname.Java.get_class_type_name pname_java in
-        PatternMatch.is_throwable tenv class_name
+        PatternMatch.Java.is_throwable tenv class_name
       in
       Procname.is_constructor pname
       && (not (BuiltinDecl.is_declared pname))
@@ -49,9 +43,8 @@ let is_allocator tenv pname =
 
 
 let check_attributes check tenv pname =
-  PatternMatch.check_class_attributes check tenv pname
-  || Annotations.pname_has_return_annot pname ~attrs_of_pname:Summary.OnDisk.proc_resolve_attributes
-       check
+  PatternMatch.Java.check_class_attributes check tenv pname
+  || Annotations.pname_has_return_annot pname check
 
 
 let method_overrides is_annotated tenv pname =
@@ -68,9 +61,9 @@ let method_has_annot annot tenv pname =
 
 let method_overrides_annot annot tenv pname = method_overrides (method_has_annot annot) tenv pname
 
-let lookup_annotation_calls ~caller_summary annot pname =
-  Payload.read ~caller_summary ~callee_pname:pname
-  |> Option.bind ~f:(Domain.find_opt annot)
+let lookup_annotation_calls {InterproceduralAnalysis.analyze_dependency} annot pname =
+  analyze_dependency pname
+  |> Option.bind ~f:(fun (_, astate) -> Domain.find_opt annot astate)
   |> Option.value ~default:Domain.SinkMap.empty
 
 
@@ -81,25 +74,26 @@ let update_trace loc trace =
 
 let string_of_pname = Procname.to_simplified_string ~withclass:true
 
-let report_allocation_stack src_annot summary fst_call_loc trace stack_str constructor_pname
-    call_loc =
-  let pname = Summary.get_proc_name summary in
+let report_allocation_stack {InterproceduralAnalysis.proc_desc; err_log} src_annot fst_call_loc
+    trace constructor_pname call_loc =
+  let pname = Procdesc.get_proc_name proc_desc in
   let final_trace = List.rev (update_trace call_loc trace) in
   let constr_str = string_of_pname constructor_pname in
   let description =
     Format.asprintf "Method %a annotated with %a allocates %a via %a" MF.pp_monospaced
       (Procname.to_simplified_string pname)
       MF.pp_monospaced ("@" ^ src_annot) MF.pp_monospaced constr_str MF.pp_monospaced
-      (stack_str ^ "new " ^ constr_str)
+      ("new " ^ constr_str)
   in
-  Reporting.log_error summary ~loc:fst_call_loc ~ltr:final_trace IssueType.checkers_allocates_memory
-    description
+  Reporting.log_issue proc_desc err_log ~loc:fst_call_loc ~ltr:final_trace AnnotationReachability
+    IssueType.checkers_allocates_memory description
 
 
-let report_annotation_stack src_annot snk_annot src_summary loc trace stack_str snk_pname call_loc =
-  let src_pname = Summary.get_proc_name src_summary in
+let report_annotation_stack ({InterproceduralAnalysis.proc_desc; err_log} as analysis_data)
+    src_annot snk_annot loc trace snk_pname call_loc =
+  let src_pname = Procdesc.get_proc_name proc_desc in
   if String.equal snk_annot dummy_constructor_annot then
-    report_allocation_stack src_annot src_summary loc trace stack_str snk_pname call_loc
+    report_allocation_stack analysis_data src_annot loc trace snk_pname call_loc
   else
     let final_trace = List.rev (update_trace call_loc trace) in
     let exp_pname_str = string_of_pname snk_pname in
@@ -107,37 +101,28 @@ let report_annotation_stack src_annot snk_annot src_summary loc trace stack_str 
       Format.asprintf "Method %a annotated with %a calls %a where %a is annotated with %a"
         MF.pp_monospaced
         (Procname.to_simplified_string src_pname)
-        MF.pp_monospaced ("@" ^ src_annot) MF.pp_monospaced (stack_str ^ exp_pname_str)
-        MF.pp_monospaced exp_pname_str MF.pp_monospaced ("@" ^ snk_annot)
+        MF.pp_monospaced ("@" ^ src_annot) MF.pp_monospaced exp_pname_str MF.pp_monospaced
+        exp_pname_str MF.pp_monospaced ("@" ^ snk_annot)
     in
     let issue_type =
       if String.equal src_annot Annotations.performance_critical then
         IssueType.checkers_calls_expensive_method
       else IssueType.checkers_annotation_reachability_error
     in
-    Reporting.log_error src_summary ~loc ~ltr:final_trace issue_type description
+    Reporting.log_issue proc_desc err_log ~loc ~ltr:final_trace AnnotationReachability issue_type
+      description
 
 
-let report_call_stack summary end_of_stack lookup_next_calls report call_site sink_map
-    ~string_of_pname ~call_str =
+let report_call_stack end_of_stack lookup_next_calls report call_site sink_map =
   let lookup_location pname =
-    Option.value_map ~f:Procdesc.get_loc ~default:Location.dummy (Ondemand.get_proc_desc pname)
+    Option.value_map ~f:ProcAttributes.get_loc ~default:Location.dummy
+      (AnalysisCallbacks.proc_resolve_attributes pname)
   in
-  let rec loop fst_call_loc visited_pnames (trace, stack_str) (callee_pname, call_loc) =
-    if end_of_stack callee_pname then
-      report summary fst_call_loc trace stack_str callee_pname call_loc
+  let rec loop fst_call_loc visited_pnames trace (callee_pname, call_loc) =
+    if end_of_stack callee_pname then report fst_call_loc trace callee_pname call_loc
     else
       let callee_def_loc = lookup_location callee_pname in
       let next_calls = lookup_next_calls callee_pname in
-      let callee_pname_str = string_of_pname callee_pname in
-      let new_stack_str =
-        if
-          String.equal stack_str (Printf.sprintf "%s%s" callee_pname_str call_str)
-          || String.is_suffix stack_str ~suffix:(Printf.sprintf " %s%s" callee_pname_str call_str)
-          (* avoid repeat entries, e.g. from cleansed inner destructors *)
-        then stack_str
-        else Printf.sprintf "%s%s%s" stack_str callee_pname_str call_str
-      in
       let new_trace = update_trace call_loc trace |> update_trace callee_def_loc in
       let unseen_callees, updated_callees =
         Domain.SinkMap.fold
@@ -151,7 +136,7 @@ let report_call_stack summary end_of_stack lookup_next_calls report call_site si
             with Caml.Not_found -> accu )
           next_calls ([], visited_pnames)
       in
-      List.iter ~f:(loop fst_call_loc updated_callees (new_trace, new_stack_str)) unseen_callees
+      List.iter ~f:(loop fst_call_loc updated_callees new_trace) unseen_callees
   in
   Domain.SinkMap.iter
     (fun _ call_sites ->
@@ -160,20 +145,21 @@ let report_call_stack summary end_of_stack lookup_next_calls report call_site si
         let fst_callee_pname = CallSite.pname fst_call_site in
         let fst_call_loc = CallSite.loc fst_call_site in
         let start_trace = update_trace (CallSite.loc call_site) [] in
-        loop fst_call_loc Procname.Set.empty (start_trace, "") (fst_callee_pname, fst_call_loc)
+        loop fst_call_loc Procname.Set.empty start_trace (fst_callee_pname, fst_call_loc)
       with Caml.Not_found -> () )
     sink_map
 
 
-let report_src_snk_path {Callbacks.exe_env; summary} sink_map snk_annot src_annot =
-  let proc_desc = Summary.get_proc_desc summary in
+let report_src_snk_path ({InterproceduralAnalysis.proc_desc; tenv} as analysis_data) sink_map
+    snk_annot src_annot =
   let proc_name = Procdesc.get_proc_name proc_desc in
-  let tenv = Exe_env.get_tenv exe_env proc_name in
   let loc = Procdesc.get_loc proc_desc in
   if method_overrides_annot src_annot tenv proc_name then
-    let f_report = report_annotation_stack src_annot.Annot.class_name snk_annot.Annot.class_name in
-    report_call_stack summary (method_has_annot snk_annot tenv) ~string_of_pname ~call_str:" -> "
-      (lookup_annotation_calls ~caller_summary:summary snk_annot)
+    let f_report =
+      report_annotation_stack analysis_data src_annot.Annot.class_name snk_annot.Annot.class_name
+    in
+    report_call_stack (method_has_annot snk_annot tenv)
+      (lookup_annotation_calls analysis_data snk_annot)
       f_report (CallSite.make proc_name loc) sink_map
 
 
@@ -195,7 +181,7 @@ module AnnotationSpec = struct
     ; sink_predicate: predicate
     ; sanitizer_predicate: predicate
     ; sink_annotation: Annot.t
-    ; report: Callbacks.proc_callback_args -> Domain.t -> unit }
+    ; report: Domain.t InterproceduralAnalysis.t -> Domain.t -> unit }
 
   (* The default sanitizer does not sanitize anything *)
   let default_sanitizer _ _ = false
@@ -220,9 +206,9 @@ end
 
 module CxxAnnotationSpecs = struct
   let src_path_of pname =
-    match Ondemand.get_proc_desc pname with
-    | Some proc_desc ->
-        let loc = Procdesc.get_loc proc_desc in
+    match AnalysisCallbacks.proc_resolve_attributes pname with
+    | Some proc_attrs ->
+        let loc = ProcAttributes.get_loc proc_attrs in
         SourceFile.to_string loc.file
     | None ->
         ""
@@ -257,7 +243,8 @@ module CxxAnnotationSpecs = struct
   let debug_pred ~spec_name ~desc pred pname =
     L.d_printf "%s: Checking if `%a` is a %s... " spec_name Procname.pp pname desc ;
     let r = pred pname in
-    L.d_printf "%b %s.@." r desc ; r
+    L.d_printf "%b %s.@." r desc ;
+    r
 
 
   let at_least_one_nonempty ~src symbols symbol_regexps paths =
@@ -327,14 +314,15 @@ module CxxAnnotationSpecs = struct
     in
     let sanitizer_pred = debug_pred ~spec_name ~desc:"sanitizer" sanitizer_pred in
     let call_str = "\n    -> " in
-    let report_cxx_annotation_stack src_summary loc trace stack_str snk_pname call_loc =
-      let src_pname = Summary.get_proc_name src_summary in
+    let report_cxx_annotation_stack {InterproceduralAnalysis.proc_desc; err_log} loc trace snk_pname
+        call_loc =
+      let src_pname = Procdesc.get_proc_name proc_desc in
       let final_trace = List.rev (update_trace call_loc trace) in
       let snk_pname_str = cxx_string_of_pname snk_pname in
       let src_pname_str = cxx_string_of_pname src_pname in
       let description =
-        Format.asprintf "%s can reach %s:\n    %s%s%s%s\n" src_desc snk_desc src_pname_str call_str
-          stack_str snk_pname_str
+        Format.asprintf "%s can reach %s:\n    %s%s%s\n" src_desc snk_desc src_pname_str call_str
+          snk_pname_str
       in
       let issue_type =
         let doc_url =
@@ -343,22 +331,23 @@ module CxxAnnotationSpecs = struct
             (List.Assoc.find ~equal:String.equal spec_cfg "doc_url")
         in
         let linters_def_file = Option.value_map ~default:"" ~f:Fn.id Config.inferconfig_file in
-        IssueType.register_from_string spec_name ~doc_url ~linters_def_file
+        IssueType.register_dynamic ~id:spec_name ~doc_url ~linters_def_file:(Some linters_def_file)
+          Error AnnotationReachability
       in
-      Reporting.log_error src_summary ~loc ~ltr:final_trace issue_type description
+      Reporting.log_issue proc_desc err_log ~loc ~ltr:final_trace AnnotationReachability issue_type
+        description
     in
     let snk_annot = annotation_of_str snk_name in
-    let report proc_data annot_map =
-      let proc_desc = Summary.get_proc_desc proc_data.Callbacks.summary in
+    let report ({InterproceduralAnalysis.proc_desc} as analysis_data) annot_map =
       let proc_name = Procdesc.get_proc_name proc_desc in
       if src_pred proc_name then
         let loc = Procdesc.get_loc proc_desc in
         try
           let sink_map = Domain.find snk_annot annot_map in
-          report_call_stack proc_data.Callbacks.summary snk_pred
-            ~string_of_pname:cxx_string_of_pname ~call_str
-            (lookup_annotation_calls ~caller_summary:proc_data.Callbacks.summary snk_annot)
-            report_cxx_annotation_stack (CallSite.make proc_name loc) sink_map
+          report_call_stack snk_pred
+            (lookup_annotation_calls analysis_data snk_annot)
+            (report_cxx_annotation_stack analysis_data)
+            (CallSite.make proc_name loc) sink_map
         with Caml.Not_found -> ()
     in
     { AnnotationSpec.description= Printf.sprintf "CxxAnnotationSpecs %s from config" spec_name
@@ -413,10 +402,9 @@ module ExpensiveAnnotationSpec = struct
 
   let method_is_expensive tenv pname = is_modeled_expensive tenv pname || is_expensive tenv pname
 
-  let check_expensive_subtyping_rules {Callbacks.exe_env; summary} overridden_pname =
-    let proc_desc = Summary.get_proc_desc summary in
+  let check_expensive_subtyping_rules {InterproceduralAnalysis.proc_desc; tenv; err_log}
+      overridden_pname =
     let proc_name = Procdesc.get_proc_name proc_desc in
-    let tenv = Exe_env.get_tenv exe_env proc_name in
     let loc = Procdesc.get_loc proc_desc in
     if not (method_is_expensive tenv overridden_pname) then
       let description =
@@ -425,8 +413,8 @@ module ExpensiveAnnotationSpec = struct
           (Procname.to_string overridden_pname)
           MF.pp_monospaced ("@" ^ Annotations.expensive)
       in
-      Reporting.log_error summary ~loc IssueType.checkers_expensive_overrides_unexpensive
-        description
+      Reporting.log_issue proc_desc err_log ~loc AnnotationReachability
+        IssueType.checkers_expensive_overrides_unexpensive description
 
 
   let spec =
@@ -440,13 +428,14 @@ module ExpensiveAnnotationSpec = struct
     ; sanitizer_predicate= default_sanitizer
     ; sink_annotation= expensive_annot
     ; report=
-        (fun ({Callbacks.exe_env; summary} as proc_data) astate ->
-          let proc_desc = Summary.get_proc_desc summary in
+        (fun ({InterproceduralAnalysis.proc_desc; tenv} as analysis_data) astate ->
           let proc_name = Procdesc.get_proc_name proc_desc in
-          let tenv = Exe_env.get_tenv exe_env proc_name in
           if is_expensive tenv proc_name then
-            PatternMatch.override_iter (check_expensive_subtyping_rules proc_data) tenv proc_name ;
-          report_src_snk_paths proc_data astate [performance_critical_annot] expensive_annot ) }
+            PatternMatch.override_iter
+              (check_expensive_subtyping_rules analysis_data)
+              tenv proc_name ;
+          report_src_snk_paths analysis_data astate [performance_critical_annot] expensive_annot )
+    }
 end
 
 (* parse user-defined specs from .inferconfig *)
@@ -494,11 +483,12 @@ let get_annot_specs pname =
   List.Assoc.find_exn ~equal:Language.equal annot_specs language
 
 
-module TransferFunctions (CFG : ProcCfg.S) = struct
+module MakeTransferFunctions (CFG : ProcCfg.S) = struct
   module CFG = CFG
   module Domain = Domain
 
-  type extras = AnnotationSpec.t list
+  type analysis_data =
+    {specs: AnnotationSpec.t list; analysis_data: Domain.t InterproceduralAnalysis.t}
 
   let is_sink tenv (spec : AnnotationSpec.t) ~caller_pname ~callee_pname =
     spec.sink_predicate tenv callee_pname
@@ -515,11 +505,12 @@ module TransferFunctions (CFG : ProcCfg.S) = struct
         else astate )
 
 
-  let merge_callee_map call_site summary ~caller_pname ~callee_pname tenv specs astate =
-    match Payload.read ~caller_summary:summary ~callee_pname with
+  let merge_callee_map {analysis_data= {proc_desc; tenv; analyze_dependency}; specs} call_site
+      ~callee_pname astate =
+    match analyze_dependency callee_pname with
     | None ->
         astate
-    | Some callee_call_map ->
+    | Some (_, callee_call_map) ->
         L.d_printf "Applying summary for `%a`@\n" Procname.pp callee_pname ;
         let add_call_site annot sink calls astate =
           if Domain.CallSites.is_empty calls then astate
@@ -528,6 +519,7 @@ module TransferFunctions (CFG : ProcCfg.S) = struct
                that sink. Ideally we would check only the spec that was responsible for adding the
                sink but it is not obvious how to link back from annot to specs. Instead see if one
                of the specs thinks that this sink is indeed a sink. *)
+            let caller_pname = Procdesc.get_proc_name proc_desc in
             List.fold ~init:astate specs ~f:(fun astate (spec : AnnotationSpec.t) ->
                 if is_sink tenv spec ~caller_pname ~callee_pname:sink then (
                   L.d_printf "%s: Adding sink call from `%a`'s summary `%a -> %a`@\n"
@@ -541,12 +533,12 @@ module TransferFunctions (CFG : ProcCfg.S) = struct
           callee_call_map astate
 
 
-  let exec_instr astate {ProcData.summary; tenv; ProcData.extras} _ = function
+  let exec_instr astate ({analysis_data= {proc_desc; tenv}; specs} as analysis_data) _ = function
     | Sil.Call (_, Const (Cfun callee_pname), _, call_loc, _) ->
-        let caller_pname = Summary.get_proc_name summary in
+        let caller_pname = Procdesc.get_proc_name proc_desc in
         let call_site = CallSite.make callee_pname call_loc in
-        check_call tenv ~callee_pname ~caller_pname call_site astate extras
-        |> merge_callee_map call_site summary ~callee_pname ~caller_pname tenv extras
+        check_call tenv ~callee_pname ~caller_pname call_site astate specs
+        |> merge_callee_map analysis_data call_site ~callee_pname
     | _ ->
         astate
 
@@ -554,17 +546,15 @@ module TransferFunctions (CFG : ProcCfg.S) = struct
   let pp_session_name _node fmt = F.pp_print_string fmt "annotation reachability"
 end
 
-module Analyzer = AbstractInterpreter.MakeRPO (TransferFunctions (ProcCfg.Exceptional))
+module TransferFunctions = MakeTransferFunctions (ProcCfg.Exceptional)
+module Analyzer = AbstractInterpreter.MakeRPO (TransferFunctions)
 
-let checker ({Callbacks.exe_env; summary} as callback) : Summary.t =
-  let proc_name = Summary.get_proc_name summary in
-  let tenv = Exe_env.get_tenv exe_env proc_name in
+let checker ({InterproceduralAnalysis.proc_desc} as analysis_data) : Domain.t option =
+  let proc_name = Procdesc.get_proc_name proc_desc in
   let initial = Domain.empty in
   let specs = get_annot_specs proc_name in
-  let proc_data = ProcData.make summary tenv specs in
-  match Analyzer.compute_post proc_data ~initial with
-  | Some annot_map ->
-      List.iter specs ~f:(fun spec -> spec.AnnotationSpec.report callback annot_map) ;
-      Payload.update_summary annot_map summary
-  | None ->
-      summary
+  let proc_data = {TransferFunctions.analysis_data; specs} in
+  let post = Analyzer.compute_post proc_data ~initial proc_desc in
+  Option.iter post ~f:(fun annot_map ->
+      List.iter specs ~f:(fun spec -> spec.AnnotationSpec.report analysis_data annot_map) ) ;
+  post

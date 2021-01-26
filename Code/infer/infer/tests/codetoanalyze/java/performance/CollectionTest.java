@@ -6,6 +6,7 @@
  */
 
 import android.util.SparseArray;
+import com.google.common.collect.ImmutableSet;
 import java.util.Collection;
 import java.util.concurrent.ConcurrentLinkedQueue;
 
@@ -22,10 +23,7 @@ public class CollectionTest {
     for (MyCollection<Integer> list : mSubscribers) {}
   }
 
-  // Expected |mSubscribers| * |list| but we get |mSubscribers|
-  // because we are not tracking elements of collections
-  void iterate_over_mycollection_quad_FN(
-      ConcurrentLinkedQueue<MyCollection<Integer>> mSubscribers) {
+  void iterate_over_mycollection_quad(ConcurrentLinkedQueue<MyCollection<Integer>> mSubscribers) {
     for (MyCollection<Integer> list : mSubscribers) {
       iterate_over_mycollection(list);
     }
@@ -68,5 +66,40 @@ public class CollectionTest {
     SparseArray<Integer> new_arr = new SparseArray<Integer>();
     new_arr.put(1, 1);
     for (int i = 0; i < new_arr.size(); i++) {}
+  }
+
+  static class Dummy {}
+
+  public enum MyEnumType {
+    /* The elements of enum is initialized in `<clinit>`. */
+    A(1);
+
+    public final int mValue;
+
+    private MyEnumType(int i) {
+      mValue = i;
+    }
+
+    /* This field is also initialized in `<clinit>`, in which `<init>` is called. */
+    private static Dummy s =
+        new Dummy() {
+          {
+            /* This loop is in `<init>` function. It needs the results of `<clinit>` in order to
+            get `MyEnumType.values()`. */
+            for (MyEnumType type : MyEnumType.values()) {}
+          }
+        };
+  }
+
+  void immutable_set_of_constant() {
+
+    ImmutableSet<Integer> set = ImmutableSet.of();
+    for (int i = 0; i < set.size(); i++) {}
+  }
+
+  void immutable_set_of_multiple_constant() {
+
+    ImmutableSet<Integer> set = ImmutableSet.of(1, 2, 3, 4, 5);
+    for (int i = 0; i < set.size(); i++) {}
   }
 }

@@ -14,9 +14,13 @@ type t
 
 type range = Typ.t * InferredNullability.t
 
-val add_id : Ident.t -> range -> t -> t
+val pp_range : Format.formatter -> Typ.t * InferredNullability.t -> unit
 
-val add : Pvar.t -> range -> t -> t
+val add_id : Ident.t -> range -> t -> descr:string -> t
+(** [descr] is for debug logs only *)
+
+val add : Pvar.t -> range -> t -> descr:string -> t
+(** [descr] is for debug logs only *)
 
 val empty : t
 
@@ -30,4 +34,5 @@ val lookup_pvar : Pvar.t -> t -> range option
 
 val pp : Format.formatter -> t -> unit
 
-val remove_id : Ident.t -> t -> t
+val remove_id : Ident.t -> t -> descr:string -> t
+(** [descr] is for debug logs only *)

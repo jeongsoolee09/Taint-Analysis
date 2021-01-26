@@ -5,6 +5,7 @@
  * LICENSE file in the root directory of this source tree.
  *)
 open! IStd
+open AbstractDomain.Types
 module L = Logging
 module InvariantVars = AbstractDomain.FiniteSet (Var)
 module VarsInLoop = AbstractDomain.FiniteSet (Var)
@@ -14,8 +15,8 @@ module VarSet = AbstractDomain.FiniteSet (Var)
 
 let debug fmt = L.(debug Analysis Medium) fmt
 
-module LoopHeadToLoopNodes = Procdesc.NodeMap
 (** Map loop header node -> all nodes in the loop *)
+module LoopHeadToLoopNodes = Procdesc.NodeMap
 
 let is_defined_outside loop_nodes reaching_defs var =
   ReachingDefs.ReachingDefsMap.find_opt var reaching_defs
@@ -161,14 +162,24 @@ let get_vars_to_invalidate node loop_head args modified_params invalidated_vars 
     args
 
 
-let all_unmodeled_modified tenv loop_nodes =
+let is_pure get_callee_purity callee_pname =
+  match get_callee_purity callee_pname with
+  | Some purity_summary ->
+      PurityDomain.is_pure purity_summary
+  | None ->
+      false
+
+
+let all_unmodeled_modified tenv loop_nodes ~get_callee_purity =
   LoopNodes.fold
     (fun node acc ->
       Procdesc.Node.get_instrs node
       |> Instrs.fold ~init:acc ~f:(fun acc instr ->
              match instr with
              | Sil.Call ((id, _), Const (Cfun callee_pname), _, _, _)
-               when is_not_modeled tenv callee_pname ->
+               when is_not_modeled tenv callee_pname && not (is_pure get_callee_purity callee_pname)
+               ->
+                 debug "Invalidate unmodeled %a \n" Ident.pp id ;
                  InvalidatedVars.add (Var.of_id id) acc
              | _ ->
                  acc ) )
@@ -179,7 +190,7 @@ let all_unmodeled_modified tenv loop_nodes =
    all its non-primitive arguments. Once invalidated, it should be
    never added again. *)
 let get_invalidated_vars_in_loop tenv loop_head ~is_pure_by_default ~get_callee_purity loop_nodes =
-  let all_unmodeled_modified = lazy (all_unmodeled_modified tenv loop_nodes) in
+  let all_unmodeled_modified = lazy (all_unmodeled_modified tenv loop_nodes ~get_callee_purity) in
   LoopNodes.fold
     (fun node acc ->
       Procdesc.Node.get_instrs node
@@ -189,7 +200,7 @@ let get_invalidated_vars_in_loop tenv loop_head ~is_pure_by_default ~get_callee_
                  let purity = get_purity tenv ~is_pure_by_default ~get_callee_purity callee_pname in
                  PurityDomain.(
                    match purity with
-                   | AbstractDomain.Types.Top ->
+                   | Top ->
                        (* modified global *)
                        (* if one of the callees modifies a global static
                           variable, invalidate all unmodeled function calls + args *)
@@ -199,7 +210,7 @@ let get_invalidated_vars_in_loop tenv loop_head ~is_pure_by_default ~get_callee_
                            (InvalidatedVars.add (Var.of_id id) acc)
                        in
                        InvalidatedVars.union invalidated_args (force all_unmodeled_modified)
-                   | AbstractDomain.Types.NonTop modified_params ->
+                   | NonTop modified_params ->
                        if ModifiedParamIndices.is_empty modified_params then (*pure*)
                          acc
                        else
@@ -260,8 +271,8 @@ let get_inv_vars_in_loop tenv reaching_defs_invariant_map ~is_pure_by_default ~g
   find_fixpoint InvariantVars.empty
 
 
-module LoopHeadToInvVars = Procdesc.NodeMap
 (** Map loop head -> invariant vars in loop *)
+module LoopHeadToInvVars = Procdesc.NodeMap
 
 type invariant_map = VarSet.t LoopHeadToInvVars.t
 

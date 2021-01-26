@@ -9,8 +9,8 @@ module L = Logging
 
 (** Module for Type Environments. *)
 
-module TypenameHash = Caml.Hashtbl.Make (Typ.Name)
 (** Hash tables on type names. *)
+module TypenameHash = Caml.Hashtbl.Make (Typ.Name)
 
 module TypenameHashNormalizer = MaximumSharing.ForHashtbl (TypenameHash)
 
@@ -18,22 +18,18 @@ module TypenameHashNormalizer = MaximumSharing.ForHashtbl (TypenameHash)
 type t = Struct.t TypenameHash.t
 
 let pp fmt (tenv : t) =
-  TypenameHash.iter
-    (fun name typ ->
-      Format.fprintf fmt "@[<6>NAME: %s@]@," (Typ.Name.to_string name) ;
-      Format.fprintf fmt "@[<6>TYPE: %a@]@," (Struct.pp Pp.text name) typ )
-    tenv
+  TypenameHash.iter (fun name typ -> Format.fprintf fmt "%a@," (Struct.pp Pp.text name) typ) tenv
 
 
 (** Create a new type environment. *)
 let create () = TypenameHash.create 1000
 
 (** Construct a struct type in a type environment *)
-let mk_struct tenv ?default ?fields ?statics ?methods ?exported_objc_methods ?supers ?annots ?dummy
-    name =
+let mk_struct tenv ?default ?fields ?statics ?methods ?exported_objc_methods ?supers ?annots
+    ?java_class_info ?dummy name =
   let struct_typ =
     Struct.internal_mk_struct ?default ?fields ?statics ?methods ?exported_objc_methods ?supers
-      ?annots ?dummy ()
+      ?annots ?java_class_info ?dummy ()
   in
   TypenameHash.replace tenv name struct_typ ;
   struct_typ
@@ -101,11 +97,15 @@ module SQLite : SqliteUtils.Data with type t = per_file = struct
 end
 
 let merge ~src ~dst =
-  TypenameHash.iter
-    (fun pname cfg ->
-      if (not (Struct.is_dummy cfg)) || not (TypenameHash.mem dst pname) then
-        TypenameHash.replace dst pname cfg )
-    src
+  let merge_internal typename newer =
+    match TypenameHash.find_opt dst typename with
+    | None ->
+        TypenameHash.add dst typename newer
+    | Some current ->
+        let merged_struct = Struct.merge typename ~newer ~current in
+        TypenameHash.replace dst typename merged_struct
+  in
+  TypenameHash.iter merge_internal src
 
 
 let merge_per_file ~src ~dst =
@@ -113,7 +113,8 @@ let merge_per_file ~src ~dst =
   | Global, Global ->
       Global
   | FileLocal src_tenv, FileLocal dst_tenv ->
-      merge ~src:src_tenv ~dst:dst_tenv ; FileLocal dst_tenv
+      merge ~src:src_tenv ~dst:dst_tenv ;
+      FileLocal dst_tenv
   | Global, FileLocal _ | FileLocal _, Global ->
       L.die InternalError "Cannot merge Global tenv with FileLocal tenv"
 
@@ -130,7 +131,7 @@ let tenv_serializer : t Serialization.serializer =
 
 let global_tenv : t option ref = ref None
 
-let global_tenv_path = Config.(results_dir ^/ global_tenv_filename) |> DB.filename_from_string
+let global_tenv_path = ResultsDir.get_path JavaGlobalTypeEnvironment |> DB.filename_from_string
 
 let read path = Serialization.read_from_file tenv_serializer path
 
@@ -154,7 +155,8 @@ let store_debug_file tenv tenv_filename =
   let debug_filename = DB.filename_to_string (DB.filename_add_suffix tenv_filename ".debug") in
   let out_channel = Out_channel.create debug_filename in
   let fmt = Format.formatter_of_out_channel out_channel in
-  pp fmt tenv ; Out_channel.close out_channel
+  pp fmt tenv ;
+  Out_channel.close out_channel
 
 
 let store_debug_file_for_source source_file tenv =
@@ -172,10 +174,46 @@ let store_to_filename tenv tenv_filename =
 let store_global tenv =
   (* update in-memory global tenv for later uses by this process, e.g. in single-core mode the
      frontend and backend run in the same process *)
-  L.debug Capture Quiet "Tenv.store: global tenv has size %d bytes.@."
-    (Obj.(reachable_words (repr tenv)) * (Sys.word_size / 8)) ;
+  if Config.debug_level_capture > 0 then
+    L.debug Capture Quiet "Tenv.store: global tenv has size %d bytes.@."
+      (Obj.(reachable_words (repr tenv)) * (Sys.word_size / 8)) ;
   let tenv = TypenameHashNormalizer.normalize tenv in
-  L.debug Capture Quiet "Tenv.store: canonicalized tenv has size %d bytes.@."
-    (Obj.(reachable_words (repr tenv)) * (Sys.word_size / 8)) ;
+  if Config.debug_level_capture > 0 then
+    L.debug Capture Quiet "Tenv.store: canonicalized tenv has size %d bytes.@."
+      (Obj.(reachable_words (repr tenv)) * (Sys.word_size / 8)) ;
   global_tenv := Some tenv ;
   store_to_filename tenv global_tenv_path
+
+
+let resolve_method ~method_exists tenv class_name proc_name =
+  let visited = ref Typ.Name.Set.empty in
+  let rec resolve_name_struct (class_name : Typ.Name.t) (class_struct : Struct.t) =
+    if
+      (not (Typ.Name.is_class class_name))
+      || (not (Struct.is_not_java_interface class_struct))
+      || Typ.Name.Set.mem class_name !visited
+    then None
+    else (
+      visited := Typ.Name.Set.add class_name !visited ;
+      let right_proc_name = Procname.replace_class proc_name class_name in
+      if method_exists right_proc_name class_struct.methods then Some right_proc_name
+      else
+        let supers_to_search =
+          match (class_name : Typ.Name.t) with
+          | CStruct _ | CUnion _ | CppClass _ ->
+              (* multiple inheritance possible, search all supers *)
+              class_struct.supers
+          | JavaClass _ ->
+              (* multiple inheritance not possible, but cannot distinguish interfaces from typename so search all *)
+              class_struct.supers
+          | ObjcClass _ ->
+              (* multiple inheritance impossible, but recursive calls will throw away protocols *)
+              class_struct.supers
+          | ObjcProtocol _ ->
+              []
+        in
+        List.find_map supers_to_search ~f:resolve_name )
+  and resolve_name class_name =
+    lookup tenv class_name |> Option.bind ~f:(resolve_name_struct class_name)
+  in
+  resolve_name class_name

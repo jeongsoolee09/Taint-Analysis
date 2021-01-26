@@ -35,10 +35,13 @@ type pvar_kind =
 (** Names for program variables. *)
 type t = {pv_hash: int; pv_name: Mangled.t; pv_kind: pvar_kind} [@@deriving compare]
 
-let get_name_of_local_with_procname var =
+let build_formal_from_pvar var =
   match var.pv_kind with
   | Local_var pname ->
-      Mangled.from_string (F.asprintf "%s_%a" (Mangled.to_string var.pv_name) Procname.pp pname)
+      Mangled.from_string
+        (F.asprintf "%s[%a]" (Mangled.to_string var.pv_name)
+           (Procname.pp_simplified_string ~withclass:false)
+           pname)
   | _ ->
       var.pv_name
 
@@ -305,6 +308,10 @@ let get_initializer_pname {pv_name; pv_kind} =
       None
 
 
+let swap_proc_in_local_pvar pvar proc_name =
+  match pvar.pv_kind with Local_var _ -> {pvar with pv_kind= Local_var proc_name} | _ -> pvar
+
+
 let rename ~f {pv_name; pv_kind} =
   let pv_name = Mangled.rename ~f pv_name in
   let pv_hash = name_hash pv_name in
@@ -320,9 +327,11 @@ let is_objc_static_local_of_proc_name pname pvar =
 let is_block_pvar pvar = Typ.has_block_prefix (Mangled.to_string (get_name pvar))
 
 module Set = PrettyPrintable.MakePPSet (struct
-  type nonrec t = t
-
-  let compare = compare
+  type nonrec t = t [@@deriving compare]
 
   let pp = pp Pp.text
 end)
+
+type capture_mode = ByReference | ByValue [@@deriving compare, equal]
+
+let string_of_capture_mode = function ByReference -> "by ref" | ByValue -> "by value"

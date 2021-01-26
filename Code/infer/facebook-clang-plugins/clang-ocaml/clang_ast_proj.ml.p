@@ -1,5 +1,5 @@
 (*
- * Copyright (c) 2014-present, Facebook, Inc.
+ * Copyright (c) Facebook, Inc. and its affiliates.
  *
  * This source code is licensed under the MIT license found in the
  * LICENSE file in the root directory of this source tree.
@@ -219,6 +219,7 @@ let get_cast_kind = function
 #define CASTEXPR(Type, Base) | Type (_, _, _, cast_expr_info)
 #define EXPLICITCASTEXPR(Type, Base) | Type (_, _, _, cast_expr_info, _)
 #define CXXNAMEDCASTEXPR(Type, Base) | Type (_, _, _, cast_expr_info, _, _)
+#define OBJCBRIDGEDCASTEXPR(Type, Base) | Type (_, _, _, cast_expr_info, _, _)
 #include<clang/AST/StmtNodes.inc>
 -> Some cast_expr_info.cei_cast_kind
 | _ -> None

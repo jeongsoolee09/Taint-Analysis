@@ -9,19 +9,23 @@ open! IStd
 type trace = WrittenTo of PulseTrace.t | Invalid of (PulseInvalidation.t * PulseTrace.t)
 
 module ModifiedVar : sig
-  type nonempty_action_type = trace * trace list
-
-  type t = {var: Var.t; trace_list: nonempty_action_type}
+  type t =
+    { var: Var.t
+    ; access: unit HilExp.Access.t  (** accesses that are oblivious to modified array indices *)
+    ; trace: trace }
 end
 
 module ModifiedVarSet : sig
   include AbstractDomain.FiniteSetS with type elt = ModifiedVar.t
 end
 
+module Exited = AbstractDomain.BooleanOr
+
 type t =
   { modified_params: ModifiedVarSet.t
   ; modified_globals: ModifiedVarSet.t
-  ; skipped_calls: PulseBaseDomain.SkippedCalls.t }
+  ; skipped_calls: PulseSkippedCalls.t
+  ; exited: Exited.t }
 
 val pure : t
 

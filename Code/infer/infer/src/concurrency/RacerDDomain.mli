@@ -19,35 +19,17 @@ module Access : sig
     | ContainerRead of {exp: AccessExpression.t; pname: Procname.t}  (** Read of container object *)
     | ContainerWrite of {exp: AccessExpression.t; pname: Procname.t}
         (** Write to container object *)
-    | InterfaceCall of Procname.t
+    | InterfaceCall of {exp: AccessExpression.t; pname: Procname.t}
         (** Call to method of interface not annotated with [@ThreadSafe] *)
-  [@@deriving compare]
 
-  include ExplicitTrace.Element with type t := t
+  val pp : F.formatter -> t -> unit
 
-  val get_access_exp : t -> AccessExpression.t option
+  val get_access_exp : t -> AccessExpression.t
 end
 
-module TraceElem : sig
-  include ExplicitTrace.TraceElem with type elem_t = Access.t
-
-  val is_write : t -> bool
-  (** is it a write OR a container write *)
-
-  val is_container_write : t -> bool
-
-  val map : f:(AccessExpression.t -> AccessExpression.t) -> t -> t
-
-  val make_container_access : AccessExpression.t -> Procname.t -> is_write:bool -> Location.t -> t
-
-  val make_field_access : AccessExpression.t -> is_write:bool -> Location.t -> t
-end
-
-(** Overapproximation of number of locks that are currently held *)
-module LocksDomain : sig
-  type t
-
-  val bottom : t
+(** Overapproximation of number of time the lock has been acquired *)
+module LockDomain : sig
+  include AbstractDomain.WithBottom
 
   val acquire_lock : t -> t
   (** record acquisition of a lock *)
@@ -69,7 +51,7 @@ module ThreadsDomain : sig
             locks, etc.) *)
     | AnyThreadButSelf
         (** Current thread can run in parallel with other threads, but not with a copy of itself.
-            (concretization : {% \{ t | t \in TIDs ^ t != t_cur \} %} ) *)
+            (concretization : [{ t | t \in TIDs && t != t_cur }]) *)
     | AnyThread
         (** Current thread can run in parallel with any thread, including itself (concretization:
             set of all TIDs ) *)
@@ -83,57 +65,80 @@ module ThreadsDomain : sig
   (** integrate current state with a callee summary *)
 end
 
-(** snapshot of the relevant state at the time of a heap access: concurrent thread(s), lock(s) held,
-    ownership precondition *)
-module AccessSnapshot : sig
-  (** precondition for owned access; access is owned if it evaluates to true *)
-  module OwnershipPrecondition : sig
-    type t =
-      | Conjunction of IntSet.t
-          (** Conjunction of "formal index must be owned" predicates. true if empty *)
-      | False
-
-    include PrettyPrintable.PrintableOrderedType with type t := t
-
-    val is_true : t -> bool
-    (** return [true] if the precondition evaluates to true *)
-  end
-
-  type t = private
-    { access: TraceElem.t
-    ; thread: ThreadsDomain.t
-    ; lock: bool
-    ; ownership_precondition: OwnershipPrecondition.t }
-
-  include PrettyPrintable.PrintableOrderedType with type t := t
-
-  val make : TraceElem.t -> LocksDomain.t -> ThreadsDomain.t -> OwnershipPrecondition.t -> t option
-
-  val make_from_snapshot : TraceElem.t -> t -> t option
-
-  val is_unprotected : t -> bool
-  (** return true if not protected by lock, thread, or ownership *)
-end
-
-(** map of access metadata |-> set of accesses. the map should hold all accesses to a
-    possibly-unowned access path *)
-module AccessDomain : sig
-  include AbstractDomain.FiniteSetS with type elt = AccessSnapshot.t
-
-  val add_opt : elt option -> t -> t
-end
-
 module OwnershipAbstractValue : sig
   type t = private
     | OwnedIf of IntSet.t
         (** Owned if the formals at the given indexes are owned in the caller; unconditionally owned
             if the set of formals is empty = bottom of the lattice *)
     | Unowned  (** Unowned value; top of the lattice *)
-  [@@deriving compare]
 
   val owned : t
 
   val make_owned_if : int -> t
+
+  val join : t -> t -> t
+end
+
+(** snapshot of the relevant state at the time of a heap access: concurrent thread(s), lock(s) held,
+    ownership precondition *)
+module AccessSnapshot : sig
+  module AccessSnapshotElem : sig
+    type t =
+      { access: Access.t
+      ; thread: ThreadsDomain.t
+      ; lock: bool
+      ; ownership_precondition: OwnershipAbstractValue.t }
+  end
+
+  include ExplicitTrace.TraceElem with type elem_t = AccessSnapshotElem.t
+
+  val is_write : t -> bool
+  (** is it a write OR a container write *)
+
+  val is_container_write : t -> bool
+
+  val get_loc : t -> Location.t
+
+  val make_access :
+       FormalMap.t
+    -> AccessExpression.t
+    -> is_write:bool
+    -> Location.t
+    -> LockDomain.t
+    -> ThreadsDomain.t
+    -> OwnershipAbstractValue.t
+    -> t option
+
+  val make_container_access :
+       FormalMap.t
+    -> AccessExpression.t
+    -> is_write:bool
+    -> Procname.t
+    -> Location.t
+    -> LockDomain.t
+    -> ThreadsDomain.t
+    -> OwnershipAbstractValue.t
+    -> t option
+
+  val is_unprotected : t -> bool
+  (** return true if not protected by lock, thread, or ownership *)
+
+  val map_opt : FormalMap.t -> f:(AccessExpression.t -> AccessExpression.t) -> t -> t option
+
+  val update_callee_access :
+       FormalMap.t
+    -> t
+    -> CallSite.t
+    -> OwnershipAbstractValue.t
+    -> ThreadsDomain.t
+    -> LockDomain.t
+    -> t option
+end
+
+module AccessDomain : sig
+  include AbstractDomain.FiniteSetS with type elt = AccessSnapshot.t
+
+  val add_opt : elt option -> t -> t
 end
 
 module OwnershipDomain : sig
@@ -149,45 +154,28 @@ module OwnershipDomain : sig
 
   val propagate_return : AccessExpression.t -> OwnershipAbstractValue.t -> HilExp.t list -> t -> t
 
-  val get_precondition : AccessExpression.t -> t -> AccessSnapshot.OwnershipPrecondition.t
-end
-
-(** attribute attached to a boolean variable specifying what it means when the boolean is true *)
-module Choice : sig
-  type t =
-    | OnMainThread  (** the current procedure is running on the main thread *)
-    | LockHeld  (** a lock is currently held *)
-
-  include PrettyPrintable.PrintableOrderedType with type t := t
+  val ownership_of_expr : HilExp.t -> t -> OwnershipAbstractValue.t
 end
 
 module Attribute : sig
   type t =
+    | Nothing
     | Functional  (** holds a value returned from a callee marked [@Functional] *)
-    | Choice of Choice.t  (** holds a boolean choice variable *)
-
-  include PrettyPrintable.PrintableOrderedType with type t := t
-end
-
-module AttributeSetDomain : sig
-  type t
-
-  val empty : t
+    | OnMainThread  (** boolean is true if the current procedure is running on the main thread *)
+    | LockHeld  (** boolean is true if a lock is currently held *)
+    | Synchronized  (** the object is a synchronized data structure *)
 end
 
 module AttributeMapDomain : sig
-  type t
+  include
+    AbstractDomain.InvertedMapS with type key = AccessExpression.t and type value = Attribute.t
 
-  val find : AccessExpression.t -> t -> AttributeSetDomain.t
+  val get : AccessExpression.t -> t -> Attribute.t
+  (** find the [Attribute.t] associated with a given access expression or return [Attribute.bottom] *)
 
-  val add : AccessExpression.t -> AttributeSetDomain.t -> t -> t
+  val is_functional : t -> AccessExpression.t -> bool
 
-  val has_attribute : AccessExpression.t -> Attribute.t -> t -> bool
-
-  val get_choices : AccessExpression.t -> t -> Choice.t list
-  (** get the choice attributes associated with the given access path *)
-
-  val add_attribute : AccessExpression.t -> Attribute.t -> t -> t
+  val is_synchronized : t -> AccessExpression.t -> bool
 
   val propagate_assignment : AccessExpression.t -> HilExp.t -> t -> t
   (** propagate attributes from the leaves to the root of an RHS Hil expression *)
@@ -195,27 +183,30 @@ end
 
 type t =
   { threads: ThreadsDomain.t  (** current thread: main, background, or unknown *)
-  ; locks: LocksDomain.t  (** boolean that is true if a lock must currently be held *)
+  ; locks: LockDomain.t  (** boolean that is true if a lock must currently be held *)
   ; accesses: AccessDomain.t
         (** read and writes accesses performed without ownership permissions *)
   ; ownership: OwnershipDomain.t  (** map of access paths to ownership predicates *)
   ; attribute_map: AttributeMapDomain.t
         (** map of access paths to attributes such as owned, functional, ... *) }
 
+include AbstractDomain.WithBottom with type t := t
+
+val add_unannotated_call_access : FormalMap.t -> Procname.t -> HilExp.t list -> Location.t -> t -> t
+
 (** same as astate, but without [attribute_map] (since these involve locals) and with the addition
     of the ownership/attributes associated with the return value as well as the set of formals which
     may escape *)
 type summary =
   { threads: ThreadsDomain.t
-  ; locks: LocksDomain.t
+  ; locks: LockDomain.t
   ; accesses: AccessDomain.t
   ; return_ownership: OwnershipAbstractValue.t
-  ; return_attributes: AttributeSetDomain.t }
+  ; return_attribute: Attribute.t
+  ; attributes: AttributeMapDomain.t }
 
 val empty_summary : summary
 
-include AbstractDomain.WithBottom with type t := t
-
 val pp_summary : F.formatter -> summary -> unit
 
-val add_unannotated_call_access : Procname.t -> Location.t -> t -> t
+val astate_to_summary : Procdesc.t -> FormalMap.t -> t -> summary

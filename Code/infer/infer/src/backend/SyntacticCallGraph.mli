@@ -6,7 +6,7 @@
  *)
 open! IStd
 
-val make : SourceFile.t list -> SchedulerTypes.target ProcessPool.TaskGenerator.t
+val make : SourceFile.t list -> (TaskSchedulerTypes.target, string) ProcessPool.TaskGenerator.t
 (** task generator that works by
 
     - loading the syntactic call graph from the capture DB

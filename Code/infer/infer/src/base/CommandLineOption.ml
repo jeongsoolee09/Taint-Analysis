@@ -62,12 +62,9 @@ let to_arg_spec_triple (x, spec, y) = (x, to_arg_spec spec, y)
 
 let to_arg_speclist = List.map ~f:to_arg_spec_triple
 
-(* NOTE: All variants must be also added to `all_parse_modes` below *)
-type parse_mode = InferCommand | Javac | NoParse [@@deriving compare]
+type parse_mode = InferCommand | Javac | NoParse [@@deriving compare, enumerate]
 
 let equal_parse_mode = [%compare.equal: parse_mode]
-
-let all_parse_modes = [InferCommand; Javac; NoParse]
 
 type anon_arg_action =
   {parse_subcommands: bool; parse_argfiles: bool; on_unknown: [`Add | `Reject | `Skip]}
@@ -157,7 +154,7 @@ let check_no_duplicates desc_list =
     (List.sort ~compare:(fun (x, _, _) (y, _, _) -> String.compare x y) desc_list)
 
 
-let parse_mode_desc_lists = List.map ~f:(fun parse_mode -> (parse_mode, ref [])) all_parse_modes
+let parse_mode_desc_lists = List.map ~f:(fun parse_mode -> (parse_mode, ref [])) all_of_parse_mode
 
 module SectionMap = Caml.Map.Make (struct
   type t = String.t
@@ -279,6 +276,14 @@ let deprecate_desc parse_mode ~long ~short ~deprecated doc desc =
 
 let mk ?(deprecated = []) ?(parse_mode = InferCommand) ?(in_help = []) ~long ?short:short0 ~default
     ~meta doc ~default_to_string ~decode_json ~mk_setter ~mk_spec =
+  (* check that *some* flag exists for the option, otherwise report an error *)
+  if String.is_empty long && Option.is_none short0 && List.for_all ~f:String.is_empty deprecated
+  then
+    L.die InternalError
+      "No command line flag corresponds to this option, please give it at least one of 1) a long \
+       form, 2) a short form, or 3) a non-empty deprecated form. The documentation for this option \
+       is '%s'."
+      doc ;
   let variable = ref default in
   let closure = mk_setter variable in
   let setter str =
@@ -418,7 +423,9 @@ let mk_bool ?(deprecated_no = []) ?(default = false) ?(f = fun b -> b) ?(depreca
     ?short ?parse_mode ?in_help ?(meta = "") doc0 =
   let nolong =
     let len = String.length long in
-    if len > 3 && String.sub long ~pos:0 ~len:3 = "no-" then String.sub long ~pos:3 ~len:(len - 3)
+    let is_already_no = len > 3 && String.sub long ~pos:0 ~len:3 = "no-" in
+    if is_already_no then String.sub long ~pos:3 ~len:(len - 3)
+    else if Int.equal len 0 then ""
     else "no-" ^ long
   and noshort =
     Option.map
@@ -427,11 +434,13 @@ let mk_bool ?(deprecated_no = []) ?(default = false) ?(f = fun b -> b) ?(depreca
       short
   in
   let doc long short =
-    match short with
-    | Some short ->
-        doc0 ^ " (Conversely: $(b,--" ^ long ^ ") | $(b,-" ^ String.of_char short ^ "))"
-    | None ->
-        doc0 ^ " (Conversely: $(b,--" ^ long ^ "))"
+    if String.is_empty long then doc0
+    else
+      match short with
+      | Some short ->
+          doc0 ^ " (Conversely: $(b,--" ^ long ^ ") | $(b,-" ^ String.of_char short ^ "))"
+      | None ->
+          doc0 ^ " (Conversely: $(b,--" ^ long ^ "))"
   in
   let doc, nodoc =
     if String.equal doc0 "" then ("", "")
@@ -440,11 +449,33 @@ let mk_bool ?(deprecated_no = []) ?(default = false) ?(f = fun b -> b) ?(depreca
   in
   let default_to_string _ = "" in
   let mk_spec set = Unit (fun () -> set "") in
+  let best_nonempty_enable, best_nonempty_disable =
+    let mk_best_non_empty long short_opt deprecated =
+      if String.is_empty long then
+        match short_opt with
+        | Some short ->
+            "-" ^ String.of_char short
+        | None -> (
+          match deprecated with
+          | [] ->
+              (* [mk] will fail in this case but with a non-informative message if this is the
+                 auto-generated negated form of the option *)
+              L.die InternalError
+                "No command line flag can be given to enable this option or to disable it (did you \
+                 forget to give it a `~deprecated_no` form?). The documentation for this option is \
+                 '%s'."
+                doc0
+          | first_deprecated :: _ ->
+              "-" ^ first_deprecated )
+      else "--" ^ long
+    in
+    (mk_best_non_empty long short deprecated, mk_best_non_empty nolong noshort deprecated_no)
+  in
   let var =
     mk ~long ?short ~deprecated ~default ?parse_mode ?in_help ~meta doc ~default_to_string
       ~mk_setter:(fun var _ -> var := f true)
       ~decode_json:(fun ~inferconfig_dir:_ json ->
-        [dashdash (if YBU.to_bool json then long else nolong)] )
+        [(if YBU.to_bool json then best_nonempty_enable else best_nonempty_disable)] )
       ~mk_spec
   in
   ignore
@@ -452,7 +483,7 @@ let mk_bool ?(deprecated_no = []) ?(default = false) ?(f = fun b -> b) ?(depreca
        ?in_help ~meta nodoc ~default_to_string
        ~mk_setter:(fun _ _ -> var := f false)
        ~decode_json:(fun ~inferconfig_dir:_ json ->
-         [dashdash (if YBU.to_bool json then nolong else long)] )
+         [(if YBU.to_bool json then best_nonempty_disable else best_nonempty_enable)] )
        ~mk_spec) ;
   var
 
@@ -561,7 +592,7 @@ let normalize_path_in_args_being_parsed ?(f = Fn.id) ~is_anon_arg str =
        [Arg.parse_argv_dynamic ~current:arg_being_parsed !args_to_parse ...]. *)
     let root = Unix.getcwd () in
     let abs_path = Utils.filename_to_absolute ~root str in
-    !args_to_parse.((!arg_being_parsed + if is_anon_arg then 0 else 1)) <- f abs_path ;
+    !args_to_parse.(!arg_being_parsed + if is_anon_arg then 0 else 1) <- f abs_path ;
     abs_path )
   else str
 
@@ -706,7 +737,7 @@ let normalize_desc_list speclist =
 
 
 let mk_command_doc ~title ~section ~version ~date ~short_description ~synopsis ~description ?options
-    ?exit_status ?environment ?files ?notes ?bugs ?examples ~see_also command_str =
+    ?exit_status ?environment ?files ?notes ?bugs ?examples ?see_also command_str =
   let add_if section blocks =
     match blocks with None -> `Blocks [] | Some bs -> `Blocks (`S section :: bs)
   in
@@ -727,8 +758,7 @@ let mk_command_doc ~title ~section ~version ~date ~short_description ~synopsis ~
     ; add_if manpage_s_notes notes
     ; add_if Cmdliner.Manpage.s_bugs bugs
     ; add_if Cmdliner.Manpage.s_examples examples
-    ; `S Cmdliner.Manpage.s_see_also
-    ; `Blocks see_also ]
+    ; add_if Cmdliner.Manpage.s_see_also see_also ]
   in
   let command_doc =
     { title= (command_str, section, date, version, title)
@@ -970,7 +1000,8 @@ let parse_args ~usage initial_action ?initial_command args =
            anymore *)
         assert false
   in
-  parse_loop () ; curr_usage
+  parse_loop () ;
+  curr_usage
 
 
 let keep_args_file = ref false

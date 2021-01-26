@@ -6,8 +6,6 @@
  * LICENSE file in the root directory of this source tree.
  *)
 
-[@@@ocamlformat "parse-docstrings = false"]
-
 open! IStd
 
 (** Interprocedural footprint analysis *)
@@ -24,26 +22,7 @@ type splitting =
   ; frame_typ: (Exp.t * Exp.t) list
   ; missing_typ: (Exp.t * Exp.t) list }
 
-(** kind of result of a procedure call *)
-type call_result =
-  | CR_success  (** successful call *)
-  | CR_not_met  (** precondition not met *)
-  | CR_not_found  (** the callee has no specs *)
-  | CR_skip  (** the callee was skipped *)
-
-let string_of_call_result = function
-  | CR_success ->
-      "OK"
-  | CR_not_met ->
-      "NotMet"
-  | CR_not_found ->
-      "NotFound"
-  | CR_skip ->
-      "Skip"
-
-
 type deref_error =
-  | Deref_freed of PredSymb.res_action  (** dereference a freed pointer *)
   | Deref_minusone  (** dereference -1 *)
   | Deref_null of PredSymb.path_pos  (** dereference null *)
   | Deref_undef of Procname.t * Location.t * PredSymb.path_pos
@@ -65,62 +44,17 @@ type valid_res =
   ; vr_cons_res: (Prop.normal Prop.t * Paths.Path.t) list  (** consistent result props *)
   ; vr_incons_res: (Prop.normal Prop.t * Paths.Path.t) list  (** inconsistent result props *) }
 
-(** Result of (bi)-abduction on a single spec.
-    A result is invalid if no splitting was found,
-    or if combine failed, or if we are in re - execution mode and the sigma
-    part of the splitting is not empty.
-    A valid result contains the missing pi ans sigma, as well as the resulting props. *)
+(** Result of (bi)-abduction on a single spec. A result is invalid if no splitting was found, or if
+    combine failed, or if we are in re - execution mode and the sigma part of the splitting is not
+    empty. A valid result contains the missing pi ans sigma, as well as the resulting props. *)
 type abduction_res =
   | Valid_res of valid_res  (** valid result for a function cal *)
   | Invalid_res of invalid_res  (** reason for invalid result *)
-
-(**************** printing functions ****************)
 
 let print_results tenv actual_pre results =
   L.d_strln "***** RESULTS FUNCTION CALL *******" ;
   Propset.d actual_pre (Propset.from_proplist tenv results) ;
   L.d_strln "***** END RESULTS FUNCTION CALL *******"
-
-
-let log_call_trace ~caller_name ~callee_name ?callee_attributes ?reason ?dynamic_dispatch loc res =
-  if !BiabductionConfig.footprint then
-    let get_valid_source_file loc =
-      let file = loc.Location.file in
-      if SourceFile.is_invalid file then None else Some file
-    in
-    let callee_clang_method_kind, callee_source_file =
-      match callee_attributes with
-      | Some attributes when Language.curr_language_is Language.Clang ->
-          let callee_clang_method_kind =
-            ClangMethodKind.to_string attributes.ProcAttributes.clang_method_kind
-          in
-          let callee_source_file = get_valid_source_file attributes.ProcAttributes.loc in
-          (Some callee_clang_method_kind, callee_source_file)
-      | Some attributes ->
-          (None, get_valid_source_file attributes.ProcAttributes.loc)
-      | None ->
-          (None, None)
-    in
-    let call_trace =
-      EventLogger.CallTrace
-        { call_location= loc
-        ; call_result= string_of_call_result res
-        ; callee_clang_method_kind
-        ; callee_source_file
-        ; callee_name= Procname.to_string callee_name
-        ; caller_name= Procname.to_string caller_name
-        ; lang= Procname.get_language caller_name |> Language.to_explicit_string
-        ; reason
-        ; dynamic_dispatch }
-    in
-    EventLogger.log call_trace
-
-
-(***************)
-
-let get_specs_from_payload summary =
-  Option.map summary.Summary.payloads.biabduction ~f:(fun BiabductionSummary.{preposts} -> preposts)
-  |> BiabductionSummary.get_specs_from_preposts
 
 
 (** Rename the variables in the spec. *)
@@ -154,25 +88,24 @@ let spec_rename_vars pname spec =
   BiabductionSummary.{pre= pre''; posts= posts''; visited= spec.BiabductionSummary.visited}
 
 
-(** Find and number the specs for [proc_name],
-    after renaming their vars, and also return the parameters *)
-let spec_find_rename trace_call summary :
+(** Find and number the specs for [proc_attrs], after renaming their vars, and also return the
+    parameters *)
+let spec_find_rename proc_attrs specs :
     (int * Prop.exposed BiabductionSummary.spec) list * Pvar.t list =
-  let proc_name = Summary.get_proc_name summary in
+  let proc_name = proc_attrs.ProcAttributes.proc_name in
   try
     let count = ref 0 in
     let rename_vars spec =
       incr count ;
       (!count, spec_rename_vars proc_name spec)
     in
-    let specs = get_specs_from_payload summary in
-    let formals = Summary.get_formals summary in
-    if List.is_empty specs then (
-      trace_call CR_not_found ;
+    if List.is_empty specs then
       raise
         (Exceptions.Precondition_not_found
-           (Localise.verbatim_desc (Procname.to_string proc_name), __POS__)) ) ;
-    let formal_parameters = List.map ~f:(fun (x, _) -> Pvar.mk_callee x proc_name) formals in
+           (Localise.verbatim_desc (Procname.to_string proc_name), __POS__)) ;
+    let formal_parameters =
+      List.map ~f:(fun (x, _) -> Pvar.mk_callee x proc_name) proc_attrs.ProcAttributes.formals
+    in
     (List.map ~f:rename_vars specs, formal_parameters)
   with Caml.Not_found ->
     L.d_printfln "ERROR: found no entry for procedure %a. Give up..." Procname.pp proc_name ;
@@ -181,10 +114,9 @@ let spec_find_rename trace_call summary :
          (Localise.verbatim_desc (Procname.to_string proc_name), __POS__))
 
 
-(** Process a splitting coming straight from a call to the prover:
-    change the instantiating substitution so that it returns primed vars,
-    except for vars occurring in the missing part, where it returns
-    footprint vars. *)
+(** Process a splitting coming straight from a call to the prover: change the instantiating
+    substitution so that it returns primed vars, except for vars occurring in the missing part,
+    where it returns footprint vars. *)
 let process_splitting actual_pre sub1 sub2 frame missing_pi missing_sigma frame_fld missing_fld
     frame_typ missing_typ =
   let hpred_has_only_footprint_vars hpred =
@@ -322,8 +254,8 @@ let process_splitting actual_pre sub1 sub2 frame missing_pi missing_sigma frame_
   ; missing_typ= norm_missing_typ }
 
 
-(** Check whether an inst represents a dereference without null check,
-    and return the line number and path position *)
+(** Check whether an inst represents a dereference without null check, and return the line number
+    and path position *)
 let find_dereference_without_null_check_in_inst = function
   | Predicates.Iupdate (Some true, _, n, pos) | Predicates.Irearrange (Some true, _, n, pos) ->
       Some (n, pos)
@@ -331,8 +263,8 @@ let find_dereference_without_null_check_in_inst = function
       None
 
 
-(** Check whether a sexp contains a dereference without null check,
-    and return the line number and path position *)
+(** Check whether a sexp contains a dereference without null check, and return the line number and
+    path position *)
 let rec find_dereference_without_null_check_in_sexp = function
   | Predicates.Eexp (_, inst) ->
       find_dereference_without_null_check_in_inst inst
@@ -357,15 +289,16 @@ and find_dereference_without_null_check_in_sexp_list = function
         Some x )
 
 
-(** Check dereferences implicit in the spec pre.
-    In case of dereference error, return [Some(deref_error, description)], otherwise [None] *)
+(** Check dereferences implicit in the spec pre. In case of dereference error, return
+    [Some(deref_error, description)], otherwise [None] *)
 let check_dereferences caller_pname tenv callee_pname actual_pre sub spec_pre formal_params =
   let check_dereference e sexp =
     let e_sub = Predicates.exp_sub sub e in
     let desc use_buckets deref_str =
       let error_desc =
         Errdesc.explain_dereference_as_caller_expression caller_pname tenv ~use_buckets deref_str
-          actual_pre spec_pre e (State.get_node_exn ()) (State.get_loc_exn ()) formal_params
+          actual_pre spec_pre e (AnalysisState.get_node_exn ()) (AnalysisState.get_loc_exn ())
+          formal_params
       in
       L.d_strln ~color:Red "found error in dereference" ;
       L.d_strln "spec_pre:" ;
@@ -401,15 +334,11 @@ let check_dereferences caller_pname tenv callee_pname actual_pre sub spec_pre fo
     else if Exp.equal e_sub Exp.minus_one then
       Some (Deref_minusone, desc true (Localise.deref_str_dangling None))
     else
-      match Attribute.get_resource tenv actual_pre e_sub with
-      | Some (Apred (Aresource ({ra_kind= Rrelease} as ra), _)) ->
-          Some (Deref_freed ra, desc true (Localise.deref_str_freed ra))
-      | _ -> (
-        match Attribute.get_undef tenv actual_pre e_sub with
-        | Some (Apred (Aundef (s, _, loc, pos), _)) ->
-            Some (Deref_undef (s, loc, pos), desc false (Localise.deref_str_undef (s, loc)))
-        | _ ->
-            None )
+      match Attribute.get_undef tenv actual_pre e_sub with
+      | Some (Apred (Aundef (s, _, loc, pos), _)) ->
+          Some (Deref_undef (s, loc, pos), desc false (Localise.deref_str_undef (s, loc)))
+      | _ ->
+          None
   in
   let check_hpred = function
     | Predicates.Hpointsto (lexp, se, _) ->
@@ -449,13 +378,15 @@ let post_process_sigma tenv (sigma : Predicates.hpred list) loc : Predicates.hpr
 
 
 (** check for interprocedural path errors in the post *)
-let check_path_errors_in_post tenv caller_pname post post_path =
+let check_path_errors_in_post {InterproceduralAnalysis.proc_desc= caller_pdesc; err_log; tenv} post
+    post_path =
   let check_attr atom =
     match atom with
     | Predicates.Apred (Adiv0 path_pos, [e]) ->
         if Prover.check_zero tenv e then (
           let desc =
-            Errdesc.explain_divide_by_zero tenv e (State.get_node_exn ()) (State.get_loc_exn ())
+            Errdesc.explain_divide_by_zero tenv e (AnalysisState.get_node_exn ())
+              (AnalysisState.get_loc_exn ())
           in
           let new_path, path_pos_opt =
             let current_path, _ = State.get_path () in
@@ -465,18 +396,17 @@ let check_path_errors_in_post tenv caller_pname post post_path =
           in
           State.set_path new_path path_pos_opt ;
           let exn = Exceptions.Divide_by_zero (desc, __POS__) in
-          Reporting.log_issue_deprecated_using_state Exceptions.Warning caller_pname exn )
+          BiabductionReporting.log_issue_deprecated_using_state caller_pdesc err_log exn )
     | _ ->
         ()
   in
   List.iter ~f:check_attr (Attribute.get_all post)
 
 
-(** Post process the instantiated post after the function call so that
-    x.f |-> se becomes x |-> { f: se }.
-    Also, update any Aresource attributes to refer to the caller *)
-let post_process_post tenv caller_pname callee_pname loc actual_pre
-    ((post : Prop.exposed Prop.t), post_path) =
+(** Post process the instantiated post after the function call so that [x.f |-> se] becomes
+    [x |-> { f: se }]. Also, update any Aresource attributes to refer to the caller *)
+let post_process_post ({InterproceduralAnalysis.tenv; _} as analysis_data) callee_pname loc
+    actual_pre ((post : Prop.exposed Prop.t), post_path) =
   let actual_pre_has_freed_attribute e =
     match Attribute.get_resource tenv actual_pre e with
     | Some (Apred (Aresource {ra_kind= Rrelease}, _)) ->
@@ -500,7 +430,7 @@ let post_process_post tenv caller_pname callee_pname loc actual_pre
   let pi' = List.map ~f:atom_update_alloc_attribute prop'.Prop.pi in
   (* update alloc attributes to refer to the caller *)
   let post' = Prop.set prop' ~pi:pi' in
-  check_path_errors_in_post tenv caller_pname post' post_path ;
+  check_path_errors_in_post analysis_data post' post_path ;
   (post', post_path)
 
 
@@ -699,9 +629,8 @@ let sigma_star_typ (sigma1 : Predicates.hpred list) (typings2 : (Exp.t * Exp.t) 
     raise (Exceptions.Cannot_star __POS__)
 
 
-(** [prop_footprint_add_pi_sigma_starfld_sigma prop pi sigma missing_fld]
-    extends the footprint of [prop] with [pi,sigma]
-    and extends the fields of |-> with [missing_fld] *)
+(** [prop_footprint_add_pi_sigma_starfld_sigma prop pi sigma missing_fld] extends the footprint of
+    [prop] with [pi,sigma] and extends the fields of |-> with [missing_fld] *)
 let prop_footprint_add_pi_sigma_starfld_sigma tenv (prop : 'a Prop.t) pi_new sigma_new missing_fld
     missing_typ : Prop.normal Prop.t option =
   let rec extend_sigma current_sigma new_sigma =
@@ -737,19 +666,6 @@ let prop_footprint_add_pi_sigma_starfld_sigma tenv (prop : 'a Prop.t) pi_new sig
       Some (Prop.normalize tenv (Prop.set prop ~pi:pi' ~pi_fp:pi_fp' ~sigma_fp:sigma_fp''))
 
 
-(** Check if the attribute change is a mismatch between a kind
-    of allocation and a different kind of deallocation *)
-let check_attr_dealloc_mismatch att_old att_new =
-  match (att_old, att_new) with
-  | ( PredSymb.Aresource ({ra_kind= Racquire; ra_res= Rmemory mk_old} as ra_old)
-    , PredSymb.Aresource ({ra_kind= Rrelease; ra_res= Rmemory mk_new} as ra_new) )
-    when PredSymb.compare_mem_kind mk_old mk_new <> 0 ->
-      let desc = Errdesc.explain_allocation_mismatch ra_old ra_new in
-      raise (Exceptions.Deallocation_mismatch (desc, __POS__))
-  | _ ->
-      ()
-
-
 (** [prop_copy_footprint p1 p2] copies the footprint and pure part of [p1] into [p2] *)
 let prop_copy_footprint_pure tenv p1 p2 =
   let p2' = Prop.set p2 ~pi_fp:p1.Prop.pi_fp ~sigma_fp:p1.Prop.sigma_fp in
@@ -759,9 +675,7 @@ let prop_copy_footprint_pure tenv p1 p2 =
   let replace_attr prop atom =
     (* call replace_atom_attribute which deals with existing attibutes *)
     (* if [atom] represents an attribute [att], add the attribure to [prop] *)
-    if Attribute.is_pred atom then
-      Attribute.add_or_replace_check_changed tenv check_attr_dealloc_mismatch prop atom
-    else prop
+    if Attribute.is_pred atom then Attribute.add_or_replace_check_changed tenv prop atom else prop
   in
   List.fold ~f:replace_attr ~init:(Prop.normalize tenv res_noattr) pi2_attr
 
@@ -833,7 +747,7 @@ let prop_set_exn tenv pname prop se_exn =
 
 (** Include a subtrace for a procedure call if the callee is not a model. *)
 let include_subtrace callee_pname =
-  match Summary.OnDisk.proc_resolve_attributes callee_pname with
+  match AnalysisCallbacks.proc_resolve_attributes callee_pname with
   | Some attrs ->
       (not attrs.ProcAttributes.is_biabduction_model)
       && SourceFile.is_under_project_root attrs.ProcAttributes.loc.Location.file
@@ -842,9 +756,8 @@ let include_subtrace callee_pname =
 
 
 (** combine the spec's post with a splitting and actual precondition *)
-let combine tenv ret_id (posts : ('a Prop.t * Paths.Path.t) list) actual_pre path_pre split
-    caller_pdesc callee_pname loc =
-  let caller_pname = Procdesc.get_proc_name caller_pdesc in
+let combine ({InterproceduralAnalysis.proc_desc= caller_pdesc; tenv; _} as analysis_data) ret_id
+    (posts : ('a Prop.t * Paths.Path.t) list) actual_pre path_pre split callee_pname loc =
   let instantiated_post =
     let posts' =
       if !BiabductionConfig.footprint && List.is_empty posts then
@@ -860,8 +773,8 @@ let combine tenv ret_id (posts : ('a Prop.t * Paths.Path.t) list) actual_pre pat
     in
     List.map
       ~f:(fun (p, path) ->
-        post_process_post tenv caller_pname callee_pname loc actual_pre
-          (Prop.prop_sub split.sub p, path) )
+        post_process_post analysis_data callee_pname loc actual_pre (Prop.prop_sub split.sub p, path)
+        )
       posts'
   in
   L.d_increase_indent () ;
@@ -872,7 +785,9 @@ let combine tenv ret_id (posts : ('a Prop.t * Paths.Path.t) list) actual_pre pat
   Prop.d_sigma split.frame_fld ;
   L.d_ln () ;
   if not (List.is_empty split.frame_typ) then (
-    L.d_strln "Frame typ:" ; Prover.d_typings split.frame_typ ; L.d_ln () ) ;
+    L.d_strln "Frame typ:" ;
+    Prover.d_typings split.frame_typ ;
+    L.d_ln () ) ;
   L.d_strln "Missing fld:" ;
   Prop.d_sigma split.missing_fld ;
   L.d_ln () ;
@@ -945,6 +860,7 @@ let combine tenv ret_id (posts : ('a Prop.t * Paths.Path.t) list) actual_pre pat
             | Predicates.Hpointsto (_, Eexp (e', inst), _) when exp_is_exn e' ->
                 (* resuls is an exception: set in caller *)
                 let p = Prop.prop_iter_remove_curr_then_to_prop tenv iter' in
+                let caller_pname = Procdesc.get_proc_name caller_pdesc in
                 prop_set_exn tenv caller_pname p (Eexp (e', inst))
             | Predicates.Hpointsto (_, Eexp (e', _), _) ->
                 let p = Prop.prop_iter_remove_curr_then_to_prop tenv iter' in
@@ -974,9 +890,8 @@ let combine tenv ret_id (posts : ('a Prop.t * Paths.Path.t) list) actual_pre pat
     Some results
 
 
-(** Construct the actual precondition: add to the current state a copy
-    of the (callee's) formal parameters instantiated with the actual
-    parameters. *)
+(** Construct the actual precondition: add to the current state a copy of the (callee's) formal
+    parameters instantiated with the actual parameters. *)
 let mk_actual_precondition tenv prop actual_params formal_params =
   let formals_actuals =
     let rec comb fpars apars =
@@ -992,7 +907,8 @@ let mk_actual_precondition tenv prop actual_params formal_params =
               ^ string_of_int (List.length formal_params)
               ^ ")"
             in
-            L.d_warning str ; L.d_ln () ) ;
+            L.d_warning str ;
+            L.d_ln () ) ;
           []
       | _ :: _, [] ->
           raise (Exceptions.Wrong_argument_number __POS__)
@@ -1054,8 +970,8 @@ let inconsistent_actualpre_missing tenv actual_pre split_opt =
 
 let class_cast_exn tenv pname_opt texp1 texp2 exp ml_loc =
   let desc =
-    Errdesc.explain_class_cast_exception tenv pname_opt texp1 texp2 exp (State.get_node_exn ())
-      (State.get_loc_exn ())
+    Errdesc.explain_class_cast_exception tenv pname_opt texp1 texp2 exp
+      (AnalysisState.get_node_exn ()) (AnalysisState.get_loc_exn ())
   in
   Exceptions.Class_cast_exception (desc, ml_loc)
 
@@ -1104,13 +1020,12 @@ let missing_sigma_need_adding_to_tenv tenv hpreds =
   List.exists hpreds ~f:missing_hpred_need_adding_to_tenv
 
 
-let add_missing_field_to_tenv ~missing_sigma exe_env caller_tenv callee_pname hpreds callee_summary
-    =
+let add_missing_field_to_tenv ~missing_sigma exe_env caller_tenv callee_pname hpreds
+    callee_attributes =
   (* if hpreds are missing_sigma, we may not need to add the fields to the tenv, so we check that first *)
   let add_fields =
     if missing_sigma then missing_sigma_need_adding_to_tenv caller_tenv hpreds else true
   in
-  let callee_attributes = Summary.get_attributes callee_summary in
   (* if the callee is a model, then we don't have a tenv for it *)
   if (not callee_attributes.ProcAttributes.is_biabduction_model) && add_fields then
     let callee_tenv_opt =
@@ -1139,9 +1054,10 @@ let add_missing_field_to_tenv ~missing_sigma exe_env caller_tenv callee_pname hp
 
 
 (** Perform symbolic execution for a single spec *)
-let exe_spec exe_env tenv ret_id (n, nspecs) caller_pdesc callee_pname loc prop path_pre
-    (spec : Prop.exposed BiabductionSummary.spec) actual_params formal_params callee_summary :
-    abduction_res =
+let exe_spec
+    ({InterproceduralAnalysis.exe_env; proc_desc= caller_pdesc; err_log; tenv} as analysis_data)
+    ret_id (n, nspecs) callee_pname loc prop path_pre (spec : Prop.exposed BiabductionSummary.spec)
+    actual_params formal_params callee_summary : abduction_res =
   let caller_pname = Procdesc.get_proc_name caller_pdesc in
   let posts = mk_posts tenv prop callee_pname spec.BiabductionSummary.posts in
   let actual_pre = mk_actual_precondition tenv prop actual_params formal_params in
@@ -1159,7 +1075,7 @@ let exe_spec exe_env tenv ret_id (n, nspecs) caller_pdesc callee_pname loc prop 
   L.d_ln () ;
   SymOp.pay () ;
   (* pay one symop *)
-  match Prover.check_implication_for_footprint caller_pname tenv actual_pre spec_pre with
+  match Prover.check_implication_for_footprint analysis_data actual_pre spec_pre with
   | Prover.ImplFail checks ->
       Invalid_res (Prover_checks checks)
   | Prover.ImplOK
@@ -1196,14 +1112,14 @@ let exe_spec exe_env tenv ret_id (n, nspecs) caller_pdesc callee_pname loc prop 
           missing_sigma_objc_class callee_summary ) ;
       let log_check_exn check =
         let exn = get_check_exn tenv check callee_pname loc __POS__ in
-        Reporting.log_issue_deprecated_using_state Exceptions.Warning caller_pname exn
+        BiabductionReporting.log_issue_deprecated_using_state caller_pdesc err_log exn
       in
       let do_split () =
         process_splitting actual_pre sub1 sub2 frame missing_pi missing_sigma frame_fld missing_fld
           frame_typ missing_typ
       in
       let report_valid_res split =
-        match combine tenv ret_id posts actual_pre path_pre split caller_pdesc callee_pname loc with
+        match combine analysis_data ret_id posts actual_pre path_pre split callee_pname loc with
         | None ->
             Invalid_res Cannot_combine
         | Some results ->
@@ -1266,9 +1182,8 @@ let remove_constant_string_class tenv prop =
   Prop.normalize tenv prop'
 
 
-(** existentially quantify the path identifier generated
-    by the prover to keep track of expansions of lhs paths
-    and remove pointsto's whose lhs is a constant string *)
+(** existentially quantify the path identifier generated by the prover to keep track of expansions
+    of lhs paths and remove pointsto's whose lhs is a constant string *)
 let quantify_path_idents_remove_constant_strings tenv (prop : Prop.normal Prop.t) :
     Prop.normal Prop.t =
   let ids_queue =
@@ -1297,7 +1212,7 @@ let prop_pure_to_footprint tenv (p : 'a Prop.t) : Prop.normal Prop.t =
 
 
 (** post-process the raw result of a function call *)
-let exe_call_postprocess tenv ret_id trace_call callee_pname callee_attrs loc results =
+let exe_call_postprocess tenv ret_id callee_pname callee_attrs loc results =
   let filter_valid_res = function Invalid_res _ -> false | Valid_res _ -> true in
   let valid_res0, invalid_res0 = List.partition_tf ~f:filter_valid_res results in
   let valid_res =
@@ -1315,11 +1230,15 @@ let exe_call_postprocess tenv ret_id trace_call callee_pname callee_attrs loc re
   let deref_errors =
     List.filter ~f:(function Dereference_error _ -> true | _ -> false) invalid_res
   in
-  let print_pi pi = L.d_str "pi: " ; Prop.d_pi pi ; L.d_ln () in
+  let print_pi pi =
+    L.d_str "pi: " ;
+    Prop.d_pi pi ;
+    L.d_ln ()
+  in
   let call_desc kind_opt = Localise.desc_precondition_not_met kind_opt callee_pname loc in
   let res_with_path_idents =
     if !BiabductionConfig.footprint then
-      if List.is_empty valid_res_cons_pre_missing then (
+      if List.is_empty valid_res_cons_pre_missing then
         (* no valid results where actual pre and missing are consistent *)
         match deref_errors with
         | error :: _ -> (
@@ -1338,15 +1257,12 @@ let exe_call_postprocess tenv ret_id trace_call callee_pname callee_attrs loc re
             in
             match error with
             | Dereference_error (Deref_minusone, desc, path_opt) ->
-                trace_call CR_not_met ;
                 extend_path path_opt None ;
                 raise (Exceptions.Dangling_pointer_dereference (true, desc, __POS__))
             | Dereference_error (Deref_undef_exp, desc, path_opt) ->
-                trace_call CR_not_met ;
                 extend_path path_opt None ;
                 raise (Exceptions.Dangling_pointer_dereference (true, desc, __POS__))
             | Dereference_error (Deref_null pos, desc, path_opt) ->
-                trace_call CR_not_met ;
                 extend_path path_opt (Some pos) ;
                 if Localise.is_parameter_not_null_checked_desc desc then
                   raise (Exceptions.Parameter_not_null_checked (desc, __POS__))
@@ -1355,16 +1271,11 @@ let exe_call_postprocess tenv ret_id trace_call callee_pname callee_attrs loc re
                 else if Localise.is_empty_vector_access_desc desc then
                   raise (Exceptions.Empty_vector_access (desc, __POS__))
                 else raise (Exceptions.Null_dereference (desc, __POS__))
-            | Dereference_error (Deref_freed _, desc, path_opt) ->
-                trace_call CR_not_met ;
-                extend_path path_opt None ;
-                raise (Exceptions.Biabd_use_after_free (desc, __POS__))
-            | Dereference_error (Deref_undef (_, _, pos), desc, path_opt) ->
-                trace_call CR_not_met ;
-                extend_path path_opt (Some pos) ;
-                raise (Exceptions.Skip_pointer_dereference (desc, __POS__))
-            | Prover_checks _ | Cannot_combine | Missing_sigma_not_empty | Missing_fld_not_empty ->
-                trace_call CR_not_met ;
+            | Dereference_error (Deref_undef _, _, _)
+            | Prover_checks _
+            | Cannot_combine
+            | Missing_sigma_not_empty
+            | Missing_fld_not_empty ->
                 assert false )
         | [] ->
             (* no dereference error detected *)
@@ -1375,7 +1286,6 @@ let exe_call_postprocess tenv ret_id trace_call callee_pname callee_attrs loc re
                 List.exists
                   ~f:(function
                     | Prover_checks (check :: _) ->
-                        trace_call CR_not_met ;
                         let exn = get_check_exn tenv check callee_pname loc __POS__ in
                         raise exn
                     | _ ->
@@ -1384,8 +1294,7 @@ let exe_call_postprocess tenv ret_id trace_call callee_pname callee_attrs loc re
               then call_desc (Some Localise.Pnm_bounds)
               else call_desc None
             in
-            trace_call CR_not_met ;
-            raise (Exceptions.Precondition_not_met (desc, __POS__)) )
+            raise (Exceptions.Precondition_not_met (desc, __POS__))
       else
         (* combine the valid results, and store diverging states *)
         let process_valid_res vr =
@@ -1399,7 +1308,8 @@ let exe_call_postprocess tenv ret_id trace_call callee_pname callee_attrs loc re
               in
               State.add_diverging_states (Paths.PathSet.from_renamed_list incons_res)
           in
-          save_diverging_states () ; vr.vr_cons_res
+          save_diverging_states () ;
+          vr.vr_cons_res
         in
         List.map
           ~f:(fun (p, path) -> (prop_pure_to_footprint tenv p, path))
@@ -1416,14 +1326,12 @@ let exe_call_postprocess tenv ret_id trace_call callee_pname callee_attrs loc re
           (List.map ~f:(fun vr -> (vr.vr_pi, vr.vr_cons_res)) valid_res_miss_pi)
       with
       | None ->
-          trace_call CR_not_met ;
           raise (Exceptions.Precondition_not_met (call_desc None, __POS__))
       | Some cover ->
           L.d_strln "Found minimum cover" ;
           List.iter ~f:print_pi (List.map ~f:fst cover) ;
           List.concat_map ~f:snd cover )
   in
-  trace_call CR_success ;
   let res =
     List.map
       ~f:(fun (p, path) -> (quantify_path_idents_remove_constant_strings tenv p, path))
@@ -1453,22 +1361,19 @@ let exe_call_postprocess tenv ret_id trace_call callee_pname callee_attrs loc re
 
 
 (** Execute the function call and return the list of results with return value *)
-let exe_function_call ?dynamic_dispatch exe_env callee_summary tenv ret_id caller_pdesc callee_pname
-    loc actual_params prop path =
-  let callee_attributes = Summary.get_attributes callee_summary in
-  let caller_name = Procdesc.get_proc_name caller_pdesc in
-  let trace_call =
-    log_call_trace ~caller_name ~callee_name:callee_pname ~callee_attributes ?dynamic_dispatch loc
+let exe_function_call ({InterproceduralAnalysis.tenv; _} as analysis_data) ~callee_attributes
+    ~callee_pname ~callee_summary ~ret_id loc ~actuals prop path =
+  let spec_list, formal_params =
+    spec_find_rename callee_attributes (BiabductionSummary.get_specs callee_summary)
   in
-  let spec_list, formal_params = spec_find_rename trace_call callee_summary in
   let nspecs = List.length spec_list in
   L.d_printfln "Found %d specs for function %s" nspecs (Procname.to_unique_id callee_pname) ;
   L.d_printfln "START EXECUTING SPECS FOR %s from state" (Procname.to_unique_id callee_pname) ;
   Prop.d_prop prop ;
   L.d_ln () ;
   let exe_one_spec (n, spec) =
-    exe_spec exe_env tenv ret_id (n, nspecs) caller_pdesc callee_pname loc prop path spec
-      actual_params formal_params callee_summary
+    exe_spec analysis_data ret_id (n, nspecs) callee_pname loc prop path spec actuals formal_params
+      callee_attributes
   in
   let results = List.map ~f:exe_one_spec spec_list in
-  exe_call_postprocess tenv ret_id trace_call callee_pname callee_attributes loc results
+  exe_call_postprocess tenv ret_id callee_pname callee_attributes loc results

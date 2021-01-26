@@ -21,8 +21,10 @@ let pp_etlist fmt etl =
 
 
 let pp_var_list fmt etl =
-  List.iter etl ~f:(fun (id, ty) ->
-      Format.fprintf fmt " %a:%a" Mangled.pp id (Typ.pp_full Pp.text) ty )
+  List.iter etl ~f:(fun (id, ty, mode) ->
+      Format.fprintf fmt " [%s]%a:%a"
+        (Pvar.string_of_capture_mode mode)
+        Mangled.pp id (Typ.pp_full Pp.text) ty )
 
 
 let pp_local_list fmt etl = List.iter ~f:(Procdesc.pp_local fmt) etl
@@ -139,4 +141,5 @@ let emit_proc_desc source proc_desc =
     in
     DB.filename_to_string db_name ^ ".dot"
   in
-  with_dot_file filename ~pp:(fun fmt -> print_pdesc source fmt proc_desc)
+  with_dot_file filename ~pp:(fun fmt -> print_pdesc source fmt proc_desc) ;
+  filename

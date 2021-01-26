@@ -7,24 +7,24 @@
 open! IStd
 module F = Format
 
-type t = OperationCost | AllocationCost | IOCost [@@deriving compare]
+type t = OperationCost | AllocationCost | AutoreleasepoolSize [@@deriving compare]
 
 let to_issue_string = function
   | OperationCost ->
       "EXECUTION_TIME"
   | AllocationCost ->
       "ALLOCATION"
-  | IOCost ->
-      "IO"
+  | AutoreleasepoolSize ->
+      "AUTORELEASEPOOL_SIZE"
 
 
 let to_complexity_string = function
   | AllocationCost ->
       "Allocation complexity"
+  | AutoreleasepoolSize ->
+      "Autoreleasepool size"
   | OperationCost ->
       "Time complexity"
-  | IOCost ->
-      "IO complexity"
 
 
 let pp f k =
@@ -34,8 +34,8 @@ let pp f k =
         "Execution Cost"
     | AllocationCost ->
         "Allocation Cost"
-    | IOCost ->
-        "IO Cost"
+    | AutoreleasepoolSize ->
+        "Autoreleasepool Size"
   in
   F.pp_print_string f k_str
 
@@ -45,14 +45,12 @@ let to_json_cost_info c = function
       c.Jsonbug_t.exec_cost
   | AllocationCost ->
       assert false
-  | IOCost ->
-      assert false
+  | AutoreleasepoolSize ->
+      c.Jsonbug_t.autoreleasepool_size
 
 
-(* We use this threshold to give error if the cost is above it.
-   Currently it's set randomly to 200 for OperationCost and 3 for AllocationCost. *)
-let to_threshold = function OperationCost -> Some 200 | AllocationCost -> Some 3 | IOCost -> None
+type kind_spec = {kind: t; (* for non-diff analysis *) top_and_unreachable: bool}
 
-type kind_spec = {kind: t; (* for non-diff analysis *) top_and_bottom: bool}
-
-let enabled_cost_kinds = [{kind= OperationCost; top_and_bottom= true}]
+let enabled_cost_kinds =
+  [ {kind= OperationCost; top_and_unreachable= true}
+  ; {kind= AutoreleasepoolSize; top_and_unreachable= true} ]

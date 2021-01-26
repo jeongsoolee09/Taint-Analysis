@@ -9,6 +9,7 @@ open! IStd
 module Hashtbl = Caml.Hashtbl
 module MF = MarkupFormatter
 module P = Printf
+module F = Format
 
 (** Module for Type Error messages. *)
 
@@ -51,7 +52,8 @@ module InstrRef : InstrRefT = struct
 
   let gen instr_ref_gen =
     let node, ir = instr_ref_gen in
-    incr ir ; (node, !ir)
+    incr ir ;
+    (node, !ir)
 end
 
 (* InstrRef *)
@@ -59,28 +61,75 @@ end
 (** Instance of an error *)
 type err_instance =
   | Condition_redundant of
-      {is_always_true: bool; condition_descr: string option; nonnull_origin: TypeOrigin.t}
+      { loc: Location.t
+      ; is_always_true: bool
+      ; condition_descr: string option
+      ; nonnull_origin: TypeOrigin.t }
   | Inconsistent_subclass of
-      { inheritance_violation: InheritanceRule.violation
-      ; violation_type: InheritanceRule.violation_type
-      ; base_proc_name: Procname.t
-      ; overridden_proc_name: Procname.t }
-  | Field_not_initialized of {nullsafe_mode: NullsafeMode.t; field_name: Fieldname.t}
+      { loc: Location.t
+      ; inheritance_violation: InheritanceRule.violation
+      ; violation_type: InheritanceRule.ReportableViolation.violation_type
+      ; base_proc_name: Procname.Java.t
+      ; overridden_proc_name: Procname.Java.t }
+  | Field_not_initialized of {loc: Location.t; field_name: Fieldname.t}
   | Over_annotation of
-      { over_annotated_violation: OverAnnotatedRule.violation
+      { loc: Location.t
+      ; over_annotated_violation: OverAnnotatedRule.violation
       ; violation_type: OverAnnotatedRule.violation_type }
   | Nullable_dereference of
       { dereference_violation: DereferenceRule.violation
       ; dereference_location: Location.t
-      ; dereference_type: DereferenceRule.dereference_type
-      ; nullable_object_descr: string option
-      ; nullable_object_origin: TypeOrigin.t }
+      ; dereference_type: DereferenceRule.ReportableViolation.dereference_type
+      ; nullable_object_descr: string option }
   | Bad_assignment of
       { assignment_violation: AssignmentRule.violation
       ; assignment_location: Location.t
-      ; assignment_type: AssignmentRule.assignment_type
-      ; rhs_origin: TypeOrigin.t }
+      ; assignment_type: AssignmentRule.ReportableViolation.assignment_type }
 [@@deriving compare]
+
+(** Returns whether we can be certain that an [err_instance] is related to synthetic code,
+    autogen/codegen).
+
+    NOTE: This implementation is very naive and handles only simplest cases (which is actually
+    enough for our use-case at the moment). The problem here is that in general:
+
+    - any expression that has synthetic code inside can be considered "tainted",
+    - any expression with a "tainted" sub-expression is also "tainted",
+    - with "tainted" expressions all bets are off and error reporting should be suppressed.
+
+    We could handle this properly by introducing [Nullability.Synthetic] but this is quite involved
+    (and hopefully won't be needed). *)
+let is_synthetic_err = function
+  | Bad_assignment {assignment_type; _} -> (
+      AssignmentRule.ReportableViolation.(
+        match assignment_type with
+        | PassingParamToFunction {procname; _} ->
+            (* NOTE: this currently doesn't cover the case when the actual
+               argument involves syntethic code *)
+            Procname.Java.is_autogen_method procname
+        | AssigningToField fieldname ->
+            Fieldname.is_java_synthetic fieldname
+        | _ ->
+            false) )
+  | _ ->
+      false
+
+
+let pp_err_instance fmt err_instance =
+  match err_instance with
+  | Condition_redundant _ ->
+      F.pp_print_string fmt "Condition_redundant"
+  | Inconsistent_subclass _ ->
+      F.pp_print_string fmt "Inconsistent_subclass"
+  | Field_not_initialized _ ->
+      F.pp_print_string fmt "Field_not_initialized"
+  | Over_annotation _ ->
+      F.pp_print_string fmt "Over_annotation"
+  | Nullable_dereference _ ->
+      F.pp_print_string fmt "Nullable_dereference"
+  | Bad_assignment _ ->
+      F.fprintf fmt "Bad_assignment"
+
 
 module H = Hashtbl.Make (struct
   type t = err_instance * InstrRef.t option [@@deriving compare]
@@ -91,9 +140,7 @@ module H = Hashtbl.Make (struct
 end
 (* H *))
 
-type err_state =
-  { loc: Location.t  (** location of the error *)
-  ; mutable always: bool  (** always fires on its associated node *) }
+type err_state = {mutable always: bool  (** always fires on its associated node *)}
 
 let err_tbl : err_state H.t = H.create 1
 
@@ -132,7 +179,7 @@ let node_reset_forall node =
 
 
 (** Add an error to the error table and return whether it should be printed now. *)
-let add_err find_canonical_duplicate err_instance instr_ref_opt loc =
+let add_err find_canonical_duplicate err_instance instr_ref_opt =
   let is_forall = get_forall err_instance in
   if H.mem err_tbl (err_instance, instr_ref_opt) then false (* don't print now *)
   else
@@ -147,73 +194,10 @@ let add_err find_canonical_duplicate err_instance instr_ref_opt loc =
       | _ ->
           instr_ref_opt
     in
-    H.add err_tbl (err_instance, instr_ref_opt_deduplicate) {loc; always= true} ;
+    Logging.debug Analysis Medium "Registering an issue: %a@\n" pp_err_instance err_instance ;
+    H.add err_tbl (err_instance, instr_ref_opt_deduplicate) {always= true} ;
     not is_forall
 
-
-(* print now if it's not a forall check *)
-
-module Severity = struct
-  let get_severity ia =
-    if Annotations.ia_ends_with ia Annotations.generated_graphql then Some Exceptions.Error
-    else None
-
-
-  let this_type_get_severity tenv (signature : AnnotatedSignature.t) =
-    match signature.params with
-    | AnnotatedSignature.{mangled; param_annotated_type} :: _ when Mangled.is_this mangled ->
-        (* TODO(T54088319) get rid of direct access to annotation *)
-        Option.bind ~f:get_severity (PatternMatch.type_get_annotation tenv param_annotated_type.typ)
-    | _ ->
-        None
-
-
-  let origin_get_severity tenv origin =
-    match origin with
-    | TypeOrigin.MethodCall {annotated_signature} ->
-        this_type_get_severity tenv annotated_signature
-    | _ ->
-        None
-
-
-  let err_instance_get_severity tenv err_instance : Exceptions.severity option =
-    match err_instance with
-    | Nullable_dereference {dereference_violation; nullable_object_origin} ->
-        (* A special hacky case: raise severity for violations of @GeneratedGraphQL method.
-           We might want to reevaluate if we still need this / make this behavior dependent on config.
-        *)
-        origin_get_severity tenv nullable_object_origin
-        |> IOption.if_none_evalopt ~f:(fun _ ->
-               Some (DereferenceRule.violation_severity dereference_violation) )
-    | Condition_redundant _ ->
-        (* Condition redundant is a very non-precise warning. Depending on the origin of what is compared with null,
-           this can have a lot of reasons to be actually nullable.
-           Until it is made non-precise, it is recommended to not turn this warning on.
-           But even when it is on, this should not be more than advice.
-        *)
-        Some Exceptions.Advice
-    | Over_annotation _ ->
-        None
-    | Field_not_initialized {nullsafe_mode} ->
-        Some (NullsafeMode.severity nullsafe_mode)
-    | Bad_assignment {assignment_violation} ->
-        Some (AssignmentRule.violation_severity assignment_violation)
-    | Inconsistent_subclass {inheritance_violation} ->
-        Some (InheritanceRule.violation_severity inheritance_violation)
-end
-
-(* Severity *)
-
-type st_report_error =
-     Procname.t
-  -> Procdesc.t
-  -> IssueType.t
-  -> Location.t
-  -> ?field_name:Fieldname.t option
-  -> ?exception_kind:(IssueType.t -> Localise.error_desc -> exn)
-  -> ?severity:Exceptions.severity
-  -> string
-  -> unit
 
 (* If an error is related to a particular field, we support suppressing the
    error via a supress annotation placed near the field declaration *)
@@ -238,7 +222,7 @@ let get_nonnull_explanation_for_condition_redudant (nonnull_origin : TypeOrigin.
   match nonnull_origin with
   | MethodCall {pname} ->
       Format.asprintf ": %a is not annotated as `@Nullable`" MF.pp_monospaced
-        (Procname.to_simplified_string ~withclass:true pname)
+        (Procname.Java.to_simplified_string ~withclass:true pname)
   | NullConst _ ->
       Logging.die Logging.InternalError
         "Unexpected origin NullConst: this is for nullable types, should not lead to condition \
@@ -251,100 +235,139 @@ let get_nonnull_explanation_for_condition_redudant (nonnull_origin : TypeOrigin.
   | NonnullConst _
   | Field _
   | CallToGetKnownToContainsKey
-  | MethodParameter _
+  | CurrMethodParameter _
   | This
   | New
   | ArrayAccess
   | InferredNonnull _
-  | OptimisticFallback
-  | Undef ->
+  | OptimisticFallback ->
       " according to the existing annotations"
 
 
-let get_error_info err_instance =
-  match err_instance with
-  | Condition_redundant {is_always_true; condition_descr; nonnull_origin} ->
-      ( P.sprintf "The condition %s might be always %b%s."
-          (Option.value condition_descr ~default:"")
-          is_always_true
-          (get_nonnull_explanation_for_condition_redudant nonnull_origin)
-      , IssueType.eradicate_condition_redundant
-      , None )
-  | Over_annotation {over_annotated_violation; violation_type} ->
-      ( OverAnnotatedRule.violation_description over_annotated_violation violation_type
-      , ( match violation_type with
-        | OverAnnotatedRule.FieldOverAnnoted _ ->
-            IssueType.eradicate_field_over_annotated
-        | OverAnnotatedRule.ReturnOverAnnotated _ ->
-            IssueType.eradicate_return_over_annotated )
-      , None )
-  | Field_not_initialized {field_name} ->
-      ( Format.asprintf
-          "Field %a is declared non-nullable, so it should be initialized in the constructor or in \
-           an `@Initializer` method"
-          MF.pp_monospaced
-          (Fieldname.get_field_name field_name)
-      , IssueType.eradicate_field_not_initialized
-      , None )
-  | Bad_assignment {rhs_origin; assignment_location; assignment_type; assignment_violation} ->
-      let description, issue_type, error_location =
-        AssignmentRule.violation_description ~assignment_location assignment_violation
-          assignment_type ~rhs_origin
-      in
-      (description, issue_type, Some error_location)
-  | Nullable_dereference
-      { dereference_violation
-      ; dereference_location
-      ; nullable_object_descr
-      ; dereference_type
-      ; nullable_object_origin } ->
-      let description, issue_type, error_location =
-        DereferenceRule.violation_description ~dereference_location dereference_violation
-          dereference_type ~nullable_object_descr ~nullable_object_origin
-      in
-      (description, issue_type, Some error_location)
-  | Inconsistent_subclass
-      {inheritance_violation; violation_type; base_proc_name; overridden_proc_name} ->
-      ( InheritanceRule.violation_description inheritance_violation violation_type ~base_proc_name
-          ~overridden_proc_name
-      , ( match violation_type with
-        | InconsistentReturn ->
-            IssueType.eradicate_inconsistent_subclass_return_annotation
-        | InconsistentParam _ ->
-            IssueType.eradicate_inconsistent_subclass_parameter_annotation )
-      , None )
+(** If error is reportable to the user, return its information. Otherwise return [None]. *)
+let make_nullsafe_issue_if_reportable_lazy ~nullsafe_mode err_instance =
+  let open IOption.Let_syntax in
+  if is_synthetic_err err_instance then None
+  else
+    match err_instance with
+    | Condition_redundant {is_always_true; loc; condition_descr; nonnull_origin} ->
+        Some
+          ( lazy
+            (NullsafeIssue.make
+               ~description:
+                 (P.sprintf "The condition %s might be always %b%s."
+                    (Option.value condition_descr ~default:"")
+                    is_always_true
+                    (get_nonnull_explanation_for_condition_redudant nonnull_origin))
+               ~issue_type:IssueType.eradicate_condition_redundant
+               ~loc
+                 (* Condition redundant is a very non-precise issue. Depending on the origin of what is compared with null,
+                      this can have a lot of reasons to be actually nullable.
+                      Until it is made non-precise, it is recommended to not turn this warning on.
+                      But even when it is on, this should not be more than advice.
+                 *) ~severity:IssueType.Advice) )
+    | Over_annotation {over_annotated_violation; loc; violation_type} ->
+        Some
+          ( lazy
+            (let issue_type =
+               match violation_type with
+               | OverAnnotatedRule.FieldOverAnnoted _ ->
+                   IssueType.eradicate_field_over_annotated
+               | OverAnnotatedRule.ReturnOverAnnotated _ ->
+                   IssueType.eradicate_return_over_annotated
+             in
+             let description =
+               OverAnnotatedRule.violation_description over_annotated_violation violation_type
+             in
+             NullsafeIssue.make ~description ~issue_type ~loc
+               ~severity:
+                 (* Very non-precise issue. Should be actually turned off unless for experimental purposes. *)
+                 IssueType.Advice ) )
+    | Field_not_initialized {field_name; loc} ->
+        Some
+          ( lazy
+            (NullsafeIssue.make
+               ~description:
+                 (Format.asprintf
+                    "Field %a is declared non-nullable, so it should be initialized in the \
+                     constructor or in an `@Initializer` method"
+                    MF.pp_monospaced
+                    (Fieldname.get_field_name field_name))
+               ~issue_type:IssueType.eradicate_field_not_initialized ~loc
+               ~severity:(NullsafeMode.severity nullsafe_mode)) )
+    | Bad_assignment {assignment_location; assignment_type; assignment_violation} ->
+        (* If violation is reportable, create tuple, otherwise None *)
+        let+ reportable_violation =
+          AssignmentRule.ReportableViolation.from nullsafe_mode assignment_violation
+        in
+        lazy
+          (AssignmentRule.ReportableViolation.make_nullsafe_issue ~assignment_location
+             assignment_type reportable_violation)
+    | Nullable_dereference
+        {dereference_violation; dereference_location; nullable_object_descr; dereference_type} ->
+        (* If violation is reportable, create tuple, otherwise None *)
+        let+ reportable_violation =
+          DereferenceRule.ReportableViolation.from nullsafe_mode dereference_violation
+        in
+        lazy
+          (DereferenceRule.ReportableViolation.make_nullsafe_issue reportable_violation
+             ~dereference_location dereference_type ~nullable_object_descr)
+    | Inconsistent_subclass
+        {inheritance_violation; violation_type; loc; base_proc_name; overridden_proc_name} ->
+        (* If violation is reportable, create tuple, otherwise None *)
+        let+ reportable_violation =
+          InheritanceRule.ReportableViolation.from nullsafe_mode inheritance_violation
+        in
+        lazy
+          (InheritanceRule.ReportableViolation.make_nullsafe_issue ~nullsafe_mode
+             reportable_violation violation_type ~loc ~base_proc_name ~overridden_proc_name)
 
 
-(** Report an error right now. *)
-let report_error_now tenv (st_report_error : st_report_error) err_instance loc pdesc : unit =
-  let pname = Procdesc.get_proc_name pdesc in
-  let err_description, infer_issue_type, updated_location = get_error_info err_instance in
-  let field_name = get_field_name_for_error_suppressing err_instance in
-  let severity = Severity.err_instance_get_severity tenv err_instance in
-  let error_location = Option.value updated_location ~default:loc in
-  st_report_error pname pdesc infer_issue_type error_location ~field_name
-    ~exception_kind:(fun k d -> Exceptions.Eradicate (k, d))
-    ?severity err_description
+(** If error is reportable to the user, return description, severity etc. Otherwise return None. *)
+let make_nullsafe_issue_if_reportable ~nullsafe_mode err_instance =
+  make_nullsafe_issue_if_reportable_lazy ~nullsafe_mode err_instance |> Option.map ~f:Lazy.force
 
 
-(** Report an error unless is has been reported already, or unless it's a forall error since it
-    requires waiting until the end of the analysis and be printed by flush. *)
-let report_error tenv (st_report_error : st_report_error) find_canonical_duplicate err_instance
-    instr_ref_opt loc pdesc =
-  let should_report_now = add_err find_canonical_duplicate err_instance instr_ref_opt loc in
-  if should_report_now then report_error_now tenv st_report_error err_instance loc pdesc
+let is_reportable ~nullsafe_mode err_instance =
+  (* Note: we don't fetch the whole info because the the class-level analysis breaks some
+     assumptions of this function, and also for optimization purposes (saving some string
+     manipulations). *)
+  make_nullsafe_issue_if_reportable_lazy ~nullsafe_mode err_instance |> Option.is_some
 
 
-(** Report the forall checks at the end of the analysis and reset the error table *)
-let report_forall_checks_and_reset tenv st_report_error proc_desc =
+let report_now_if_reportable analysis_data err_instance ~nullsafe_mode =
+  make_nullsafe_issue_if_reportable ~nullsafe_mode err_instance
+  |> Option.iter ~f:(fun nullsafe_issue ->
+         Logging.debug Analysis Medium "About to report: %s"
+           (NullsafeIssue.get_description nullsafe_issue) ;
+         let field_name = get_field_name_for_error_suppressing err_instance in
+         EradicateReporting.report_error analysis_data Eradicate nullsafe_issue ~field_name )
+
+
+(** Register issue (unless exactly the same issue was already registered). If needed, report this
+    error immediately. *)
+let register_error analysis_data find_canonical_duplicate err_instance ~nullsafe_mode instr_ref_opt
+    =
+  let should_report_now = add_err find_canonical_duplicate err_instance instr_ref_opt in
+  if should_report_now then report_now_if_reportable analysis_data err_instance ~nullsafe_mode
+
+
+let report_forall_issues_and_reset analysis_data ~nullsafe_mode =
   let iter (err_instance, instr_ref_opt) err_state =
     match (instr_ref_opt, get_forall err_instance) with
     | Some instr_ref, is_forall ->
         let node = InstrRef.get_node instr_ref in
-        State.set_node node ;
+        AnalysisState.set_node node ;
         if is_forall && err_state.always then
-          report_error_now tenv st_report_error err_instance err_state.loc proc_desc
+          report_now_if_reportable analysis_data err_instance ~nullsafe_mode
     | None, _ ->
         ()
   in
-  H.iter iter err_tbl ; reset ()
+  H.iter iter err_tbl ;
+  reset ()
+
+
+let get_errors () =
+  H.fold
+    (fun (err_instance, instr_ref_opt) _err_state acc -> (err_instance, instr_ref_opt) :: acc)
+    err_tbl []

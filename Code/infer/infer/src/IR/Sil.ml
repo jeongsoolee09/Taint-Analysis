@@ -13,7 +13,7 @@ module F = Format
 module L = Logging
 
 (** {2 Programs and Types} *)
-  
+
 (** Kind of prune instruction *)
 type if_kind =
   | Ik_bexp  (** boolean expressions, and exp ? exp : exp *)
@@ -23,7 +23,7 @@ type if_kind =
   | Ik_land_lor  (** obtained from translation of && or || *)
   | Ik_while
   | Ik_switch
-[@@deriving compare]
+[@@deriving compare, equal]
 
 type instr_metadata =
   | Abstract of Location.t
@@ -188,21 +188,6 @@ let pp_instr ~print_types pe0 f instr =
             arg_ts CallFlags.pp cf Location.pp loc
       | Metadata metadata ->
           pp_instr_metadata pe0 f metadata )
-
-
-let add_with_block_parameters_flag instr =
-  match instr with
-  | Call (ret_id_typ, Exp.Const (Const.Cfun pname), arg_ts, loc, cf) ->
-      if
-        List.exists ~f:(fun (exp, _) -> Exp.is_objc_block_closure exp) arg_ts
-        && Procname.is_clang pname
-        (* to be extended to other methods *)
-      then
-        let cf' = {cf with cf_with_block_parameters= true} in
-        Call (ret_id_typ, Exp.Const (Const.Cfun pname), arg_ts, loc, cf')
-      else instr
-  | _ ->
-      instr
 
 
 (** Dump an instruction. *)

@@ -9,24 +9,14 @@ open! IStd
 open PolyVariantEqual
 module L = Logging
 
-let count_newlines (path : string) : int =
-  let f file = In_channel.fold_lines file ~init:0 ~f:(fun i _ -> i + 1) in
-  In_channel.with_file path ~f
-
-
 type t =
   | Invalid of {ml_source_file: string}
   | Absolute of string
   | RelativeProjectRoot of string  (** relative to project root *)
-  | RelativeInferBiabductionModel of string  (** relative to infer models *)
-[@@deriving compare]
-
-let equal = [%compare.equal: t]
+[@@deriving compare, equal]
 
 module OrderedSourceFile = struct
-  type nonrec t = t
-
-  let compare = compare
+  type nonrec t = t [@@deriving compare]
 end
 
 module Map = Caml.Map.Make (OrderedSourceFile)
@@ -46,7 +36,6 @@ let from_abs_path ?(warn_on_error = true) fname =
   (* try to get realpath of source file. Use original if it fails *)
   let fname_real = try Utils.realpath ~warn_on_error fname with Unix.Unix_error _ -> fname in
   let project_root_real = Utils.realpath ~warn_on_error Config.project_root in
-  let models_dir_real = Config.biabduction_models_src_dir in
   match
     Utils.filename_to_relative ~backtrack:Config.relative_path_backtrack ~root:project_root_real
       fname_real
@@ -55,13 +44,9 @@ let from_abs_path ?(warn_on_error = true) fname =
       RelativeProjectRoot path
   | None when Config.buck_cache_mode && Filename.check_suffix fname_real "java" ->
       L.(die InternalError) "%s is not relative to %s" fname_real project_root_real
-  | None -> (
-    match Utils.filename_to_relative ~root:models_dir_real fname_real with
-    | Some path ->
-        RelativeInferBiabductionModel path
-    | None ->
-        (* fname_real is absolute already *)
-        Absolute fname_real )
+  | None ->
+      (* fname_real is absolute already *)
+      Absolute fname_real
 
 
 let to_string =
@@ -70,15 +55,20 @@ let to_string =
     match fname with
     | Invalid {ml_source_file} ->
         "DUMMY from " ^ ml_source_file
-    | RelativeInferBiabductionModel path ->
-        "INFER_MODEL/" ^ path
     | RelativeProjectRoot path ->
         path
     | Absolute path ->
         if force_relative then
-          Option.value_exn (Utils.filename_to_relative ~force_full_backtrack:true ~root path)
+          let open IOption.Let_syntax in
+          (let* isysroot_suffix = Config.xcode_isysroot_suffix in
+           let+ pos = String.substr_index path ~pattern:isysroot_suffix in
+           "${XCODE_ISYSROOT}" ^ String.subo ~pos:(pos + String.length isysroot_suffix) path)
+          |> IOption.if_none_eval ~f:(fun () ->
+                 Option.value_exn (Utils.filename_to_relative ~force_full_backtrack:true ~root path) )
         else path
 
+
+let has_extension t ~ext = String.is_suffix (to_string t) ~suffix:ext
 
 let pp fmt fname = Format.pp_print_string fmt (to_string fname)
 
@@ -89,15 +79,8 @@ let to_abs_path fname =
         "cannot be called with Invalid source file originating in %s" ml_source_file
   | RelativeProjectRoot path ->
       Filename.concat Config.project_root path
-  | RelativeInferBiabductionModel path ->
-      Filename.concat Config.biabduction_models_src_dir path
   | Absolute path ->
       path
-
-
-let line_count source_file =
-  let abs_path = to_abs_path source_file in
-  count_newlines abs_path
 
 
 let to_rel_path fname = match fname with RelativeProjectRoot path -> path | _ -> to_abs_path fname
@@ -106,22 +89,12 @@ let invalid ml_source_file = Invalid {ml_source_file}
 
 let is_invalid = function Invalid _ -> true | _ -> false
 
-let is_biabduction_model source_file =
-  match source_file with
-  | Invalid {ml_source_file} ->
-      L.(die InternalError) "cannot be called with Invalid source file from %s" ml_source_file
-  | RelativeProjectRoot _ | Absolute _ ->
-      false
-  | RelativeInferBiabductionModel _ ->
-      true
-
-
 let is_under_project_root = function
   | Invalid {ml_source_file} ->
       L.(die InternalError) "cannot be called with Invalid source file from %s" ml_source_file
   | RelativeProjectRoot _ ->
       true
-  | Absolute _ | RelativeInferBiabductionModel _ ->
+  | Absolute _ ->
       false
 
 
@@ -171,24 +144,33 @@ let changed_sources_from_changed_files changed_files =
 
 
 module SQLite = struct
-  module T = struct
-    type nonrec t = t
-  end
+  type nonrec t = t
 
-  module Serializer = SqliteUtils.MarshalledDataForComparison (T)
-  include T
+  let invalid_tag = 'I'
 
-  let serialize = function
-    | RelativeProjectRoot path ->
-        (* show the most common paths as text (for debugging, possibly perf) *)
-        Sqlite3.Data.TEXT path
-    | _ as x ->
-        Serializer.serialize x
+  let absolute_tag = 'A'
+
+  let relative_tag = 'R'
+
+  let serialize sourcefile =
+    let tag_text tag str = Sqlite3.Data.TEXT (Printf.sprintf "%c%s" tag str) in
+    match sourcefile with
+    | Invalid {ml_source_file} ->
+        tag_text invalid_tag ml_source_file
+    | Absolute abs_path ->
+        tag_text absolute_tag abs_path
+    | RelativeProjectRoot rel_path ->
+        tag_text relative_tag rel_path
 
 
-  let deserialize = function
-    | Sqlite3.Data.TEXT rel_path ->
-        RelativeProjectRoot rel_path
-    | blob ->
-        Serializer.deserialize blob
+  let deserialize serialized_sourcefile =
+    let[@warning "-8"] (Sqlite3.Data.TEXT text) = serialized_sourcefile in
+    if String.is_empty text then
+      L.die InternalError "Could not deserialize sourcefile with empty representation@." ;
+    let tag = text.[0] in
+    let str = String.sub ~pos:1 ~len:(String.length text - 1) text in
+    if Char.equal tag invalid_tag then Invalid {ml_source_file= str}
+    else if Char.equal tag absolute_tag then Absolute str
+    else if Char.equal tag relative_tag then RelativeProjectRoot str
+    else L.die InternalError "Could not deserialize sourcefile with tag=%c, str= %s@." tag str
 end

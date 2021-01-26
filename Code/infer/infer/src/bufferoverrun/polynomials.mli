@@ -6,7 +6,6 @@
  *)
 
 open! IStd
-module Bound = Bounds.Bound
 
 module DegreeKind : sig
   type t = Linear | Log
@@ -17,17 +16,21 @@ module Degree : sig
 
   val encode_to_int : t -> int
   (** Encodes the complex type [t] to an integer that can be used for comparison. *)
-
-  val is_zero : t -> bool
 end
 
 module NonNegativeNonTopPolynomial : sig
   type t
 
-  val get_symbols : t -> Bounds.NonNegativeBound.t list
+  val polynomial_traces : ?is_autoreleasepool_trace:bool -> t -> (string * Errlog.loc_trace) list
 end
 
 module TopTraces : sig
+  type t
+
+  val make_err_trace : t -> Errlog.loc_trace
+end
+
+module UnreachableTraces : sig
   type t
 
   val make_err_trace : t -> Errlog.loc_trace
@@ -37,7 +40,10 @@ module NonNegativePolynomial : sig
   include PrettyPrintable.PrintableType
 
   type degree_with_term =
-    (Degree.t * NonNegativeNonTopPolynomial.t, TopTraces.t) AbstractDomain.Types.below_above
+    ( UnreachableTraces.t
+    , Degree.t * NonNegativeNonTopPolynomial.t
+    , TopTraces.t )
+    AbstractDomain.Types.below_above
 
   val pp_hum : Format.formatter -> t -> unit
 
@@ -45,15 +51,19 @@ module NonNegativePolynomial : sig
 
   val top : t
 
+  val of_unreachable : Location.t -> t
+
   val zero : t
 
-  val one : t
+  val one : ?autoreleasepool_trace:Bounds.BoundTrace.t -> unit -> t
 
-  val of_int_exn : int -> t
+  val of_int_exn : ?autoreleasepool_trace:Bounds.BoundTrace.t -> int -> t
 
   val is_symbolic : t -> bool
 
   val is_top : t -> bool
+
+  val is_unreachable : t -> bool
 
   val is_zero : t -> bool
 
@@ -63,11 +73,16 @@ module NonNegativePolynomial : sig
 
   val plus : t -> t -> t
 
+  val mult_unreachable : t -> t -> t
+  (** if one of the operands is unreachable, the result is unreachable *)
+
   val mult : t -> t -> t
+
+  val mult_loop : iter:t -> body:t -> t
 
   val min_default_left : t -> t -> t
 
-  val subst : Procname.t -> Location.t -> t -> Bound.eval_sym -> t
+  val subst : Procname.t -> Location.t -> t -> Bounds.Bound.eval_sym -> t
 
   val degree : t -> Degree.t option
 
@@ -77,7 +92,7 @@ module NonNegativePolynomial : sig
 
   val pp_degree : only_bigO:bool -> Format.formatter -> degree_with_term -> unit
 
-  val polynomial_traces : t -> Errlog.loc_trace
+  val polynomial_traces : ?is_autoreleasepool_trace:bool -> t -> Errlog.loc_trace
 
   val encode : t -> string
 

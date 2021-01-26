@@ -6,236 +6,241 @@
  *)
 
 open! IStd
-
-(** Eradicate NPEs. *)
-
 module L = Logging
 module F = Format
-open Dataflow
 
-(* ERADICATE CHECKER. TODOS:*)
-(* 1) add support for constructors for anonymous inner classes (currently not checked) *)
+(* make sure that this is initialized *)
+let () = NullsafeInit.init ()
 
-(** Type for a module that provides a main callback function *)
-module type CallBackT = sig
-  val callback : TypeCheck.checks -> Callbacks.proc_callback_t
-end
-
-(* CallBackT *)
-
-(** Extension to the type checker. *)
-module type ExtensionT = sig
-  val update_payloads : TypeState.t option -> Payloads.t -> Payloads.t
-end
-
-(** Create a module with the toplevel callback. *)
-module MkCallback (Extension : ExtensionT) : CallBackT = struct
-  let callback1 tenv find_canonical_duplicate calls_this checks idenv curr_pname curr_pdesc
-      annotated_signature linereader proc_loc : bool * TypeState.t option =
-    let add_formal typestate (param_signature : AnnotatedSignature.param_signature) =
-      let pvar = Pvar.mk param_signature.mangled curr_pname in
-      let formal_name = param_signature.mangled in
-      let origin =
-        if Mangled.is_this formal_name then
-          (* `this` is technically an implicit method param, but from syntactic and semantic points of view it
-             has very special meaning and nullability limitations (it can never be null).
-          *)
-          TypeOrigin.This
-        else if PatternMatch.is_override_of_java_lang_object_equals curr_pname then
-          TypeOrigin.MethodParameter ObjectEqualsOverride
-        else TypeOrigin.MethodParameter (Normal param_signature)
-      in
-      let inferred_nullability = InferredNullability.create origin in
-      TypeState.add pvar (param_signature.param_annotated_type.typ, inferred_nullability) typestate
+let callback1 ({IntraproceduralAnalysis.proc_desc= curr_pdesc; _} as analysis_data) ~curr_java_pname
+    find_canonical_duplicate calls_this checks idenv annotated_signature linereader proc_loc :
+    bool * TypeState.t option =
+  let curr_pname = Procdesc.get_proc_name curr_pdesc in
+  let add_formal typestate (param_signature : AnnotatedSignature.param_signature) =
+    let pvar = Pvar.mk param_signature.mangled curr_pname in
+    let formal_name = param_signature.mangled in
+    let origin =
+      if Mangled.is_this formal_name then
+        (* `this` is technically an implicit method param, but from syntactic and semantic points of view it
+           has very special meaning and nullability limitations (it can never be null).
+        *)
+        TypeOrigin.This
+      else if PatternMatch.Java.is_override_of_lang_object_equals curr_pname then
+        TypeOrigin.CurrMethodParameter ObjectEqualsOverride
+      else TypeOrigin.CurrMethodParameter (Normal param_signature)
     in
-    let get_initial_typestate () =
-      let typestate_empty = TypeState.empty in
-      List.fold ~f:add_formal ~init:typestate_empty annotated_signature.AnnotatedSignature.params
+    let inferred_nullability = InferredNullability.create origin in
+    TypeState.add pvar
+      (param_signature.param_annotated_type.typ, inferred_nullability)
+      typestate ~descr:"registering formal param"
+  in
+  let get_initial_typestate () =
+    let typestate_empty = TypeState.empty in
+    List.fold ~f:add_formal ~init:typestate_empty annotated_signature.AnnotatedSignature.params
+  in
+  (* Check the nullable flag computed for the return value and report inconsistencies. *)
+  let check_return ~java_pname find_canonical_duplicate exit_node final_typestate
+      annotated_signature loc : unit =
+    let {AnnotatedSignature.ret_annotated_type} = annotated_signature.AnnotatedSignature.ret in
+    let ret_pvar = Procdesc.get_ret_var curr_pdesc in
+    let ret_range = TypeState.lookup_pvar ret_pvar final_typestate in
+    let typ_found_opt =
+      match ret_range with Some (typ_found, _) -> Some typ_found | None -> None
     in
-    (* Check the nullable flag computed for the return value and report inconsistencies. *)
-    let check_return find_canonical_duplicate exit_node final_typestate annotated_signature loc :
-        unit =
-      let AnnotatedSignature.{ret_annotated_type} = annotated_signature.AnnotatedSignature.ret in
-      let ret_pvar = Procdesc.get_ret_var curr_pdesc in
-      let ret_range = TypeState.lookup_pvar ret_pvar final_typestate in
-      let typ_found_opt =
-        match ret_range with Some (typ_found, _) -> Some typ_found | None -> None
-      in
-      (* TODO(T54088319): model this in AnnotatedNullability *)
-      let ret_implicitly_nullable =
-        String.equal (PatternMatch.get_type_name ret_annotated_type.typ) "java.lang.Void"
-      in
-      State.set_node exit_node ;
-      if not (List.is_empty checks.TypeCheck.check_ret_type) then
-        List.iter
-          ~f:(fun f -> f curr_pname curr_pdesc ret_annotated_type.typ typ_found_opt loc)
-          checks.TypeCheck.check_ret_type ;
-      if checks.TypeCheck.eradicate then
-        EradicateChecks.check_return_annotation tenv find_canonical_duplicate curr_pdesc ret_range
-          annotated_signature ret_implicitly_nullable loc
+    (* TODO(T54088319): model this in AnnotatedNullability *)
+    let ret_implicitly_nullable =
+      String.equal (PatternMatch.get_type_name ret_annotated_type.typ) "java.lang.Void"
     in
-    let do_before_dataflow initial_typestate =
-      if Config.eradicate_verbose then
-        L.result "Initial Typestate@\n%a@." TypeState.pp initial_typestate
-    in
-    let do_after_dataflow find_canonical_duplicate final_typestate =
-      let exit_node = Procdesc.get_exit_node curr_pdesc in
-      check_return find_canonical_duplicate exit_node final_typestate annotated_signature proc_loc
-    in
-    let module DFTypeCheck = MakeDF (struct
-      type t = TypeState.t
-
-      let equal = TypeState.equal
-
-      let join = TypeState.join
-
-      let pp_name fmt = F.pp_print_string fmt "eradicate"
-
-      let do_node tenv node typestate =
-        NodePrinter.with_session ~pp_name node ~f:(fun () ->
-            State.set_node node ;
-            if Config.write_html then L.d_printfln "before:@\n%a@\n" TypeState.pp typestate ;
-            let typestates_succ, typestates_exn =
-              TypeCheck.typecheck_node tenv calls_this checks idenv curr_pname curr_pdesc
-                find_canonical_duplicate annotated_signature typestate node linereader
-            in
-            (typestates_succ, typestates_exn) )
-
-
-      let proc_throws _ = DontKnow
-    end) in
-    let initial_typestate = get_initial_typestate () in
-    do_before_dataflow initial_typestate ;
-    let transitions = DFTypeCheck.run tenv curr_pdesc initial_typestate in
-    match transitions (Procdesc.get_exit_node curr_pdesc) with
-    | DFTypeCheck.Transition (final_typestate, _, _) ->
-        do_after_dataflow find_canonical_duplicate final_typestate ;
-        (!calls_this, Some final_typestate)
-    | DFTypeCheck.Dead_state ->
-        (!calls_this, None)
-
-
-  let callback2 tenv curr_pname calls_this checks {Callbacks.summary; get_procs_in_file}
-      annotated_signature linereader proc_loc : unit =
-    let curr_pdesc = Summary.get_proc_desc summary in
-    let idenv = Idenv.create curr_pdesc in
-    let find_duplicate_nodes = State.mk_find_duplicate_nodes curr_pdesc in
-    let find_canonical_duplicate node =
-      let duplicate_nodes = find_duplicate_nodes node in
-      try Procdesc.NodeSet.min_elt duplicate_nodes with Caml.Not_found -> node
-    in
-    let typecheck_proc do_checks pname pdesc proc_details_opt =
-      let ann_sig, loc, idenv_pn =
-        match proc_details_opt with
-        | Some (ann_sig, loc, idenv_pn) ->
-            (ann_sig, loc, idenv_pn)
-        | None ->
-            let ann_sig =
-              Models.get_modelled_annotated_signature tenv (Procdesc.get_attributes pdesc)
-            in
-            let loc = Procdesc.get_loc pdesc in
-            (ann_sig, loc, Idenv.create pdesc)
-      in
-      let checks', calls_this' =
-        if do_checks then (checks, calls_this)
-        else ({TypeCheck.eradicate= false; check_ret_type= []}, ref false)
-      in
-      callback1 tenv find_canonical_duplicate calls_this' checks' idenv_pn pname pdesc ann_sig
-        linereader loc
-    in
-    let do_final_typestate typestate_opt calls_this =
-      let do_typestate typestate =
-        let start_node = Procdesc.get_start_node curr_pdesc in
-        if
-          (not calls_this)
-          (* if 'this(...)' is called, no need to check initialization *)
-          && checks.TypeCheck.eradicate
-        then (
-          let typestates_for_curr_constructor_and_all_initializer_methods =
-            Initializers.final_initializer_typestates_lazy tenv curr_pname curr_pdesc
-              get_procs_in_file typecheck_proc
-          in
-          let typestates_for_all_constructors_incl_current =
-            Initializers.final_constructor_typestates_lazy tenv curr_pname get_procs_in_file
-              typecheck_proc
-          in
-          EradicateChecks.check_constructor_initialization tenv find_canonical_duplicate curr_pname
-            curr_pdesc start_node
-            ~nullsafe_mode:annotated_signature.AnnotatedSignature.nullsafe_mode
-            ~typestates_for_curr_constructor_and_all_initializer_methods
-            ~typestates_for_all_constructors_incl_current proc_loc ;
-          if Config.eradicate_verbose then L.result "Final Typestate@\n%a@." TypeState.pp typestate
-          )
-      in
-      match typestate_opt with None -> () | Some typestate -> do_typestate typestate
-    in
-    TypeErr.reset () ;
-    let calls_this, final_typestate_opt =
-      typecheck_proc true curr_pname curr_pdesc (Some (annotated_signature, proc_loc, idenv))
-    in
-    do_final_typestate final_typestate_opt calls_this ;
+    AnalysisState.set_node exit_node ;
+    if not (List.is_empty checks.TypeCheck.check_ret_type) then
+      List.iter
+        ~f:(fun f -> f curr_pdesc ret_annotated_type.typ typ_found_opt loc)
+        checks.TypeCheck.check_ret_type ;
     if checks.TypeCheck.eradicate then
-      EradicateChecks.check_overridden_annotations find_canonical_duplicate tenv curr_pname
-        curr_pdesc annotated_signature ;
-    TypeErr.report_forall_checks_and_reset tenv (EradicateCheckers.report_error tenv) curr_pdesc ;
-    ()
+      EradicateChecks.check_return_annotation analysis_data ~java_pname find_canonical_duplicate
+        ret_range annotated_signature ret_implicitly_nullable loc
+  in
+  let do_before_dataflow initial_typestate =
+    if Config.eradicate_verbose then
+      L.result "Initial Typestate@\n%a@." TypeState.pp initial_typestate
+  in
+  let do_after_dataflow ~java_pname find_canonical_duplicate final_typestate =
+    let exit_node = Procdesc.get_exit_node curr_pdesc in
+    check_return ~java_pname find_canonical_duplicate exit_node final_typestate annotated_signature
+      proc_loc
+  in
+  let module DFTypeCheck = DataFlow.MakeDF (struct
+    type t = TypeState.t
+
+    let equal = TypeState.equal
+
+    let join = TypeState.join
+
+    let pp_name fmt = F.pp_print_string fmt "eradicate"
+
+    let do_node node typestate =
+      AnalysisCallbacks.html_debug_new_node_session ~pp_name node ~f:(fun () ->
+          AnalysisState.set_node node ;
+          if Config.write_html then L.d_printfln "before:@\n%a@\n" TypeState.pp typestate ;
+          let {TypeCheck.normal_flow_typestate; exception_flow_typestates} =
+            TypeCheck.typecheck_node analysis_data calls_this checks idenv find_canonical_duplicate
+              annotated_signature typestate node linereader
+          in
+          let normal_flow_typestates =
+            Option.value_map normal_flow_typestate ~f:(fun a -> [a]) ~default:[]
+          in
+          (normal_flow_typestates, exception_flow_typestates) )
 
 
-  (** Entry point for the eradicate-based checker infrastructure. *)
-  let callback checks ({Callbacks.summary} as callback_args) : Summary.t =
-    let proc_desc = Summary.get_proc_desc summary in
-    let proc_name = Procdesc.get_proc_name proc_desc in
-    let calls_this = ref false in
-    let curr_pname = Summary.get_proc_name summary in
-    let tenv = Exe_env.get_tenv callback_args.exe_env curr_pname in
-    let filter_special_cases () =
-      if
-        ( match proc_name with
-        | Procname.Java java_pname ->
-            Procname.Java.is_access_method java_pname || Procname.Java.is_external java_pname
-        | _ ->
-            false )
-        || (Procdesc.get_attributes proc_desc).ProcAttributes.is_bridge_method
-      then None
-      else
-        let annotated_signature =
-          Models.get_modelled_annotated_signature tenv (Procdesc.get_attributes proc_desc)
-        in
-        Some annotated_signature
+    let proc_throws _ = DataFlow.DontKnow
+  end) in
+  let initial_typestate = get_initial_typestate () in
+  do_before_dataflow initial_typestate ;
+  let transitions = DFTypeCheck.run curr_pdesc initial_typestate in
+  match transitions (Procdesc.get_exit_node curr_pdesc) with
+  | DFTypeCheck.Transition (final_typestate, _, _) ->
+      do_after_dataflow ~java_pname:curr_java_pname find_canonical_duplicate final_typestate ;
+      (!calls_this, Some final_typestate)
+  | DFTypeCheck.Dead_state ->
+      (!calls_this, None)
+
+
+let analyze_one_procedure ~java_pname
+    ({IntraproceduralAnalysis.tenv; proc_desc; _} as analysis_data) calls_this checks
+    annotated_signature linereader proc_loc : unit =
+  let idenv = IDEnv.create proc_desc in
+  let find_duplicate_nodes = State.mk_find_duplicate_nodes proc_desc in
+  let find_canonical_duplicate node =
+    let duplicate_nodes = find_duplicate_nodes node in
+    try Procdesc.NodeSet.min_elt duplicate_nodes with Caml.Not_found -> node
+  in
+  let proc_name = Procdesc.get_proc_name proc_desc in
+  let caller_nullsafe_mode = NullsafeMode.of_procname tenv proc_name in
+  let typecheck_proc do_checks pname pdesc proc_details_opt =
+    let ann_sig, loc, idenv_pn =
+      match proc_details_opt with
+      | Some (ann_sig, loc, idenv_pn) ->
+          (ann_sig, loc, idenv_pn)
+      | None ->
+          let is_callee_in_trust_list =
+            let callee_class = Procname.get_class_type_name pname in
+            Option.value_map callee_class
+              ~f:(fun class_name ->
+                Typ.Name.Java.get_java_class_name_exn class_name
+                |> NullsafeMode.is_in_trust_list caller_nullsafe_mode )
+              ~default:false
+          in
+          let ann_sig =
+            Models.get_modelled_annotated_signature ~is_callee_in_trust_list tenv
+              (Procdesc.get_attributes pdesc)
+          in
+          let loc = Procdesc.get_loc pdesc in
+          (ann_sig, loc, IDEnv.create pdesc)
     in
-    ( match filter_special_cases () with
-    | None ->
-        ()
-    | Some annotated_signature ->
-        let loc = Procdesc.get_loc proc_desc in
-        let linereader = Printer.LineReader.create () in
-        if Config.eradicate_verbose then
-          L.result "%a@." (AnnotatedSignature.pp proc_name) annotated_signature ;
-        callback2 tenv curr_pname calls_this checks callback_args annotated_signature linereader loc
-    ) ;
-    summary
-end
+    let checks', calls_this' =
+      if do_checks then (checks, calls_this)
+      else ({TypeCheck.eradicate= false; check_ret_type= []}, ref false)
+    in
+    (* NOTE: [analysis_data] has the new [pdesc] *)
+    callback1
+      {analysis_data with proc_desc= pdesc}
+      find_canonical_duplicate calls_this' checks' idenv_pn ann_sig linereader loc
+  in
+  let do_final_typestate typestate_opt calls_this =
+    let do_typestate typestate =
+      let start_node = Procdesc.get_start_node proc_desc in
+      if
+        (not calls_this)
+        (* if 'this(...)' is called, no need to check initialization *)
+        && checks.TypeCheck.eradicate
+      then (
+        let typestates_for_curr_constructor_and_all_initializer_methods =
+          Initializers.final_initializer_typestates_lazy tenv proc_name proc_desc
+            (typecheck_proc ~curr_java_pname:java_pname)
+        in
+        let typestates_for_all_constructors_incl_current =
+          Initializers.final_constructor_typestates_lazy tenv proc_name
+            (typecheck_proc ~curr_java_pname:java_pname)
+        in
+        EradicateChecks.check_constructor_initialization analysis_data find_canonical_duplicate
+          start_node ~nullsafe_mode:annotated_signature.AnnotatedSignature.nullsafe_mode
+          ~typestates_for_curr_constructor_and_all_initializer_methods
+          ~typestates_for_all_constructors_incl_current proc_loc ;
+        if Config.eradicate_verbose then L.result "Final Typestate@\n%a@." TypeState.pp typestate )
+    in
+    match typestate_opt with None -> () | Some typestate -> do_typestate typestate
+  in
+  let calls_this, final_typestate_opt =
+    typecheck_proc ~curr_java_pname:java_pname true proc_name proc_desc
+      (Some (annotated_signature, proc_loc, idenv))
+  in
+  do_final_typestate final_typestate_opt calls_this ;
+  if checks.TypeCheck.eradicate then
+    EradicateChecks.check_overridden_annotations analysis_data find_canonical_duplicate
+      ~proc_name:java_pname annotated_signature ;
+  ()
 
-(* MkCallback *)
 
-module EmptyExtension : ExtensionT = struct
-  let update_payloads typestate_opt (payloads : Payloads.t) =
-    {payloads with typestate= typestate_opt}
-end
+(* If we need to skip analysis, returns a string reason for debug, otherwise None *)
+let find_reason_to_skip_analysis proc_name proc_desc =
+  match proc_name with
+  | Procname.Java java_pname ->
+      if Procname.Java.is_access_method java_pname then Some "access method"
+      else if
+        ThirdPartyAnnotationInfo.is_third_party_proc
+          (ThirdPartyAnnotationGlobalRepo.get_repo ())
+          java_pname
+      then Some "third party method"
+      else if (Procdesc.get_attributes proc_desc).ProcAttributes.is_bridge_method then
+        Some "bridge method"
+      else if Procname.Java.is_autogen_method java_pname then Some "autogenerated method"
+      else None
+  | _ ->
+      Some "not a Java method"
 
-module Main = struct
-  module Callback = MkCallback (EmptyExtension)
 
-  let callback = Callback.callback
-end
+(** Entry point for the nullsafe procedure-level analysis. *)
+let analyze checks ({IntraproceduralAnalysis.proc_desc; tenv; _} as analysis_data) :
+    NullsafeSummary.t option =
+  let proc_name = Procdesc.get_proc_name proc_desc in
+  L.debug Analysis Medium "Analysis of %a@\n" Procname.pp proc_name ;
+  match find_reason_to_skip_analysis proc_name proc_desc with
+  | Some reason ->
+      L.debug Analysis Medium "Skipping analysis: %s@\n" reason ;
+      None
+  | None ->
+      (* start the analysis! *)
+      let calls_this = ref false in
+      let java_pname =
+        Procname.as_java_exn ~explanation:"Would have skipped the analysis otherwise" proc_name
+      in
+      let annotated_signature =
+        AnnotatedSignature.get_for_class_under_analysis tenv (Procdesc.get_attributes proc_desc)
+      in
+      L.debug Analysis Medium "Signature: %a@\n" (AnnotatedSignature.pp proc_name)
+        annotated_signature ;
+      let loc = Procdesc.get_loc proc_desc in
+      let linereader = LineReader.create () in
+      (* Initializing TypeErr signleton. *)
+      TypeErr.reset () ;
+      (* The main method - during this the actual analysis will happen and TypeErr will be populated with
+         issues (and some of them - reported).
+      *)
+      analyze_one_procedure ~java_pname analysis_data calls_this checks annotated_signature
+        linereader loc ;
+      (* Collect issues that were detected during analysis and put them in summary for further processing *)
+      let issues = TypeErr.get_errors () |> List.map ~f:(fun (issues, _) -> issues) in
+      (* Report errors of "farall" class - those could not be reported during analysis phase. *)
+      TypeErr.report_forall_issues_and_reset analysis_data
+        ~nullsafe_mode:annotated_signature.nullsafe_mode ;
+      Some {NullsafeSummary.issues}
 
-(** Eradicate checker for Java [@Nullable] annotations. *)
-let callback_eradicate =
+
+let analyze_procedure analysis_data =
   let checks = {TypeCheck.eradicate= true; check_ret_type= []} in
-  Main.callback checks
+  analyze checks analysis_data
 
 
-(** Call the given check_return_type at the end of every procedure. *)
-let callback_check_return_type check_return_type callback_args =
+let analyze_for_immutable_cast_checker check_return_type analysis_data =
   let checks = {TypeCheck.eradicate= false; check_ret_type= [check_return_type]} in
-  Main.callback checks callback_args
+  analyze checks analysis_data

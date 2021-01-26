@@ -4,36 +4,36 @@
  * This source code is licensed under the MIT license found in the
  * LICENSE file in the root directory of this source tree.
  *)
+
 open! IStd
-module F = Format
+open PulseBasicInterface
+module AbductiveDomain = PulseAbductiveDomain
 
-type t [@@deriving compare]
+(** Wrapper around {!PathCondition} that operates on {!AbductiveDomain.t}. *)
 
-val equal_to : IntLit.t -> t
+val and_nonnegative : AbstractValue.t -> AbductiveDomain.t -> AbductiveDomain.t
 
-val is_equal_to_zero : t -> bool
+val and_positive : AbstractValue.t -> AbductiveDomain.t -> AbductiveDomain.t
 
-val pp : F.formatter -> t -> unit
+val and_eq_int : AbstractValue.t -> IntLit.t -> AbductiveDomain.t -> AbductiveDomain.t
 
-type abduction_result =
-  | Unsatisfiable  (** the assertion is never true given the parameters *)
-  | Satisfiable of t option * t option
-      (** the assertion is satisfiable and when it is true then the lhs and rhs can be optionally
-          refined to the given new intervals *)
+type operand = PathCondition.operand =
+  | LiteralOperand of IntLit.t
+  | AbstractValueOperand of AbstractValue.t
 
-val abduce_binop_is_true : negated:bool -> Binop.t -> t option -> t option -> abduction_result
-(** given [arith_lhs_opt bop arith_rhs_opt] and if not [negated], return either
+val eval_binop :
+  AbstractValue.t -> Binop.t -> operand -> operand -> AbductiveDomain.t -> AbductiveDomain.t
 
-    - [Unsatisfiable] iff lhs bop rhs = ∅
+val eval_unop :
+  AbstractValue.t -> Unop.t -> AbstractValue.t -> AbductiveDomain.t -> AbductiveDomain.t
 
-    - [Satisfiable (abduced_lhs_opt,abduced_rhs_opt)] iff lhs bop rhs ≠ ∅, such that (taking
-      lhs=true if lhs_opt is [None], same for rhs) [abduced_lhs_opt=Some alhs] if (lhs bop rhs ≠
-      ∅ => alhs⇔lhs) (and similarly for rhs)
+val prune_binop :
+  negated:bool -> Binop.t -> operand -> operand -> AbductiveDomain.t -> AbductiveDomain.t
 
-    If [negated] then imagine a similar explanation replacing "= ∅" with "≠ ∅" and vice-versa. *)
+val is_known_zero : AbductiveDomain.t -> AbstractValue.t -> bool
 
-val binop : Binop.t -> t -> t -> t option
+val is_unsat_cheap : AbductiveDomain.t -> bool
 
-val unop : Unop.t -> t -> t option
+val is_unsat_expensive : AbductiveDomain.t -> AbductiveDomain.t * bool
 
-val zero_inf : t
+val has_no_assumptions : AbductiveDomain.t -> bool

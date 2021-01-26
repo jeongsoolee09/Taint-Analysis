@@ -20,6 +20,8 @@ val store : SourceFile.t -> t -> unit
 (** Save the individual [Procdesc.t] and [ProcAttributes.t] to the database for the procedures in
     the cfg. *)
 
+val mem : t -> Procname.t -> bool
+
 (** {2 Functions for manipulating an interprocedural CFG} *)
 
 val create : unit -> t
@@ -30,8 +32,5 @@ val create_proc_desc : t -> ProcAttributes.t -> Procdesc.t
 
 val iter_sorted : t -> f:(Procdesc.t -> unit) -> unit
 (** Iterate over all the proc descs in the cfg in ascending order *)
-
-val inline_java_synthetic_methods : t -> unit
-(** Inline the java synthetic methods in the cfg (in-place) *)
 
 val pp_proc_signatures : Format.formatter -> t -> unit

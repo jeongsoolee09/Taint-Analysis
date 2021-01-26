@@ -35,20 +35,20 @@ $(EXPECTED_TEST_OUTPUT): $(CURRENT_REPORT) $(PREVIOUS_REPORT) $(MODIFIED_FILES_F
                          $(INFER_BIN) $(MAKEFILE_LIST)
 	$(QUIET)$(REMOVE_DIR) $(INFER_OUT)
 	$(QUIET)$(call silent_on_success,Computing results difference in $(TEST_REL_DIR),\
-	  $(INFER_BIN) --perf-profiler-data-file loom_test.json -o $(INFER_OUT) --project-root $(CURDIR) reportdiff \
+	  $(INFER_BIN) -o $(INFER_OUT) --project-root $(CURDIR) reportdiff \
 		--report-current $(CURRENT_REPORT) --report-previous $(PREVIOUS_REPORT) \
 		--costs-current $(CURRENT_COSTS) --costs-previous $(PREVIOUS_COSTS) \
 		$(DIFFERENTIAL_ARGS))
 	$(QUIET)$(INFER_BIN) report -o $(INFER_OUT) \
-		--issues-fields $(INFERPRINT_ISSUES_FIELDS) \
+		--issues-tests-fields $(INFERPRINT_ISSUES_FIELDS) \
 		--from-json-report $(INFER_OUT)/differential/introduced.json \
 		--issues-tests introduced.exp.test
 	$(QUIET)$(INFER_BIN) report -o $(INFER_OUT) \
-		--issues-fields $(INFERPRINT_ISSUES_FIELDS) \
+		--issues-tests-fields $(INFERPRINT_ISSUES_FIELDS) \
 		--from-json-report $(INFER_OUT)/differential/fixed.json \
 		--issues-tests fixed.exp.test
 	$(QUIET)$(INFER_BIN) report -o $(INFER_OUT) \
-		--issues-fields $(INFERPRINT_ISSUES_FIELDS) \
+		--issues-tests-fields $(INFERPRINT_ISSUES_FIELDS) \
 		--from-json-report $(INFER_OUT)/differential/preexisting.json \
 		--issues-tests preexisting.exp.test
 	$(QUIET)$(COPY) $(INFER_OUT)/differential/costs_summary.json \

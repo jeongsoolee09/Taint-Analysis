@@ -9,11 +9,11 @@ open! IStd
 
 type t [@@deriving compare]
 
-module Map : Caml.Map.S with type key = t
 (** Maps from source_file *)
+module Map : Caml.Map.S with type key = t
 
-module Set : Caml.Set.S with type elt = t
 (** Set of source files *)
+module Set : Caml.Set.S with type elt = t
 
 module Hash : Caml.Hashtbl.S with type key = t
 
@@ -39,13 +39,8 @@ val create : ?warn_on_error:bool -> string -> t
     WARNING: If warn_on_error is false, no warning will be shown whenever an error occurs for the
     given path (e.g. if it does not exist). *)
 
-val is_biabduction_model : t -> bool
-
 val is_under_project_root : t -> bool
 (** Returns true if the file is in project root *)
-
-val line_count : t -> int
-(** compute line count of a source file *)
 
 val of_header : ?warn_on_error:bool -> t -> t option
 (** Return approximate source file corresponding to the parameter if it's header file and file
@@ -64,5 +59,8 @@ val to_rel_path : t -> string
 val to_string : ?force_relative:bool -> t -> string
 (** convert a source file to a string WARNING: result may not be valid file path, do not use this
     function to perform operations on filenames *)
+
+val has_extension : t -> ext:string -> bool
+(** returns whether the source file has provided extension *)
 
 module SQLite : SqliteUtils.Data with type t = t

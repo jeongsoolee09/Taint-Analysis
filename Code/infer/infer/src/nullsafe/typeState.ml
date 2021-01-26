@@ -19,6 +19,10 @@ end)
 
 type range = Typ.t * InferredNullability.t [@@deriving compare]
 
+let pp_range fmt (typ, nullability) =
+  F.fprintf fmt "Typ: %s; Nullability: %a" (Typ.to_string typ) InferredNullability.pp nullability
+
+
 type t = range M.t [@@deriving compare]
 
 let equal = [%compare.equal: t]
@@ -63,8 +67,21 @@ let lookup_id id typestate = M.find_opt (Exp.Var id) typestate
 
 let lookup_pvar pvar typestate = M.find_opt (Exp.Lvar pvar) typestate
 
-let add_id id range typestate = M.add (Exp.Var id) range typestate
+let add_id id range typestate ~descr =
+  ( if Config.write_html then
+    let _, nullability = range in
+    L.d_printfln "Setting %a to Id %a: %s" InferredNullability.pp nullability Ident.pp id descr ) ;
+  M.add (Exp.Var id) range typestate
 
-let add pvar range typestate = M.add (Exp.Lvar pvar) range typestate
 
-let remove_id id typestate = M.remove (Exp.Var id) typestate
+let add pvar range typestate ~descr =
+  ( if Config.write_html then
+    let _, nullability = range in
+    L.d_printfln "Setting %a to Pvar %a: %s" InferredNullability.pp nullability
+      Pvar.pp_value_non_verbose pvar descr ) ;
+  M.add (Exp.Lvar pvar) range typestate
+
+
+let remove_id id typestate ~descr =
+  if Config.write_html then L.d_printfln "Removing Id %a from typestate: %s" Ident.pp id descr ;
+  M.remove (Exp.Var id) typestate

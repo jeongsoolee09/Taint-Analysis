@@ -22,7 +22,7 @@ type if_kind =
   | Ik_land_lor  (** obtained from translation of && or || *)
   | Ik_while
   | Ik_switch
-[@@deriving compare]
+[@@deriving compare, equal]
 
 type instr_metadata =
   | Abstract of Location.t
@@ -77,10 +77,6 @@ val skip_instr : instr
 
 val instr_is_auxiliary : instr -> bool
 (** Check if an instruction is auxiliary, or if it comes from source instructions. *)
-
-val add_with_block_parameters_flag : instr -> instr
-(** Adds a with_blocks_parameters flag to a method call, when the arguments contain an Objective-C
-    block, and the method is an Objective-C method (to be extended to other methods) *)
 
 val location_of_instr : instr -> Location.t
 (** Get the location of the instruction *)

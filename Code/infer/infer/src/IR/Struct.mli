@@ -13,14 +13,23 @@ type field = Fieldname.t * Typ.t * Annot.Item.t [@@deriving compare]
 
 type fields = field list
 
+type java_class_kind = Interface | AbstractClass | NormalClass [@@deriving equal]
+
+type java_class_info =
+  { kind: java_class_kind  (** class kind in Java *)
+  ; loc: Location.t option
+        (** None should correspond to rare cases when it was impossible to fetch the location in
+            source file *) }
+
 (** Type for a structured value. *)
-type t = private
+type t =
   { fields: fields  (** non-static fields *)
   ; statics: fields  (** static fields *)
-  ; supers: Typ.Name.t list  (** supers *)
+  ; supers: Typ.Name.t list  (** superclasses *)
   ; methods: Procname.t list  (** methods defined *)
   ; exported_objc_methods: Procname.t list  (** methods in ObjC interface, subset of [methods] *)
   ; annots: Annot.Item.t  (** annotations *)
+  ; java_class_info: java_class_info option  (** present if and only if the class is Java *)
   ; dummy: bool  (** dummy struct for class including static method *) }
 
 type lookup = Typ.Name.t -> t option
@@ -38,6 +47,7 @@ val internal_mk_struct :
   -> ?exported_objc_methods:Procname.t list
   -> ?supers:Typ.Name.t list
   -> ?annots:Annot.Item.t
+  -> ?java_class_info:java_class_info
   -> ?dummy:bool
   -> unit
   -> t
@@ -59,4 +69,9 @@ val get_field_type_and_annotation :
   lookup:lookup -> Fieldname.t -> Typ.t -> (Typ.t * Annot.Item.t) option
 (** Return the type of the field [fn] and its annotation, None if [typ] has no field named [fn] *)
 
-val is_dummy : t -> bool
+val merge : Typ.Name.t -> newer:t -> current:t -> t
+(** best effort directed merge of two structs for the same typename *)
+
+val is_not_java_interface : t -> bool
+(** check that a struct either defines a non-java type, or a non-java-interface type (abstract or
+    normal class) *)

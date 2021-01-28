@@ -32,12 +32,13 @@ open! IStd
    |-----------+----------------------------+
 *)
 
-(** For use in infer_repl:
+(** For use in infertop:
 
-#mod_use "infer/src/swan/MyCallGraph.ml"
-#mod_use "infer/src/swan/SetofAllMeths.ml"
-#mod_use "infer/src/swan/SummaryLoader.ml"
-#use "infer/src/swan/SwanFeatureExtractor.ml"
+#mod_use "/Users/jslee/Taint-Analysis/Code/infer/infer/src/swan/MyCallGraph.ml"
+#mod_use "/Users/jslee/Taint-Analysis/Code/infer/infer/src/swan/SetofAllMeths.ml"
+#mod_use "/Users/jslee/Taint-Analysis/Code/infer/infer/src/swan/SummaryLoader.ml"
+#require "ppx_deriving.show"
+#use "/Users/jslee/Taint-Analysis/Code/infer/infer/src/swan/SwanFeatureExtractor.ml"
 
 *)
 
@@ -45,18 +46,20 @@ open! IStd
 (* higher-order features are higher-order functions that return feature extractors *)
 (* feature extractors are functions of Procname.t -> bool *)
 
+
 module L = Logging
 module F = Format
-module Map = Caml.Map.Make (Procname)
+module Hashtbl = Caml.Hashtbl
 module Search = DefLocAliasSearches
 module Test = DefLocAliasLogicTests
 module S = DefLocAliasDomain.AbstractStateSetFinite
 module A = DefLocAliasDomain.SetofAliases
 module MyAccessPath = DefLocAliasDomain.MyAccessPath
 
-exception NotYet
 
-let methnames = SetofAllMeths.calculate_list ()
+(** List from of all methods represented as Procname.t *)
+let all_procnames = ref []
+
 
 (* Utils ============================================ *)
 (* ================================================== *)
@@ -89,73 +92,73 @@ let exp_to_pvar (exp:Exp.t) =
 (* Map from Procname.t to their summaries =========== *)
 (* ================================================== *)
 
-
-let summary_table = SummaryLoader.load_summary_from_disk_to_map Map.empty
+let summary_table = Hashtbl.create 777
 
 
 let lookup_summary (methname:Procname.t) =
-  Map.find_opt methname summary_table
+  Hashtbl.find_opt summary_table methname
 
 
 (* Map from Procname.t to their formal args ========= *)
 (* ================================================== *)
 
 
-let batch_add_formal_args map =
-  let procnames = Map.fold (fun k _ acc -> k::acc) summary_table [] in
-  let pname_and_pdesc_opt = List.map ~f:(fun pname ->
-      (pname, Procdesc.load pname)) procnames in
-  let pname_and_pdesc = catMaybes_tuplist pname_and_pdesc_opt in
-  let pname_and_params_with_type = List.map ~f:(fun (pname, pdesc) ->
-      (pname, Procdesc.get_pvar_formals pdesc)) pname_and_pdesc in
-  let pname_and_params = List.map ~f:(fun (pname, with_type_list) ->
+let batch_add_formal_args formals_table =
+  Hashtbl.fold (fun k _ acc -> k::acc) summary_table []
+  |> List.map ~f:(fun pname ->
+      (pname, Procdesc.load pname))
+  |> catMaybes_tuplist
+  |> List.map ~f:(fun (pname, pdesc) ->
+      (pname, Procdesc.get_pvar_formals pdesc))
+  |> List.map ~f:(fun (pname, with_type_list) ->
       (pname, List.map ~f:(fun (a, _) ->
-           Var.of_pvar a) with_type_list)) pname_and_params_with_type in
-  List.fold ~f:(fun acc (pname, params) ->
-      Map.add pname params acc) ~init:map pname_and_params
+           Var.of_pvar a) with_type_list))
+  |> List.iter ~f:(fun (pname, params) ->
+      Hashtbl.add formals_table pname params)
 
 
-let formal_arg_table = batch_add_formal_args Map.empty
+let formal_arg_table = Hashtbl.create 777
 
 
-let get_formal_args (key:Procname.t) = Map.find key formal_arg_table
+let get_formal_args (key:Procname.t) =
+  Hashtbl.find formal_arg_table key
 
 
 (* Tabular representation of the callgraph ========== *)
 (* ================================================== *)
 
 
-let callgraph = MyCallGraph.load_callgraph_from_disk_to_map Map.empty
+let callgraph = Hashtbl.create 777
 
 
 let lookup_callee (methname:Procname.t) : Procname.t option =
-  Map.find_opt methname callgraph
+  Hashtbl.find_opt callgraph methname
 
 
 (* Map from Procname.t to Procdesc.t ================ *)
 (* ================================================== *)
 
 
-let batch_add_pdesc_to_map (methnames:Procname.t list) map =
-  List.fold ~f:(fun acc methname ->
+let batch_add_pdesc_to hashtbl =
+  List.iter ~f:(fun methname ->
       let procdesc_opt = Procdesc.load methname in
       match procdesc_opt with
-      | Some pdesc -> Map.add methname pdesc acc
-      | None -> acc) ~init:map methnames
+      | Some pdesc -> Hashtbl.add hashtbl methname pdesc
+      | None -> ()) !all_procnames
 
 
-let procdesc_table = batch_add_pdesc_to_map methnames Map.empty
+let procdesc_table = Hashtbl.create 777
 
 
 let lookup_pdesc (methname:Procname.t) : Procdesc.t option =
-  Map.find_opt methname procdesc_table
+  Hashtbl.find_opt procdesc_table methname
 
 
 (* Feature Value ==================================== *)
 (* ================================================== *)
 
 
-type feature_value = True | False | DontKnow [@@deriving equal]
+type feature_value = True | False | DontKnow [@@deriving equal, show]
 
 
 let return (boolval:bool) : feature_value =
@@ -267,13 +270,13 @@ let get_last_word (camel_case_string:string) : string =
 (** Is the method part of class that contains the given name? *)
 let extract_ClassContainsName ~(name:string) =
   fun (meth:Procname.t) ->
-  String.is_substring (Procname.to_string meth) ~substring:name
+  return @@ String.is_substring (Procname.to_string meth) ~substring:name
 
 
 (** Is the method part of class that ends with the given name? *)
 let extract_ClassEndsWithName ~(name:string) =
   fun (meth:Procname.t) ->
-  String.is_substring (Procname.to_string meth) ~substring:name
+  return @@ String.is_substring (Procname.to_string meth) ~substring:name
 
 
 (** This feature checks the modifier of the class where the method is part of. *)
@@ -281,9 +284,9 @@ let extract_ClassModifier ~(modifier:Class_Modifier.t) =
   fun (meth:Procname.t) ->
   let class_modifier = get_class_modifier meth in
   match modifier with
-  | Static -> Class_Modifier.equal class_modifier Static
-  | Public -> Class_Modifier.equal class_modifier Public
-  | Final  -> Class_Modifier.equal class_modifier Final
+  | Static -> return @@ Class_Modifier.equal class_modifier Static
+  | Public -> return @@ Class_Modifier.equal class_modifier Public
+  | Final  -> return @@ Class_Modifier.equal class_modifier Final
 
 
 (** Check if an invocation to a method of a certain class is made. *)
@@ -293,7 +296,7 @@ let extract_InvocationClassName ~(classname:string) =
      find if the given classname appears on the rhs. *)
   let occurs_on_right_side sth =
     String.is_substring sth ~substring:classname in
-  Map.fold (fun k v acc ->
+  return @@ Hashtbl.fold (fun k v acc ->
       if (Procname.equal k meth)
       then occurs_on_right_side (Procname.to_string v) || acc
       else acc) callgraph false
@@ -302,19 +305,19 @@ let extract_InvocationClassName ~(classname:string) =
 (** Does this method's name start with the given word? *)
 let extract_MethodNameStartsWith ~(word:string) =
   fun (meth:Procname.t) ->
-  String.equal (get_prefix (Procname.get_method meth)) word
+  return @@ String.equal (get_prefix (Procname.get_method meth)) word
 
 
 (** Is this method's name identical the given word? *)
 let extract_MethodNameEquals ~(word:string) =
   fun (meth:Procname.t) ->
-  String.equal (Procname.get_method meth) word
+  return @@ String.equal (Procname.get_method meth) word
 
 
 (** Does this method's name contain the given word? *)
 let extract_MethodNameContains ~(word:string) =
   fun (meth:Procname.t) ->
-  String.is_substring (Procname.get_method meth) ~substring:word
+  return @@ String.is_substring (Procname.get_method meth) ~substring:word
 
 
 (** Do any of the parameters' type contain the given name? *)
@@ -325,7 +328,7 @@ let extract_ParamContainsTypeOrName ~(type_name:string) =
       let raw_params = Procname.Java.get_parameters java_meth in
       let string_params : string list = List.map ~f:(fun param ->
           Typ.to_string param) raw_params in
-      List.mem ~equal:String.equal string_params type_name
+      return @@ List.mem ~equal:String.equal string_params type_name
   | _ -> L.die InternalError "%a is not a Java method!" Procname.pp meth
 
 
@@ -405,7 +408,7 @@ let extract_ParamToSink ~(sink_name:string) =
   if Int.equal (List.length (Procname.get_parameters meth)) 0 then return false else
     (* checking if 2 and 3 *)
     let appears_on_callgraph caller callee_name_piece = 
-      Map.fold (fun k v acc ->
+      Hashtbl.fold (fun k v acc ->
           (Procname.equal k caller &&
            (String.is_substring (Procname.to_string v) ~substring:callee_name_piece))
           || acc) callgraph false in
@@ -449,9 +452,9 @@ let extract_ReturnTypeContainsName ~(name:string) =
   | true -> (* normal method; match with the return type's name *)
       let rtntype_string = String.take_while ~f:(fun char ->
           not @@ Char.equal ' ' char) verbose_string in
-      String.is_substring rtntype_string ~substring:name
+      return @@ String.is_substring rtntype_string ~substring:name
   | false -> (* special method; match with the entire name *)
-      String.is_substring verbose_string ~substring:name
+      return @@ String.is_substring verbose_string ~substring:name
 
 
 (** Is the return type of the method equal to the type given? *)
@@ -462,9 +465,9 @@ let extract_ReturnType ~(type_name:string) =
   | true -> (* normal method; match with the return type's name *)
       let rtntype_string = String.take_while ~f:(fun char ->
           not @@ Char.equal ' ' char) verbose_string in
-      String.equal rtntype_string type_name
+      return @@ String.equal rtntype_string type_name
   | false -> (* special method; match with the entire name *)
-      String.equal verbose_string type_name
+      return @@ String.equal verbose_string type_name
 
 
 (** Does the source method return one of its parameters
@@ -485,7 +488,7 @@ let extract_SourceToReturn ~(source_name:string) =
      flow to the return value? *)
   (* 1. Is there an invocation to the indicated source method? *)
   let appears_on_callgraph caller callee_name_piece = 
-    Map.fold (fun k v acc ->
+    Hashtbl.fold (fun k v acc ->
         (Procname.equal k caller &&
          (String.is_substring (Procname.to_string v) ~substring:callee_name_piece))
         || acc) callgraph false in
@@ -513,17 +516,21 @@ let extract_SourceToReturn ~(source_name:string) =
                         then instr::acc else acc) in
                 (* If there are no calls to the designated source, then just return false *)
                 if Int.equal (List.length call_instrs) 0 then return false else
-                  let ret_id_aliases = List.map ~f:extract_ret_id call_instrs
-                                       (* is there a non-ph tuple with the ret_id? *)
-                                       |> List.map ~f:(fun id ->
-                                           Search.search_target_tuple_by_id id meth (fst summary))
-                                       |> List.map ~f:(fun tup -> fourth_of tup)
-                                       |> big_union_A
-                                       |> A.elements
-                                       |> List.map ~f:(fun ap ->
-                                           transitively_collect_aliases ap (fst summary) meth)
-                                       |> big_union_A
-                                       |> A.elements in
+                  let ret_id_aliases =
+                    try
+                      List.map ~f:extract_ret_id call_instrs
+                      (* is there a non-ph tuple with the ret_id? *)
+                      |> List.map ~f:(fun id ->
+                          Search.search_target_tuple_by_id id meth (fst summary))
+                      |> List.map ~f:(fun tup -> fourth_of tup)
+                      |> big_union_A
+                      |> A.elements
+                      |> List.map ~f:(fun ap ->
+                          transitively_collect_aliases ap (fst summary) meth)
+                      |> big_union_A
+                      |> A.elements
+                    with
+                      _ -> [] in
                   return @@ List.fold ~f:(fun acc ap ->
                       List.mem ret_id_aliases ap ~equal:MyAccessPath.equal || acc)
                     ~init:false return_aliases
@@ -545,7 +552,7 @@ let extract_MethodModifier ~(modifier:Method_Modifier.t) =
     if is_final_method meth then Method_Modifier.Final else
       L.die InternalError "No modifier has been detected for %a@."
         Procname.pp meth in
-  Method_Modifier.equal modifier meth_modifier
+  return @@ Method_Modifier.equal modifier meth_modifier
 
 
 (* instantiated Higher-order Functions ============== *)
@@ -640,7 +647,7 @@ let methodNameEquals_features = [
 ]
 
 
-let methodNameContains = [
+let methodNameContains_features = [
   extract_MethodNameContains ~word:"saniti"
 ; extract_MethodNameContains ~word:"escape"
 ; extract_MethodNameContains ~word:"unescape"
@@ -691,7 +698,7 @@ let methodNameContains = [
 ]
 
 
-let paramContainsTypeOrName = [
+let paramContainsTypeOrName_features = [
   extract_ParamContainsTypeOrName ~type_name:"java.lang.String"
 ; extract_ParamContainsTypeOrName ~type_name:"char[]"
 ; extract_ParamContainsTypeOrName ~type_name:"byte[]"
@@ -706,7 +713,7 @@ let paramContainsTypeOrName = [
 ]
 
 
-let paramToSink = [
+let paramToSink_features = [
   extract_ParamToSink ~sink_name:"writ"
 ; extract_ParamToSink ~sink_name:"set"
 ; extract_ParamToSink ~sink_name:"updat"
@@ -723,7 +730,7 @@ let paramToSink = [
 ]
 
 
-let returnTypeContainsName = [
+let returnTypeContainsName_features = [
   extract_ReturnTypeContainsName ~name:"Document"
 ; extract_ReturnTypeContainsName ~name:"Node"
 ; extract_ReturnTypeContainsName ~name:"User"
@@ -733,7 +740,7 @@ let returnTypeContainsName = [
 ]
 
 
-let returnType = [
+let returnType_features = [
   extract_ReturnType ~type_name:"byte[]"
 ; extract_ReturnType ~type_name:"java.lang.String"
 ; extract_ReturnType ~type_name:"java.lang.CharSequence"
@@ -742,7 +749,7 @@ let returnType = [
 ]
 
 
-let sourceToReturn = [
+let sourceToReturn_features = [
   extract_SourceToReturn ~source_name:"get"
 ; extract_SourceToReturn ~source_name:"read"
 ; extract_SourceToReturn ~source_name:"decode"
@@ -750,6 +757,14 @@ let sourceToReturn = [
 ; extract_SourceToReturn ~source_name:"load"
 ; extract_SourceToReturn ~source_name:"request"
 ; extract_SourceToReturn ~source_name:"create"
+]
+
+
+let methodModifier_features = [
+  extract_MethodModifier ~modifier:Static
+; extract_MethodModifier ~modifier:Public
+; extract_MethodModifier ~modifier:Private
+; extract_MethodModifier ~modifier:Final
 ]
 
 
@@ -761,7 +776,7 @@ let sourceToReturn = [
 let extract_IsImplicitMethod =
   fun (meth:Procname.t) ->
   let string_meth = Procname.to_string meth in
-  String.is_substring string_meth ~substring:"$"
+  return @@ String.is_substring string_meth ~substring:"$"
 
 
 (** This feature checks wether the method is part of an anonymous class or not. *)
@@ -770,7 +785,7 @@ let extract_AnonymousClass =
   match meth with
   | Procname.Java java_meth ->
       let classname : Typ.Name.t = Procname.Java.get_class_type_name java_meth in
-      Typ.Name.Java.is_anonymous_inner_class_name_exn classname
+      return @@ Typ.Name.Java.is_anonymous_inner_class_name_exn classname
   | _ -> L.die InternalError "%a is not a Java method!" Procname.pp meth
 
 
@@ -806,7 +821,7 @@ let extract_ReturnsConstant =
         if Test.is_program_var_expr lhs && Exp.is_const rhs
         then Var.is_return (exp_to_pvar lhs)
         else false
-    | _ -> L.die InternalError "fuck" in
+    | _ -> false in
   match Procdesc.load meth with
   | Some pdesc ->
       return @@ Procdesc.fold_instrs pdesc ~init:false
@@ -816,8 +831,48 @@ let extract_ReturnsConstant =
   
 
 (** Feature that checks wether a parameter flows to return value. *)
-let extract_ParaFlowsToReturn = (* TODO: will do it tomorrow *)
-  fun (meth:Procname.t) -> raise NotYet
+let extract_ParaFlowsToReturn =
+  fun (meth:Procname.t) ->
+  match Summary.OnDisk.get meth with
+  | Some summary_payload ->
+    begin match summary_payload.Summary.payloads.def_loc_alias with
+      | Some summary ->
+        (* 1. Get the pvar tuples of the parameters,
+              and their aliases transitively *)
+        begin match Procdesc.load meth with
+          | Some pdesc ->
+            let param_aps =
+              Procdesc.get_pvar_formals pdesc
+              |> List.map ~f:fst
+              |> List.map ~f:Var.of_pvar
+              |> List.map ~f:(fun ap ->
+                  Search.search_target_tuples_by_pvar ap meth (fst summary))
+              |> List.map ~f:Search.find_earliest_tuple_within
+              |> List.map ~f:fourth_of
+              |> big_union_A in
+            let param_alias_aps =
+              param_aps
+              |> A.elements
+              |> List.map ~f:(fun ap ->
+                  transitively_collect_aliases ap (fst summary) meth)
+              |> big_union_A in
+            let params_and_aliases_ap =
+              A.union param_aps param_alias_aps
+              |> A.elements in
+            (* 2. Get the pvar tuples of the return variables *)
+            let ret_var_aps =
+              Search.find_tuples_with_ret (fst summary) meth
+              |> List.map ~f:fourth_of
+              |> big_union_A
+              |> A.elements in
+            (* 3. Check if one of the parameters or their aliases are in
+               the alias sets of the return variables *)
+            return @@ List.fold ~f:(fun acc ap ->
+                List.mem ret_var_aps ap ~equal:MyAccessPath.equal || acc)
+              ~init:false params_and_aliases_ap
+          | None -> DontKnow end
+      | None -> DontKnow end
+  | None -> DontKnow
 
 
 (** Does any of the parameters match the return type? *)
@@ -834,8 +889,8 @@ let extract_ParamTypeMatchesReturnType =
 (** Check if an invocation to a certain method is made. *)
 let extract_InvocationName =
   fun (meth:Procname.t) ->
-  Map.fold (fun _ v acc ->
-    Procname.equal meth v || acc) callgraph false
+  return @@ Hashtbl.fold (fun _ v acc ->
+      Procname.equal meth v || acc) callgraph false
 
 
 (** Returns if the method is a constructor or not. *)
@@ -854,7 +909,7 @@ let extract_IsRealSetter =
     if not @@ String.equal (get_prefix method_string) "set" then False else
       let classname : Typ.Name.t = Procname.Java.get_class_type_name java_meth in
       let all_methods_of_class =
-        methnames
+        !all_procnames
         |> List.map ~f:(fun meth ->
             match meth with
             | Procname.Java java_meth -> java_meth
@@ -862,7 +917,8 @@ let extract_IsRealSetter =
         |> List.filter ~f:(fun meth_ ->
             let classname_ = Procname.Java.get_class_type_name meth_ in
             Typ.Name.equal classname_ classname) in
-      let method_name_without_set = String.slice method_string 3 (String.length method_string) in
+      let method_name_without_set =
+        String.slice method_string 3 (String.length method_string) in
       let corresponding_getter_string = "get"^method_name_without_set in
       return @@ List.fold ~f:(fun acc meth_ ->
           let method_string = Procname.Java.get_method meth_ in
@@ -885,6 +941,265 @@ let extract_VoidOnMethod =
 (* Main ============================================ *)
 (* ================================================= *)
 
+(* NOTE: The feature orders are IMPORTANT!!!
+   Make sure they are all CONSISTENT!!! *)
 
+let csv_header : string list =
+  [ "01_IsImplicitMethod"
+
+  ; "02_AnonymousClass"
+
+  ; "06_HasParameters"
+
+  ; "07_HasReturnType"
+
+  ; "13_ReturnsConstant"
+
+  ; "15_ParaFlowsToReturn"
+
+  ; "17_ParamTypeMatchesReturnType"
+
+  ; "19_InvocationName"
+
+  ; "20_IsConstructor"
+
+  ; "21_IsRealSetter"
+
+  ; "25_VoidOnMethod"
+
+  ; "03_ClassContainsName_Saniti"
+  ; "03_ClassContainsName_Encod"
+  ; "03_ClassContainsName_Escap"
+  ; "03_ClassContainsName_Valid"
+  ; "03_ClassContainsName_Check"
+  ; "03_ClassContainsName_Verif"
+  ; "03_ClassContainsName_Authen"
+  ; "03_ClassContainsName_Security"
+  ; "03_ClassContainsName_Connect"
+  ; "03_ClassContainsName_Bind"
+  ; "03_ClassContainsName_OAuth"
+  ; "03_ClassContainsName_.io."
+  ; "03_ClassContainsName_web"
+  ; "03_ClassContainsName_.net."
+  ; "03_ClassContainsName_sql"
+  ; "03_ClassContainsName_Manager"
+  ; "03_ClassContainsName_Output"
+  ; "03_ClassContainsName_Input"
+  ; "03_ClassContainsName_database"
+  ; "03_ClassContainsName_db"
+  ; "03_ClassContainsName_hibernate"
+  ; "03_ClassContainsName_credential"
+  ; "03_ClassContainsName_process"
+  ; "03_ClassContainsName_runtime"
+  ; "03_ClassContainsName_user"
+  ; "03_ClassContainsName_jdbc"
+  ; "03_ClassContainsName_Html"
+  ; "03_ClassContainsName_Page"
+  ; "03_ClassContainsName_Request"
+  ; "03_ClassContainsName_http"
+  ; "03_ClassContainsName_url"
+  ; "03_ClassContainsName_servlet"
+  ; "03_ClassContainsName_Response"
+  ; "03_ClassContainsName_Redirect"
+  ; "03_ClassContainsName_Css"
+  ; "03_ClassContainsName_Dom"
+
+  ; "04_ClassEndsWithName_Encoder"
+  ; "04_ClassEndsWithName_Request"
+  ; "04_ClassEndsWithName_Render"
+
+  ; "05_ClassModifier_Static"
+  ; "05_ClassModifier_Public"
+  ; "05_ClassModifier_Final"
+
+  (* skip the InnerClass feature *)
+
+  ; "09_InvocationClassName_Saniti"
+  ; "09_InvocationClassName_regex"
+  ; "09_InvocationClassName_escap"
+  ; "09_InvocationClassName_.io."
+  ; "09_InvocationClassName_encod"
+  ; "09_InvocationClassName_sql"
+  ; "09_InvocationClassName_db"
+  ; "09_InvocationClassName_web"
+  ; "09_InvocationClassName_.net."
+  ; "09_InvocationClassName_Log."
+
+  ; "10_MethodNameStartsWith_get"
+  ; "10_MethodNameStartsWith_set"
+  ; "10_MethodNameStartsWith_put"
+  ; "10_MethodNameStartsWith_has"
+  ; "10_MethodNameStartsWith_is"
+  ; "10_MethodNameStartsWith_open"
+  ; "10_MethodNameStartsWith_close"
+  ; "10_MethodNameStartsWith_create"
+  ; "10_MethodNameStartsWith_delete"
+
+  ; "11_MethodNameEquals_log"
+  ; "11_MethodNameEquals_setHeader"
+  ; "11_MethodNameEquals_sendRedirect"
+
+  ; "12_MethodNameContains_saniti"
+  ; "12_MethodNameContains_escape"
+  ; "12_MethodNameContains_unescape"
+  ; "12_MethodNameContains_replac"
+  ; "12_MethodNameContains_strip"
+  ; "12_MethodNameContains_encod"
+  ; "12_MethodNameContains_regex"
+  ; "12_MethodNameContains_authen"
+  ; "12_MethodNameContains_check"
+  ; "12_MethodNameContains_verif"
+  ; "12_MethodNameContains_privilege"
+  ; "12_MethodNameContains_login"
+  ; "12_MethodNameContains_loginpage"
+  ; "12_MethodNameContains_logout"
+  ; "12_MethodNameContains_connect"
+  ; "12_MethodNameContains_disconnect"
+  ; "12_MethodNameContains_bind"
+  ; "12_MethodNameContains_unbind"
+  ; "12_MethodNameContains_read"
+  ; "12_MethodNameContains_thread"
+  ; "12_MethodNameContains_load"
+  ; "12_MethodNameContains_payload"
+  ; "12_MethodNameContains_request"
+  ; "12_MethodNameContains_creat"
+  ; "12_MethodNameContains_decod"
+  ; "12_MethodNameContains_unescap"
+  ; "12_MethodNameContains_pars"
+  ; "12_MethodNameContains_stream"
+  ; "12_MethodNameContains_retriev"
+  ; "12_MethodNameContains_Object"
+  ; "12_MethodNameContains_Name"
+  ; "12_MethodNameContains_writ"
+  ; "12_MethodNameContains_updat"
+  ; "12_MethodNameContains_send"
+  ; "12_MethodNameContains_handl"
+  ; "12_MethodNameContains_log"
+  ; "12_MethodNameContains_run"
+  ; "12_MethodNameContains_execut"
+  ; "12_MethodNameContains_compile"
+  ; "12_MethodNameContains_dump"
+  ; "12_MethodNameContains_print"
+  ; "12_MethodNameContains_execute"
+  ; "12_MethodNameContains_query"
+  ; "12_MethodNameContains_role"
+  ; "12_MethodNameContains_authori"
+  ; "12_MethodNameContains_redirect"
+  ; "12_MethodNameContains_getParameter"
+
+  ; "14_ParamContainsTypeOrName_java.lang.String"
+  ; "14_ParamContainsTypeOrName_char[]"
+  ; "14_ParamContainsTypeOrName_byte[]"
+  ; "14_ParamContainsTypeOrName_java.lang.CharSequence"
+  ; "14_ParamContainsTypeOrName_java.lang.StringBuilder"
+  ; "14_ParamContainsTypeOrName_.io."
+  ; "14_ParamContainsTypeOrName_web"
+  ; "14_ParamContainsTypeOrName_sql"
+  ; "14_ParamContainsTypeOrName_db"
+  ; "14_ParamContainsTypeOrName_credential"
+  ; "14_ParamContainsTypeOrName_url"
+
+  ; "16_ParamToSink_writ"
+  ; "16_ParamToSink_set"
+  ; "16_ParamToSink_updat"
+  ; "16_ParamToSink_send"
+  ; "16_ParamToSink_handl"
+  ; "16_ParamToSink_put"
+  ; "16_ParamToSink_log"
+  ; "16_ParamToSink_run"
+  ; "16_ParamToSink_execut"
+  ; "16_ParamToSink_dump"
+  ; "16_ParamToSink_print"
+  ; "16_ParamToSink_pars"
+  ; "16_ParamToSink_stream"
+
+  ; "18_ReturnTypeContainsName_Document"
+  ; "18_ReturnTypeContainsName_Node"
+  ; "18_ReturnTypeContainsName_User"
+  ; "18_ReturnTypeContainsName_Credential"
+  ; "18_ReturnTypeContainsName_Servlet"
+  ; "18_ReturnTypeContainsName_Request"
+
+  ; "23_ReturnType_byte[]"
+  ; "23_ReturnType_java.lang.String"
+  ; "23_ReturnType_java.lang.CharSequence"
+  ; "23_ReturnType_boolean"
+  ; "23_ReturnType_java.sql.ResultSet"
+
+  ; "24_SourceToReturn_get"
+  ; "24_SourceToReturn_read"
+  ; "24_SourceToReturn_decode"
+  ; "24_SourceToReturn_unescape"
+  ; "24_SourceToReturn_load"
+  ; "24_SourceToReturn_request"
+  ; "24_SourceToReturn_create"
+
+  ; "22_MethodModifier_Static"
+  ; "22_MethodModifier_Public"
+  ; "22_MethodModifier_Private"
+  ; "22_MethodModifier_Final" ]
+
+(** convert the feature value to vallist *)
+let convert_to_csv_repr (vallist:feature_value list) : string list =
+  List.map ~f:show_feature_value vallist
+
+
+(** Run all the feature extractors. *)
 let main () : unit =
-  ()
+  (* populate the list of all methods *)
+  all_procnames := SetofAllMeths.calculate_list ();
+
+  (* populate the callgraph *)
+  MyCallGraph.load_callgraph_from_disk_to callgraph;
+
+  (* populate the summary table *)
+  SummaryLoader.load_summary_from_disk_to summary_table;
+
+  (* populate the formal arguments table *)
+  batch_add_formal_args formal_arg_table;
+
+  (* populate the Procdesc.t table *)
+  batch_add_pdesc_to procdesc_table;
+
+  let simple_feature_queue = 
+    [ extract_IsImplicitMethod
+    ; extract_AnonymousClass
+    ; extract_HasParameters
+    ; extract_HasReturnType
+    ; extract_ReturnsConstant
+    ; extract_ParaFlowsToReturn
+    ; extract_ParamTypeMatchesReturnType
+    ; extract_InvocationName
+    ; extract_IsConstructor
+    ; extract_IsRealSetter
+    ; extract_VoidOnMethod ] in
+
+  let all_higher_order_features =
+    [ classContainsName_features
+    ; classEndsWithName_features
+    ; classModifier_features
+    ; invocationClassName_features
+    ; methodNameStartsWith_features
+    ; methodNameEquals_features
+    ; methodNameContains_features
+    ; paramContainsTypeOrName_features
+    ; paramToSink_features
+    ; returnTypeContainsName_features
+    ; returnType_features
+    ; sourceToReturn_features
+    ; methodModifier_features ]
+    |> List.fold ~f:(fun acc feat ->
+        acc @ feat) ~init:[]
+    |> (@) simple_feature_queue in
+
+  (** pass the given Procname.t through every feature extractor. *)
+  let one_pass (meth:Procname.t) : feature_value list =
+    List.fold ~f:(fun acc feat ->
+        acc @ [feat meth]) ~init:[] all_higher_order_features in
+  let all_csv_reprs =
+    csv_header :: List.map ~f:(fun proc ->
+        convert_to_csv_repr @@ one_pass proc) !all_procnames in
+  let out_chan =
+    Out_channel.create "SwanFeatures.csv"
+    |> Csv.to_channel ~quote_all:true in
+  Csv.output_all out_chan all_csv_reprs

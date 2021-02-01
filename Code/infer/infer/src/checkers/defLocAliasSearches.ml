@@ -45,7 +45,8 @@ let search_target_tuple_by_id (id:Ident.t) (methname:Procname.t) (astate_set:S.t
   let elements = S.elements astate_set in
   let rec search_target_tuple_by_id_inner id (methname:Procname.t) elements = 
     match elements with
-    | [] -> L.die InternalError "search_target_tuple_by_id failed, id: %a, methname: %a, tupleset: %a@." Ident.pp id Procname.pp methname S.pp astate_set
+    | [] -> (* L.die InternalError "search_target_tuple_by_id failed, id: %a, methname: %a, tupleset: %a@." Ident.pp id Procname.pp methname S.pp astate_set *)
+      raise IDontKnow
     | ((procname, _, _, aliasset) as target)::t ->
         if Procname.equal procname methname && A.mem (Var.of_id id, []) aliasset then target else search_target_tuple_by_id_inner id methname t in
   search_target_tuple_by_id_inner id methname elements

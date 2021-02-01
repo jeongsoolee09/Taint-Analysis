@@ -20,6 +20,7 @@ type t =
   | ReportDiff  (** compute the difference of two infer reports *)
   | Run  (** orchestrate the capture, analysis, and reporting of a compilation command *)
   | SpecHunter
+  | Swan
 [@@deriving compare]
 
 val of_string : string -> t

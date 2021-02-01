@@ -63,13 +63,15 @@ let setup () =
       ResultsDir.assert_results_dir "please run an infer analysis first"
   | SpecHunter ->
       ResultsDir.assert_results_dir "hello world! you shouldn't be seeing this" 
+  | Swan ->
+      ResultsDir.assert_results_dir "hello world! you shouldn't be seeing this" 
   | Debug ->
       ResultsDir.assert_results_dir "please run an infer analysis or capture first"
   | Help ->
       () ) ;
   let has_result_dir =
     match Config.command with
-    | Analyze | Capture | Compile | Debug | Explore | Report | ReportDiff | Run | SpecHunter ->
+    | Analyze | Capture | Compile | Debug | Explore | Report | ReportDiff | Run | SpecHunter | Swan ->
         true
     | Help ->
         false
@@ -269,6 +271,11 @@ let () =
       if Option.is_some changed_files && Config.reactive_mode then
         L.(die UserError) "Please re-analyze the project with the changed files."
       else SpecHunter.main () ; 
+  | Swan ->
+      let changed_files = Driver.read_config_changed_files () in
+      if Option.is_some changed_files && Config.reactive_mode then
+        L.(die UserError) "Please re-analyze the project with the changed files."
+      else SwanFeatureExtractor.main () ; 
   | Explore ->
       if (* explore bug traces *)
          Config.html then

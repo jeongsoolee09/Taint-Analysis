@@ -7,7 +7,7 @@
 open Core
 
 (* NOTE: All variants must be also added to [command_to_string] below *)
-type t = Analyze | Capture | Compile | Debug | Explore | Help | Report | ReportDiff | Run | SpecHunter
+type t = Analyze | Capture | Compile | Debug | Explore | Help | Report | ReportDiff | Run | SpecHunter | Swan
 [@@deriving compare]
 
 let equal = [%compare.equal: t]
@@ -22,7 +22,8 @@ let command_to_string =
   ; (Report, "report")
   ; (ReportDiff, "reportdiff")
   ; (Run, "run")
-  ; (SpecHunter, "spechunter") ]
+  ; (SpecHunter, "spechunter")
+  ; (Swan, "swan")]
 
 
 let all_commands = List.map ~f:fst command_to_string

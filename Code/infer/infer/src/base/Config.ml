@@ -485,7 +485,7 @@ let () =
     match cmd with
     | Report ->
         `Add
-    | Analyze | Capture | Compile | Debug | Explore | Help | ReportDiff | Run | SpecHunter ->
+    | Analyze | Capture | Compile | Debug | Explore | Help | ReportDiff | Run | SpecHunter | Swan ->
         `Reject
   in
   (* make sure we generate doc for all the commands we know about *)
@@ -1006,7 +1006,7 @@ and ( bo_debug
         match command with
         | Debug | Explore | Help ->
             None
-        | (Analyze | Capture | Compile | Report | ReportDiff | Run | SpecHunter) as command ->
+        | (Analyze | Capture | Compile | Report | ReportDiff | Run | SpecHunter | Swan) as command ->
             Some (command, manual_generic) )
   in
   let bo_debug =

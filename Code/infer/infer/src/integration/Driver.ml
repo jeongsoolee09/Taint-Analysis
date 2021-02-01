@@ -252,7 +252,7 @@ let analyze_and_report ?suppress_console_report ~changed_files mode =
         (false, false)
     | (Analyze | Run), _ ->
         (true, true)
-    | (SpecHunter), _ -> (true, true)
+    | (SpecHunter | Swan), _ -> (true, true)
   in
   let should_analyze = should_analyze && Config.capture in
   let should_merge =

@@ -331,6 +331,13 @@ let spechunter =
     ~see_also:InferCommand.[SpecHunter]
 
 
+let swan =
+  mk_command_doc ~title:"Swan"
+    ~short_description:"run a feature extractor based on ISSTA '19, Codebase-adaptive detection of security-relevant methods"
+    ~synopsis:"%(b,infer) @(b,swan) $(b,--) $(i, [Swan command])" ~description:[`P ""]
+    ~see_also:InferCommand.[Swan]
+
+
 let command_to_data =
   let mk cmd mk_doc =
     let name = InferCommand.to_string cmd in
@@ -347,7 +354,8 @@ let command_to_data =
   ; mk Report report
   ; mk ReportDiff reportdiff
   ; mk Run run
-  ; mk SpecHunter spechunter ]
+  ; mk SpecHunter spechunter
+  ; mk Swan swan ]
 
 
 let data_of_command command =

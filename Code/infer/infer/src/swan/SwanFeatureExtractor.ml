@@ -54,6 +54,7 @@ module Search = DefLocAliasSearches
 module Test = DefLocAliasLogicTests
 module S = DefLocAliasDomain.AbstractStateSetFinite
 module A = DefLocAliasDomain.SetofAliases
+module Domain = DefLocAliasDomain
 module MyAccessPath = DefLocAliasDomain.MyAccessPath
 
 
@@ -158,7 +159,7 @@ let lookup_pdesc (methname:Procname.t) : Procdesc.t option =
 (* ================================================== *)
 
 
-type feature_value = True | False | DontKnow [@@deriving equal, show]
+type feature_value = True | False | DontKnow | Methname of string [@@deriving equal, show]
 
 
 let return (boolval:bool) : feature_value =
@@ -193,7 +194,7 @@ let get_class_modifier (methname:Procname.t) =
 
 
 module Method_Modifier = struct
-  type t = Static | Public | Private | Final [@@deriving equal]
+  type t = Static | Public | Private | Final | DontKnow [@@deriving equal]
 end
 
 
@@ -203,12 +204,17 @@ let is_static_method (meth:Procname.t) =
   | _ -> L.die InternalError "%a is not a Java method!" Procname.pp meth
 
 
+let pp_access fmt access =
+  F.fprintf fmt "%a" String.pp (PredSymb.string_of_access access)
+
+
 let is_public_method (meth:Procname.t) =
   let procdesc =
     match lookup_pdesc meth with
     | Some pdesc_ -> pdesc_
     | None -> L.die InternalError
-                "Could not find pdesc for %a@." Procname.pp meth in
+                "Could not find pdesc for %a@."
+                Procname.pp meth in
   let procattr = Procdesc.get_attributes procdesc in
   match procattr.access with
   | Public -> true
@@ -375,14 +381,24 @@ let extract_args (call_instr:Sil.instr) (methname:Procname.t) (astate_set:S.t) :
   | Call (_, _, exp_list, _, _) ->
       exp_list
       |> List.map ~f:fst
-      |> List.filter ~f:(fun exp -> not @@ Exp.is_const exp)
+      |> List.filter ~f:(fun exp ->
+        Test.is_logical_var_expr exp)
       |> List.map ~f:(fun exp ->
           match exp with
-          | Exp.Var id -> Search.search_target_tuple_by_id id methname astate_set
+          | Exp.Var id ->
+            begin try
+              Search.search_target_tuple_by_id id methname astate_set
+            with _ ->
+              Domain.bottuple end
           | _ -> L.die InternalError
                    "unexpected exp %a found as arg to method %a@."
                    Exp.pp exp Procname.pp methname)
       |> List.map ~f:second_of
+      |> List.filter ~f:(fun tup ->
+          not @@ Test.is_returnv_ap tup &&
+          not @@ Test.is_callv_ap tup &&
+          not @@ Test.is_logical_var (fst tup) &&
+          not @@ Test.is_frontend_tmp_var (fst tup))
   | _ -> L.die InternalError
            "%a is not a call instruction!"
            (Sil.pp_instr ~print_types:false Pp.text) call_instr
@@ -550,8 +566,7 @@ let extract_MethodModifier ~(modifier:Method_Modifier.t) =
     if is_private_method meth then Method_Modifier.Private else
     if is_static_method meth then Method_Modifier.Static else
     if is_final_method meth then Method_Modifier.Final else
-      L.die InternalError "No modifier has been detected for %a@."
-        Procname.pp meth in
+      Method_Modifier.DontKnow in
   return @@ Method_Modifier.equal modifier meth_modifier
 
 
@@ -945,7 +960,9 @@ let extract_VoidOnMethod =
    Make sure they are all CONSISTENT!!! *)
 
 let csv_header : string list =
-  [ "01_IsImplicitMethod"
+  [ "method_name"
+
+  ; "01_IsImplicitMethod"
 
   ; "02_AnonymousClass"
 
@@ -1194,7 +1211,7 @@ let main () : unit =
 
   (** pass the given Procname.t through every feature extractor. *)
   let one_pass (meth:Procname.t) : feature_value list =
-    List.fold ~f:(fun acc feat ->
+    Methname (Procname.to_string meth) :: List.fold ~f:(fun acc feat ->
         acc @ [feat meth]) ~init:[] all_higher_order_features in
   let all_csv_reprs =
     csv_header :: List.map ~f:(fun proc ->

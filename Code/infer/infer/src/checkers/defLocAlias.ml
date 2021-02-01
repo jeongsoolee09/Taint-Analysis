@@ -54,7 +54,8 @@ module TransferFunctions (CFG : ProcCfg.S) = struct
     Var.of_pvar @@ Pvar.mk (Mangled.from_string "dummy") procname
 
 
-  let rec extract_nonthisvar_from_args methname (arg_ts:(Exp.t*Typ.t) list) (astate_set:S.t) : Exp.t list =
+  let rec extract_nonthisvar_from_args methname (arg_ts:(Exp.t*Typ.t) list)
+      (astate_set:S.t) : Exp.t list =
     match arg_ts with
     | [] -> []
     | (Var var as v, _)::t ->
@@ -70,7 +71,9 @@ module TransferFunctions (CFG : ProcCfg.S) = struct
     let map_func = fun (var1, var2) ->
       match var1, var2 with
       | Var.LogicalVar id, var -> (Var.of_id id, var)
-      | (_, _) -> L.die InternalError "leave_only_var_tuples/map_func failed, exp: %a, var: %a@." Var.pp var1 Var.pp var2 in
+      | (_, _) -> L.die InternalError
+                    "leave_only_var_tuples/map_func failed, exp: %a, var: %a@."
+                    Var.pp var1 Var.pp var2 in
     List.filter ~f:leave_logical ziplist |> List.map ~f:map_func
 
 
@@ -79,17 +82,19 @@ module TransferFunctions (CFG : ProcCfg.S) = struct
     let elements = S.elements (fst apair) in
     let rec search_recent_vardef_astate_inner methname id astate_list =
       match astate_list with
-      | [] -> L.die InternalError "search_recent_vardef_astate failed, methname: %a, pvar: %a, astate_set: %a@." Procname.pp methname Var.pp pvar P.pp apair
+      | [] -> L.die InternalError
+                "search_recent_vardef_astate failed, methname: %a, pvar: %a, astate_set: %a@."
+                Procname.pp methname Var.pp pvar P.pp apair
       | targetTuple::t ->
           let proc, (var, _), loc, aliasset = targetTuple in
           let proc_cond = Procname.equal proc methname in
           let id_cond = A.mem (id, []) aliasset in
           let var_cond = not @@ Var.equal var (placeholder_vardef proc) in
           if var_cond then 
-          (let most_recent_loc = H.get_most_recent_loc (methname, (var, [])) (snd apair) in
-          let loc_cond = LocationSet.equal most_recent_loc loc in
-          if proc_cond && id_cond && loc_cond then
-          targetTuple else search_recent_vardef_astate_inner methname id t)
+            (let most_recent_loc = H.get_most_recent_loc (methname, (var, [])) (snd apair) in
+             let loc_cond = LocationSet.equal most_recent_loc loc in
+             if proc_cond && id_cond && loc_cond then
+               targetTuple else search_recent_vardef_astate_inner methname id t)
           else search_recent_vardef_astate_inner methname id t in
     search_recent_vardef_astate_inner methname pvar elements
 
@@ -144,8 +149,9 @@ module TransferFunctions (CFG : ProcCfg.S) = struct
             let (proc,var,loc,aliasset') = search_astate_by_loc most_recent_loc candTuples in
             let newTuple = (proc, var, loc, A.add (formalvar, []) aliasset') in
             newTuple::add_bindings_to_alias_of_tuples methname tl actual_astates history
-        | Var.ProgramVar _ -> L.die InternalError "add_bindings_to_alias_of_tuples failed, methname: %a, bindinglist: %a, actual_astates: %a@." Procname.pp methname pp_bindinglist bindinglist pp_astatelist actual_astates
-        end
+        | Var.ProgramVar _ -> L.die InternalError
+                                "add_bindings_to_alias_of_tuples failed, methname: %a, bindinglist: %a, actual_astates: %a@."
+                                Procname.pp methname pp_bindinglist bindinglist pp_astatelist actual_astates end
 
 
   (** callee가 return c;꼴로 끝날 경우 새로 튜플을 만들고 alias set에 c를 추가 *)
@@ -168,8 +174,8 @@ module TransferFunctions (CFG : ProcCfg.S) = struct
 
   (** 변수가 리턴된다면 그걸 alias set에 넣는다 (variable carryover) *)
   let apply_summary astate_set callee_summary callee_methname ret_id caller_methname : S.t =
-        variable_carryover astate_set callee_methname ret_id caller_methname (fst callee_summary)
-
+    variable_carryover astate_set callee_methname ret_id caller_methname (fst callee_summary)
+          
 
   let pp_explist fmt (explist:Exp.t list) =
     F.fprintf fmt "[";
@@ -425,7 +431,7 @@ module TransferFunctions (CFG : ProcCfg.S) = struct
           let newset = S.add another_tuple @@ S.add vartuple @@ S.add merged_tuple astate_set_rmvd in
           (newset, new_history)
     | Lvar pvar, Exn _ when Var.is_return (Var.of_pvar pvar) -> 
-        (*L.progress "Storing an Exception@.";*) apair
+        apair
     | Lfield (Lvar pvar, fld, _), Const _ ->
         let pvar_ap = (Var.of_pvar pvar, [AccessPath.FieldAccess fld]) in
         let loc = LocationSet.singleton @@ CFG.Node.loc node in
@@ -485,7 +491,8 @@ module TransferFunctions (CFG : ProcCfg.S) = struct
         let newset = S.add newtuple (fst apair) in
         (newset, newmap)
     | _, _ ->
-        L.progress "Unsupported Store instruction %a := %a at %a@." Exp.pp exp1 Exp.pp exp2 Procname.pp methname; apair
+      L.progress "Unsupported Store instruction %a := %a at %a@."
+        Exp.pp exp1 Exp.pp exp2 Procname.pp methname; apair
 
 
   let cdr (lst:'a list) =
@@ -646,15 +653,11 @@ module TransferFunctions (CFG : ProcCfg.S) = struct
     | Lfield (Var var, fld, _) ->
         let base_pvar = fst @@ second_of @@ search_target_tuple_by_id var methname (fst apair) in
         let access_path : A.elt = (base_pvar, [FieldAccess fld]) in
-        (* 이전에 정의된 적이 있는가 없는가로 경우 나눠야 함 (formal엔 못 옴) *)
-        (* begin match search_target_tuples_by_vardef_ap (access_path) methname (fst apair) with
-         *   | [] -> *)
-              let ph = placeholder_vardef methname in
-              let double = doubleton access_path (Var.of_id id, []) in
-              let newstate = (methname, (ph, []), LocationSet.singleton Location.dummy, double) in
-              let newset = S.add newstate (fst apair) in
-              (newset, snd apair)
-          (* | _ -> L.die InternalError "exec_load failed, id: %a, exp: %a, astate_set: %a, methname: %a" Ident.pp id Exp.pp exp S.pp (fst apair) Procname.pp methname end *)
+        let ph = placeholder_vardef methname in
+        let double = doubleton access_path (Var.of_id id, []) in
+        let newstate = (methname, (ph, []), LocationSet.singleton Location.dummy, double) in
+        let newset = S.add newstate (fst apair) in
+        (newset, snd apair)
     | Lfield (Lvar pvar, fld, _) when Pvar.is_global pvar ->
         let access_path : A.elt = (Var.of_pvar pvar, [FieldAccess fld]) in
         (* 이전에 정의된 적이 있는가 없는가로 경우 나눠야 함 (formal엔 못 옴) *)
@@ -702,9 +705,9 @@ module TransferFunctions (CFG : ProcCfg.S) = struct
         let proc = Procdesc.Node.get_proc_name node in
         let targetloc = Procdesc.Node.get_loc node in
         (* 파라미터 라인넘버 보정 *)
-        let loc = LocationSet.singleton {Location.line=targetloc.line-1;
-                                         Location.col=targetloc.col;
-                                         Location.file=targetloc.file} in
+        let loc = LocationSet.singleton { Location.line=targetloc.line-1
+                                        ; Location.col=targetloc.col
+                                        ; Location.file=targetloc.file } in
         let bake_newstate = fun (var_ap:MyAccessPath.t) ->
           (proc, var_ap, loc, A.singleton var_ap) in
         let tuplelist = List.map ~f:bake_newstate formal_aps in
@@ -724,7 +727,7 @@ module TransferFunctions (CFG : ProcCfg.S) = struct
     | (_, None)::_ -> L.die InternalError "catMaybes_tuplist failed"
 
 
-  let exec_instr (prev':P.t) ({InterproceduralAnalysis.proc_desc=_; (* might use this later *)
+  let exec_instr (prev':P.t) ({InterproceduralAnalysis.proc_desc=_;
                                InterproceduralAnalysis.analyze_dependency})
       (node:CFG.Node.t) (instr:Sil.instr) : P.t =
     let methname = node
@@ -742,7 +745,8 @@ module TransferFunctions (CFG : ProcCfg.S) = struct
       | Metadata _ -> prev
 
 
-  let pp_session_name node fmt = F.fprintf fmt "def/loc/alias %a" CFG.Node.pp_id (CFG.Node.id node)
+  let pp_session_name node fmt =
+    F.fprintf fmt "def/loc/alias %a" CFG.Node.pp_id (CFG.Node.id node)
 end
 
 module CFG = ProcCfg.OneInstrPerNode (ProcCfg.Normal)

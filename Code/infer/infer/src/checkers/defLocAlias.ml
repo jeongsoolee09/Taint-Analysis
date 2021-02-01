@@ -32,7 +32,7 @@ module TransferFunctions (CFG : ProcCfg.S) = struct
     let elem1 = LocationSet.min_elt locset1 in
     let elem2 = LocationSet.min_elt locset2 in
     match Location.compare elem1 elem2 with
-    | (-1) -> locset1
+    | -1 -> locset1
     | 0 -> if LocationSet.subset locset1 locset2 then locset1 else locset2
     | 1 -> locset2
     | _ -> L.die InternalError

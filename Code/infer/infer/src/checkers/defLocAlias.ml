@@ -108,7 +108,9 @@ module TransferFunctions (CFG : ProcCfg.S) = struct
   (** given a doubleton set of lv and pv, extract the pv. *)
   let rec extract_another_pvar (id:Ident.t) (varsetlist:A.t list) : Var.t =
     match varsetlist with
-    | [] -> L.die InternalError "extract_another_pvar failed, id: %a, varsetlist: %a@." Ident.pp id pp_aliasset_list varsetlist
+    | [] -> L.die InternalError
+              "extract_another_pvar failed, id: %a, varsetlist: %a@."
+              Ident.pp id pp_aliasset_list varsetlist
     | set::t ->
         (* L.progress "sweeping set: %a@." A.pp set; *)
         if Int.equal (A.cardinal set) 2 && A.mem (Var.of_id id, []) set
@@ -117,7 +119,9 @@ module TransferFunctions (CFG : ProcCfg.S) = struct
                       |> A.remove (Var.of_id id, [])
                       |> A.elements with
             | [(x, _)] -> x
-            | _ -> L.die InternalError "extract_another_pvar failed, id: %a, varsetlist: %a@." Ident.pp id pp_aliasset_list varsetlist end
+            | _ -> L.die InternalError
+                     "extract_another_pvar failed, id: %a, varsetlist: %a@."
+                     Ident.pp id pp_aliasset_list varsetlist end
         else extract_another_pvar id t
 
 
@@ -134,7 +138,8 @@ module TransferFunctions (CFG : ProcCfg.S) = struct
 
 
 (** Takes an actual(logical)-formal binding list and adds the formals to the respective pvar tuples of the actual arguments *)
-  let rec add_bindings_to_alias_of_tuples (methname:Procname.t) bindinglist (actual_astates:T.t list) (history:HistoryMap.t) =
+  let rec add_bindings_to_alias_of_tuples (methname:Procname.t) bindinglist
+      (actual_astates:T.t list) (history:HistoryMap.t) =
     match bindinglist with
     | [] -> []
     | (actualvar, formalvar)::tl ->
@@ -569,7 +574,9 @@ module TransferFunctions (CFG : ProcCfg.S) = struct
                       let actuals_pvar_tuples = actuals_logical
                                                 |> List.filter ~f:is_logical_var
                                                 |> List.map ~f:mapfunc in
-                      let actualpvar_alias_added = add_bindings_to_alias_of_tuples methname actuallog_formal_binding actuals_pvar_tuples (snd apair) |> S.of_list in
+                      let actualpvar_alias_added =
+                        add_bindings_to_alias_of_tuples methname actuallog_formal_binding actuals_pvar_tuples (snd apair)
+                        |> S.of_list in
                       let mangled_callv = (mk_callv callee_methname, []) in
                       let actualpvar_callv_added = 
                         S.map (fun (p, v, l, a) -> 
@@ -600,7 +607,9 @@ module TransferFunctions (CFG : ProcCfg.S) = struct
   let extract_java_procname (methname:Procname.t) : Procname.Java.t =
   match methname with
   | Java procname -> procname
-  | _ -> L.die InternalError "extract_java_procname failed, methname: %a (maybe you ran this analysis on a non-Java project?)@." Procname.pp methname
+  | _ -> L.die InternalError
+           "extract_java_procname failed, methname: %a (maybe you ran this analysis on a non-Java project?)@."
+           Procname.pp methname
 
 
   let exec_load (id:Ident.t) (exp:Exp.t) (apair:P.t) (methname:Procname.t) : P.t =
@@ -636,8 +645,6 @@ module TransferFunctions (CFG : ProcCfg.S) = struct
                 | h::_ as tuples -> (* 이전에 def된 적 있음 *)
                     let var, _ = second_of h in
                     let most_recent_locset = H.get_most_recent_loc (methname, (var, [])) (snd apair) in
-                    (*L.progress "var: %a, methname: %a, most_recent_locset: %a, fst_apair: %a@." Var.pp var Procname.pp methname LocationSet.pp most_recent_locset S.pp (fst apair);*)
-                    (*L.progress "fst_apair: %a@." S.pp (fst apair);*)
                     let (proc, vardef, loc, aliasset) as most_recent_tuple =
                             begin try
                                     search_tuple_by_loc most_recent_locset tuples
@@ -648,7 +655,7 @@ module TransferFunctions (CFG : ProcCfg.S) = struct
                     let double = doubleton (Var.of_id id, []) (Var.of_pvar pvar, []) in
                     let ph = placeholder_vardef methname in
                     let newstate = (methname, (ph, []), LocationSet.singleton Location.dummy, double) in
-                    let newset = S.add mrt_updated astate_set_rmvd |> S.add newstate (* hopefully this fixes the 211 hashtbl issue *) in
+                    let newset = S.add mrt_updated astate_set_rmvd |> S.add newstate in
                     (newset, snd apair) end end
     | Lfield (Var var, fld, _) ->
         let base_pvar = fst @@ second_of @@ search_target_tuple_by_id var methname (fst apair) in
@@ -689,10 +696,13 @@ module TransferFunctions (CFG : ProcCfg.S) = struct
               let newtuple = (methname, (ph, []), LocationSet.singleton Location.dummy, double) in
               let newset = S.add newtuple (fst apair) in
               (newset, snd apair)
-          | _ -> L.die InternalError "exec_load failed, id: %a, exp: %a, astate_set: %a, methname: %a" Ident.pp id Exp.pp exp S.pp (fst apair) Procname.pp methname end
+          | _ -> L.die InternalError
+                   "exec_load failed, id: %a, exp: %a, astate_set: %a, methname: %a"
+                   Ident.pp id Exp.pp exp S.pp (fst apair) Procname.pp methname end
     | Var _ -> (* 아직은 버리는 케이스만 있으니 e.g. _=*n$9 *)
         apair
-    | _ -> L.progress "Unsupported Load Instruction %a := %a at %a@." Ident.pp id Exp.pp exp Procname.pp methname; apair
+    | _ -> L.progress "Unsupported Load Instruction %a := %a at %a@."
+             Ident.pp id Exp.pp exp Procname.pp methname; apair
 
 
   (** register tuples for formal arguments before a procedure starts. *)

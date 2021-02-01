@@ -749,9 +749,8 @@ module TransferFunctions (CFG : ProcCfg.S) = struct
     F.fprintf fmt "def/loc/alias %a" CFG.Node.pp_id (CFG.Node.id node)
 end
 
+
 module CFG = ProcCfg.OneInstrPerNode (ProcCfg.Normal)
-
-
 module Analyzer = AbstractInterpreter.MakeRPO (TransferFunctions (CFG))
 
 

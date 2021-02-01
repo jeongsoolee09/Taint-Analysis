@@ -25,3 +25,5 @@ graph_*
 /My-Papers/AutoSpec/*.out
 *.pdf
 /My-Papers/AutoSpec/*.gz
+MANIFEST.MF
+*.MF

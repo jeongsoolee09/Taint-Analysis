@@ -474,15 +474,6 @@ def visualize_snapshot(state_names, graph_for_reference, snapshot, dependent_nod
         x, y = node_posmap[confident_node]
         plt.text(x, y+0.1, s='conf', bbox=dict(facecolor='blue', alpha=0.5), horizontalalignment='center')
     
-    # dependent node들 다각형으로 그리기
-    # coord_lists = []
-    # for dependent_node in dependent_nodes:
-    #     coord_lists.append(node_posmap[dependent_node])
-    # coord_lists = np.asarray(coord_lists)
-    # polygon = ptch.Polygon(coord_lists, closed=True, alpha=0.4)
-    # ax.add_patch(polygon)
-
-    # graph_for_reference의 G에서 lost node를 차집합
     for node_name in list(graph_for_reference.nodes):
         if node_name not in state_names:
             graph_for_reference.remove_node(node_name)
@@ -636,8 +627,6 @@ def report_results(state_names, initial_snapshot, final_snapshot):
 
 def save_data_as_csv(state_names, final_snapshot):
     """inference가 다 끝난 label들을 csv로 저장한다."""
-    # names_and_dists_final = make_names_and_params(state_names, final_snapshot)
-    # names_and_labels_final = list(map(lambda tup: (tup[0], find_max_val(tup[1])), names_and_dists_final))
     names_and_labels_final = list(map(lambda tup: (tup[0], find_max_val(tup[1])), final_snapshot))
     out_df = pd.DataFrame(names_and_labels_final, columns=["name", "label"])
     # append to the file if it exists

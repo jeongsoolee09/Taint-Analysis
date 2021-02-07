@@ -134,7 +134,8 @@ let pp_tuplelist fmt (tuplelist:T.t list) : unit =
 
 let rec search_tuple_by_loc (loc_set:LocationSet.t) (tuplelist:T.t list) : T.t =
   match tuplelist with
-  | [] -> L.die InternalError "search_tuple_by_loc failed, loc_set: %a, tuplelist: %a@." LocationSet.pp loc_set pp_tuplelist tuplelist
+  | [] -> (* L.die InternalError "search_tuple_by_loc failed, loc_set: %a, tuplelist: %a@." LocationSet.pp loc_set pp_tuplelist tuplelist *)
+      raise IDontKnow
   | tuple::t ->
       let l = third_of tuple in
       if LocationSet.equal loc_set l || LocationSet.subset l loc_set then tuple else search_tuple_by_loc loc_set t

@@ -17,6 +17,7 @@ module S = DefLocAliasDomain.AbstractStateSetFinite
 module A = DefLocAliasDomain.SetofAliases
 module T = DefLocAliasDomain.AbstractState
 module H = DefLocAliasDomain.HistoryMap
+module AP = DefLocAliasDomain.MyAccessPath
 
 
 module TransferFunctions (CFG : ProcCfg.S) = struct
@@ -79,7 +80,7 @@ module TransferFunctions (CFG : ProcCfg.S) = struct
   (** id를 토대로 가장 최근의 non-ph 튜플을 찾아내고, 없으면 raise *)
   let search_recent_vardef_astate (methname:Procname.t) (pvar:Var.t) (apair:P.t) : T.t =
     let elements = S.elements (fst apair) in
-    let rec search_recent_vardef_astate_inner methname id astate_list =
+    let rec inner methname id astate_list =
       match astate_list with
       | [] -> L.die InternalError
                 "search_recent_vardef_astate failed, methname: %a, pvar: %a, astate_set: %a@."
@@ -93,9 +94,9 @@ module TransferFunctions (CFG : ProcCfg.S) = struct
             (let most_recent_loc = H.get_most_recent_loc (methname, (var, [])) (snd apair) in
              let loc_cond = LocationSet.equal most_recent_loc loc in
              if proc_cond && id_cond && loc_cond then
-               targetTuple else search_recent_vardef_astate_inner methname id t)
-          else search_recent_vardef_astate_inner methname id t in
-    search_recent_vardef_astate_inner methname pvar elements
+               targetTuple else inner methname id t)
+          else inner methname id t in
+    inner methname pvar elements
 
 
   let pp_aliasset_list fmt (varsetlist:A.t list) =
@@ -136,7 +137,7 @@ module TransferFunctions (CFG : ProcCfg.S) = struct
     F.fprintf fmt "]"
 
 
-(** Takes an actual(logical)-formal binding list and adds the formals to the respective pvar tuples of the actual arguments *)
+  (** Takes an actual(logical)-formal binding list and adds the formals to the respective pvar tuples of the actual arguments *)
   let rec add_bindings_to_alias_of_tuples (methname:Procname.t) bindinglist
       (actual_astates:T.t list) (history:HistoryMap.t) =
     match bindinglist with
@@ -409,7 +410,8 @@ module TransferFunctions (CFG : ProcCfg.S) = struct
           (newset, newmap)
     | Lindex (Var id1, _), Var id2 ->
         (* finding the pvar tuple getting stored *)
-        let (proc1, var1, loc1, aliasset) as vartuple = search_target_tuple_by_id id1 methname (fst apair) in
+        let (proc1, var1, loc1, aliasset) as vartuple =
+            search_target_tuple_by_id id1 methname (fst apair) in
         let pvar_tuple : A.elt = begin try
             find_another_pvar_vardef aliasset (* ph를 찾으라고 할 수는 없으니까 *)
           with _ -> (* oops, long access path *)
@@ -423,15 +425,15 @@ module TransferFunctions (CFG : ProcCfg.S) = struct
         let another_tuple = search_target_tuple_by_id id2 methname (fst apair) in
         let loc = LocationSet.singleton @@ CFG.Node.loc node in
         let merged_tuple = merge_ph_tuples another_tuple newtuple loc in
-        let astate_set_rmvd = S.remove another_tuple @@ S.remove vartuple (fst apair) in
+        (* let astate_set_rmvd = S.remove another_tuple @@ S.remove vartuple (fst apair) in *)
         let old_location = third_of newtuple in
         let new_history = H.add_to_history (methname, pvar_tuple_updated) loc (snd apair) in
         if LocationSet.equal old_location (LocationSet.singleton Location.dummy)
         then
-          let newset = S.add merged_tuple astate_set_rmvd in
+          let newset = S.add merged_tuple (* astate_set_rmvd *) (fst apair) in
           (newset, new_history)
         else
-          let newset = S.add another_tuple @@ S.add vartuple @@ S.add merged_tuple astate_set_rmvd in
+          let newset = S.add another_tuple @@ S.add vartuple @@ S.add merged_tuple (* astate_set_rmvd *) (fst apair) in
           (newset, new_history)
     | Lvar pvar, Exn _ when Var.is_return (Var.of_pvar pvar) -> 
         apair
@@ -644,13 +646,14 @@ module TransferFunctions (CFG : ProcCfg.S) = struct
                     let newset = S.add newstate (fst apair) in
                     (newset, snd apair)
                 | h::_ as tuples -> (* 이전에 def된 적 있음 *)
-                    let var, _ = second_of h in
-                    let most_recent_locset = H.get_most_recent_loc (methname, (var, [])) (snd apair) in
+                    let vardef_tup = second_of h in
+                    let most_recent_locset = H.get_most_recent_loc (methname, vardef_tup) (snd apair) in
                     let (proc, vardef, loc, aliasset) as most_recent_tuple =
-                            begin try
-                                    search_tuple_by_loc most_recent_locset tuples
-                            with _ -> (* to handle very weird corner cases where Infer is analyzing a SKIP_FUNCTION *)
-                                    search_tuple_by_loc most_recent_locset (S.elements (fst apair)) end in
+                      begin try
+                          search_tuple_by_loc most_recent_locset tuples
+                        with _ -> (* to handle very weird corner cases
+                                     where Infer is analyzing a SKIP_FUNCTION *)
+                          search_tuple_by_loc most_recent_locset (S.elements (fst apair)) end in
                     let astate_set_rmvd = S.remove most_recent_tuple (fst apair) in
                     let mrt_updated = (proc, vardef, loc, A.add (Var.of_id id, []) aliasset) in
                     let double = doubleton (Var.of_id id, []) (Var.of_pvar pvar, []) in

@@ -1,0 +1,55 @@
+#!/bin/sh
+#
+# Copyright (C) 2014 Stratio (http://stratio.com)
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#         http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+#
+
+set -e
+
+GROUP='stratio'
+USER='decision'
+DIR_INSTALL='/opt/sds/decision-shell'
+
+
+case "$1" in
+  configure)
+
+  # Add stratio group if it doesn't already exists
+  if ! getent group $GROUP >/dev/null 2>&1; then
+    groupadd ${GROUP}
+  fi
+
+  # Add stratio user if it doesn't already exists
+  if ! getent passwd $USER >/dev/null 2>&1; then
+    [ -d /opt ] || mkdir /opt
+    useradd -M -d /opt/sds -g ${GROUP} -s /bin/bash ${USER}
+  else
+    usermod -G $GROUP $USER
+  fi
+
+  chmod 0755 $DIR_INSTALL/bin/*
+  chown -R $USER:$GROUP $DIR_INSTALL
+  
+  chown root:${GROUP} /var/log/sds 2>/dev/null
+  chmod 775 /var/log/sds 2>/dev/null
+  
+  chown root:${GROUP} /var/run/sds 2>/dev/null
+  chmod 775 /var/run/sds 2>/dev/null
+  
+   chown root:${GROUP} /etc/sds 2>/dev/null
+  chmod 775 /etc/sds 2>/dev/null
+
+  ;;
+esac
+

@@ -56,6 +56,22 @@ call_edges = list(call_reader)
 # skip_funcs = skip_func_reader()
 
 
+def retrieve_gettersetter():
+    with open(PROJECT_ROOT_DIR+"GetterSetter.json", "r+") as gsjson:
+        gettersetter_dict = json.load(gsjson)
+    getter, setter = [], []
+    for method, label in gettersetter_dict.items():
+        if label == "getter":
+            getter.append(method)
+        if label == "setter":
+            setter.append(method)
+    return getter, setter
+
+
+# read from the project root directory
+getters, setters = retrieve_gettersetter()
+
+
 # Blacklisting and Whitelisting ======================
 # ====================================================
 
@@ -233,6 +249,40 @@ def flip_sim_edges(G):
             # G.add_edge(child, parent, kind=kind)
 
 
+def is_getter(node):
+    return node in getters
+
+
+def is_setter(node):
+    return node in setters
+
+
+# NOTE Untested
+def delete_gettersetter(G):
+    """Delete the simple getter and setter, and reconnect the transitive APIs"""
+    # first, identify the getters and setters
+    gs_in_G = []
+    for node in list(G.nodes):
+        if is_getter(node) or is_setter(node):
+            gs_in_G.append(node)
+    for gs_method in gs_in_G:
+        # is_around_gs <=> into gs_method or out from gs_method
+        vicinity = []
+        in_nodes = list(map(lambda tup: tup[0], G.in_edges(nbunch=gs_method)))
+        out_nodes = list(map(lambda tup: tup[1], G.out_edges(nbunch=gs_method)))
+        vicinity += in_nodes
+        vicinity += out_nodes
+
+        # Now, remove the gs_method from the graph
+        # Then, edges between nodes in vicinity and gs_method is removed
+        G.remove_node(gs_method)
+
+        # reconnect the disconnected nodes in the vicinity
+        for in_node in in_nodes:
+            for out_node in out_nodes:
+                G.add_edge(in_node, out_node)
+
+
 def main():
     start = time.time()
 
@@ -248,6 +298,9 @@ def main():
     whitelist_callees = recursively_collect_callee(whitelist_classes, graph_for_reference)
     blacklist_callees = recursively_collect_callee(blacklist_classes, graph_for_reference)
     apply_blacklist(graph_for_reference, blacklist_classes, blacklist_callees, whitelist_classes, whitelist_callees)
+
+    # NOTE let's keep an eye on it
+    delete_gettersetter(graph_for_reference)
 
     nx.write_gpickle(graph_for_reference, "graph_for_reference")
 

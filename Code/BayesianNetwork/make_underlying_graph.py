@@ -51,9 +51,12 @@ df_reader = csv.reader(df_data)
 call_data = open("callg.csv", "r+")
 call_reader = csv.reader(call_data)
 
+
 df_edges = list(df_reader)
 call_edges = list(call_reader)
-# skip_funcs = skip_func_reader()
+with open(PROJECT_ROOT_DIR+"skip_func.txt", "r+") as skip_func:
+    skip_funcs = skip_func.readlines()
+    skip_funcs = list(map(lambda string: string.rstrip(), skip_funcs))
 
 
 def retrieve_gettersetter():
@@ -258,12 +261,14 @@ def is_setter(node):
 
 
 # NOTE Untested
-def delete_gettersetter(G):
+def delete_userdefined(G):
     """Delete the simple getter and setter, and reconnect the transitive APIs"""
     # first, identify the getters and setters
     gs_in_G = []
     for node in list(G.nodes):
-        if is_getter(node) or is_setter(node):
+        # if is_getter(node) or is_setter(node):
+        #     gs_in_G.append(node)
+        if node not in skip_funcs:
             gs_in_G.append(node)
     for gs_method in gs_in_G:
         # is_around_gs <=> into gs_method or out from gs_method
@@ -300,7 +305,7 @@ def main():
     apply_blacklist(graph_for_reference, blacklist_classes, blacklist_callees, whitelist_classes, whitelist_callees)
 
     # NOTE let's keep an eye on it
-    delete_gettersetter(graph_for_reference)
+    delete_userdefined(graph_for_reference)
 
     nx.write_gpickle(graph_for_reference, "graph_for_reference")
 

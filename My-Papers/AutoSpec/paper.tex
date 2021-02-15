@@ -1,13 +1,13 @@
 %% For double-blind review submission, w/o CCS and ACM Reference (max submission space)
 \documentclass[acmsmall,review,anonymous]{acmart}\settopmatter{printfolios=true,printccs=false,printacmref=false}
 %% For double-blind review submission, w/ CCS and ACM Reference
-%\documentclass[acmsmall,review,anonymous]{acmart}\settopmatter{printfolios=true}
+% \documentclass[acmsmall,review,anonymous]{acmart}\settopmatter{printfolios=true}
 %% For single-blind review submission, w/o CCS and ACM Reference (max submission space)
-%\documentclass[acmsmall,review]{acmart}\settopmatter{printfolios=true,printccs=false,printacmref=false}
+% \documentclass[acmsmall,review]{acmart}\settopmatter{printfolios=true,printccs=false,printacmref=false}
 %% For single-blind review submission, w/ CCS and ACM Reference
-%\documentclass[acmsmall,review]{acmart}\settopmatter{printfolios=true}
+% \documentclass[acmsmall,review]{acmart}\settopmatter{printfolios=true}
 %% For final camera-ready submission, w/ required CCS and ACM Reference
-%\documentclass[acmsmall]{acmart}\settopmatter{}
+% \documentclass[acmsmall]{acmart}\settopmatter{}
 
 
 %% Journal information
@@ -27,10 +27,10 @@
 %% see authors.acm.org) by publisher for camera-ready submission;
 %% use 'none' for review submission.
 \setcopyright{none}
-%\setcopyright{acmcopyright}
-%\setcopyright{acmlicensed}
-%\setcopyright{rightsretained}
-%\copyrightyear{2018}           %% If different from \acmYear
+% \setcopyright{acmcopyright}
+% \setcopyright{acmlicensed}
+% \setcopyright{rightsretained}
+% \copyrightyear{2018}           %% If different from \acmYear
 
 %% Bibliography style
 \bibliographystyle{ACM-Reference-Format}
@@ -40,33 +40,33 @@
 \citestyle{acmauthoryear}   %% For author/year citations
 
 
-%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%% 
 %% Note: Authors migrating a paper from PACMPL format to traditional
 %% SIGPLAN proceedings format must update the '\documentclass' and
 %% topmatter commands above; see 'acmart-sigplanproc-template.tex'.
-%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%% 
 
 
 %% Some recommended packages.
 \usepackage{booktabs}   %% For formal tables:
-                        %% http://ctan.org/pkg/booktabs
+%% http://ctan.org/pkg/booktabs
 \usepackage{subcaption} %% For complex figures with subfigures/subcaptions
-                        %% http://ctan.org/pkg/subcaption
+%% http://ctan.org/pkg/subcaption
 
 
 \begin{document}
 
 %% Title information
-\title{Automated Taint Analysis Specification via Basian Network}        
-                                        %% when present, will be used in
-                                        %% header instead of Full Title.
+\title{SpecHunter: Interactively Inferring Taint Specifications Using Bayes Net}        
+%% when present, will be used in
+%% header instead of Full Title.
 \titlenote{with title note}             %% \titlenote is optional;
-                                        %% can be repeated if necessary;
-                                        %% contents suppressed with 'anonymous'
+%% can be repeated if necessary;
+%% contents suppressed with 'anonymous'
 \subtitle{Subtitle}                     %% \subtitle is optional
 \subtitlenote{with subtitle note}       %% \subtitlenote is optional;
-                                        %% can be repeated if necessary;
-                                        %% contents suppressed with 'anonymous'
+%% can be repeated if necessary;
+%% contents suppressed with 'anonymous'
 
 
 %% Author information
@@ -82,7 +82,7 @@
 %% Author with single affiliation.
 \author{First1 Last1}
 \authornote{with author1 note}          %% \authornote is optional;
-                                        %% can be repeated if necessary
+%% can be repeated if necessary
 \orcid{nnnn-nnnn-nnnn-nnnn}             %% \orcid is optional
 \affiliation{
   \position{Position1}
@@ -102,17 +102,17 @@
 %                                         %% can be repeated if necessary
 % \orcid{nnnn-nnnn-nnnn-nnnn}             %% \orcid is optional
 % \affiliation{
-%   \position{Position2a}
-%   \department{Department2a}             %% \department is recommended
-%   \institution{Institution2a}           %% \institution is required
-%   \streetaddress{Street2a Address2a}
-%   \city{City2a}
-%   \state{State2a}
-%   \postcode{Post-Code2a}
-%   \country{Country2a}                   %% \country is recommended
+% \position{Position2a}
+% \department{Department2a}             %% \department is recommended
+% \institution{Institution2a}           %% \institution is required
+% \streetaddress{Street2a Address2a}
+% \city{City2a}
+% \state{State2a}
+% \postcode{Post-Code2a}
+% \country{Country2a}                   %% \country is recommended
 % }
-% \email{first2.last2@inst2a.com}         %% \email is recommended
-% \affiliation{
+%   \email{first2.last2@inst2a.com}         %% \email is recommended
+%   \affiliation{
 %   \position{Position2b}
 %   \department{Department2b}             %% \department is recommended
 %   \institution{Institution2b}           %% \institution is required
@@ -122,32 +122,67 @@
 %   \postcode{Post-Code2b}
 %   \country{Country2b}                   %% \country is recommended
 % }
-% \email{first2.last2@inst2b.org}         %% \email is recommended
+%   \email{first2.last2@inst2b.org}         %% \email is recommended
 
 
-%% Abstract
-%% Note: \begin{abstract}...\end{abstract} environment must come
-%% before \maketitle command
+%%   Abstract
+%%   Note: \begin{abstract}...\end{abstract} environment must come
+%%   before \maketitle command
 \begin{abstract}
-Text of abstract \ldots.
+  % Taint analysis becomes a must for Java projects where foreign codes such as
+  % external frameworks are frequently used in building them.
+  % % Taint specification 추론이 왜 필요한지
+  % For accurate taint analysis, the analyzer must first be told which methods are
+  % sources, sinks, sanitizers, or none of them. However, Manually determining such
+  % labels for every method used or defined in a project is a tedious task that
+  % becomes nearly impossible if the codebase becomes large.
+  % % 그러므로 우리의 아이디어를 제시한다
+  % To alleviate such burden, we present Spechunter which, given a small
+  % portion of the entire methods which are not deadcodes, finds out taint specifications
+  % of the rest of the methods in a Java project built with frameworks.
+  % % 우리 아이디어의 특징
+  % Spechunter's uniqueness lies in its efficiency, achieved by only
+  % drawing minimum manpower necessary for doing its job. This is possible due to its
+  % interactive nature: it ends an ongoing interaction as soon as it determines that enough
+  % evidence is obtained from the oracle. To achieve this, Spechunter relies on
+  % building Bayesian networks and performing marginal inference on it given accumulating
+  % evidence. Our experiments show that ...
+
+  % 위의 버전은 영양가도 없으면서 너무 장황하다. Lets give it a full rewrite!
+
+  SpecHunter is a tool for inferring taint specifications, aiming to serve any
+  Java taint analyzers, enabling them to be more precise in finding out data
+  flows from a source method to a sink method, without passing through a
+  sanitizer. By asking questions to an external oracle on selected APIs used in
+  a given Java project, it can acheive the following two goals. First,
+  SpecHunter is language-agnostic, since it only focuses on the Java project at
+  hand, and ignores whether or not the used APIs are implemented in languages
+  other than Java. Therefore, it can be used for any Java projects, regardless
+  of what libraries or frameworks they use. Second, SpecHunter is
+  efficient, because the APIs necessary for efficient propagation is automatically selected
+  by SpecHunter itself. This allows the user to skip all trial-and-error in
+  configurating the training set for a learning model, as required by previous
+  machine learning approaches. Results of our experiments show that SpecHunter
+  actually delivers the aforementioned promises, by running on projects with
+  Scala and C++ libraries, with only \todo questions asked to the user.  
 \end{abstract}
 
 
 %% 2012 ACM Computing Classification System (CSS) concepts
 %% Generate at 'http://dl.acm.org/ccs/ccs.cfm'.
 \begin{CCSXML}
-<ccs2012>
-<concept>
-<concept_id>10011007.10011006.10011008</concept_id>
-<concept_desc>Software and its engineering~General programming languages</concept_desc>
-<concept_significance>500</concept_significance>
-</concept>
-<concept>
-<concept_id>10003456.10003457.10003521.10003525</concept_id>
-<concept_desc>Social and professional topics~History of programming languages</concept_desc>
-<concept_significance>300</concept_significance>
-</concept>
-</ccs2012>
+  <ccs2012>
+  <concept>
+  <concept_id>10011007.10011006.10011008</concept_id>
+  <concept_desc>Software and its engineering~General programming languages</concept_desc>
+  <concept_significance>500</concept_significance>
+  </concept>
+  <concept>
+  <concept_id>10003456.10003457.10003521.10003525</concept_id>
+  <concept_desc>Social and professional topics~History of programming languages</concept_desc>
+  <concept_significance>300</concept_significance>
+  </concept>
+  </ccs2012>
 \end{CCSXML}
 
 \ccsdesc[500]{Software and its engineering~General programming languages}
@@ -166,18 +201,31 @@ Text of abstract \ldots.
 %% environment and commands, and keywords command.
 \maketitle
 
+\section{Introduction}
+% A large portion of Java projects are built using frameworks such as Spring,
+% Hibernate, or Android. These frameworks are foreign codes, so importing their
+% APIs may introduce new security vulnerabilities. Finding out such security holes
+% requires running taint analysis, which looks for a data flow starting from a
+% source method to a sink method without passing through a sanitizer method.
+% However, taint analyzers should be correctly told which method is a source,
+% sink, sanitizer, or none of them at the first place, otherwise it may result in
+% false negatives or false positives. However, manually labelling all methods used
+% or defined in a project with the above four labels is a laborous task to be
+% manually done, and becomes nearly impossible to do so if the codebase gets
+% larger. Therefore, there have been previous works to lessen this burden.
 
-\section{Our Framework}
+% 2021-02-15 16:44:59에 다시 쓴 버전:
 
-\[
-\mathbb{M} \rightarrow OurFramesork \rightarrow \{Source, Sink,
-Senitizer, None\}^{\mathbb{M}}
-\]
+Taint analysis, whether static or dynamic, aims to find security vulnerabilities lurking
+in the given program. These vulnerabilities include SQL injection, and cross-site
+scripting, and abused printf-arguments, and they are typically formulated as a
+data flow starting from a 
+
 
 
 %% Acknowledgments
 \begin{acks}                            %% acks environment is optional
-                                        %% contents suppressed with 'anonymous'
+  %% contents suppressed with 'anonymous'
   %% Commands \grantsponsor{<sponsorID>}{<name>}{<url>} and
   %% \grantnum[<url>]{<sponsorID>}{<number>} should be used to
   %% acknowledge financial support and will be used by metadata
@@ -194,7 +242,7 @@ Senitizer, None\}^{\mathbb{M}}
 
 
 %% Bibliography
-%\bibliography{bibfile}
+% \bibliography{bibfile}
 
 
 %% Appendix

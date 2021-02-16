@@ -27,6 +27,7 @@ from matplotlib.ticker import MaxNLocator
 from pomegranate import *
 from scrape_oracle_docs import *
 from toolz import valmap
+from functools import reduce
 
 parser = argparse.ArgumentParser()
 parser.add_argument("solution_file", help="path to the solution file. input 'None' if you don't have any.",
@@ -100,7 +101,7 @@ def random_loop(global_precision_list, snapshot_dict, BN_for_inference, graph_fo
     elif oracle_response == 'non':
         current_evidence[query] = 4
     elif oracle_response == 'exit':
-        if not kwargs["have_solution"]:
+        if SOLUTION is not None:
             draw_precision_graph(graph_file, list(range(1, len(BN_for_inference.states)+1)),
                                  precision_list, num_of_states, "random", interactive=False)
             draw_stability_graph(graph_file, list(range(1, len(BN_for_inference.states)+1)),
@@ -473,7 +474,7 @@ def visualize_snapshot(state_names, graph_for_reference, snapshot, dependent_nod
     for confident_node in confident_nodes:
         x, y = node_posmap[confident_node]
         plt.text(x, y+0.1, s='conf', bbox=dict(facecolor='blue', alpha=0.5), horizontalalignment='center')
-    
+
     for node_name in list(graph_for_reference.nodes):
         if node_name not in state_names:
             graph_for_reference.remove_node(node_name)
@@ -510,7 +511,7 @@ def draw_precision_graph(graph_file, x, y, num_of_states, loop_type, interactive
             os.mkdir(graph_file+"_stats")
         plt.savefig(graph_file+"_stats"+os.sep+\
                     "precision_graph_"+NOW+"_"+loop_type+".png")
-    
+
 
 def draw_stability_graph(graph_file, x, y, num_of_states, loop_type, interactive=True):
     """stability graph를 그리는 함수. NOTE: x와 y의 input 길이를 맞춰줘야 함.
@@ -643,7 +644,6 @@ def report_meta_statistics(graph_for_reference, BN_for_inference):
     max_num_of_out_edges = max(list(map(lambda node: graph_for_reference.out_edges(nbunch=node), state_names)))
     print("maximum # of in-edges:", max_num_of_in_edges)
     print("maximum # of out-edges:", max_num_of_out_edges)
-    print("elapsed time: ", time.time() - start)
 
 
 # Methods for calculating graph values ====================
@@ -710,7 +710,7 @@ def single_loop(snapshot_dict, graph_file, graph_for_reference,
     initial_precision_inferred_list = [np.nan for _ in range(len(BN_for_inference.states))]
     initial_window = [np.ndarray([0]) for _ in range(WINDOW_SIZE)]
     initial_asked = list(learned_evidence.keys())
-    
+
     initial_updated_nodes = []
     for initial_query in initial_asked:
         initial_updated_nodes += list(set(d_connected(graph_for_reference, BN_for_inference,

@@ -569,6 +569,14 @@ let extract_MethodModifier ~(modifier:Method_Modifier.t) =
       Method_Modifier.DontKnow in
   return @@ Method_Modifier.equal modifier meth_modifier
 
+   
+(* callgraph에 key가 meth이고 value가 name인 쌍이 있는지를 보자 *)
+(** Check if an invocation to a certain method is made. *)
+let extract_InvocationName ~(name:string) =
+  fun (meth:Procname.t) ->
+  return @@ Hashtbl.fold (fun k v acc ->
+      (Procname.equal k meth && String.equal (Procname.to_string v) name) || acc) callgraph false
+
 
 (* instantiated Higher-order Functions ============== *)
 (* ================================================== *)
@@ -775,6 +783,49 @@ let sourceToReturn_features = [
 ]
 
 
+let invocationName_features = [
+  extract_InvocationName ~name:"escap"
+; extract_InvocationName ~name:"replac"
+; extract_InvocationName ~name:"strip"
+; extract_InvocationName ~name:"match"
+; extract_InvocationName ~name:"encod"
+; extract_InvocationName ~name:"regex"
+; extract_InvocationName ~name:"check"
+; extract_InvocationName ~name:"verif"
+; extract_InvocationName ~name:"authori"
+; extract_InvocationName ~name:"authen"
+; extract_InvocationName ~name:"login"
+; extract_InvocationName ~name:"logout"
+; extract_InvocationName ~name:"security"
+; extract_InvocationName ~name:"credential"
+; extract_InvocationName ~name:"bind"
+; extract_InvocationName ~name:"connect"
+; extract_InvocationName ~name:"get"
+; extract_InvocationName ~name:"read"
+; extract_InvocationName ~name:"decod"
+; extract_InvocationName ~name:"unescap"
+; extract_InvocationName ~name:"load"
+; extract_InvocationName ~name:"request"
+; extract_InvocationName ~name:"creat"
+; extract_InvocationName ~name:"output"
+; extract_InvocationName ~name:"writ"
+; extract_InvocationName ~name:"set"
+; extract_InvocationName ~name:"updat"
+; extract_InvocationName ~name:"send"
+; extract_InvocationName ~name:"handl"
+; extract_InvocationName ~name:"put"
+; extract_InvocationName ~name:"log"
+; extract_InvocationName ~name:"run"
+; extract_InvocationName ~name:"execut"
+; extract_InvocationName ~name:"dump"
+; extract_InvocationName ~name:"print"
+; extract_InvocationName ~name:"pars"
+; extract_InvocationName ~name:"makedb"
+; extract_InvocationName ~name:"execute"
+; extract_InvocationName ~name:"saniti"
+]
+
+
 let methodModifier_features = [
   extract_MethodModifier ~modifier:Static
 ; extract_MethodModifier ~modifier:Public
@@ -809,7 +860,8 @@ let extract_HasParameters =
   fun (meth:Procname.t) ->
   match lookup_pdesc meth with
   | Some pdesc ->
-      return @@ not @@ Int.equal (List.length @@ Procdesc.get_formals @@ pdesc) 0
+      (* The this var should be ignored, so the # of formals should be more than 1 *)
+      return @@ Int.( > ) (List.length @@ Procdesc.get_formals @@ pdesc) 1
   | None -> DontKnow
 
 
@@ -902,10 +954,10 @@ let extract_ParamTypeMatchesReturnType =
 
 
 (** Check if an invocation to a certain method is made. *)
-let extract_InvocationName =
-  fun (meth:Procname.t) ->
-  return @@ Hashtbl.fold (fun _ v acc ->
-      Procname.equal meth v || acc) callgraph false
+(* let extract_InvocationName =
+ *   fun (meth:Procname.t) ->
+ *   return @@ Hashtbl.fold (fun _ v acc ->
+ *       Procname.equal meth v || acc) callgraph false *)
 
 
 (** Returns if the method is a constructor or not. *)
@@ -1186,7 +1238,6 @@ let main () : unit =
     ; extract_ReturnsConstant
     ; extract_ParaFlowsToReturn
     ; extract_ParamTypeMatchesReturnType
-    ; extract_InvocationName
     ; extract_IsConstructor
     ; extract_IsRealSetter
     ; extract_VoidOnMethod ] in

@@ -276,11 +276,7 @@ let pp_ap_list list =
 
 (** get_formal_args는 skip_function에 대해 실패한다는 점을 이용한 predicate *)
 let is_skip_function (methname:Procname.t) : bool =
-  try
-    let _ = get_formal_args methname in
-    false
-  with _ ->
-    true
+  Option.is_none @@ Procdesc.load methname
 
 
 let save_skip_function () : unit =
@@ -707,7 +703,7 @@ let main () =
       not @@ is_placeholder_vardef var &&
       not @@ Pvar.is_frontend_tmp pv)
   |> List.iter ~f:(fun (proc, ap) ->
-      L.progress "computing chain for %a in %a@." MyAccessPath.pp ap Procname.pp proc;
+      (* L.progress "computing chain for %a in %a@." MyAccessPath.pp ap Procname.pp proc; *)
       add_chain (proc, ap) (compute_chain ap));
   let wrapped_chains = Hashtbl.fold (fun (current_meth, target_ap) chain acc ->
       wrap_chain_representation current_meth target_ap (List.map ~f:(fun (proc, status) ->

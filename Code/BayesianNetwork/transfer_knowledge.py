@@ -71,10 +71,10 @@ def find_conf_sols(final_snapshot, current_asked):
 def learn(previous_lessons, final_snapshot, current_asked):
     """이전의 lesson들과 confident 노드들, 그리고 oracle response를 모두 모아 내놓는다."""
     oracle_response = dict(find_oracle_response(final_snapshot, current_asked))
-    # conf_sols = dict(find_conf_sols(final_snapshot, current_asked))
-    # previous_lessons_nodes = {**oracle_response, **conf_sols}
-    # return {**previous_lessons, **previous_lessons_nodes}
-    return {**previous_lessons, **oracle_response}
+    conf_sols = dict(find_conf_sols(final_snapshot, current_asked))
+    previous_lessons_nodes = {**oracle_response, **conf_sols}
+    return {**previous_lessons, **previous_lessons_nodes}
+    # return {**previous_lessons, **oracle_response}
 
 
 def convert_bool_to_int(df):
@@ -102,7 +102,7 @@ def scoring_function(node1, node2):
 
     true_count = elementwise_and.sum().sum()
 
-    return True if true_count >= 2 else False
+    return true_count >= 2
 
 
 # Tentative rule activator ===================================
@@ -352,7 +352,7 @@ def pairwise_similarity(lessons_nodes, state_names):
     carPro = carPro[carPro.leave != False]
     carPro = carPro.drop(columns=['leave'])
 
-    carPro = carPro.drop(columns=['class1', 'rtntype1', 'name1', 'intype1', 'id1', 
+    carPro = carPro.drop(columns=['class1', 'rtntype1', 'name1', 'intype1', 'id1',
                                   'class2', 'rtntype2', 'name2', 'intype2'])
 
     similars = carPro.to_dict('split')['data']
@@ -432,4 +432,3 @@ def main(previous_graph_nodes, next_graph_nodes, lessons):
 
     # 그 evidence를 모두 합쳐서 내놓기
     return {**pairwise_similarity_dict, **one_call_dict, **a_priori_dict}
-    # return a_priori_dict

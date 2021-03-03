@@ -112,17 +112,10 @@ def find_edge_to_erase(G, cycle_path_edges):
 
 
 def decycle(G):
-    # print('decycling (this may take some time)..')
-    # print("# of nodes:", len(G.nodes))
-    # print('# of rich nodes before decycling:', len(isolated_nodes(G)))
-    # print('# of isolated nodes before decycling:', len(rich_nodes(G)))
     while True:
         try:
             cycle_path_edges = nx.find_cycle(G)
         except:
-            # print("decycling done")
-            # print('# of rich nodes after decycling:', len(rich_nodes(G)))
-            # print('# of isolated nodes after decycling:', len(isolated_nodes(G)))
             return
         random_edge = find_edge_to_erase(G, cycle_path_edges)
         G.remove_edge(*random_edge)

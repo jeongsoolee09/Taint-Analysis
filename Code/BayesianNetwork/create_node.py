@@ -4,8 +4,14 @@ import re
 import os.path
 import json
 
+
 regex = r'\((.*)\)'
 regex = re.compile(regex)
+
+
+class ProcessingError(Exception):
+    def __init__(self, string):
+        self.string = string
 
 
 def retrieve_path():
@@ -39,9 +45,8 @@ def process(method_id):
     """splits a method id into (classname, rtntype, methodname, intype, id)"""
     try:
         space_index = method_id.index(' ')
-    except:
-        print("create_node.process() failed on:", method_id)
-        exit(1)
+    except ValueError:
+        raise ProcessingError("create_node.process() failed on: " + method_id)
     split_on_open_paren = method_id.split('(')
     last_dot_index = split_on_open_paren[0].rindex('.')
     open_paren_index = method_id.index('(')
@@ -89,7 +94,7 @@ def main():
     start = time.time()
 
     # let's read the files created by static analysis
-    methodfile = os.path.join(PROJECT_ROOT_DIR, 'Methods.txt')
+    methodfile = os.path.join(PROJECT_ROOT_DIR, 'skip_func.txt')
     callgraphfile = os.path.join(PROJECT_ROOT_DIR, 'Callgraph.txt')
 
     setofallmethods = populate_sofallm(methodfile, callgraphfile)

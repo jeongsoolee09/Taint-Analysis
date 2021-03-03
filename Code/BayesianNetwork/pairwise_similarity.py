@@ -31,7 +31,14 @@ def normalize_featurevalue(value):
     return True if value == "SwanFeatureExtractor.True" else False
 
 
-# TODO: filter lambda functions
+def filtermethod(string):
+    return "__" not in string and\
+        "<init>" not in string and\
+        "<clinit>" not in string and\
+        "lambda" not in string and\
+        "Lambda" not in string
+
+
 def normalize_featurevectors(df):
     # First, normalize the method names
     method_name = df.iloc[:, 0]
@@ -42,14 +49,12 @@ def normalize_featurevectors(df):
     rest_normalized = rest.applymap(normalize_featurevalue)
     normalized_df = pd.concat([methname_normalized, rest_normalized], axis=1)
 
-    # Drop the temporary lambda functions
-    normalized_df = normalized_df[normalized_df["method_name"].map(lambda name: "$Lambda$" not in name) == True]
+    # Drop unnecessary functions
+    normalized_df = normalized_df[normalized_df["method_name"].map(filtermethod) == True]
     return normalized_df
 
 
 FEATURE_VECTORS = normalize_featurevectors(pd.read_csv(PROJECT_ROOT_DIR + "SwanFeatures.csv"))
-FEATURE_VECTORS_without_name = FEATURE_VECTORS.drop("method_name", axis=1)
-FEATURE_VECTORS_true_count = FEATURE_VECTORS.sum(axis=1)
 
 
 # Visualization Utilities ===========================================
@@ -167,10 +172,6 @@ def get_scores_given_columns(colnames):
     return acc
 
 
-# temp var for testing
-testrow = FEATURE_VECTORS.iloc[404, :]
-
-
 def get_true_columns(row):
     """Given a row, get the list of column names with True values."""
     to_dict = dict(row)
@@ -254,13 +255,22 @@ def pairwise_sim_even(row):
 def score_all_rows():
     """Get the 'similar row indices' for all rows.
        NOTE This is a bottleneck: it takes 1min 37s using Intel i9"""
-    # call pairwise_sim to every row of FEATURE_VECTORS
+    # Call pairwise_sim to every row of FEATURE_VECTORS
     similar_row_indices_df = FEATURE_VECTORS.parallel_apply(pairwise_sim_uneven, axis=1)
+
+    # and convert the resulting Series to a DataFrame
+    similar_row_indices_df = pd.DataFrame(similar_row_indices_df)
+
+    # Name the columns appropriately
+    similar_row_indices_df = similar_row_indices_df.rename(columns={0: "similar_indices"})
+
+    # Save to .csv
     similar_row_indices_df.to_csv("pairwise_sims.csv", mode="w+")
 
 
 # Main ==============================================================
 # ===================================================================
+
 
 def main():
     score_all_rows()

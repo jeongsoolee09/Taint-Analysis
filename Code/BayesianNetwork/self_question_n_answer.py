@@ -26,6 +26,7 @@ from matplotlib.ticker import MaxNLocator
 from pomegranate import *
 from scrape_oracle_docs import *
 from toolz import valmap
+from functools import reduce
 
 parser = argparse.ArgumentParser()
 parser.add_argument("solution_file", help="path to the solution file. input 'None' if you don't have any.",
@@ -35,27 +36,42 @@ args = parser.parse_args()
 # Constants ========================================
 # ==================================================
 
+def retrieve_path():
+    """paths.json을 읽고 path를 가져온다."""
+    with open("paths.json", "r+") as pathjson:
+        pathdict = json.load(pathjson)
+    return pathdict["project_root_directory"]
+
+PROJECT_ROOT_DIR = retrieve_path()
+
+if args.solution_file != "None":
+    with open(args.solution_file, "r+") as solution_file:
+        SOLUTION = json.load(solution_file)
+else:
+    SOLUTION = None
+
 NOW = datetime.now().strftime("%Y-%m-%d-%H:%M:%S")
 DF_EDGES = list(df_reader)
 CALL_EDGES = list(call_reader)
 
-if args.solution_file != "None":
-    with open("solution_sagan.json", "r+") as saganjson:
-        SOLUTION = json.load(saganjson)
-else:
-    SOLUTION = None
-
 WINDOW_SIZE = 4
 GLOBAL_GRAPH = nx.read_gpickle("graph_for_reference")
-TOTAL_NUM_OF_METHS = GLOBAL_GRAPH.number_of_nodes()
+
+with open(PROJECT_ROOT_DIR+"skip_func.txt", "r+") as skip_func:
+    skip_funcs = skip_func.readlines()
+    skip_funcs = list(map(lambda string: string.rstrip(), skip_funcs))
+
+
+# TODO skip_func만 물어보도록 guide하기
+
 
 # Random loop ========================================
 # ====================================================
 
-def random_loop(global_precision_list, snapshot_dict, graph_for_reference, BN_for_inference,
+def random_loop(global_precision_list, snapshot_dict, BN_for_inference, graph_for_reference,
                 interaction_number, current_asked, current_evidence, prev_snapshot,
-                precision_list, stability_list, precision_inferred_list, loop_time_list, window,
-                graph_file):
+                precision_list, stability_list, precision_inferred_list,
+                loop_time_list, window, graph_file):
     """The main interaction functionality, asking randomly
        Parameters:
             - BN_for_inference: the Bayesian Network.
@@ -74,6 +90,7 @@ def random_loop(global_precision_list, snapshot_dict, graph_for_reference, BN_fo
 
     random_index = random.randint(0, len(BN_for_inference.states)-1)
     state_names = list(map(lambda node: node.name, BN_for_inference.states))
+    num_of_states = len(state_names)
     query = state_names[random_index]
     while query in current_asked:
         random_index = random.randint(0, len(BN_for_inference.states)-1)
@@ -83,6 +100,7 @@ def random_loop(global_precision_list, snapshot_dict, graph_for_reference, BN_fo
 
     # exit the function based on confidence.
     if its_time_to_terminate:
+        save_data_as_csv(prev_snapshot, state_names)
         return (prev_snapshot, precision_list, stability_list,
                 precision_inferred_list, current_asked, global_precision_list)
 
@@ -126,13 +144,15 @@ def random_loop(global_precision_list, snapshot_dict, graph_for_reference, BN_fo
 
     print(interaction_number, ":", (current_precision/len(state_names))*100, "%")
 
+    # record this loop's looping time
     loop_time_list.append(time.time()-loop_start)
 
     # loop!
     return random_loop(global_precision_list, snapshot_dict, BN_for_inference, graph_for_reference,
                        interaction_number+1, current_asked, current_evidence, new_snapshot,
-                       precision_list, stability_list, precision_inferred_list, loop_time_list, window,
-                       graph_file)
+                       precision_list, stability_list, precision_inferred_list,
+                       loop_time_list, window, graph_file)
+
 
 # tactical loop and its calculations =====================
 # ========================================================
@@ -158,10 +178,14 @@ def tactical_loop(global_precision_list, snapshot_dict, graph_for_reference, BN_
     loop_start = time.time()
 
     state_names = list(map(lambda node: node.name, BN_for_inference.states))
+    APIs = list(filter(lambda node: node in skip_funcs, state_names))
+
+    num_of_states = len(state_names)
+    num_of_APIs = len(APIs)
 
     # some variables to make our code resemble English
     there_are_nodes_left = find_max_d_con(graph_for_reference, BN_for_inference, current_asked,
-                                          updated_nodes, state_names)
+                                          updated_nodes, APIs)
     there_are_no_nodes_left = not there_are_nodes_left
     its_time_to_terminate = time_to_terminate(BN_for_inference, current_evidence, window, criteria='plateau')
     not_yet_time_to_terminate = not its_time_to_terminate
@@ -176,14 +200,14 @@ def tactical_loop(global_precision_list, snapshot_dict, graph_for_reference, BN_
 
     # exit the function based on various termination measures.
     if there_are_no_nodes_left and not_yet_time_to_terminate:
-        if set(state_names) == set(current_asked):
-            print("\nWarning: some distributions are not fully determined.\n")
+        # if set(APIs) == set(current_asked):
+            # print("\nWarning: some distributions are not fully determined.\n")
             return (prev_snapshot, precision_list, stability_list,
                     precision_inferred_list, loop_time_list, current_asked,
                     global_precision_list)
-        else:
-            query, dependent_nodes = find_max_d_con(graph_for_reference, BN_for_inference,
-                                                    [], [], remove_sublist(state_names, current_asked))
+        # else:
+        #     query, dependent_nodes = find_max_d_con(graph_for_reference, BN_for_inference,
+        #                                             [], [], remove_sublist(APIs, current_asked))
     elif there_are_no_nodes_left and its_time_to_terminate:
         return (prev_snapshot, precision_list, stability_list,
                 precision_inferred_list, loop_time_list, current_asked,
@@ -191,6 +215,7 @@ def tactical_loop(global_precision_list, snapshot_dict, graph_for_reference, BN_
     elif there_are_nodes_left and not_yet_time_to_terminate:
         pass
     elif there_are_nodes_left and its_time_to_terminate:
+        save_data_as_csv(APIs, prev_snapshot)
         return (prev_snapshot, precision_list, stability_list,
                 precision_inferred_list, loop_time_list, current_asked,
                 global_precision_list)
@@ -198,7 +223,7 @@ def tactical_loop(global_precision_list, snapshot_dict, graph_for_reference, BN_
     # ask the chosen method and fetch the answer from the solutions
     oracle_response = SOLUTION[query]
     updated_nodes += list(d_connected(graph_for_reference, BN_for_inference,
-                                      query, current_asked, state_names))
+                                      query, current_asked, APIs))
 
     if oracle_response == 'src':
         current_evidence[query] = 1
@@ -213,7 +238,7 @@ def tactical_loop(global_precision_list, snapshot_dict, graph_for_reference, BN_
 
     # the new snapshot after the observation
     new_raw_snapshot = BN_for_inference.predict_proba(current_evidence, n_jobs=-1)
-    new_snapshot = make_names_and_params(state_names, new_raw_snapshot)
+    new_snapshot = make_names_and_params(APIs, new_raw_snapshot)
 
     # update the snapshot_dict
     snapshot_dict[graph_file] = new_snapshot
@@ -221,22 +246,22 @@ def tactical_loop(global_precision_list, snapshot_dict, graph_for_reference, BN_
     global_precision_list.append(global_precision)
 
     # the new precision after the observation
-    current_precision = calculate_precision(state_names, new_snapshot)
+    current_precision = calculate_precision(APIs, new_snapshot)
     precision_list[interaction_number] = current_precision
 
     # the new stability after the observation
-    current_stability = calculate_stability(state_names, prev_snapshot, new_snapshot)
+    current_stability = calculate_stability(APIs, prev_snapshot, new_snapshot)
     stability_list[interaction_number] = current_stability
 
     # the new precision purely inferred by the BN, after the observation
-    current_precision_inferred = calculate_precision_inferred(state_names, new_snapshot, interaction_number)
+    current_precision_inferred = calculate_precision_inferred(APIs, new_snapshot, interaction_number)
     precision_inferred_list[interaction_number] = current_precision_inferred
 
     # slide the window
     window = window[1:]          # dequeue the oldest one
     window.append(new_snapshot)  # and enqueue the newest one
 
-    print(interaction_number, ":", (current_precision/len(state_names))*100, "%")
+    print(interaction_number, ":", (current_precision/len(APIs))*100, "%")
 
     # record this loop's looping time
     loop_time_list.append(time.time()-loop_start)
@@ -271,7 +296,8 @@ def forall(unary_pred, collection):
     return reduce(lambda acc, elem: unary_pred(elem) and acc, collection, True)
 
 
-def find_max_d_con(graph_for_reference, BN_for_inference, current_asked, updated_nodes, list_of_all_nodes):
+def find_max_d_con(graph_for_reference, BN_for_inference,
+                   current_asked, updated_nodes, list_of_all_nodes):
     """가장 d-connected 노드가 많은 노드를 리턴한다. 더 이상 고를 수 있는 노드가 없다면 None을 리턴한다."""
     node_dataframe = pd.DataFrame(list_of_all_nodes, columns=['nodes'])
     mapfunc = lambda row: len(d_connected(graph_for_reference, BN_for_inference,
@@ -286,17 +312,15 @@ def find_max_d_con(graph_for_reference, BN_for_inference, current_asked, updated
 
 
 def is_confident(parameters):
-    """확률분포 (Distribution 오브젝트의 parameters 부분)를 보고, 가장 높은 확률이 다른 확률들보다 적어도 0.1은 높은지 확인한다."""
+    """확률분포 (Distribution 오브젝트의 parameters 부분)를 보고,
+       가장 높은 확률이 다른 확률들보다 적어도 0.1은 높은지 확인한다."""
     if type(parameters) == dict:
         parameters = list(parameters.values())
     first_rank = max(parameters)
     parameters_ = parameters[:]
     parameters_.remove(first_rank)
     second_rank = max(parameters_)
-    if first_rank - second_rank < 0.05:
-        return False
-    else:
-        return True
+    return first_rank - second_rank < 0.05
 
 
 def time_to_terminate(BN_for_inference, current_evidence, window, **kwargs):
@@ -473,8 +497,7 @@ def report_results(state_names, initial_snapshot, final_snapshot):
 
 def save_data_as_csv(state_names, final_snapshot):
     """inference가 다 끝난 label들을 csv로 저장한다."""
-    names_and_dists_final = make_names_and_params(state_names, final_snapshot)
-    names_and_labels_final = list(map(lambda tup: (tup[0], find_max_val(tup[1])), names_and_dists_final))
+    names_and_labels_final = list(map(lambda tup: (tup[0], find_max_val(tup[1])), final_snapshot))
     out_df = pd.DataFrame(names_and_labels_final, columns=["name", "label"])
     out_df.to_csv("inferred.csv", mode='w')
 
@@ -489,7 +512,6 @@ def report_meta_statistics(graph_for_reference, BN_for_inference):
     max_num_of_out_edges = max(list(map(lambda node: graph_for_reference.out_edges(nbunch=node), state_names)))
     print("maximum # of in-edges:", max_num_of_in_edges)
     print("maximum # of out-edges:", max_num_of_out_edges)
-    print("elapsed time: ", time.time() - start)
 
 
 # Methods for calculating graph values ====================
@@ -534,8 +556,6 @@ def calculate_precision_inferred(state_names, current_snapshot, number_of_intera
 def find_pickled_graphs():
     return list([f for f in os.listdir('.') if re.match(r'.*_graph_[0-9]+$', f)])
 
-
-
 # main ====================================================
 # =========================================================
 
@@ -558,7 +578,7 @@ def single_loop(snapshot_dict, graph_file, graph_for_reference,
     initial_precision_inferred_list = [np.nan for _ in range(len(BN_for_inference.states))]
     initial_window = [np.ndarray([0]) for _ in range(WINDOW_SIZE)]
     initial_asked = list(learned_evidence.keys())
-    
+
     initial_updated_nodes = []
     for initial_query in initial_asked:
         initial_updated_nodes += list(set(d_connected(graph_for_reference, BN_for_inference,
@@ -593,8 +613,11 @@ def single_loop(snapshot_dict, graph_file, graph_for_reference,
 
 def one_pass(snapshot_dict, graph_file, graph_for_reference, BN_for_inference, lessons,
              prev_graph_states, prev_graph_file, debug=False):
-    """하나의 그래프에 대해 BN을 굽고 interaction을 진행한다."""
+    """하나의 그래프에 대해 BN을 굽고 interaction을 진행한다.
+       Here, we don't need APIs instead of state_names, since we would like to
+       transfer knowledge regarding EVERY methods, including user-defined ones."""
     state_names = list(map(lambda node: node.name, BN_for_inference.states))
+
     learned_evidence = transfer_knowledge.main(prev_graph_states, state_names, lessons)
 
     if debug:
@@ -624,8 +647,9 @@ def evaluate_global_precision(snapshot_dict):
     num_of_correct_nodes = 0
     for _, snapshot in snapshot_dict.items():
         state_names = list(map(lambda tup: tup[0], snapshot))
-        num_of_correct_nodes += calculate_precision(state_names, snapshot)
-    return (num_of_correct_nodes/TOTAL_NUM_OF_METHS) * 100
+        APIs = list(filter(lambda node: node in skip_funcs, state_names))
+        num_of_correct_nodes += calculate_precision(APIs, snapshot)
+    return (num_of_correct_nodes/len(skip_funcs)) * 100
 
 
 def draw_n_save_global_precision_graph(global_precision_list):
@@ -635,15 +659,16 @@ def draw_n_save_global_precision_graph(global_precision_list):
     ax.xaxis.set_major_locator(MaxNLocator(integer=True))
     ax.yaxis.set_major_locator(MaxNLocator(integer=True))
     precision_figure.clf()
-    plt.xlim(1, TOTAL_NUM_OF_METHS)
+    plt.xlim(1, len(skip_funcs))
     plt.ylim(0, 100)
     plt.xlabel('# of interactions')
     plt.ylabel('% of correct nodes')
     plt.title("Global Precision development during interaction")
-    plt.plot([x for x in range(TOTAL_NUM_OF_METHS)], global_precision_list, 'b-')
+    plt.plot([x for x in range(len(skip_funcs))], global_precision_list, 'b-')
     plt.savefig("global_precision_graph_"+NOW+".png")
 
 
+# TODO: do we need APIs instead of state_names here?
 def main():
     graph_files = find_pickled_graphs()
     graph_files = list(filter(lambda x: '_poor' not in x, graph_files))
@@ -662,6 +687,8 @@ def main():
         graph_for_reference = nx.read_gpickle(graph_file)
         graph_for_reference.name = graph_file
         BN_for_inference = make_BN.main(graph_for_reference, filename=graph_file, stash_poor=True)
+        if len(BN_for_inference.states) == 0:  # the graph file contained only poor nodes!
+            continue
         state_names = list(map(lambda node: node.name, BN_for_inference.states))
         initial_raw_snapshot = BN_for_inference.predict_proba({}, n_jobs=-1)
         initial_snapshot = make_names_and_params(state_names, initial_raw_snapshot)
@@ -670,7 +697,6 @@ def main():
         BN_queue.append((graph_for_reference, BN_for_inference))
 
     recycled_graphs = deal_with_poor_nodes.main()
-    # print("made", len(recycled_graphs), "recycled graphs")
 
     i = 0
     for recycled_graph in recycled_graphs:
@@ -678,6 +704,8 @@ def main():
         graph_for_reference = recycled_graph
         graph_for_reference.name = graph_file
         BN_for_inference = make_BN.main(graph_for_reference, filename=None, stash_poor=False)
+        if len(BN_for_inference.states) == 0:  # the graph file contained only poor nodes!
+            continue
         state_names = list(map(lambda node: node.name, BN_for_inference.states))
         initial_raw_snapshot = BN_for_inference.predict_proba({}, n_jobs=-1)
         initial_snapshot = make_names_and_params(state_names, initial_raw_snapshot)
@@ -697,7 +725,7 @@ def main():
                      prev_graph_states, prev_graph_file, debug=True)
         global_precision_list += global_precisions
 
-    for _ in range(TOTAL_NUM_OF_METHS-len(global_precision_list)):
+    for _ in range(len(skip_funcs)-len(global_precision_list)):
         global_precision_list.append(np.nan)
 
     draw_n_save_global_precision_graph(global_precision_list)

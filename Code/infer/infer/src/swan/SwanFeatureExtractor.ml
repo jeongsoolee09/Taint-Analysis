@@ -570,12 +570,11 @@ let extract_MethodModifier ~(modifier:Method_Modifier.t) =
   return @@ Method_Modifier.equal modifier meth_modifier
 
    
-(* callgraph에 key가 meth이고 value가 name인 쌍이 있는지를 보자 *)
 (** Check if an invocation to a certain method is made. *)
 let extract_InvocationName ~(name:string) =
   fun (meth:Procname.t) ->
   return @@ Hashtbl.fold (fun k v acc ->
-      (Procname.equal k meth && String.equal (Procname.to_string v) name) || acc) callgraph false
+      (Procname.equal k meth && String.is_substring (Procname.to_string v) ~substring:name) || acc) callgraph false
 
 
 (* instantiated Higher-order Functions ============== *)
@@ -783,6 +782,14 @@ let sourceToReturn_features = [
 ]
 
 
+let methodModifier_features = [
+  extract_MethodModifier ~modifier:Static
+; extract_MethodModifier ~modifier:Public
+; extract_MethodModifier ~modifier:Private
+; extract_MethodModifier ~modifier:Final
+]
+
+
 let invocationName_features = [
   extract_InvocationName ~name:"escap"
 ; extract_InvocationName ~name:"replac"
@@ -823,14 +830,6 @@ let invocationName_features = [
 ; extract_InvocationName ~name:"makedb"
 ; extract_InvocationName ~name:"execute"
 ; extract_InvocationName ~name:"saniti"
-]
-
-
-let methodModifier_features = [
-  extract_MethodModifier ~modifier:Static
-; extract_MethodModifier ~modifier:Public
-; extract_MethodModifier ~modifier:Private
-; extract_MethodModifier ~modifier:Final
 ]
 
 
@@ -895,7 +894,7 @@ let extract_ReturnsConstant =
           ~f:(fun acc _ instr ->
               is_returning_constant instr || acc)
   | None -> DontKnow
-  
+
 
 (** Feature that checks wether a parameter flows to return value. *)
 let extract_ParaFlowsToReturn =
@@ -1027,8 +1026,6 @@ let csv_header : string list =
   ; "15_ParaFlowsToReturn"
 
   ; "17_ParamTypeMatchesReturnType"
-
-  ; "19_InvocationName"
 
   ; "20_IsConstructor"
 
@@ -1206,7 +1203,48 @@ let csv_header : string list =
   ; "22_MethodModifier_Static"
   ; "22_MethodModifier_Public"
   ; "22_MethodModifier_Private"
-  ; "22_MethodModifier_Final" ]
+  ; "22_MethodModifier_Final"
+
+  ; "19_InvocationName_escap"
+  ; "19_InvocationName_replac"
+  ; "19_InvocationName_strip"
+  ; "19_InvocationName_match"
+  ; "19_InvocationName_encod"
+  ; "19_InvocationName_regex"
+  ; "19_InvocationName_check"
+  ; "19_InvocationName_verif"
+  ; "19_InvocationName_authori"
+  ; "19_InvocationName_authen"
+  ; "19_InvocationName_login"
+  ; "19_InvocationName_logout"
+  ; "19_InvocationName_security"
+  ; "19_InvocationName_credential"
+  ; "19_InvocationName_bind"
+  ; "19_InvocationName_connect"
+  ; "19_InvocationName_get"
+  ; "19_InvocationName_read"
+  ; "19_InvocationName_decod"
+  ; "19_InvocationName_unescap"
+  ; "19_InvocationName_load"
+  ; "19_InvocationName_request"
+  ; "19_InvocationName_creat"
+  ; "19_InvocationName_output"
+  ; "19_InvocationName_writ"
+  ; "19_InvocationName_set"
+  ; "19_InvocationName_updat"
+  ; "19_InvocationName_send"
+  ; "19_InvocationName_handl"
+  ; "19_InvocationName_put"
+  ; "19_InvocationName_log"
+  ; "19_InvocationName_run"
+  ; "19_InvocationName_execut"
+  ; "19_InvocationName_dump"
+  ; "19_InvocationName_print"
+  ; "19_InvocationName_pars"
+  ; "19_InvocationName_makedb"
+  ; "19_InvocationName_execute"
+  ; "19_InvocationName_saniti"
+  ]
 
 (** convert the feature value to vallist *)
 let convert_to_csv_repr (vallist:feature_value list) : string list =
@@ -1255,7 +1293,8 @@ let main () : unit =
     ; returnTypeContainsName_features
     ; returnType_features
     ; sourceToReturn_features
-    ; methodModifier_features ]
+    ; methodModifier_features
+    ; invocationName_features ]
     |> List.fold ~f:(fun acc feat ->
         acc @ feat) ~init:[]
     |> (@) simple_feature_queue in

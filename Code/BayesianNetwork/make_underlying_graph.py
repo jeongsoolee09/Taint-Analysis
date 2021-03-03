@@ -7,6 +7,7 @@ import random
 import os.path
 import json
 import matplotlib.pyplot as plt
+import random
 
 from create_node import process
 from scrape_oracle_docs import scrape_class_names
@@ -44,7 +45,6 @@ def is_java_builtin(method_id, built_in_classes):
     return method_class in built_in_classes
 
 
-# eagerly loaded (line by line) txts
 df_data = open("df.csv", "r+")
 df_reader = csv.reader(df_data)
 
@@ -52,8 +52,14 @@ call_data = open("callg.csv", "r+")
 call_reader = csv.reader(call_data)
 
 
-df_edges = list(df_reader)
-call_edges = list(call_reader)
+def no_reflexive(relation):
+    return list(filter(lambda tup: tup[0] != tup[1], relation))
+
+
+df_edges = no_reflexive(map(lambda lst: (lst[5], lst[10]), list(df_reader)[1:]))
+call_edges = no_reflexive(map(lambda lst: (lst[5], lst[10]), list(call_reader)[1:]))
+
+
 with open(PROJECT_ROOT_DIR+"skip_func.txt", "r+") as skip_func:
     skip_funcs = skip_func.readlines()
     skip_funcs = list(map(lambda string: string.rstrip(), skip_funcs))
@@ -252,42 +258,6 @@ def flip_sim_edges(G):
             # G.add_edge(child, parent, kind=kind)
 
 
-def is_getter(node):
-    return node in getters
-
-
-def is_setter(node):
-    return node in setters
-
-
-# NOTE Untested
-def delete_userdefined(G):
-    """Delete the simple getter and setter, and reconnect the transitive APIs"""
-    # first, identify the getters and setters
-    gs_in_G = []
-    for node in list(G.nodes):
-        # if is_getter(node) or is_setter(node):
-        #     gs_in_G.append(node)
-        if node not in skip_funcs:
-            gs_in_G.append(node)
-    for gs_method in gs_in_G:
-        # is_around_gs <=> into gs_method or out from gs_method
-        vicinity = []
-        in_nodes = list(map(lambda tup: tup[0], G.in_edges(nbunch=gs_method)))
-        out_nodes = list(map(lambda tup: tup[1], G.out_edges(nbunch=gs_method)))
-        vicinity += in_nodes
-        vicinity += out_nodes
-
-        # Now, remove the gs_method from the graph
-        # Then, edges between nodes in vicinity and gs_method is removed
-        G.remove_node(gs_method)
-
-        # reconnect the disconnected nodes in the vicinity
-        for in_node in in_nodes:
-            for out_node in out_nodes:
-                G.add_edge(in_node, out_node)
-
-
 def main():
     start = time.time()
 
@@ -300,12 +270,11 @@ def main():
 
     graph_for_reference = init_graph(built_in_classes)
 
+    label_edges(graph_for_reference)
+
     whitelist_callees = recursively_collect_callee(whitelist_classes, graph_for_reference)
     blacklist_callees = recursively_collect_callee(blacklist_classes, graph_for_reference)
     apply_blacklist(graph_for_reference, blacklist_classes, blacklist_callees, whitelist_classes, whitelist_callees)
-
-    # NOTE let's keep an eye on it
-    delete_userdefined(graph_for_reference)
 
     nx.write_gpickle(graph_for_reference, "graph_for_reference")
 

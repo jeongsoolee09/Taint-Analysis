@@ -1,12 +1,9 @@
-import csv
 import json
 import pandas as pd
-import pickle
 import matplotlib.pyplot as plt
-import os.path
 from pandarallel import pandarallel
 from toolz import valfilter
-from itertools import product, repeat
+from itertools import repeat
 
 
 pandarallel.initialize()
@@ -171,7 +168,7 @@ def get_scores_given_columns(colnames):
 
 
 # temp var for testing
-testrow = FEATURE_VECTORS.iloc[303, :]
+testrow = FEATURE_VECTORS.iloc[404, :]
 
 
 def get_true_columns(row):
@@ -181,8 +178,9 @@ def get_true_columns(row):
     return list(True_keys)
 
 
-def pairwise_sim(row):
-    """get the scores of all rows regarding a single given row."""
+# TODO Let's give an option for which scoring scheme to use: even or uneven.
+def pairwise_sim_uneven(row):
+    """get the scores of all rows regarding a single given row, using an uneven scoring scheme."""
     # Exclude the row in question
     FEATURE_VECTORS_other = FEATURE_VECTORS[FEATURE_VECTORS.method_name != row[0]]
 
@@ -193,20 +191,56 @@ def pairwise_sim(row):
     row_without_name = row.drop("method_name")
 
     # Now, perform the row-wise AND
-    anded = FEATURE_VECTORS_without_name.apply(lambda other_row: row_without_name & other_row)
+    anded = FEATURE_VECTORS_without_name.apply(lambda other_row: row_without_name & other_row, axis=1)
 
     # Vector containing list of column names with True values, row by row.
     # NOTE This very likely is a bottleneck
-    True_colnames_df = FEATURE_VECTORS_without_name.apply(lambda row: get_true_columns(row), axis=1)
+    True_colnames_df = anded.apply(lambda row: get_true_columns(row), axis=1)
 
     # Now, get the similarity scores based on the above colnames with True values
-    sim_scores_df = True_colnames_df.apply(lambda row: get_scores_given_columns(row))
+    sim_scores_df = True_colnames_df.apply(lambda colnames: get_scores_given_columns(colnames))
 
     # Append this to the FEAUTURE_VECTOR_other
     FEATURE_VECTORS_other["score"] = sim_scores_df
 
     # Retrieve rows with values greater than threshold
-    threshold = 550  # TEMP: 나중에 따로 튜닝할 것.
+    threshold = 600  # TEMP: 나중에 따로 튜닝할 것.
+
+    # Select the rows with scores higher than the threshold
+    above_threshold_rows = FEATURE_VECTORS_other[FEATURE_VECTORS_other["score"] >= threshold]
+
+    # Get the row indices selected above
+    similar_row_indices = above_threshold_rows.index
+
+    return list(similar_row_indices)
+
+
+def pairwise_sim_even(row):
+    """get the scores of all rows regarding a single given row, using an even scoring scheme."""
+    # Exclude the row in question
+    FEATURE_VECTORS_other = FEATURE_VECTORS[FEATURE_VECTORS.method_name != row[0]]
+
+    # Then, drop the "method_name" column (for convenient row-wise AND-ing)
+    FEATURE_VECTORS_without_name = FEATURE_VECTORS_other.drop("method_name", axis=1)
+
+    # The row in question, without the "method_name"
+    row_without_name = row.drop("method_name")
+
+    # Now, perform the row-wise AND
+    anded = FEATURE_VECTORS_without_name.apply(lambda other_row: row_without_name & other_row, axis=1)
+
+    # Vector containing list of column names with True values, row by row.
+    # NOTE This very likely is a bottleneck
+    True_colnames_df = anded.apply(lambda row: get_true_columns(row), axis=1)
+
+    # Simply count the number of True values
+    sim_scores_df = True_colnames_df.apply(lambda colnames: len(colnames) * 100)
+
+    # Append this to the FEAUTURE_VECTOR_other
+    FEATURE_VECTORS_other["score"] = sim_scores_df
+
+    # Retrieve rows with values greater than threshold
+    threshold = 500  # TEMP: 나중에 따로 튜닝할 것.
 
     # Select the rows with scores higher than the threshold
     above_threshold_rows = FEATURE_VECTORS_other[FEATURE_VECTORS_other["score"] >= threshold]
@@ -221,7 +255,7 @@ def score_all_rows():
     """Get the 'similar row indices' for all rows.
        NOTE This is a bottleneck: it takes 1min 37s using Intel i9"""
     # call pairwise_sim to every row of FEATURE_VECTORS
-    similar_row_indices_df = FEATURE_VECTORS.parallel_apply(pairwise_sim, axis=1)
+    similar_row_indices_df = FEATURE_VECTORS.parallel_apply(pairwise_sim_uneven, axis=1)
     similar_row_indices_df.to_csv("pairwise_sims.csv", mode="w+")
 
 

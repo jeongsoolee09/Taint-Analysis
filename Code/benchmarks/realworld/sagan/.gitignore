@@ -65,3 +65,5 @@ Methods.txt
 *.log
 .project
 run/
+SwanFeatures.csv
+jars/

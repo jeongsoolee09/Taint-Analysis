@@ -9,3 +9,17 @@
 *.ipr
 *.iws
 *.log
+Annotations.json
+Callgraph.txt
+Chain.json
+FeatureValueComposition/
+GetterSetter.json
+Methods.txt
+SwanFeatures.csv
+infer-out/
+packages-count.csv
+__pycache__/
+find_import.hy
+skip_func.txt
+skip_func.txt.old
+engine/

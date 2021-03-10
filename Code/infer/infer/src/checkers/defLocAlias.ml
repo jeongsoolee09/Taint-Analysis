@@ -516,14 +516,8 @@ module TransferFunctions (CFG : ProcCfg.S) = struct
     | _ -> mk_dummy Procname.empty_block
 
 
-  let exec_call (ret_id:Ident.t) (e_fun:Exp.t) (arg_ts:(Exp.t*Typ.t) list)
+  let exec_call (ret_id:Ident.t) (callee_methname:Procname.t) (arg_ts:(Exp.t*Typ.t) list)
       analyze_dependency (apair:P.t) (methname:Procname.t) : P.t =
-    let callee_methname =
-      match e_fun with
-      | Const (Cfun fn) -> fn
-      | _ -> L.die InternalError
-               "exec_call failed, ret_id: %a, e_fun: %a astate_set: %a, methname: %a"
-               Ident.pp ret_id Exp.pp e_fun S.pp (fst apair) Procname.pp methname in
     match analyze_dependency callee_methname with
     | Some (_, callee_summary) ->
         begin match input_is_void_type arg_ts (fst apair) with
@@ -604,6 +598,9 @@ module TransferFunctions (CFG : ProcCfg.S) = struct
         let newtuple = (methname, ph, loc, aliasset) in
         let newstate = newtuple in
         (S.add newstate astate_set, historymap)
+
+
+  let exec_lib_call = raise NotImplemented
 
 
   (** Procname.Java.t를 포장한 Procname.t에서 해당 Procname.Java.t를 추출한다. *)
@@ -755,7 +752,14 @@ module TransferFunctions (CFG : ProcCfg.S) = struct
         exec_store exp1 exp2 methname prev node
     | Prune _ -> prev
     | Call ((ret_id, _), e_fun, arg_ts, _, _) ->
-        exec_call ret_id e_fun arg_ts analyze_dependency prev methname
+      begin match e_fun with
+        | Const (Cfun callee_methname) ->
+          if Option.is_some @@ Procdesc.load callee_methname
+          then exec_call ret_id e_fun arg_ts analyze_dependency prev methname
+          else exec_lib_call  (* TODO *)
+        | _ -> L.die InternalError
+                 "exec_call failed, ret_id: %a, e_fun: %a astate_set: %a, methname: %a"
+                 Ident.pp ret_id Exp.pp e_fun S.pp (fst apair) Procname.pp methname
     | Metadata _ -> prev
 
 

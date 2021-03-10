@@ -94,7 +94,7 @@ def main():
     start = time.time()
 
     # let's read the files created by static analysis
-    methodfile = os.path.join(PROJECT_ROOT_DIR, 'skip_func.txt')
+    methodfile = os.path.join(PROJECT_ROOT_DIR, 'Methods.txt')
     callgraphfile = os.path.join(PROJECT_ROOT_DIR, 'Callgraph.txt')
 
     setofallmethods = populate_sofallm(methodfile, callgraphfile)

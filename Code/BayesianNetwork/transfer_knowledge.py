@@ -8,6 +8,7 @@ from operator import itemgetter
 from split_underlying_graph import draw_callgraph
 from create_edge import no_symmetric
 from create_node import process
+from itertools import product, repeat
 
 # Constants ============================================
 # ======================================================
@@ -16,6 +17,21 @@ SIM_VECTORS = pd.read_csv("sim_vectors.csv", index_col=0)
 CALLGRAPH = nx.read_gpickle("callgraph")
 EXTRA_FEATURES_PREV = None      # extra features for previous graph
 EXTRA_FEATURES_NEXT = None      # extra features for next graph
+
+
+def retrieve_path():
+    """paths.json을 읽고 path를 가져온다."""
+    with open("paths.json", "r+") as pathjson:
+        pathdict = json.load(pathjson)
+    return pathdict["project_root_directory"]
+
+
+SIMS = pd.read_csv("sim.csv", index_col=0)
+
+
+class ThisIsImpossible(Exception):
+    pass
+
 
 # Functions ============================================
 # ======================================================
@@ -310,55 +326,65 @@ def GET_POST_SELECT_is_sin_or_src(**kwargs):
 # evidence builders ==========================================
 # ============================================================
 
-def pairwise_similarity(lessons_nodes, state_names):
-    """lessons의 내용을 보고, state_names 중에서 충분히 닮은 것들을 찾아낸다."""
-    # 맨 처음 loop을 돌 때는 lesson이 안 쌓여 있기 때문
-    if lessons_nodes == dict():
+# sample data
+sample_lesson = { "void Iterable.forEach(Consumer)": 2.0,
+                  "String NamedList.getName(int)": 4.0,
+                  "boolean String.isEmpty()": 4.0,
+                  "String String.valueOf(long)": 4.0,
+                  "long Meter.getCount()": 4.0,
+                  "double Meter.getFifteenMinuteRate()": 4.0,
+                  "Object DatumReader.read(Object,Decoder)": 4.0,
+                  "int AtomicInteger.get()": 4.0,
+                  "String String.toLowerCase()": 4.0,
+                  "String String.toUpperCase()": 4.0,
+                  "ExistsBuilder CuratorFramework.checkExists()": 1.0,
+                  "void Logger.info(String)": 4.0,
+                  "BinaryEncoder SpecificData.getEncoder(ObjectOutput)": 4.0 }
+sample_lesson_df = pd.DataFrame(sample_lesson.items(), columns=["lessons_id", "lessons_labels"])
+# sample state
+sample_states = list(nx.read_gpickle("Decision-1.1.0_graph_6").nodes)
+sample_states_df = pd.DataFrame(sample_states, columns=["state_name_id"])
+
+
+def pairwise_similarity(lessons, state_names):
+    """lessons의 내용을 보고, state_names 중에서 충분히 닮은 것들을 찾아낸다.
+       lessons: node name |-> label의 dictionary
+       state_names: string list, 그 다음에 interaction할 그래프의 모든 state들 (API, non-API 포함)"""
+
+    # There are no lessons accumulated when the loop first starts
+    if lessons == dict():
         return dict()
 
-    # 충분히 similar한 것들 찾아내기
+    # Prepare two DataFrames
+    lesson_df = pd.DataFrame(lessons.items(), columns=["id1", "lessons_labels"])
+    state_names_df = pd.DataFrame(state_names, columns=["id2"])
 
-    # 전처리: (class, rtntype, methodname, intype, id)의 튜플 리스트로 만들기
-    previous_lessons_nodes = list(lessons_nodes.keys())
-    previous_lessons_nodes = list(map(process, previous_lessons_nodes))
+    # find the similar enough ones:
+    # either find: (previous_lessons_node, state_name) or
+    #              (state_name, previous_lessons_node) in SIMS dataframe
+    # To do so, we create a Cartesian Product of previous_lessons_nodes and state_names,
+    # and check for each row if it exists in the SIMS dataframe.
 
-    state_names = list(map(process, state_names))
+    # Warning: SQL Magic ahead!
 
-    # 두 개의 DF를 준비: 이전의 오라클 답변들과 현재 그래프의 노드 이름들
-    previous_lessons_nodes = pd.DataFrame(previous_lessons_nodes)  # 이전의 오라클 답변들
-    state_names = pd.DataFrame(state_names)         # 다음에 갈아끼울 BN state 이름들
+    # The Cartesian Product.
+    carpro = lesson_df.merge(state_names_df, how="cross")
 
-    previous_lessons_nodes.columns = ['class', 'rtntype', 'name', 'intype', 'id']
-    state_names.columns = ['class', 'rtntype', 'name', 'intype', 'id']
+    # perform a left-join
+    left_join = pd.merge(carpro, SIMS, on=["id1", "id2"], how="left", indicator="exists?")
 
-    # 그 두 DF의 Cartesian Product를 제작
-    previous_lessons_nodes['key'] = 1
-    state_names['key'] = 1
-    carPro = pd.merge(previous_lessons_nodes, state_names, how='outer', on=['key'])
-    carPro = carPro.drop("key", axis=1)
-    carPro.columns = ['class1', 'rtntype1', 'name1', 'intype1', 'id1',
-                      'class2', 'rtntype2', 'name2', 'intype2', 'id2']
+    # only select "id1", "id2", and "exists?"
+    projected = left_join.filter(["id1", "id2", "lessons_labels", "exists?"])
 
-    # make a label column
-    mapfunc = lambda row: lessons_nodes[row['id1']]
-    labels = carPro.apply(mapfunc, axis=1)
-    carPro['labels'] = labels
+    # only select the rows which exists in both SIMS and carpro
+    selected = projected[projected["exists?"] == "both"]
 
-    # filter rows without sufficient similarity
-    mapfunc = lambda row: scoring_function(row['id1'], row['id2'])
-    bool_df = carPro.apply(mapfunc, axis=1)
-    carPro['leave'] = bool_df
+    # drop the column from sample_lesson_df
+    selected = selected.drop("id1")
 
-    carPro = carPro[carPro.leave != False]
-    carPro = carPro.drop(columns=['leave'])
+    raw_dict = selected.to_dict(orient='records')
 
-    carPro = carPro.drop(columns=['class1', 'rtntype1', 'name1', 'intype1', 'id1',
-                                  'class2', 'rtntype2', 'name2', 'intype2'])
-
-    similars = carPro.to_dict('split')['data']
-    similars = dict(similars)
-
-    return similars
+    return dict(map(lambda dict: tuple(dict.values()), raw_dict))
 
 
 def one_call_relation(lessons, state_names):

@@ -134,7 +134,7 @@ let remove_duplicates_from (astate_set:S.t) : S.t =
   (* 위의 리스트 안의 각 리스트들 안에 들어 있는 튜플들 중 가장 alias set이 큰 놈을 남김 *)
   let leave_tuple_with_biggest_aliasset = fun lst ->
     if (List.length lst) > 1
-    then 
+    then
       List.fold_left lst
         ~init:bottuple
         ~f:(fun (acc:T.t) (elem:T.t) ->
@@ -175,8 +175,8 @@ let mk_returnv procname =
 let find_first_occurrence_of (ap:MyAccessPath.t) : Procname.t * S.t * S.elt =
   let astate_set = BFS.fold (fun (_, astate) acc ->
       match S.exists (fun tup -> MyAccessPath.equal (second_of tup) ap) astate with
-      | true -> (*L.progress "found it!\n";*) astate
-      | false -> (*L.progress "nah..:(\n";*) acc) S.empty callgraph in
+      | true -> astate
+      | false -> acc) S.empty callgraph in
   match S.elements astate_set with
   | [] -> (Procname.empty_block, S.empty, bottuple) (* probably clinit *)
   | _ ->
@@ -397,7 +397,7 @@ let filter_carrriedover_ap (aliasset:A.t) : A.t =
         A.remove returnv_ap aliasset
     | statelist -> (* return 지점이 여러 개인 method로, 제거 대상이 여러 개이다. *)
         let aps_to_remove = A.of_list @@ List.map ~f:second_of statelist in
-        A.remove returnv_ap @@ A.diff aliasset aps_to_remove 
+        A.remove returnv_ap @@ A.diff aliasset aps_to_remove
 
 
 (** pvar가 여러 개 있는 aliasset 내에서 관련 없는 pvar들을 (하나 남기고) 모두 없앰 *)
@@ -463,18 +463,12 @@ let is_carriedover_ap (ap:A.elt) (current_methname:Procname.t) (current_astate_s
     ~init:false callee_nodes
 
 
-(* let get_declaring_function_of (var:Var.t) : Procname.t =
- *   match Var.get_declaring_function var with
- *   | None -> L.die InternalError "get_declaring_function_of failed, var: %a@." Var.pp var
- *   | Some methname -> methname  *)
-
-
 let rec compute_chain_inner (current_methname:Procname.t) (current_astate_set:S.t) (current_astate:S.elt) (current_chain:chain) (retry:int) : chain =
   (* 현재 보고 있는 astate의 aliasset을 청소한 결과물: returnv, carryover된 var, 그리고 callv를 모두 청소함 *)
   let current_aliasset_cleanedup = A.filter (fun tup ->
-      not @@ is_returnv_ap tup &&
+      (* not @@ is_returnv_ap tup && *)
       not @@ is_carriedover_ap tup current_methname current_astate_set &&
-      not @@ is_callv_ap tup &&
+      (* not @@ is_callv_ap tup && *)
       not @@ is_logical_var (fst tup) &&
       not @@ is_frontend_tmp_var (fst tup))
     @@ fourth_of current_astate in
@@ -482,7 +476,8 @@ let rec compute_chain_inner (current_methname:Procname.t) (current_astate_set:S.
   (* 직전에 방문했던 astate에서 끄집어낸 variable *)
   let just_before = extract_ap_from_chain_slice @@ pop current_chain in
   (* 직전의 variable과 현재의 variable과 returnv를 모두 제거하고 나서 남은 pvar를 봤더니 *)
-  match collect_program_var_aps_from current_aliasset_cleanedup ~self:current_vardef ~just_before:just_before with
+  match collect_program_var_aps_from current_aliasset_cleanedup
+          ~self:current_vardef ~just_before:just_before with
   | [] -> (* either redefinition or dead end *)
       let states = S.elements (remove_duplicates_from current_astate_set) in
       let redefined_states = List.fold_left states ~init:[] ~f:(fun (acc:T.t list) (st:T.t) ->
@@ -509,7 +504,7 @@ let rec compute_chain_inner (current_methname:Procname.t) (current_astate_set:S.
                  T.pp current_astate
                  pp_chain current_chain end
   | [ap] -> (* either definition or call *)
-      if Var.is_return (fst ap)
+      if Var.is_return @@ fst ap
       then (* caller에서의 define *)
         let var_being_returned =
           try find_var_being_returned current_aliasset_cleanedup
@@ -525,17 +520,17 @@ let rec compute_chain_inner (current_methname:Procname.t) (current_astate_set:S.
           let have_been_before_filtered =
             filter_have_been_before states_with_return_var current_chain in
           let new_state = try
-              remove_from_aliasset ~from:(find_earliest_astate_within
-                                            have_been_before_filtered current_methname)
+              remove_from_aliasset
+                ~from:(find_earliest_astate_within have_been_before_filtered current_methname)
                 ~remove:(var_being_returned, [])
-            with _ -> bottuple in
+            with _ ->
+              bottuple in
           if T.equal new_state bottuple then (current_methname, Dead) :: current_chain else
             let new_slice = (first_of new_state, Define (current_methname, second_of new_state)) in
             (* cycle을 막기 위해, 이미 동일 slice를 만든 적이 있었다면 생성 중단 *)
             if List.mem current_chain new_slice ~equal:double_equal
             then (current_methname, Dead)::current_chain
-            else
-              let new_chain = new_slice::current_chain in
+            else let new_chain = new_slice::current_chain in
               compute_chain_inner direct_caller caller_summary new_state new_chain 3
       else (* 동일 procedure 내에서의 define 혹은 call *)
         (* 다음 튜플을 현재 procedure 내에서 찾을 수 있는지를 기준으로 경우 나누기 *)
@@ -544,38 +539,41 @@ let rec compute_chain_inner (current_methname:Procname.t) (current_astate_set:S.
               let current_aliasset = fourth_of current_astate in
               let callv = A.fold (fun ap acc ->
                   if is_callv_ap ap then ap else acc) current_aliasset (second_of bottuple) in
-              let callee_methname =  extract_callee_from callv in
+              let callee_methname = extract_callee_from callv in
               (* 파라미터 (ap) 튜플들 *)
               let new_states = search_target_tuples_by_vardef_ap ap
                   callee_methname (remove_duplicates_from @@ get_summary callee_methname) in
               (* 여기서 skip_function이라 new_states가 비었을 가능성에 대비해야 함 *)
               if List.is_empty new_states
-              then handle_empty_astateset current_methname current_astate_set callee_methname else
-                let new_state = try
-                    find_earliest_astate_within new_states current_methname
-                  with _ -> bottuple in
-                if T.equal new_state bottuple then (current_methname, Dead) :: current_chain else
-                  let new_chain = (current_methname, Call (callee_methname, ap))::current_chain in
+              then handle_empty_astateset current_methname current_astate_set callee_methname
+              else let new_state = try
+                       find_earliest_astate_within new_states current_methname
+                     with _ ->
+                       bottuple in
+                if T.equal new_state bottuple
+                then (current_methname, Dead) :: current_chain
+                else let new_chain = (current_methname, Call (callee_methname, ap))::current_chain in
                   compute_chain_inner callee_methname (get_summary callee_methname) new_state new_chain 3
           | nonempty_list -> (* 동일 proc에서의 Define *)
               let new_state = try
                   find_earliest_astate_within
                     (S.elements (remove_duplicates_from (S.of_list nonempty_list))) current_methname
                 with _ -> bottuple in
-              if T.equal new_state bottuple then (current_methname, Dead) :: current_chain else
-                let new_slice = (current_methname, Define (current_methname, ap)) in
+              if T.equal new_state bottuple
+              then (current_methname, Dead) :: current_chain
+              else let new_slice = (current_methname, Define (current_methname, ap)) in
                 (* cycle을 막기 위해, 이미 동일 slice를 만든 적이 있었다면 생성 중단 *)
                 if List.mem current_chain new_slice ~equal:double_equal
                 then (current_methname, Dead)::current_chain
-                else
-                  let new_chain = new_slice::current_chain in
+                else let new_chain = new_slice::current_chain in
                   compute_chain_inner current_methname current_astate_set new_state new_chain 3 end
   | _ -> (* 현재 astate의 aliasset을 청소해서 불필요한 pvar를 없애고 재시도 *)
       let (a, b, c, aliasset) = current_astate in
       let current_aliasset_cleaned_up = cleanup_aliasset aliasset current_vardef in
       let current_astate_cleaned_up = (a, b, c, current_aliasset_cleaned_up) in
       if not @@ Int.equal retry 0
-      then compute_chain_inner current_methname (current_astate_set) current_astate_cleaned_up current_chain (retry-1)
+      then compute_chain_inner current_methname (current_astate_set)
+          current_astate_cleaned_up current_chain (retry-1)
       else (current_methname, Dead)::current_chain (* unsoundness introduced *)
 
 
@@ -620,7 +618,9 @@ let collect_all_proc_and_ap () =
 
 (** chains 해시 테이블 전체를 프린트한다 *)
 let chains_to_string hashtbl =
-  Hashtbl.fold (fun (proc, ap) v acc -> String.concat ~sep:"\n" [acc; (F.asprintf "(%a, %a): %a" Procname.pp proc MyAccessPath.pp ap pp_chain v)]) hashtbl ""
+  Hashtbl.fold (fun (proc, ap) v acc ->
+      String.concat ~sep:"\n" [acc; (F.asprintf "(%a, %a): %a" Procname.pp proc MyAccessPath.pp ap pp_chain v)])
+    hashtbl ""
 
 
 (** 파일로 call graph를 출력 *)

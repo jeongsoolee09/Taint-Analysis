@@ -50,6 +50,11 @@ module TransferFunctions (CFG : ProcCfg.S) = struct
     Var.of_pvar @@ Pvar.mk (Mangled.from_string "callv") procname
 
 
+  (** specially mangled variable to mark an AP as passed to a callee *)
+  let mk_callv_pvar procname =
+    Pvar.mk (Mangled.from_string "callv") procname
+
+
   let mk_dummy procname =
     Var.of_pvar @@ Pvar.mk (Mangled.from_string "dummy") procname
 
@@ -90,11 +95,12 @@ module TransferFunctions (CFG : ProcCfg.S) = struct
           let proc_cond = Procname.equal proc methname in
           let id_cond = A.mem (id, []) aliasset in
           let var_cond = not @@ Var.equal var (placeholder_vardef proc) in
-          if var_cond then 
-            (let most_recent_loc = H.get_most_recent_loc (methname, (var, [])) (snd apair) in
-             let loc_cond = LocationSet.equal most_recent_loc loc in
-             if proc_cond && id_cond && loc_cond then
-               targetTuple else inner methname id t)
+          if var_cond then
+            let most_recent_loc = H.get_most_recent_loc (methname, (var, [])) (snd apair) in
+            let loc_cond = LocationSet.equal most_recent_loc loc in
+            begin if proc_cond && id_cond && loc_cond
+              then targetTuple
+              else inner methname id t end
           else inner methname id t in
     inner methname pvar elements
 
@@ -513,8 +519,7 @@ module TransferFunctions (CFG : ProcCfg.S) = struct
   let convert_exp_to_logical (exp:Exp.t) =
     match exp with
     | Var id -> id
-    | _ -> L.die InternalError
-             "Could not convert %a to logical var" Exp.pp exp
+    | _ -> Ident.create_none () (* create a dummy *)
 
 
   let exec_call (ret_id:Ident.t) (callee_methname:Procname.t) (arg_ts:(Exp.t*Typ.t) list)
@@ -562,7 +567,8 @@ module TransferFunctions (CFG : ProcCfg.S) = struct
                         (astate_set_callv_added, snd apair)
                     | _ ->  (* Callee in User Code! *)
                         let actuals_logical = arg_ts >>| (fst >> convert_exp_to_logical) >>| Var.of_id in
-                        let actuallog_formal_binding = leave_only_var_tuples @@ zip actuals_logical formals in
+                        let actuallog_formal_binding =
+                          leave_only_var_tuples @@ zip actuals_logical formals in
                         (* mapfunc finds pvar tuples transmitted as actual arguments *)
                         let mapfunc = fun (var:Var.t) ->
                           begin match var with
@@ -577,7 +583,8 @@ module TransferFunctions (CFG : ProcCfg.S) = struct
                                                   |> List.filter ~f:is_logical_var
                                                   |> List.map ~f:mapfunc in
                         let actualpvar_alias_added =
-                          add_bindings_to_alias_of_tuples methname actuallog_formal_binding actuals_pvar_tuples (snd apair)
+                          add_bindings_to_alias_of_tuples methname actuallog_formal_binding
+                            actuals_pvar_tuples (snd apair)
                           |> S.of_list in
                         let mangled_callv = (mk_callv callee_methname, []) in
                         let actualpvar_callv_added =
@@ -588,7 +595,8 @@ module TransferFunctions (CFG : ProcCfg.S) = struct
                         then (* void function call! *)
                           (astate_set_summary_applied, snd apair)
                         else
-                          let applied_state_rmvd = S.diff astate_set_summary_applied (S.of_list actuals_pvar_tuples) in
+                          let applied_state_rmvd =
+                            S.diff astate_set_summary_applied (S.of_list actuals_pvar_tuples) in
                           let newset = S.union applied_state_rmvd actualpvar_callv_added in
                           (newset, snd apair) end
                 with _ -> (* corner case: maybe one of actuals contains literal null? *)
@@ -631,27 +639,27 @@ module TransferFunctions (CFG : ProcCfg.S) = struct
        formal parameter naming schema:
             param_{callee_name_simple}_{line}_{param_index} *)
     let (>>|) = List.(>>|) in
-    let callee_name_simple = Procname.to_simplified_string ~withclass:false callee_methname in
+    let callee_name_simple = Procname.get_method callee_methname in
     let loc = Int.to_string @@ (CFG.Node.loc node).line in
     let param_indices = List.init (List.length arg_ts) ~f:Int.to_string in
     let mangles : Mangled.t list =
       param_indices >>| (fun param_index ->
-          Mangled.from_string (callee_name_simple ^ loc ^ param_index)) in
+          Mangled.from_string @@ "param_" ^ callee_name_simple ^ "_" ^ loc ^ "_" ^ param_index) in
     let mangled_params : Pvar.t list =
       List.map ~f:(fun mangle ->
           Pvar.mk mangle callee_methname) mangles in
     (* 1-1. Associate mangled parameters and their resp. actual arguments as aliases. *)
     let actuals_logical = arg_ts >>| (fst >> convert_exp_to_logical) in
-    let astate_set' = batch_alias_assoc astate_set actuals_logical mangled_params in
+    let callvs = List.init (List.length actuals_logical)
+        ~f:(fun _ -> mk_callv_pvar callee_methname) in
+    let astate_set' = batch_alias_assoc astate_set actuals_logical mangled_params
+                      |> (fun astate_set ->
+                          batch_alias_assoc astate_set actuals_logical callvs) in
 
-    (* 2. formal return variable 만들기 *)
-    let formal_return_var = Pvar.get_ret_pvar callee_methname in
     (* 2-1. Associate ret_id and formal return variable as aliases. *)
     (* We need to create a new astate (ph tuple) here *)
     let returnv = mk_returnv callee_methname in
-    let new_aliasset = A.of_list [ (Var.of_id ret_id, [])
-                                 ; (Var.of_pvar formal_return_var, [])
-                                 ; (returnv, []) ] in
+    let new_aliasset = A.of_list [ (Var.of_id ret_id, []); (returnv, []) ] in
     let ph = (placeholder_vardef caller_methname, []) in
     let newtuple = (caller_methname, ph, LocationSet.singleton Location.dummy, new_aliasset) in
     (S.add newtuple astate_set', histmap)
@@ -810,8 +818,10 @@ module TransferFunctions (CFG : ProcCfg.S) = struct
         | Const (Cfun callee_methname) ->
           if Option.is_some @@ Procdesc.load callee_methname
           then exec_call ret_id callee_methname arg_ts analyze_dependency prev methname
-          else (exec_lib_call ret_id callee_methname arg_ts
-                  analyze_dependency prev methname node)
+          else begin try (exec_lib_call ret_id callee_methname arg_ts
+                      analyze_dependency prev methname node)
+            with _ ->
+              exec_call ret_id callee_methname arg_ts analyze_dependency prev methname end
         | _ -> L.die InternalError
                  "exec_call failed, ret_id: %a, e_fun: %a astate_set: %a, methname: %a"
                  Ident.pp ret_id Exp.pp e_fun S.pp (fst prev) Procname.pp methname end

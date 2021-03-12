@@ -233,7 +233,7 @@ let is_private_method (meth:Procname.t) =
   | _ -> false
 
 
-let is_final_method (meth:Procname.t) = 
+let is_final_method (meth:Procname.t) =
   let procdesc =
     match lookup_pdesc meth with
     | Some pdesc_ -> pdesc_
@@ -364,7 +364,7 @@ let transitively_collect_aliases ap summary methname =
                        not @@ MyAccessPath.equal current_ap tup)
                    |> A.elements in
     big_union_A @@ List.map ~f:(inner methname) aliasset in
-  inner methname ap 
+  inner methname ap
 
 
 let find_params_and_friends methname summary =
@@ -569,7 +569,7 @@ let extract_MethodModifier ~(modifier:Method_Modifier.t) =
       Method_Modifier.DontKnow in
   return @@ Method_Modifier.equal modifier meth_modifier
 
-   
+
 (** Check if an invocation to a certain method is made. *)
 let extract_InvocationName ~(name:string) =
   fun (meth:Procname.t) ->

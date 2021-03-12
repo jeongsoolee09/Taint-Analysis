@@ -58,7 +58,7 @@ module Domain = DefLocAliasDomain
 module MyAccessPath = DefLocAliasDomain.MyAccessPath
 
 
-(** List from of all methods represented as Procname.t *)
+(** List of all methods represented as Procname.t *)
 let all_procnames = ref []
 
 
@@ -267,7 +267,7 @@ let get_last_word (camel_case_string:string) : string =
       let str_length = String.length camel_case_string in
       String.sub ~pos:index ~len:(str_length-index) camel_case_string
   | None -> camel_case_string
-      
+
 
 (* Higher-order features ============================ *)
 (* ================================================== *)
@@ -423,7 +423,7 @@ let extract_ParamToSink ~(sink_name:string) =
   (* checking if 1 *)
   if Int.equal (List.length (Procname.get_parameters meth)) 0 then return false else
     (* checking if 2 and 3 *)
-    let appears_on_callgraph caller callee_name_piece = 
+    let appears_on_callgraph caller callee_name_piece =
       Hashtbl.fold (fun k v acc ->
           (Procname.equal k caller &&
            (String.is_substring (Procname.to_string v) ~substring:callee_name_piece))
@@ -1268,7 +1268,7 @@ let main () : unit =
   (* populate the Procdesc.t table *)
   batch_add_pdesc_to procdesc_table;
 
-  let simple_feature_queue = 
+  let simple_feature_queue =
     [ extract_IsImplicitMethod
     ; extract_AnonymousClass
     ; extract_HasParameters

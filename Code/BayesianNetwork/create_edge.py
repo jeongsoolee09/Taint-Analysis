@@ -64,34 +64,6 @@ def lookup_index(index_dict):
     return index_dict
 
 
-def get_method_ids_for_indices(index_list_str):
-    """given a row, convert all similar_row_indices with their method_ids"""
-    index_dicts = eval(index_list_str)
-    return list(map(lookup_index, index_dicts))
-
-
-def prepare_pairwise_sims():
-    """prepare the PAIRWISE_SIMS DataFrame."""
-    raw = pd.read_csv("pairwise_sims.csv")
-
-    # convert the method indices into method ID strings
-    method_ids = raw["Unnamed: 0"].map(lookup_by_index)
-    similar_method_ids = raw["similar_indices"].map(get_method_ids_for_indices)
-
-    # concat the columns
-    raw["method_id"] = method_ids
-    raw["similar_methods"] = similar_method_ids
-
-    # drop the stale columns
-    raw = raw.drop("Unnamed: 0", axis=1)
-    raw = raw.drop("similar_indices", axis=1)
-
-    return raw
-
-
-PAIRWISE_SIMS = prepare_pairwise_sims()
-
-
 # DataFrame assemblers =======================================
 # ============================================================
 
@@ -208,43 +180,9 @@ def make_call_dataframe(call_edges):
                          'class2': class2, 'rtntype2': rtntype2, 'name2': name2, 'intype2': intype2, 'id2': id2})
 
 
-def make_sim_dataframe():
-    """Re-express PAIRWISE_SIMS into format identical to df_dataframe and call_dataframe"""
-    class1, rtntype1, name1, intype1, id1,\
-        class2, rtntype2, name2, intype2, id2,\
-        score = [], [], [], [], [],\
-            [], [], [], [], [],\
-            []
-    tuple_acc = []
-    iterator = PAIRWISE_SIMS.itertuples(index=False)
-
-    while True:
-        try:
-            method_id, similar_methods_dicts = next(iterator)
-        except StopIteration:
-            break
-
-        if similar_methods_dicts == []:
-            continue
-
-        info1 = process(method_id)
-
-        # drop the keys and only take the values
-        similar_methods_tuples = list(map(lambda dict_: tuple(dict_.values()), similar_methods_dicts))
-
-        for similar_method, score in similar_methods_tuples:
-            info2 = process(similar_method)
-            tuple_acc.append(info1 + info2 + (score,))
-
-    return pd.DataFrame(tuple_acc, columns=["class1", "rtntype1", "name1", "intype1", "id1",
-                                            "class2", "rtntype2", "name2", "intype2", "id2",
-                                            "score"])
-
-
-def merge_dataframes(df_dataframe, call_dataframe, sim_dataframe):
-    """df, call, sim dataframe 세 개를 하나로 합친다."""
-    sim_dataframe = sim_dataframe.drop(columns=["score"])
-    return df_dataframe.append(call_dataframe).append(sim_dataframe)
+def merge_dataframes(df_dataframe, call_dataframe):
+    """df와 call을 하나로 합친다."""
+    return df_dataframe.append(call_dataframe)
 
 
 def multiindex_edges(edges):
@@ -302,10 +240,9 @@ def test_reflexive(dataframe):
     return dataframe[reflex1 & reflex2 & reflex3 & reflex4]
 
 
-def output_alledges(dataflow_dataframe, call_dataframe, sim_dataframe):
+def output_alledges(dataflow_dataframe, call_dataframe):
     dataflow_dataframe.to_csv("df.csv", mode='w+')
     call_dataframe.to_csv("callg.csv", mode='w+')
-    sim_dataframe.to_csv("sim.csv", mode='w+')
 
 
 # Main =======================================================
@@ -322,9 +259,8 @@ def main():
 
     dataflow_dataframe = make_df_dataframe(dataflow_edges).drop_duplicates()
     call_dataframe = make_call_dataframe(call_edges).drop_duplicates()
-    sim_dataframe = make_sim_dataframe()
 
-    edges_dataframe = merge_dataframes(dataflow_dataframe, call_dataframe, sim_dataframe)
+    edges_dataframe = merge_dataframes(dataflow_dataframe, call_dataframe)
     edges_dataframe = multiindex_edges(edges_dataframe)
     edges_dataframe = edges_dataframe.reset_index().drop(columns=[('index', '')])
 
@@ -333,7 +269,7 @@ def main():
 
     edges_dataframe.to_csv("edges.csv", mode='w+')
 
-    output_alledges(dataflow_dataframe, call_dataframe, sim_dataframe)
+    output_alledges(dataflow_dataframe, call_dataframe)
     print("elapsed time:", time.time()-start)
 
 

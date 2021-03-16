@@ -27,7 +27,7 @@ def normalize_methname(methname):
 
 
 def normalize_featurevalue(value):
-    return True if value == "SwanFeatureExtractor.True" else False
+    return True if value == "SwanFeatureExtractor.True" else False  # ignore DontKnow
 
 
 def normalize_featurevectors(df):
@@ -55,10 +55,19 @@ def lookup_by_index(index):
     return FEATURE_VECTORS.loc[index].method_name
 
 
+def lookup_index(index_dict):
+    """looks up FEATURE_VECTORS with the index,
+       retrieving its corresponding method_id"""
+    index = index_dict['index']
+    methname = FEATURE_VECTORS.loc[index].method_name
+    index_dict['index'] = methname
+    return index_dict
+
+
 def get_method_ids_for_indices(index_list_str):
     """given a row, convert all similar_row_indices with their method_ids"""
-    index_list = eval(index_list_str)
-    return list(map(lookup_by_index, index_list))
+    index_dicts = eval(index_list_str)
+    return list(map(lookup_index, index_dicts))
 
 
 def prepare_pairwise_sims():
@@ -79,9 +88,6 @@ def prepare_pairwise_sims():
 
     return raw
 
-
-# PAIRWISE_SIMS = pd.read_csv("pairwise_sims.csv").set_index("Unnamed: 0")\
-#                                                 .apply(get_method_ids_for_indices, axis=1)
 
 PAIRWISE_SIMS = prepare_pairwise_sims()
 
@@ -151,10 +157,11 @@ def detect_dataflow(json_obj_list):
             if activity_repr['status'] == 'Define':
                 caller_name = activity_repr['current_method']
                 callee_name = activity_repr['using']
-    dataflow_edges.append((caller_name, callee_name))
+                dataflow_edges.append((caller_name, callee_name))
     dataflow_edges = list(filter(lambda tup: '' not in tup, dataflow_edges))
     dataflow_edges = list(filter(lambda tup: filtermethod(tup[0]) and filtermethod(tup[1]), dataflow_edges))
     dataflow_edges = list(map(lambda tup: (process(tup[0]), process(tup[1])), dataflow_edges))
+    print("len(dataflow_edges):", len(dataflow_edges))
     return dataflow_edges
 
 
@@ -204,31 +211,39 @@ def make_call_dataframe(call_edges):
 def make_sim_dataframe():
     """Re-express PAIRWISE_SIMS into format identical to df_dataframe and call_dataframe"""
     class1, rtntype1, name1, intype1, id1,\
-        class2, rtntype2, name2, intype2, id2 = [], [], [], [], [], [], [], [], [], []
+        class2, rtntype2, name2, intype2, id2,\
+        score = [], [], [], [], [],\
+            [], [], [], [], [],\
+            []
     tuple_acc = []
     iterator = PAIRWISE_SIMS.itertuples(index=False)
 
     while True:
         try:
-            method_id, similar_methods = next(iterator)
+            method_id, similar_methods_dicts = next(iterator)
         except StopIteration:
             break
 
-        if similar_methods == []:
+        if similar_methods_dicts == []:
             continue
 
         info1 = process(method_id)
 
-        for similar_method in similar_methods:
+        # drop the keys and only take the values
+        similar_methods_tuples = list(map(lambda dict_: tuple(dict_.values()), similar_methods_dicts))
+
+        for similar_method, score in similar_methods_tuples:
             info2 = process(similar_method)
-            tuple_acc.append(info1 + info2)
+            tuple_acc.append(info1 + info2 + (score,))
 
     return pd.DataFrame(tuple_acc, columns=["class1", "rtntype1", "name1", "intype1", "id1",
-                                            "class2", "rtntype2", "name2", "intype2", "id2"])
+                                            "class2", "rtntype2", "name2", "intype2", "id2",
+                                            "score"])
 
 
 def merge_dataframes(df_dataframe, call_dataframe, sim_dataframe):
     """df, call, sim dataframe 세 개를 하나로 합친다."""
+    sim_dataframe = sim_dataframe.drop(columns=["score"])
     return df_dataframe.append(call_dataframe).append(sim_dataframe)
 
 
@@ -260,6 +275,15 @@ def no_symmetric(dataframe):
     out = out[out.index % 2 == 0]
     out = out.reset_index().drop(columns=[('temp', '')])
     return out
+
+
+# For observation purposes
+def no_reflexive_simple(dataframe):
+    cond1 = dataframe['class1'] != dataframe['class2']
+    cond2 = dataframe['rtntype1'] != dataframe['rtntype2']
+    cond3 = dataframe['name1'] != dataframe['name2']
+    cond4 = dataframe['intype1'] != dataframe['intype2']
+    return dataframe[cond1 | cond2 | cond3 | cond4]
 
 
 def no_reflexive(dataframe):
@@ -296,8 +320,8 @@ def main():
     dataflow_edges = detect_dataflow(json_obj_list)
     call_edges = make_calledges()
 
-    dataflow_dataframe = make_df_dataframe(dataflow_edges)
-    call_dataframe = make_call_dataframe(call_edges)
+    dataflow_dataframe = make_df_dataframe(dataflow_edges).drop_duplicates()
+    call_dataframe = make_call_dataframe(call_edges).drop_duplicates()
     sim_dataframe = make_sim_dataframe()
 
     edges_dataframe = merge_dataframes(dataflow_dataframe, call_dataframe, sim_dataframe)

@@ -1,13 +1,34 @@
 import json
-import pandarallel
 import pandas as pd
+from pandarallel import pandarallel
 import re
 import os.path
 
 from collections import Counter
 from functools import reduce
 
+
 pandarallel.initialize()
+
+
+# Files ================================
+# ======================================
+
+with open("java_builtin_types.txt", "r+") as builtintypes:
+    JAVA_BUILTIN_TYPES = list(map(lambda string: string.rstrip(),
+                                  builtintypes.readlines()))
+
+with open("java_builtin_classes.txt", "r+") as builtinclasses:
+    JAVA_BUILTIN_CLASSES = list(map(lambda string: string.rstrip(),
+                                    builtinclasses.readlines()))
+
+with open("java_builtin_collections.txt", "r+") as builtincollections:
+    JAVA_BUILTIN_COLLS = list(map(lambda string: string.rstrip(),
+                                  builtincollections.readlines()))
+
+with open("java_builtin_utils.txt", "r+") as builtinutils:
+    JAVA_BUILTIN_UTILS = list(map(lambda string: string.rstrip(),
+                                  builtinutils.readlines()))
 
 # Utility Funcs ========================
 # ======================================
@@ -57,9 +78,13 @@ def find_frequent_words(**kwargs):
        - target: 'name', 'rtntype'"""
     if kwargs["target"] == 'name':
         node_names = NODE_DATA[kwargs["target"]]
-        splitted_names = node_names.apply(camel_case_split)
+        splitted_names = node_names.parallel_apply(camel_case_split)
         splitted_names = [value for _, value in splitted_names.iteritems()]
         words_withdup = reduce(lambda acc, elem: acc+elem, splitted_names, [])
+        words_withdup = list(filter(lambda name: name not in JAVA_BUILTIN_TYPES and\
+                            name not in JAVA_BUILTIN_CLASSES and\
+                            name not in JAVA_BUILTIN_COLLS and\
+                            name not in JAVA_BUILTIN_UTILS, words_withdup))
         words_withdup = list(map(lambda word: word.lower(), words_withdup))
         # exclude common word such as "get" and "set"
         words_withdup = list(filter(lambda word: word != "get" and word != "set",
@@ -72,11 +97,14 @@ def find_frequent_words(**kwargs):
 
     elif kwargs["target"] == 'rtntype':
         node_rtntypes = NODE_DATA[kwargs["target"]]
-        splitted_rtntypes = node_rtntypes.apply(camel_case_split)
+        splitted_rtntypes = node_rtntypes.parallel_apply(camel_case_split)
         splitted_rtntypes = [value for _, value in splitted_rtntypes.iteritems()]
         words_withdup = reduce(lambda acc, elem: acc+elem, splitted_rtntypes, [])
         words_withdup = list(map(lambda name: name.lower(), words_withdup))
-        words_withdup = list(filter(lambda name: name not in JAVA_BUILTIN_TYPES, words_withdup))
+        words_withdup = list(filter(lambda name: name not in JAVA_BUILTIN_TYPES and\
+                                    name not in JAVA_BUILTIN_CLASSES and\
+                                    name not in JAVA_BUILTIN_COLLS and\
+                                    name not in JAVA_BUILTIN_UTILS, words_withdup))
         words_nodup = set(words_withdup)
         acc = []
         for name in words_nodup:
@@ -89,25 +117,32 @@ def flatten(ll):
 
 
 def preprocess_intype(raw_intypes):
-    def mapfunc(string):
-        if "," in string:
-            return string.split(", ")
+    acc = []
+    for raw_intype in raw_intypes:
+        if "," in raw_intype:
+            acc += raw_intype.split(",")
         else:
-            return string
-    return flatten(list(map(mapfunc, raw_intypes)))
+            acc.append(raw_intype)
+    return pd.Series(acc)
 
 
 def find_frequents(**kwargs):
     if kwargs["target"] == "rtntype":
         node_rtntypes = NODE_DATA["rtntype"]
-        node_rtntypes = node_rtntypes.filter(lambda rtntype: rtntype not in JAVA_BUILTIN_TYPES)
+        node_rtntypes = node_rtntypes[~node_rtntypes.isin(JAVA_BUILTIN_TYPES) &
+                                      ~node_rtntypes.isin(JAVA_BUILTIN_COLLS) &
+                                      ~node_rtntypes.isin(JAVA_BUILTIN_UTILS) &
+                                      ~node_rtntypes.isin(JAVA_BUILTIN_CLASSES)]
         counterobj = Counter(node_rtntypes)
         most_commons = counterobj.most_common(10)
         return sorted(most_commons, key=lambda x: x[1], reverse=True)
 
     elif kwargs["target"] == "intype":
         node_intypes = preprocess_intype(NODE_DATA["intype"])
-        node_intypes = node_intypes.filter(lambda intype: intype not in JAVA_BUILTIN_TYPES)
+        node_intypes = node_intypes[~node_intypes.isin(JAVA_BUILTIN_TYPES) &
+                                    ~node_intypes.isin(JAVA_BUILTIN_COLLS) &
+                                    ~node_intypes.isin(JAVA_BUILTIN_UTILS) &
+                                    ~node_intypes.isin(JAVA_BUILTIN_CLASSES)]
         counterobj = Counter(node_intypes)
         most_commons = counterobj.most_common(10)
         return sorted(most_commons, key=lambda x: x[1], reverse=True)
@@ -132,10 +167,6 @@ TOP_FREQ_N_CALLEES = 10               # callee들의 경우, 상위 몇 순위�
 # Constants ============================
 # ======================================
 
-
-with open("java_builtin_types.txt", "r+") as builtintypes:
-    JAVA_BUILTIN_TYPES = list(map(lambda string: string.rstrip(),
-                                  builtintypes.readlines()))
 TOP_FREQ_NAME_WORDS = list(map(lambda tup: tup[0],
                                find_frequent_words(target="name")[:TOP_FREQ_N_NAME_WORDS]))
 TOP_FREQ_RTNTYPE_WORDS = list(map(lambda tup: tup[0],
@@ -146,8 +177,7 @@ TOP_FREQ_RTNTYPES = list(map(lambda tup: tup[0],
                              find_frequents(target="rtntype")[:TOP_FREQ_N_RTNTYPES]))
 TOP_FREQ_INTYPES = list(map(lambda tup: tup[0],
                             find_frequents(target="intype")[:TOP_FREQ_N_INTYPES]))
-TOP_FREQ_CALLEES = list(map(lambda tup: tup[0],
-                            find_frequents(target="callees")[:TOP_FREQ_N_CALLEES]))
+TOP_FREQ_CALLEES = find_frequents(target="callees")[:TOP_FREQ_N_CALLEES]
 
 
 # Syntactic Features =====================
@@ -222,7 +252,7 @@ def rtntype_equals(node):
     rtntype = node[2]
     out = dict()
     for freq_rtntype in TOP_FREQ_RTNTYPES:
-        out[("returntype_equals", "")] = rtntype == freq_rtntype
+        out[("returntype_equals", freq_rtntype)] = rtntype == freq_rtntype
     return out
 
 
@@ -232,14 +262,13 @@ def param_contains_type_or_name(node):
     intypes = node[4].split(",")
     out = dict()
     for freq_intype in TOP_FREQ_INTYPES:
-        out[("param_contains_type_or_name", "")] =\
-            reduce(lambda acc, elem: elem == freq_intype or acc, False)
+        out[("param_contains_type_or_name", freq_intype)] =\
+            reduce(lambda acc, elem: elem == freq_intype or acc, intypes, False)
     return out
 
 
 def param_type_matches_return_type(node):
-    """Does any of the parameters match the return type?
-       NOTE Higher-order feature"""
+    """Does any of the parameters match the return type?"""
     rtntype = node[2]
     intypes = node[4].split(",")
     return rtntype in intypes
@@ -367,90 +396,87 @@ def has_redefine(node):
 # ====================================
 
 
-def run_all_extractors(node_row):
-    """batch run the feature extractors on a method"""
+def handle_multiindex_higherorder(df):
+    keys = list(df.iloc[0].keys())
+    df = pd.DataFrame(df, columns=["original"])
+    df = df.apply(lambda row: row["original"].values(), result_type="expand", axis=1)
+    df.columns = pd.MultiIndex.from_tuples(keys)
+    return df
 
-    id_df = pd.DataFrame([[node_row[5]]],    # the id of the method
-                         columns=pd.MultiIndex.from_tuples([("id", "")]))
 
-    has_parameters_df = pd.DataFrame([has_parameters(node_row)],
-                          columns=pd.MultiIndex.from_tuples([("has_parameters", "")]))
+def apply_and_concat():
+    """parallel apply to NODE_DATA and concat them altogether"""
+    id_df = pd.DataFrame(NODE_DATA['id'], columns=pd.MultiIndex.from_tuples([("id", "")]))
 
-    has_return_type_df = pd.DataFrame([has_return_type(node_row)],
-                          columns=pd.MultiIndex.from_tuples([("has_return_type", "")]))
+    # raw applied dataframes: before handling columns
+    has_parameters_df = NODE_DATA.parallel_apply(has_parameters, axis=1)
+    has_return_type_df = NODE_DATA.parallel_apply(has_return_type, axis=1)
+    method_name_starts_with_df = NODE_DATA.parallel_apply(method_names_starts_with, axis=1)
+    method_name_contains_df = NODE_DATA.parallel_apply(method_name_contains, axis=1)
+    return_type_contains_name_df = NODE_DATA.parallel_apply(return_type_contains_name, axis=1)
+    class_contains_name_df = NODE_DATA.parallel_apply(class_contains_name, axis=1)
+    class_endswith_name_df = NODE_DATA.parallel_apply(class_endswith_name, axis=1)
+    rtntype_equals_df = NODE_DATA.parallel_apply(rtntype_equals, axis=1)
+    param_contains_type_or_name_df = NODE_DATA.parallel_apply(param_contains_type_or_name, axis=1)
+    param_type_matches_return_type_df = NODE_DATA.parallel_apply(param_type_matches_return_type, axis=1)
+    is_real_setter_df = NODE_DATA.parallel_apply(is_real_setter, axis=1)
+    void_on_method_df = NODE_DATA.parallel_apply(void_on_method, axis=1)
+    method_name_contains_return_type_df = NODE_DATA.parallel_apply(method_name_contains_return_type, axis=1)
+    invocation_name_df = NODE_DATA.parallel_apply(invocation_name, axis=1)
+    calling_but_no_df_df = NODE_DATA.parallel_apply(calling_but_no_df, axis=1)
+    called_but_no_df_df = NODE_DATA.parallel_apply(called_but_no_df, axis=1)
+    making_df_call_df = NODE_DATA.parallel_apply(making_df_call, axis=1)
+    has_df_call_df = NODE_DATA.parallel_apply(has_df_call, axis=1)
+    receiving_and_passing_data_df = NODE_DATA.parallel_apply(receiving_and_passing_data, axis=1)
+    has_df_call_and_dead_df = NODE_DATA.parallel_apply(has_df_call_and_dead, axis=1)
+    has_redefine_df = NODE_DATA.parallel_apply(has_redefine, axis=1)
 
-    method_name_starts_with_df = pd.DataFrame(method_name_starts_with(node_row), index=[0])
+    # multi-index first-order features
+    has_parameters_df.columns = pd.MultiIndex.from_tuples([("has_parameters", "")])
+    has_return_type_df.columns = pd.MultiIndex.from_tuples([("has_return_type", "")])
+    param_type_matches_return_type_df.columns = pd.MultiIndex.from_tuples([("param_type_matches_return_type", "")])
+    is_real_setter_df.columns = pd.MultiIndex.from_tuples([("is_real_setter", "")])
+    void_on_method_df.columns =                                      columns=pd.MultiIndex.from_tuples([("void_on_method", "")])
+    method_name_contains_return_type_df.columns = pd.MultiIndex.from_tuples([("method_name_contains_return_type", "")])
+    calling_but_no_df_df = pd.MultiIndex.from_tuples([("calling_but_no_df", "")])
+    called_but_no_df_df = pd.MultiIndex.from_tuples([("called_but_no_df", "")])
+    making_df_call_df = pd.MultiIndex.from_tuples([("making_df_call", "")])
+    has_df_call_df = pd.MultiIndex.from_tuples([("has_df_call", "")])
+    receiving_and_passing_data_df = pd.MultiIndex.from_tuples([("receiving_and_passing_data", "")])
+    has_df_call_and_dead_df = pd.MultiIndex.from_tuples([("has_df_call_and_dead", "")])
+    has_redefine_df = pd.MultiIndex.from_tuples([("has_redefine", "")])
 
-    method_name_contains_df = pd.DataFrame(method_name_contains(node_row), index=[0])
+    # multi-index higher-order features
+    method_name_starts_with_df = handle_multiindex_higherorder(method_name_starts_with_df)
+    return_type_contains_name_df = handle_multiindex_higherorder(return_type_contains_name_df)
+    class_contains_name_df = handle_multiindex_higherorder(class_contains_name_df)
+    class_endswith_name_df = handle_multiindex_higherorder(class_endswith_name_df)
+    rtntype_equals_df = handle_multiindex_higherorder(rtntype_equals_df)
+    param_contains_type_or_name_df = handle_multiindex_higherorder(param_contains_type_or_name_df)
+    invocation_name_df = handle_multiindex_higherorder(invocation_name_df)
 
-    return_type_contains_name_df = pd.DataFrame(return_type_contains_name(node_row), index=[0])
-
-    class_contains_name_df = pd.DataFrame(class_contains_name(node_row), index=[0])
-
-    class_endswith_name_df = pd.DataFrame(class_endswith_name(node_row), index=[0])
-
-    rtntype_equals_df = pd.DataFrame(rtntype_equals(node_row), index=[0])
-
-    param_contains_type_or_name_df = pd.DataFrame(param_contains_type_or_name(node_row), index=[0])
-
-    param_type_matches_return_type_df = pd.DataFrame(param_type_matches_return_type(node_row), index=[0])
-
-    is_real_setter_df = pd.DataFrame([is_real_setter(node_row)],
-                                     columns=pd.MultiIndex.from_tuples([("is_real_setter", "")]))
-
-    void_on_method_df = pd.DataFrame([void_on_method(node_row)],
-                                     columns=pd.MultiIndex.from_tuples([("void_on_method", "")]))
-
-    method_name_contains_return_type_df = pd.DataFrame([method_name_contains_return_type(node_row)],
-                                                       columns=pd.MultiIndex.from_tuples([("method_name_contains_return_type", "")]))
-
-    invocation_name_df = pd.DataFrame(invocation_name(node_row), index=[0])
-
-    calling_but_no_df = pd.DataFrame([calling_but_no_df(node_row)],
-                                     columns=pd.MultiIndex.from_tuples([("calling_but_no_df", "")]))
-
-    called_but_no_df = pd.DataFrame([called_but_no_df(node_row)],
-                                     columns=pd.MultiIndex.from_tuples([("called_but_no_df", "")]))
-
-    making_df_call_df = pd.DataFrame([making_df_call_df(node_row)],
-                                     columns=pd.MultiIndex.from_tuples([("making_df_call", "")]))
-
-    has_df_call_df = pd.DataFrame([has_df_call_df(node_row)],
-                                  columns=pd.MultiIndex.from_tuples([("has_df_call", "")]))
-
-    receiving_and_passing_data_df = pd.DataFrame([receiving_and_passing_data(node_row)],
-                                                 columns=pd.MultiIndex.from_tuples([("receiving_and_passing_data", "")]))
-
-    has_df_call_and_dead_df = pd.DataFrame([has_df_call_and_dead(node_row)],
-                                           columns=pd.MultiIndex.from_tuples([("has_df_call_and_dead", "")]))
-
-    has_redefine_df = pd.DataFrame([has_redefine(node_row)],
-                                   columns=pd.MultiIndex.from_tuples([("has_redefine", "")]))
-
-    concat_vector = pd.concat([ id_df,
-                                has_parameters_df,
-                                has_return_type_df,
-                                method_name_starts_with_df,
-                                method_name_contains_df,
-                                return_type_contains_name_df,
-                                class_contains_name_df,
-                                class_endswith_name_df,
-                                rtntype_equals_df,
-                                param_contains_type_or_name_df,
-                                param_type_matches_return_type_df,
-                                is_real_setter_df,
-                                void_on_method_df,
-                                method_name_contains_return_type_df,
-                                invocation_name_df,
-                                calling_but_no_df,
-                                called_but_no_df,
-                                making_df_call_df,
-                                has_df_call_df,
-                                receiving_and_passing_data_df,
-                                has_df_call_and_dead_df,
-                                has_redefine_df ], axis=1)
-
-    return concat_vector
+    return pd.concat([ id_df,
+                       has_parameters_df,
+                       has_return_type_df,
+                       method_name_starts_with_df,
+                       method_name_contains_df,
+                       return_type_contains_name_df,
+                       class_contains_name_df,
+                       class_endswith_name_df,
+                       rtntype_equals_df,
+                       param_contains_type_or_name_df,
+                       param_type_matches_return_type_df,
+                       is_real_setter_df,
+                       void_on_method_df,
+                       method_name_contains_return_type_df,
+                       invocation_name_df,
+                       calling_but_no_df_df,
+                       called_but_no_df_df,
+                       making_df_call_df,
+                       has_df_call_df,
+                       receiving_and_passing_data_df,
+                       has_df_call_and_dead_df,
+                       has_redefine_df ], axis=1)
 
 
 # main ================================
@@ -458,11 +484,8 @@ def run_all_extractors(node_row):
 
 
 def main():
-    sim_df = pd.DataFrame()
-    for tup in NODE_DATA.itertuples(index=False):  # 크기가 작으니까 가능한 거다
-        vector = run_all_extractors(tup)
-        sim_df = pd.concat([sim_df, vector])
-    sim_df.to_csv("pairwise_sims.csv", mode="w+")
+    feature_vector = apply_and_concat()
+    feature_vector.to_csv("feature_vector.csv", mode="w+")
 
 
 if __name__ == "__main__":

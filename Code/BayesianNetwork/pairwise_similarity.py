@@ -411,7 +411,7 @@ def apply_and_concat():
     # raw applied dataframes: before handling columns
     has_parameters_df = NODE_DATA.parallel_apply(has_parameters, axis=1)
     has_return_type_df = NODE_DATA.parallel_apply(has_return_type, axis=1)
-    method_name_starts_with_df = NODE_DATA.parallel_apply(method_names_starts_with, axis=1)
+    method_name_starts_with_df = NODE_DATA.parallel_apply(method_name_starts_with, axis=1)
     method_name_contains_df = NODE_DATA.parallel_apply(method_name_contains, axis=1)
     return_type_contains_name_df = NODE_DATA.parallel_apply(return_type_contains_name, axis=1)
     class_contains_name_df = NODE_DATA.parallel_apply(class_contains_name, axis=1)
@@ -432,19 +432,32 @@ def apply_and_concat():
     has_redefine_df = NODE_DATA.parallel_apply(has_redefine, axis=1)
 
     # multi-index first-order features
-    has_parameters_df.columns = pd.MultiIndex.from_tuples([("has_parameters", "")])
-    has_return_type_df.columns = pd.MultiIndex.from_tuples([("has_return_type", "")])
-    param_type_matches_return_type_df.columns = pd.MultiIndex.from_tuples([("param_type_matches_return_type", "")])
-    is_real_setter_df.columns = pd.MultiIndex.from_tuples([("is_real_setter", "")])
-    void_on_method_df.columns =                                      columns=pd.MultiIndex.from_tuples([("void_on_method", "")])
-    method_name_contains_return_type_df.columns = pd.MultiIndex.from_tuples([("method_name_contains_return_type", "")])
-    calling_but_no_df_df = pd.MultiIndex.from_tuples([("calling_but_no_df", "")])
-    called_but_no_df_df = pd.MultiIndex.from_tuples([("called_but_no_df", "")])
-    making_df_call_df = pd.MultiIndex.from_tuples([("making_df_call", "")])
-    has_df_call_df = pd.MultiIndex.from_tuples([("has_df_call", "")])
-    receiving_and_passing_data_df = pd.MultiIndex.from_tuples([("receiving_and_passing_data", "")])
-    has_df_call_and_dead_df = pd.MultiIndex.from_tuples([("has_df_call_and_dead", "")])
-    has_redefine_df = pd.MultiIndex.from_tuples([("has_redefine", "")])
+    has_parameters_df = pd.DataFrame(has_parameters_df,
+                                     index=pd.MultiIndex.from_tuples([("has_parameters", "")]))
+    has_return_type_df = pd.DataFrame(has_parameters_df,
+                                      index=pd.MultiIndex.from_tuples([("has_return_type", "")]))
+    param_type_matches_return_type_df = pd.DataFrame(param_type_matches_return_type_df,
+                                                     index=pd.MultiIndex.from_tuples([("param_type_matches_return_type", "")]))
+    is_real_setter_df = pd.DataFrame(is_real_setter_df,
+                                     index=pd.MultiIndex.from_tuples([("is_real_setter", "")]))
+    void_on_method_df.columns = pd.DataFrame(void_on_method_df,
+                                             index=pd.MultiIndex.from_tuples([("void_on_method", "")]))
+    method_name_contains_return_type_df.columns = pd.DataFrame(method_name_contains_return_type_df,
+                                                               index=pd.MultiIndex.from_tuples([("method_name_contains_return_type", "")]))
+    calling_but_no_df_df = pd.DataFrame(calling_but_no_df_df,
+                                        index=pd.MultiIndex.from_tuples([("calling_but_no_df", "")]))
+    called_but_no_df_df = pd.DataFrame(called_but_no_df_df,
+                                       index=pd.MultiIndex.from_tuples([("called_but_no_df", "")]))
+    making_df_call_df = pd.DataFrame(making_df_call_df,
+                                     index=pd.MultiIndex.from_tuples([("making_df_call", "")]))
+    has_df_call_df = pd.DataFrame(has_df_call_df,
+                                  index=pd.MultiIndex.from_tuples([("has_df_call", "")]))
+    receiving_and_passing_data_df = pd.DataFrame(receiving_and_passing_data_df,
+                                                 index=pd.MultiIndex.from_tuples([("receiving_and_passing_data", "")]))
+    has_df_call_and_dead_df = pd.DataFrame(has_df_call_and_dead_df,
+                                           index=pd.MultiIndex.from_tuples([("has_df_call_and_dead", "")]))
+    has_redefine_df = pd.DataFrame(has_redefine_df,
+                                   index=pd.MultiIndex.from_tuples([("has_redefine", "")]))
 
     # multi-index higher-order features
     method_name_starts_with_df = handle_multiindex_higherorder(method_name_starts_with_df)

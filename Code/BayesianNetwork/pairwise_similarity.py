@@ -1,11 +1,13 @@
 import json
 import pandas as pd
-from pandarallel import pandarallel
 import re
 import os.path
+import matplotlib.pyplot as plt
 
 from collections import Counter
 from functools import reduce
+from itertools import repeat
+from pandarallel import pandarallel
 
 
 pandarallel.initialize()
@@ -73,18 +75,41 @@ def camel_case_split(identifier):
     return [m.group(0) for m in matches]
 
 
+def exclude_first_last(lst):
+    return lst[1:len(lst)-1]
+
+
 def find_frequent_words(**kwargs):
     """available kwargs:
        - target: 'name', 'rtntype'"""
-    if kwargs["target"] == 'name':
-        node_names = NODE_DATA[kwargs["target"]]
+    if kwargs["target"] == "name-prefix":
+        node_names = NODE_DATA["name"]
         splitted_names = node_names.parallel_apply(camel_case_split)
         splitted_names = [value for _, value in splitted_names.iteritems()]
-        words_withdup = reduce(lambda acc, elem: acc+elem, splitted_names, [])
+        words_withdup = list(map(lambda elem: elem[0], splitted_names))
         words_withdup = list(filter(lambda name: name not in JAVA_BUILTIN_TYPES and\
-                            name not in JAVA_BUILTIN_CLASSES and\
-                            name not in JAVA_BUILTIN_COLLS and\
-                            name not in JAVA_BUILTIN_UTILS, words_withdup))
+                                    name not in JAVA_BUILTIN_CLASSES,#and\
+                                    # name not in JAVA_BUILTIN_COLLS and\
+                                    # name not in JAVA_BUILTIN_UTILS,
+                                    words_withdup))
+        words_nodup = set(words_withdup)
+        acc = []
+        for name in words_nodup:
+            acc.append((name, words_withdup.count(name)))
+        return sorted(acc, key=lambda x: x[1], reverse=True)
+
+    elif kwargs["target"] == "name":
+        node_names = NODE_DATA["name"]
+        splitted_names = node_names.parallel_apply(camel_case_split)
+        splitted_names = [value for _, value in splitted_names.iteritems()]
+        words_withdup =\
+            reduce(lambda acc, elem: acc+exclude_first_last(elem),  # exclude prefixes and suffixes
+                   splitted_names, [])
+        words_withdup = list(filter(lambda name: name not in JAVA_BUILTIN_TYPES and\
+                                    name not in JAVA_BUILTIN_CLASSES,#and\
+                                    # name not in JAVA_BUILTIN_COLLS and\
+                                    # name not in JAVA_BUILTIN_UTILS,
+                                    words_withdup))
         words_withdup = list(map(lambda word: word.lower(), words_withdup))
         # exclude common word such as "get" and "set"
         words_withdup = list(filter(lambda word: word != "get" and word != "set",
@@ -95,16 +120,98 @@ def find_frequent_words(**kwargs):
             acc.append((name, words_withdup.count(name)))
         return sorted(acc, key=lambda x: x[1], reverse=True)
 
-    elif kwargs["target"] == 'rtntype':
-        node_rtntypes = NODE_DATA[kwargs["target"]]
+    elif kwargs["target"] == "rtntype-prefix":
+        node_rtntypes = NODE_DATA["rtntype"]
         splitted_rtntypes = node_rtntypes.parallel_apply(camel_case_split)
         splitted_rtntypes = [value for _, value in splitted_rtntypes.iteritems()]
-        words_withdup = reduce(lambda acc, elem: acc+elem, splitted_rtntypes, [])
+        words_withdup = list(map(lambda elem: elem[0], splitted_rtntypes))
+        words_withdup = list(filter(lambda name: name not in JAVA_BUILTIN_TYPES and\
+                                    name not in JAVA_BUILTIN_CLASSES,#and\
+                                    # name not in JAVA_BUILTIN_COLLS and\
+                                    # name not in JAVA_BUILTIN_UTILS,
+                                    words_withdup))
+        words_nodup = set(words_withdup)
+        acc = []
+        for name in words_nodup:
+            acc.append((name, words_withdup.count(name)))
+        return sorted(acc, key=lambda x: x[1], reverse=True)
+
+    elif kwargs["target"] == "rtntype":
+        node_rtntypes = NODE_DATA["rtntype"]
+        splitted_rtntypes = node_rtntypes.parallel_apply(camel_case_split)
+        splitted_rtntypes = [value for _, value in splitted_rtntypes.iteritems()]
+        words_withdup = reduce(lambda acc, elem: acc+exclude_first_last(elem), splitted_rtntypes, [])
         words_withdup = list(map(lambda name: name.lower(), words_withdup))
         words_withdup = list(filter(lambda name: name not in JAVA_BUILTIN_TYPES and\
-                                    name not in JAVA_BUILTIN_CLASSES and\
-                                    name not in JAVA_BUILTIN_COLLS and\
-                                    name not in JAVA_BUILTIN_UTILS, words_withdup))
+                                    name not in JAVA_BUILTIN_CLASSES,#and\
+                                    # name not in JAVA_BUILTIN_COLLS and\
+                                    # name not in JAVA_BUILTIN_UTILS,
+                                    words_withdup))
+        words_nodup = set(words_withdup)
+        acc = []
+        for name in words_nodup:
+            acc.append((name, words_withdup.count(name)))
+        return sorted(acc, key=lambda x: x[1], reverse=True)
+
+    elif kwargs["target"] == "rtntype-suffix":
+        node_rtntypes = NODE_DATA["rtntype"]
+        splitted_rtntypes = node_rtntypes.parallel_apply(camel_case_split)
+        splitted_rtntypes = [value for _, value in splitted_rtntypes.iteritems()]
+        words_withdup = list(map(lambda elem: elem[len(elem)-1], splitted_rtntypes))
+        words_withdup = list(filter(lambda name: name not in JAVA_BUILTIN_TYPES and\
+                                    name not in JAVA_BUILTIN_CLASSES,#and\
+                                    # name not in JAVA_BUILTIN_COLLS and\
+                                    # name not in JAVA_BUILTIN_UTILS,
+                                    words_withdup))
+        words_nodup = set(words_withdup)
+        acc = []
+        for name in words_nodup:
+            acc.append((name, words_withdup.count(name)))
+        return sorted(acc, key=lambda x: x[1], reverse=True)
+
+    elif kwargs["target"] == "classname-prefix":
+        node_classnames = NODE_DATA["class"]
+        splitted_classnames = node_classnames.parallel_apply(camel_case_split)
+        splitted_classnames = [value for _, value in splitted_classnames.iteritems()]
+        words_withdup = list(map(lambda elem: elem[0], splitted_classnames))
+        words_withdup = list(filter(lambda name: name not in JAVA_BUILTIN_TYPES and\
+                                    name not in JAVA_BUILTIN_CLASSES,#and\
+                                    # name not in JAVA_BUILTIN_COLLS and\
+                                    # name not in JAVA_BUILTIN_UTILS,
+                                    words_withdup))
+        words_nodup = set(words_withdup)
+        acc = []
+        for name in words_nodup:
+            acc.append((name, words_withdup.count(name)))
+        return sorted(acc, key=lambda x: x[1], reverse=True)
+
+    elif kwargs["target"] == "classname":
+        node_classnames = NODE_DATA["class"]
+        splitted_classnames = node_classnames.parallel_apply(camel_case_split)
+        splitted_classnames = [value for _, value in splitted_classnames.iteritems()]
+        words_withdup = reduce(lambda acc, elem: acc+exclude_first_last(elem), splitted_classnames, [])
+        words_withdup = list(map(lambda name: name.lower(), words_withdup))
+        words_withdup = list(filter(lambda name: name not in JAVA_BUILTIN_TYPES and\
+                                    name not in JAVA_BUILTIN_CLASSES,#and\
+                                    # name not in JAVA_BUILTIN_COLLS and\
+                                    # name not in JAVA_BUILTIN_UTILS,
+                                    words_withdup))
+        words_nodup = set(words_withdup)
+        acc = []
+        for name in words_nodup:
+            acc.append((name, words_withdup.count(name)))
+        return sorted(acc, key=lambda x: x[1], reverse=True)
+
+    elif kwargs["target"] == "classname-suffix":
+        node_classnames = NODE_DATA["class"]
+        splitted_classnames = node_classnames.parallel_apply(camel_case_split)
+        splitted_classnames = [value for _, value in splitted_classnames.iteritems()]
+        words_withdup = list(map(lambda elem: elem[0], splitted_classnames))
+        words_withdup = list(filter(lambda name: name not in JAVA_BUILTIN_TYPES and\
+                                    name not in JAVA_BUILTIN_CLASSES,#and\
+                                    # name not in JAVA_BUILTIN_COLLS and\
+                                    # name not in JAVA_BUILTIN_UTILS,
+                                    words_withdup))
         words_nodup = set(words_withdup)
         acc = []
         for name in words_nodup:
@@ -130,8 +237,8 @@ def find_frequents(**kwargs):
     if kwargs["target"] == "rtntype":
         node_rtntypes = NODE_DATA["rtntype"]
         node_rtntypes = node_rtntypes[~node_rtntypes.isin(JAVA_BUILTIN_TYPES) &
-                                      ~node_rtntypes.isin(JAVA_BUILTIN_COLLS) &
-                                      ~node_rtntypes.isin(JAVA_BUILTIN_UTILS) &
+                                      # ~node_rtntypes.isin(JAVA_BUILTIN_COLLS) &
+                                      # ~node_rtntypes.isin(JAVA_BUILTIN_UTILS) &
                                       ~node_rtntypes.isin(JAVA_BUILTIN_CLASSES)]
         counterobj = Counter(node_rtntypes)
         most_commons = counterobj.most_common(10)
@@ -140,8 +247,8 @@ def find_frequents(**kwargs):
     elif kwargs["target"] == "intype":
         node_intypes = preprocess_intype(NODE_DATA["intype"])
         node_intypes = node_intypes[~node_intypes.isin(JAVA_BUILTIN_TYPES) &
-                                    ~node_intypes.isin(JAVA_BUILTIN_COLLS) &
-                                    ~node_intypes.isin(JAVA_BUILTIN_UTILS) &
+                                    # ~node_intypes.isin(JAVA_BUILTIN_COLLS) &
+                                    # ~node_intypes.isin(JAVA_BUILTIN_UTILS) &
                                     ~node_intypes.isin(JAVA_BUILTIN_CLASSES)]
         counterobj = Counter(node_intypes)
         most_commons = counterobj.most_common(10)
@@ -156,9 +263,14 @@ def find_frequents(**kwargs):
 # ========================================
 
 
+TOP_FREQ_N_NAME_PREFIXES = 10         # name 접두사의 경우, 상위 몇 순위까지 고려할 거냐?
 TOP_FREQ_N_NAME_WORDS = 10            # name 낱말의 경우, 상위 몇 순위까지 고려할 거냐?
+TOP_FREQ_N_RTNTYPE_PREFIXES = 10      # rtntype 접두사의 경우, 상위 몇 순위까지 고려할 거냐?
 TOP_FREQ_N_RTNTYPE_WORDS = 10         # rtntype 낱말의 경우, 상위 몇 순위까지 고려할 거냐?
+TOP_FREQ_N_RTNTYPE_SUFFIXES = 10      # rtntype의 접두사의 경우, 상위 몇 순위까지 고려할 거냐?
+TOP_FREQ_N_CLASSNAME_PREFIXES = 10    # class 접두사의 경우, 상위 몇 순위까지 고려할 거냐?
 TOP_FREQ_N_CLASSNAME_WORDS = 10       # class 낱말의 경우, 상위 몇 순위까지 고려할 거냐?
+TOP_FREQ_N_CLASSNAME_SUFFIXES = 10    # class 낱말의 경우, 상위 몇 순위까지 고려할 거냐?
 TOP_FREQ_N_RTNTYPES = 10              # rtntype을 통째로 생각했을 때, 상위 몇 순위까지 고려할 거냐?
 TOP_FREQ_N_INTYPES = 10               # intypes 낱말의 경우, 상위 몇 순위까지 고려할 거냐?
 TOP_FREQ_N_CALLEES = 10               # callee들의 경우, 상위 몇 순위까지 고려할 거냐?
@@ -167,16 +279,27 @@ TOP_FREQ_N_CALLEES = 10               # callee들의 경우, 상위 몇 순위�
 # Constants ============================
 # ======================================
 
+TOP_FREQ_NAME_PREFIXES = list(map(lambda tup: tup[0],
+                                  find_frequent_words(target="name-prefix")[:TOP_FREQ_N_NAME_PREFIXES]))
+
 TOP_FREQ_NAME_WORDS = list(map(lambda tup: tup[0],
                                find_frequent_words(target="name")[:TOP_FREQ_N_NAME_WORDS]))
+
 TOP_FREQ_RTNTYPE_WORDS = list(map(lambda tup: tup[0],
                                   find_frequent_words(target="rtntype")[:TOP_FREQ_N_RTNTYPE_WORDS]))
+
 TOP_FREQ_CLASSNAME_WORDS = list(map(lambda tup: tup[0],
-                                    find_frequent_words(target="rtntype")[:TOP_FREQ_N_CLASSNAME_WORDS]))
+                                    find_frequent_words(target="classname")[:TOP_FREQ_N_CLASSNAME_WORDS]))
+
+TOP_FREQ_CLASSNAME_SUFFIXES = list(map(lambda tup: tup[0],
+                                    find_frequent_words(target="classname-suffix")[:TOP_FREQ_N_CLASSNAME_WORDS]))
+
 TOP_FREQ_RTNTYPES = list(map(lambda tup: tup[0],
                              find_frequents(target="rtntype")[:TOP_FREQ_N_RTNTYPES]))
+
 TOP_FREQ_INTYPES = list(map(lambda tup: tup[0],
                             find_frequents(target="intype")[:TOP_FREQ_N_INTYPES]))
+
 TOP_FREQ_CALLEES = find_frequents(target="callees")[:TOP_FREQ_N_CALLEES]
 
 
@@ -199,8 +322,9 @@ def method_name_starts_with(node):
     """Does this method's name start with the given word?
        NOTE Higher-order feature"""
     prefix = camel_case_split(node[3])[0]
+    prefix = prefix.lower()
     out = dict()
-    for freq_word in TOP_FREQ_NAME_WORDS:
+    for freq_word in TOP_FREQ_NAME_PREFIXES:
         out[("method_name_starts_with", freq_word)] = prefix == freq_word
     return out    # key: word, val: boolean
 
@@ -209,6 +333,7 @@ def method_name_contains(node):
     """Does this method's name contain the given word?
        NOTE Higher-order feature"""
     words = camel_case_split(node[3])
+    words = list(map(lambda string: string.lower(), words))
     out = dict()
     for freq_word in TOP_FREQ_NAME_WORDS:
         out[("method_name_contains", freq_word)] = freq_word in words
@@ -219,16 +344,11 @@ def return_type_contains_name(node):
     """Does the return type contain the given name?
        NOTE Higher-order feature"""
     words = camel_case_split(node[2])
+    words = list(map(lambda string: string.lower(), words))
     out = dict()
     for freq_word in TOP_FREQ_RTNTYPE_WORDS:
         out[("return_type_contains_name", freq_word)] = freq_word in words
     return out    # key: word, val: boolean
-
-
-def class_contains_name(node):
-    """Is the method part of class that contains the given name?
-       NOTE Higher-order feature"""
-    words = camel_case_split(node[1])
     out = dict()
     for freq_word in TOP_FREQ_CLASSNAME_WORDS:
         out[("class_contains_name", freq_word)] = freq_word in words
@@ -239,9 +359,10 @@ def class_endswith_name(node):
     """Is the method part of class that ends with the given name?
        NOTE Higher-order feature"""
     words = camel_case_split(node[1])
+    words = list(map(lambda string: string.lower(), words))
     suffix = camel_case_split(node[1])[len(words)-1]
     out = dict()
-    for freq_word in TOP_FREQ_CLASSNAME_WORDS:
+    for freq_word in TOP_FREQ_CLASSNAME_SUFFIXES:
         out[("class_endswith_name", freq_word)] = suffix == freq_word
     return out
 
@@ -297,9 +418,10 @@ def void_on_method(node):
 
 def method_name_contains_return_type(node):
     """Does the method name contain the return type?"""
-    rtntype = node[2]
+    rtntype = node[2].lower()
     methname = node[3]
-    return rtntype in camel_case_split(methname)
+    return rtntype in list(map(lambda string: string.lower(),
+                               camel_case_split(methname)))
 
 
 # Semantic Features ==================
@@ -433,33 +555,34 @@ def apply_and_concat():
 
     # multi-index first-order features
     has_parameters_df = pd.DataFrame(has_parameters_df,
-                                     index=pd.MultiIndex.from_tuples([("has_parameters", "")]))
+                                     columns=pd.MultiIndex.from_tuples([("has_parameters", "")]))
     has_return_type_df = pd.DataFrame(has_parameters_df,
-                                      index=pd.MultiIndex.from_tuples([("has_return_type", "")]))
+                                      columns=pd.MultiIndex.from_tuples([("has_return_type", "")]))
     param_type_matches_return_type_df = pd.DataFrame(param_type_matches_return_type_df,
-                                                     index=pd.MultiIndex.from_tuples([("param_type_matches_return_type", "")]))
+                                                     columns=pd.MultiIndex.from_tuples([("param_type_matches_return_type", "")]))
     is_real_setter_df = pd.DataFrame(is_real_setter_df,
-                                     index=pd.MultiIndex.from_tuples([("is_real_setter", "")]))
-    void_on_method_df.columns = pd.DataFrame(void_on_method_df,
-                                             index=pd.MultiIndex.from_tuples([("void_on_method", "")]))
-    method_name_contains_return_type_df.columns = pd.DataFrame(method_name_contains_return_type_df,
-                                                               index=pd.MultiIndex.from_tuples([("method_name_contains_return_type", "")]))
+                                     columns=pd.MultiIndex.from_tuples([("is_real_setter", "")]))
+    void_on_method_df = pd.DataFrame(void_on_method_df,
+                                     columns=pd.MultiIndex.from_tuples([("void_on_method", "")]))
+    method_name_contains_return_type_df = pd.DataFrame(method_name_contains_return_type_df,
+                                                               columns=pd.MultiIndex.from_tuples([("method_name_contains_return_type", "")]))
     calling_but_no_df_df = pd.DataFrame(calling_but_no_df_df,
-                                        index=pd.MultiIndex.from_tuples([("calling_but_no_df", "")]))
+                                        columns=pd.MultiIndex.from_tuples([("calling_but_no_df", "")]))
     called_but_no_df_df = pd.DataFrame(called_but_no_df_df,
-                                       index=pd.MultiIndex.from_tuples([("called_but_no_df", "")]))
+                                       columns=pd.MultiIndex.from_tuples([("called_but_no_df", "")]))
     making_df_call_df = pd.DataFrame(making_df_call_df,
-                                     index=pd.MultiIndex.from_tuples([("making_df_call", "")]))
+                                     columns=pd.MultiIndex.from_tuples([("making_df_call", "")]))
     has_df_call_df = pd.DataFrame(has_df_call_df,
-                                  index=pd.MultiIndex.from_tuples([("has_df_call", "")]))
+                                  columns=pd.MultiIndex.from_tuples([("has_df_call", "")]))
     receiving_and_passing_data_df = pd.DataFrame(receiving_and_passing_data_df,
-                                                 index=pd.MultiIndex.from_tuples([("receiving_and_passing_data", "")]))
+                                                 columns=pd.MultiIndex.from_tuples([("receiving_and_passing_data", "")]))
     has_df_call_and_dead_df = pd.DataFrame(has_df_call_and_dead_df,
-                                           index=pd.MultiIndex.from_tuples([("has_df_call_and_dead", "")]))
+                                           columns=pd.MultiIndex.from_tuples([("has_df_call_and_dead", "")]))
     has_redefine_df = pd.DataFrame(has_redefine_df,
-                                   index=pd.MultiIndex.from_tuples([("has_redefine", "")]))
+                                   columns=pd.MultiIndex.from_tuples([("has_redefine", "")]))
 
     # multi-index higher-order features
+    method_name_contains_df = handle_multiindex_higherorder(method_name_contains_df)
     method_name_starts_with_df = handle_multiindex_higherorder(method_name_starts_with_df)
     return_type_contains_name_df = handle_multiindex_higherorder(return_type_contains_name_df)
     class_contains_name_df = handle_multiindex_higherorder(class_contains_name_df)
@@ -491,14 +614,95 @@ def apply_and_concat():
                        has_df_call_and_dead_df,
                        has_redefine_df ], axis=1)
 
+# Visualization Utilities ============
+# ====================================
+
+def get_count_of_column(feature_vectors, colname):
+    """한 column의 value의 분포를 pie chart로 visualize한다.
+       parameter col의 input type: String"""
+    # getting the proportion of Feature Values
+    counts = feature_vectors[colname].value_counts()
+    True_cnt = counts.get(True)
+    False_cnt = counts.get(False)
+    if True_cnt is None:
+        True_cnt = 0
+    if False_cnt is None:
+        False_cnt = 0
+
+    return True_cnt, False_cnt
+
+
+def visualize_single_page(feature_vectors, colnames):
+    """Visualize a single page with a given chunk of
+       25 columns."""
+    f, axes = plt.subplots(5, 5)
+    colnames = iter(colnames)
+
+    for i in range(5):
+        for j in range(5):
+            try:
+                colname = next(colnames)
+            except:
+                return
+            axes[i, j].set_title(colname)
+            True_cnt, False_cnt = get_count_of_column(feature_vectors, colname)
+            # Parameters to .pie()
+            group_sizes = [True_cnt, False_cnt]
+            group_names = ["True", "False"]
+            group_colors = []
+            group_explodes = (0.1, 0)  # separate 1st slice
+            axes[i, j].pie(group_sizes,
+                           explode=group_explodes,
+                           labels=group_names,
+                           # autopct='%1.2f%%',
+                           shadow=True,
+                           startangle=90,
+                           textprops={'fontsize': 7})
+            # visualize the 25 subplots!
+    plt.tight_layout()
+    plt.show()
+
+
+def visualize_all_columns(feature_vectors):
+    # indices to place subplots
+    # need to define a zipped list of colnames and page_nums
+    acc = []                    # may change name
+    colnames = list(feature_vectors.columns)[1:]
+    for i in range(7):
+        acc += list(repeat(i, 25))
+        colnames_and_pagenums = list(zip(colnames, acc))
+
+    # now, partition these by pagenums
+    acc = []
+    for i in range(7):
+        partition = list(filter(lambda tup: tup[1] == i, colnames_and_pagenums))
+        acc.append(partition)
+        column_chunks = list(map(lambda lst: list(map(lambda tup: tup[0], lst)), acc))
+    for column_chunk in column_chunks:
+        visualize_single_page(feature_vectors, column_chunk)
+
+
+def get_TrueFalse_ratio_one_column(colname):
+    """Get the proportion of True values for a single column"""
+    True_cnt, False_cnt = get_count_of_column(colname)
+    return 0 if True_cnt == False_cnt == 0 else True_cnt / (True_cnt + False_cnt)
+
+
+def get_TrueFalse_ratio_all_columns(feature_vectors):
+    """Get the proportion of True values for all columns and print it"""
+    colnames = list(feature_vectors.columns)[1:]
+    for colname in colnames:
+        ratio = get_TrueFalse_ratio_one_column(colname)
+        print(colname, ":", ratio)
+
 
 # main ================================
 # =====================================
 
 
 def main():
-    feature_vector = apply_and_concat()
-    feature_vector.to_csv("feature_vector.csv", mode="w+")
+    feature_vectors = apply_and_concat()
+    feature_vectors.to_csv("feature_vectors.csv", mode="w+")
 
 
 if __name__ == "__main__":

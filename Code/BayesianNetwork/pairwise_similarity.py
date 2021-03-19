@@ -103,7 +103,7 @@ def find_frequent_words(**kwargs):
         splitted_names = node_names.parallel_apply(camel_case_split)
         splitted_names = [value for _, value in splitted_names.iteritems()]
         words_withdup =\
-            reduce(lambda acc, elem: acc+exclude_first_last(elem),  # exclude prefixes and suffixes
+            reduce(lambda acc, elem: acc+elem,
                    splitted_names, [])
         words_withdup = list(filter(lambda name: name not in JAVA_BUILTIN_TYPES and\
                                     name not in JAVA_BUILTIN_CLASSES,#and\
@@ -140,7 +140,8 @@ def find_frequent_words(**kwargs):
         node_rtntypes = NODE_DATA["rtntype"]
         splitted_rtntypes = node_rtntypes.parallel_apply(camel_case_split)
         splitted_rtntypes = [value for _, value in splitted_rtntypes.iteritems()]
-        words_withdup = reduce(lambda acc, elem: acc+exclude_first_last(elem), splitted_rtntypes, [])
+        # words_withdup = reduce(lambda acc, elem: acc+exclude_first_last(elem), splitted_rtntypes, [])
+        words_withdup = reduce(lambda acc, elem: acc+elem, splitted_rtntypes, [])
         words_withdup = list(map(lambda name: name.lower(), words_withdup))
         words_withdup = list(filter(lambda name: name not in JAVA_BUILTIN_TYPES and\
                                     name not in JAVA_BUILTIN_CLASSES,#and\
@@ -189,7 +190,8 @@ def find_frequent_words(**kwargs):
         node_classnames = NODE_DATA["class"]
         splitted_classnames = node_classnames.parallel_apply(camel_case_split)
         splitted_classnames = [value for _, value in splitted_classnames.iteritems()]
-        words_withdup = reduce(lambda acc, elem: acc+exclude_first_last(elem), splitted_classnames, [])
+        # words_withdup = reduce(lambda acc, elem: acc+exclude_first_last(elem), splitted_classnames, [])
+        words_withdup = reduce(lambda acc, elem: acc+elem, splitted_classnames, [])
         words_withdup = list(map(lambda name: name.lower(), words_withdup))
         words_withdup = list(filter(lambda name: name not in JAVA_BUILTIN_TYPES and\
                                     name not in JAVA_BUILTIN_CLASSES,#and\
@@ -255,7 +257,7 @@ def find_frequents(**kwargs):
         return sorted(most_commons, key=lambda x: x[1], reverse=True)
 
     elif kwargs["target"] == "callees":
-        top10 = CALLGRAPH.id1.value_counts().head(10)
+        top10 = CALLGRAPH.id2.value_counts().head(10)
         return list(top10.index)
 
 
@@ -349,6 +351,13 @@ def return_type_contains_name(node):
     for freq_word in TOP_FREQ_RTNTYPE_WORDS:
         out[("return_type_contains_name", freq_word)] = freq_word in words
     return out    # key: word, val: boolean
+
+
+def class_contains_name(node):
+    """Is the method part of class that contains the given name?
+       NOTE Higher-order feature"""
+    words = camel_case_split(node[2])
+    words = list(map(lambda string: string.lower(), words))
     out = dict()
     for freq_word in TOP_FREQ_CLASSNAME_WORDS:
         out[("class_contains_name", freq_word)] = freq_word in words
@@ -437,10 +446,10 @@ list_of_data_passees = list(DF["id2"])
 def invocation_name(node):
     """Check if an invocation to a certain method is made."""
     # take a look at the callgraph
-    methname = node[3]
+    meth_id = node[5]
     out = dict()
     for freq_callee in TOP_FREQ_CALLEES:
-        selected_rows = CALLGRAPH[(CALLGRAPH["id1"] == methname) &
+        selected_rows = CALLGRAPH[(CALLGRAPH["id1"] == meth_id) &
                                   (CALLGRAPH["id2"] == freq_callee)]
         out[("invocation_name", freq_callee)] = not selected_rows.empty
     return out
@@ -448,48 +457,49 @@ def invocation_name(node):
 
 def calling_but_no_df(node):
     """Is this method calling another method, but not passing any data to it?"""
-    methname = node[3]
-    node_is_caller = methname in list_of_callers
-    not_passing_data = methname not in list_of_data_passers
+    meth_id = node[5]
+    node_is_caller = meth_id in list_of_callers
+    not_passing_data = meth_id not in list_of_data_passers
     return node_is_caller and not_passing_data
 
 
 def called_but_no_df(node):
     """Has this method been called, but are there no other data flowing into it?"""
-    methname = node[3]
-    node_is_callee = methname in list_of_callees
-    not_being_passed_data = methname not in list_of_data_passees
+    meth_id = node[5]
+    node_is_callee = meth_id in list_of_callees
+    not_being_passed_data = meth_id not in list_of_data_passees
     return node_is_callee and not_being_passed_data
 
 
 def making_df_call(node):
     """Is this method calling other method and passing data at the same time?"""
-    methname = node[3]
-    node_is_caller = methname in list_of_callers
-    passing_data = methname in list_of_data_passers
+    meth_id = node[5]
+    node_is_caller = meth_id in list_of_callers
+    passing_data = meth_id in list_of_data_passers
     return node_is_caller and passing_data
 
 
 def has_df_call(node):
     """Is this method being called and being passed data at the same time?"""
-    methname = node[3]
-    node_is_callee = methname in list_of_callees
-    being_passed_data = methname in list_of_data_passees
+    meth_id = node[5]
+    node_is_callee = meth_id in list_of_callees
+    being_passed_data = meth_id in list_of_data_passees
     return node_is_callee and being_passed_data
 
 
 def receiving_and_passing_data(node):
     """Is this method receiving and passing data at the same time?"""
-    methname = node[3]
-    being_passed_data = methname in list_of_data_passees
-    passing_data = methname in list_of_data_passers
+    meth_id = node[5]
+    being_passed_data = meth_id in list_of_data_passees
+    passing_data = meth_id in list_of_data_passers
     return being_passed_data and passing_data
 
 
+# Borken
 def has_df_call_and_dead(node):
     """Are any pieces of data being passed to this method via call
        and being dead in this method?"""
-    methname = node[3]
+    meth_id = node[5]
     def mapfunc(chain):
         for event in chain:
             if event["status"] == "Dead":
@@ -504,11 +514,11 @@ def has_df_call_and_dead(node):
 
 def has_redefine(node):
     """Are there any data redefinitions in this method?"""
-    methname = node[3]
+    meth_id = node[5]
     def mapfunc(chain):
         for event in chain:
-            if event["status"] == "redefine" and\
-               event["current_method"] == methname:
+            if event["status"] == "Redefine" and\
+               event["current_method"] == meth_id:
                 return True
         return False
     return CHAIN["chain"].apply(mapfunc).any()
@@ -528,7 +538,8 @@ def handle_multiindex_higherorder(df):
 
 def apply_and_concat():
     """parallel apply to NODE_DATA and concat them altogether"""
-    id_df = pd.DataFrame(NODE_DATA['id'], columns=pd.MultiIndex.from_tuples([("id", "")]))
+    id_df = pd.DataFrame(NODE_DATA["id"])
+    id_df.columns = pd.MultiIndex.from_tuples([("id", "")])
 
     # raw applied dataframes: before handling columns
     has_parameters_df = NODE_DATA.parallel_apply(has_parameters, axis=1)
@@ -556,7 +567,7 @@ def apply_and_concat():
     # multi-index first-order features
     has_parameters_df = pd.DataFrame(has_parameters_df,
                                      columns=pd.MultiIndex.from_tuples([("has_parameters", "")]))
-    has_return_type_df = pd.DataFrame(has_parameters_df,
+    has_return_type_df = pd.DataFrame(has_return_type_df,
                                       columns=pd.MultiIndex.from_tuples([("has_return_type", "")]))
     param_type_matches_return_type_df = pd.DataFrame(param_type_matches_return_type_df,
                                                      columns=pd.MultiIndex.from_tuples([("param_type_matches_return_type", "")]))
@@ -632,7 +643,7 @@ def get_count_of_column(feature_vectors, colname):
     return True_cnt, False_cnt
 
 
-def visualize_single_page(feature_vectors, colnames):
+def visualize_single_page(feature_vectors, colnames, index=1):
     """Visualize a single page with a given chunk of
        25 columns."""
     f, axes = plt.subplots(5, 5)
@@ -660,7 +671,8 @@ def visualize_single_page(feature_vectors, colnames):
                            textprops={'fontsize': 7})
             # visualize the 25 subplots!
     plt.tight_layout()
-    plt.show()
+    # plt.show()
+    plt.savefig("{}.png".format(index))
 
 
 def visualize_all_columns(feature_vectors):
@@ -678,8 +690,10 @@ def visualize_all_columns(feature_vectors):
         partition = list(filter(lambda tup: tup[1] == i, colnames_and_pagenums))
         acc.append(partition)
         column_chunks = list(map(lambda lst: list(map(lambda tup: tup[0], lst)), acc))
+    i = 1
     for column_chunk in column_chunks:
-        visualize_single_page(feature_vectors, column_chunk)
+        visualize_single_page(feature_vectors, column_chunk, i)
+        i += 1
 
 
 def get_TrueFalse_ratio_one_column(colname):

@@ -208,7 +208,7 @@ def find_frequent_words(**kwargs):
         node_classnames = NODE_DATA["class"]
         splitted_classnames = node_classnames.parallel_apply(camel_case_split)
         splitted_classnames = [value for _, value in splitted_classnames.iteritems()]
-        words_withdup = list(map(lambda elem: elem[0], splitted_classnames))
+        words_withdup = list(map(lambda elem: elem[len(elem)-1], splitted_classnames))
         words_withdup = list(filter(lambda name: name not in JAVA_BUILTIN_TYPES and\
                                     name not in JAVA_BUILTIN_CLASSES,#and\
                                     # name not in JAVA_BUILTIN_COLLS and\
@@ -294,7 +294,7 @@ TOP_FREQ_CLASSNAME_WORDS = list(map(lambda tup: tup[0],
                                     find_frequent_words(target="classname")[:TOP_FREQ_N_CLASSNAME_WORDS]))
 
 TOP_FREQ_CLASSNAME_SUFFIXES = list(map(lambda tup: tup[0],
-                                    find_frequent_words(target="classname-suffix")[:TOP_FREQ_N_CLASSNAME_WORDS]))
+                                    find_frequent_words(target="classname-suffix")[:TOP_FREQ_N_CLASSNAME_SUFFIXES]))
 
 TOP_FREQ_RTNTYPES = list(map(lambda tup: tup[0],
                              find_frequents(target="rtntype")[:TOP_FREQ_N_RTNTYPES]))
@@ -338,7 +338,7 @@ def method_name_contains(node):
     words = list(map(lambda string: string.lower(), words))
     out = dict()
     for freq_word in TOP_FREQ_NAME_WORDS:
-        out[("method_name_contains", freq_word)] = freq_word in words
+        out[("method_name_contains", freq_word)] = freq_word.lower() in words
     return out    # key: word, val: boolean
 
 
@@ -349,7 +349,7 @@ def return_type_contains_name(node):
     words = list(map(lambda string: string.lower(), words))
     out = dict()
     for freq_word in TOP_FREQ_RTNTYPE_WORDS:
-        out[("return_type_contains_name", freq_word)] = freq_word in words
+        out[("return_type_contains_name", freq_word)] = freq_word.lower() in words
     return out    # key: word, val: boolean
 
 
@@ -360,7 +360,7 @@ def class_contains_name(node):
     words = list(map(lambda string: string.lower(), words))
     out = dict()
     for freq_word in TOP_FREQ_CLASSNAME_WORDS:
-        out[("class_contains_name", freq_word)] = freq_word in words
+        out[("class_contains_name", freq_word)] = freq_word.lower() in words
     return out    # key: word, val: boolean
 
 
@@ -369,20 +369,20 @@ def class_endswith_name(node):
        NOTE Higher-order feature"""
     words = camel_case_split(node[1])
     words = list(map(lambda string: string.lower(), words))
-    suffix = camel_case_split(node[1])[len(words)-1]
+    suffix = words[len(words)-1]
     out = dict()
     for freq_word in TOP_FREQ_CLASSNAME_SUFFIXES:
-        out[("class_endswith_name", freq_word)] = suffix == freq_word
+        out[("class_endswith_name", freq_word)] = suffix == freq_word.lower()
     return out
 
 
 def rtntype_equals(node):
     """Is the return type of the method equal to the type given?
        NOTE Higher-order feature"""
-    rtntype = node[2]
+    rtntype = node[2].lower()
     out = dict()
     for freq_rtntype in TOP_FREQ_RTNTYPES:
-        out[("returntype_equals", freq_rtntype)] = rtntype == freq_rtntype
+        out[("returntype_equals", freq_rtntype)] = rtntype == freq_rtntype.lower()
     return out
 
 
@@ -625,14 +625,18 @@ def apply_and_concat():
                        has_df_call_and_dead_df,
                        has_redefine_df ], axis=1)
 
+
+FEATURE_VECTORS = apply_and_concat()
+
+
 # Visualization Utilities ============
 # ====================================
 
-def get_count_of_column(feature_vectors, colname):
+def get_count_of_column(colname):
     """한 column의 value의 분포를 pie chart로 visualize한다.
        parameter col의 input type: String"""
     # getting the proportion of Feature Values
-    counts = feature_vectors[colname].value_counts()
+    counts = FEATURE_VECTORS[colname].value_counts()
     True_cnt = counts.get(True)
     False_cnt = counts.get(False)
     if True_cnt is None:
@@ -643,7 +647,7 @@ def get_count_of_column(feature_vectors, colname):
     return True_cnt, False_cnt
 
 
-def visualize_single_page(feature_vectors, colnames, index=1):
+def visualize_single_page(colnames, index=1):
     """Visualize a single page with a given chunk of
        25 columns."""
     f, axes = plt.subplots(5, 5)
@@ -656,7 +660,7 @@ def visualize_single_page(feature_vectors, colnames, index=1):
             except:
                 return
             axes[i, j].set_title(colname)
-            True_cnt, False_cnt = get_count_of_column(feature_vectors, colname)
+            True_cnt, False_cnt = get_count_of_column(FEATURE_VECTORS, colname)
             # Parameters to .pie()
             group_sizes = [True_cnt, False_cnt]
             group_names = ["True", "False"]
@@ -675,11 +679,11 @@ def visualize_single_page(feature_vectors, colnames, index=1):
     plt.savefig("{}.png".format(index))
 
 
-def visualize_all_columns(feature_vectors):
+def visualize_all_columns():
     # indices to place subplots
     # need to define a zipped list of colnames and page_nums
     acc = []                    # may change name
-    colnames = list(feature_vectors.columns)[1:]
+    colnames = list(FEATURE_VECTORS.columns)[1:]
     for i in range(7):
         acc += list(repeat(i, 25))
         colnames_and_pagenums = list(zip(colnames, acc))
@@ -692,7 +696,7 @@ def visualize_all_columns(feature_vectors):
         column_chunks = list(map(lambda lst: list(map(lambda tup: tup[0], lst)), acc))
     i = 1
     for column_chunk in column_chunks:
-        visualize_single_page(feature_vectors, column_chunk, i)
+        visualize_single_page(FEATURE_VECTORS, column_chunk, i)
         i += 1
 
 
@@ -702,12 +706,86 @@ def get_TrueFalse_ratio_one_column(colname):
     return 0 if True_cnt == False_cnt == 0 else True_cnt / (True_cnt + False_cnt)
 
 
-def get_TrueFalse_ratio_all_columns(feature_vectors):
+def get_TrueFalse_ratio_all_columns():
     """Get the proportion of True values for all columns and print it"""
-    colnames = list(feature_vectors.columns)[1:]
+    colnames = list(FEATURE_VECTORS.columns)[1:]
     for colname in colnames:
         ratio = get_TrueFalse_ratio_one_column(colname)
         print(colname, ":", ratio)
+
+
+# pairwise similarity =================
+# =====================================
+
+def get_score_by_column(colname):
+    """Core idea: score columns with different scores.
+       scoring scheme (if two feature value matches) based on T/F ratio:
+       - 01_IsImplicitMethod (18%): score 72
+       - 02_AnonymousClass (0.04%): score 99.96
+       ...you get the idea, right?"""
+    TF_ratio_percent = get_TrueFalse_ratio_one_column(colname) % 100
+    return 100 * (1 - TF_ratio_percent)
+
+
+def get_scores_of_columns():
+    """Produce a mapping from colnames to their scores"""
+    return dict([(colname, get_score_by_column(colname))
+                 for colname in list(FEATURE_VECTORS.columns)])
+
+
+# mapping from colnames to their scores
+score_by_columns = get_scores_of_columns()
+
+
+def get_scores_given_columns(colnames):
+    """Given a list of colnames, find the similarity score."""
+    acc = 0
+    for colname in colnames:
+        acc += score_by_columns[colname]
+    return acc
+
+
+def get_true_columns(row):
+    """Given a row, get the list of column names with True values."""
+    to_dict = dict(row)
+    True_keys = valfilter(lambda x: x, to_dict).keys()
+    return list(True_keys)
+
+
+def pairwise_sim_uneven(FEATURE_VECTORS, row):
+    """get the scores of all rows regarding a single given row, using an uneven scoring scheme."""
+    # Exclude the row in question
+    FEATURE_VECTORS_other = FEATURE_VECTORS[FEATURE_VECTORS.id != row[0]]
+
+    # Then, drop the "method_name" column (for convenient row-wise AND-ing)
+    FEATURE_VECTORS_without_id = FEATURE_VECTORS_other.drop("id", axis=1)
+
+    # The row in question, without the "method_name"
+    row_without_id = row.drop("id")
+
+    # Now, perform the row-wise AND
+    anded = FEATURE_VECTORS_without_id.apply(lambda other_row: row_without_id & other_row, axis=1)
+
+    # Vector containing list of column names with True values, row by row.
+    # NOTE This very likely is a bottleneck
+    True_colnames_df = anded.apply(lambda row: get_true_columns(row), axis=1)
+
+    # Now, get the similarity scores based on the above colnames with True values
+    sim_scores_df = True_colnames_df.apply(lambda colnames: get_scores_given_columns(colnames))
+
+    # Append this to the FEAUTURE_VECTOR_other
+    FEATURE_VECTORS_other["score"] = sim_scores_df
+
+    # Retrieve rows with values greater than threshold
+    threshold = 350  # TEMP: 나중에 따로 튜닝할 것.
+
+    # Select the rows with scores higher than the threshold
+    above_threshold_rows = FEATURE_VECTORS_other[FEATURE_VECTORS_other["score"] >= threshold]
+    above_threshold_rows = above_threshold_rows.reset_index()
+
+    projected = above_threshold_rows[["index", "score"]]
+
+    return projected.to_dict("records")
 
 
 # main ================================
@@ -715,8 +793,7 @@ def get_TrueFalse_ratio_all_columns(feature_vectors):
 
 
 def main():
-    feature_vectors = apply_and_concat()
-    feature_vectors.to_csv("feature_vectors.csv", mode="w+")
+    FEATURE_VECTORS.to_csv("FEATURE_VECTORS.csv", mode="w+")
 
 
 if __name__ == "__main__":

@@ -10,6 +10,7 @@ from functools import reduce
 from itertools import repeat
 from pandarallel import pandarallel
 from toolz import keymap, valfilter
+from create_node import process
 
 
 pandarallel.initialize()
@@ -471,18 +472,38 @@ def score_all_rows():
 
 def flatten_sim_df(sim_df):
     """Flatten a dataframe of dictionaries."""
-    acc = pd.DataFrame([], columns=["id1", "id2", "score"])
+    acc = pd.DataFrame([], columns=["class1", "rtntype1", "name1", "intype1", "id1",
+                                    "class2", "rtntype2", "name2", "intype2", "id2", "score"])
     sim_df["id1"] = NODE_DATA["id"]
     def mapfunc(row):
         sim_dict = row[0]
         sim_tups = list(sim_dict.items())
         id1 = row[1]
-        return pd.DataFrame([(id1, ) + sim_tup for sim_tup in sim_tups],
-                            columns=["id1", "id2", "score"])
+        return pd.DataFrame([process(id1) + process(sim_tup[0]) + (sim_tup[1],) for sim_tup in sim_tups],
+                            columns=["class1", "rtntype1", "name1", "intype1", "id1",
+                                    "class2", "rtntype2", "name2", "intype2", "id2", "score"])
     for row in sim_df.itertuples(index=False):
         acc = pd.concat([acc, mapfunc(row)])
     acc = acc.reset_index(drop=True)
     return acc
+
+
+# Finalizing DataFrame ================
+# =====================================
+
+
+def no_symmetric(dataframe):
+    dataframe['temp'] = dataframe.index * 2
+    dataframe2 = dataframe.iloc[:, [4, 5, 6, 7, 8, 0, 1, 2, 3, 4, 10, 11]]
+    dataframe2.columns = dataframe.columns
+    dataframe2['temp'] = dataframe2.index * 2 + 1
+    out = pd.concat([dataframe, dataframe2])
+    out = out.sort_values(by='temp')
+    out = out.set_index('temp')
+    out = out.drop_duplicates()
+    out = out[out.index % 2 == 0]
+    out = out.reset_index().drop(columns=['temp'])
+    return out
 
 
 # main ================================
@@ -492,7 +513,7 @@ def flatten_sim_df(sim_df):
 def main():
     start = time.time()
 
-    pairwise_sims = flatten_sim_df(score_all_rows())
+    pairwise_sims = no_symmetric(flatten_sim_df(score_all_rows()))
     pairwise_sims.to_csv("pairwise_sims.csv", mode="w+")
 
     print("elapsed time:", time.time()-start)

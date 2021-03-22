@@ -471,7 +471,18 @@ def score_all_rows():
 
 def flatten_sim_df(sim_df):
     """Flatten a dataframe of dictionaries."""
-    # TODO
+    acc = pd.DataFrame([], columns=["id1", "id2", "score"])
+    sim_df["id1"] = NODE_DATA["id"]
+    def mapfunc(row):
+        sim_dict = row[0]
+        sim_tups = list(sim_dict.items())
+        id1 = row[1]
+        return pd.DataFrame([(id1, ) + sim_tup for sim_tup in sim_tups],
+                            columns=["id1", "id2", "score"])
+    for row in sim_df.itertuples(index=False):
+        acc = pd.concat([acc, mapfunc(row)])
+    acc = acc.reset_index(drop=True)
+    return acc
 
 
 # main ================================
@@ -481,7 +492,7 @@ def flatten_sim_df(sim_df):
 def main():
     start = time.time()
 
-    pairwise_sims = score_all_rows()
+    pairwise_sims = flatten_sim_df(score_all_rows())
     pairwise_sims.to_csv("pairwise_sims.csv", mode="w+")
 
     print("elapsed time:", time.time()-start)

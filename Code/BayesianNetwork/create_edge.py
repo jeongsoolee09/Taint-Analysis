@@ -22,48 +22,6 @@ def retrieve_path():
 PROJECT_ROOT_DIR = retrieve_path()
 
 
-def normalize_methname(methname):
-    return methname.split("\"")[1]
-
-
-def normalize_featurevalue(value):
-    return True if value == "SwanFeatureExtractor.True" else False  # ignore DontKnow
-
-
-def normalize_featurevectors(df):
-    # First, normalize the method names
-    method_name = df.iloc[:, 0]
-    methname_normalized = method_name.apply(normalize_methname)
-
-    # Next, normalize the values
-    rest = df.iloc[:, 1:]
-    rest_normalized = rest.applymap(normalize_featurevalue)
-    normalized_df = pd.concat([methname_normalized, rest_normalized], axis=1)
-
-    # Drop the temporary lambda functions
-    normalized_df = normalized_df[normalized_df["method_name"].map(lambda name: "Lambda" not in name and\
-                                                                   "lambda" not in name) == True]
-    return normalized_df
-
-
-FEATURE_VECTORS = normalize_featurevectors(pd.read_csv(PROJECT_ROOT_DIR + "SwanFeatures.csv"))
-
-
-def lookup_by_index(index):
-    """looks up FEATURE_VECTORS with the index,
-       retrieving its corresponding method_id"""
-    return FEATURE_VECTORS.loc[index].method_name
-
-
-def lookup_index(index_dict):
-    """looks up FEATURE_VECTORS with the index,
-       retrieving its corresponding method_id"""
-    index = index_dict['index']
-    methname = FEATURE_VECTORS.loc[index].method_name
-    index_dict['index'] = methname
-    return index_dict
-
-
 # DataFrame assemblers =======================================
 # ============================================================
 
@@ -133,7 +91,7 @@ def detect_dataflow(json_obj_list):
     dataflow_edges = list(filter(lambda tup: '' not in tup, dataflow_edges))
     dataflow_edges = list(filter(lambda tup: filtermethod(tup[0]) and filtermethod(tup[1]), dataflow_edges))
     dataflow_edges = list(map(lambda tup: (process(tup[0]), process(tup[1])), dataflow_edges))
-    print("len(dataflow_edges):", len(dataflow_edges))
+    # print("len(dataflow_edges):", len(dataflow_edges))
     return dataflow_edges
 
 

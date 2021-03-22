@@ -3,34 +3,17 @@ import pandas as pd
 import re
 import os.path
 import matplotlib.pyplot as plt
+import time
 
 from collections import Counter
 from functools import reduce
 from itertools import repeat
 from pandarallel import pandarallel
+from toolz import keymap, valfilter
 
 
 pandarallel.initialize()
 
-
-# Files ================================
-# ======================================
-
-with open("java_builtin_types.txt", "r+") as builtintypes:
-    JAVA_BUILTIN_TYPES = list(map(lambda string: string.rstrip(),
-                                  builtintypes.readlines()))
-
-with open("java_builtin_classes.txt", "r+") as builtinclasses:
-    JAVA_BUILTIN_CLASSES = list(map(lambda string: string.rstrip(),
-                                    builtinclasses.readlines()))
-
-with open("java_builtin_collections.txt", "r+") as builtincollections:
-    JAVA_BUILTIN_COLLS = list(map(lambda string: string.rstrip(),
-                                  builtincollections.readlines()))
-
-with open("java_builtin_utils.txt", "r+") as builtinutils:
-    JAVA_BUILTIN_UTILS = list(map(lambda string: string.rstrip(),
-                                  builtinutils.readlines()))
 
 # Utility Funcs ========================
 # ======================================
@@ -75,236 +58,6 @@ def camel_case_split(identifier):
     return [m.group(0) for m in matches]
 
 
-def exclude_first_last(lst):
-    return lst[1:len(lst)-1]
-
-
-def find_frequent_words(**kwargs):
-    """available kwargs:
-       - target: 'name', 'rtntype'"""
-    if kwargs["target"] == "name-prefix":
-        node_names = NODE_DATA["name"]
-        splitted_names = node_names.parallel_apply(camel_case_split)
-        splitted_names = [value for _, value in splitted_names.iteritems()]
-        words_withdup = list(map(lambda elem: elem[0], splitted_names))
-        words_withdup = list(filter(lambda name: name not in JAVA_BUILTIN_TYPES and\
-                                    name not in JAVA_BUILTIN_CLASSES,#and\
-                                    # name not in JAVA_BUILTIN_COLLS and\
-                                    # name not in JAVA_BUILTIN_UTILS,
-                                    words_withdup))
-        words_nodup = set(words_withdup)
-        acc = []
-        for name in words_nodup:
-            acc.append((name, words_withdup.count(name)))
-        return sorted(acc, key=lambda x: x[1], reverse=True)
-
-    elif kwargs["target"] == "name":
-        node_names = NODE_DATA["name"]
-        splitted_names = node_names.parallel_apply(camel_case_split)
-        splitted_names = [value for _, value in splitted_names.iteritems()]
-        words_withdup =\
-            reduce(lambda acc, elem: acc+elem,
-                   splitted_names, [])
-        words_withdup = list(filter(lambda name: name not in JAVA_BUILTIN_TYPES and\
-                                    name not in JAVA_BUILTIN_CLASSES,#and\
-                                    # name not in JAVA_BUILTIN_COLLS and\
-                                    # name not in JAVA_BUILTIN_UTILS,
-                                    words_withdup))
-        words_withdup = list(map(lambda word: word.lower(), words_withdup))
-        # exclude common word such as "get" and "set"
-        words_withdup = list(filter(lambda word: word != "get" and word != "set",
-                                    words_withdup))
-        words_nodup = set(words_withdup)
-        acc = []
-        for name in words_nodup:
-            acc.append((name, words_withdup.count(name)))
-        return sorted(acc, key=lambda x: x[1], reverse=True)
-
-    elif kwargs["target"] == "rtntype-prefix":
-        node_rtntypes = NODE_DATA["rtntype"]
-        splitted_rtntypes = node_rtntypes.parallel_apply(camel_case_split)
-        splitted_rtntypes = [value for _, value in splitted_rtntypes.iteritems()]
-        words_withdup = list(map(lambda elem: elem[0], splitted_rtntypes))
-        words_withdup = list(filter(lambda name: name not in JAVA_BUILTIN_TYPES and\
-                                    name not in JAVA_BUILTIN_CLASSES,#and\
-                                    # name not in JAVA_BUILTIN_COLLS and\
-                                    # name not in JAVA_BUILTIN_UTILS,
-                                    words_withdup))
-        words_nodup = set(words_withdup)
-        acc = []
-        for name in words_nodup:
-            acc.append((name, words_withdup.count(name)))
-        return sorted(acc, key=lambda x: x[1], reverse=True)
-
-    elif kwargs["target"] == "rtntype":
-        node_rtntypes = NODE_DATA["rtntype"]
-        splitted_rtntypes = node_rtntypes.parallel_apply(camel_case_split)
-        splitted_rtntypes = [value for _, value in splitted_rtntypes.iteritems()]
-        # words_withdup = reduce(lambda acc, elem: acc+exclude_first_last(elem), splitted_rtntypes, [])
-        words_withdup = reduce(lambda acc, elem: acc+elem, splitted_rtntypes, [])
-        words_withdup = list(map(lambda name: name.lower(), words_withdup))
-        words_withdup = list(filter(lambda name: name not in JAVA_BUILTIN_TYPES and\
-                                    name not in JAVA_BUILTIN_CLASSES,#and\
-                                    # name not in JAVA_BUILTIN_COLLS and\
-                                    # name not in JAVA_BUILTIN_UTILS,
-                                    words_withdup))
-        words_nodup = set(words_withdup)
-        acc = []
-        for name in words_nodup:
-            acc.append((name, words_withdup.count(name)))
-        return sorted(acc, key=lambda x: x[1], reverse=True)
-
-    elif kwargs["target"] == "rtntype-suffix":
-        node_rtntypes = NODE_DATA["rtntype"]
-        splitted_rtntypes = node_rtntypes.parallel_apply(camel_case_split)
-        splitted_rtntypes = [value for _, value in splitted_rtntypes.iteritems()]
-        words_withdup = list(map(lambda elem: elem[len(elem)-1], splitted_rtntypes))
-        words_withdup = list(filter(lambda name: name not in JAVA_BUILTIN_TYPES and\
-                                    name not in JAVA_BUILTIN_CLASSES,#and\
-                                    # name not in JAVA_BUILTIN_COLLS and\
-                                    # name not in JAVA_BUILTIN_UTILS,
-                                    words_withdup))
-        words_nodup = set(words_withdup)
-        acc = []
-        for name in words_nodup:
-            acc.append((name, words_withdup.count(name)))
-        return sorted(acc, key=lambda x: x[1], reverse=True)
-
-    elif kwargs["target"] == "classname-prefix":
-        node_classnames = NODE_DATA["class"]
-        splitted_classnames = node_classnames.parallel_apply(camel_case_split)
-        splitted_classnames = [value for _, value in splitted_classnames.iteritems()]
-        words_withdup = list(map(lambda elem: elem[0], splitted_classnames))
-        words_withdup = list(filter(lambda name: name not in JAVA_BUILTIN_TYPES and\
-                                    name not in JAVA_BUILTIN_CLASSES,#and\
-                                    # name not in JAVA_BUILTIN_COLLS and\
-                                    # name not in JAVA_BUILTIN_UTILS,
-                                    words_withdup))
-        words_nodup = set(words_withdup)
-        acc = []
-        for name in words_nodup:
-            acc.append((name, words_withdup.count(name)))
-        return sorted(acc, key=lambda x: x[1], reverse=True)
-
-    elif kwargs["target"] == "classname":
-        node_classnames = NODE_DATA["class"]
-        splitted_classnames = node_classnames.parallel_apply(camel_case_split)
-        splitted_classnames = [value for _, value in splitted_classnames.iteritems()]
-        # words_withdup = reduce(lambda acc, elem: acc+exclude_first_last(elem), splitted_classnames, [])
-        words_withdup = reduce(lambda acc, elem: acc+elem, splitted_classnames, [])
-        words_withdup = list(map(lambda name: name.lower(), words_withdup))
-        words_withdup = list(filter(lambda name: name not in JAVA_BUILTIN_TYPES and\
-                                    name not in JAVA_BUILTIN_CLASSES,#and\
-                                    # name not in JAVA_BUILTIN_COLLS and\
-                                    # name not in JAVA_BUILTIN_UTILS,
-                                    words_withdup))
-        words_nodup = set(words_withdup)
-        acc = []
-        for name in words_nodup:
-            acc.append((name, words_withdup.count(name)))
-        return sorted(acc, key=lambda x: x[1], reverse=True)
-
-    elif kwargs["target"] == "classname-suffix":
-        node_classnames = NODE_DATA["class"]
-        splitted_classnames = node_classnames.parallel_apply(camel_case_split)
-        splitted_classnames = [value for _, value in splitted_classnames.iteritems()]
-        words_withdup = list(map(lambda elem: elem[len(elem)-1], splitted_classnames))
-        words_withdup = list(filter(lambda name: name not in JAVA_BUILTIN_TYPES and\
-                                    name not in JAVA_BUILTIN_CLASSES,#and\
-                                    # name not in JAVA_BUILTIN_COLLS and\
-                                    # name not in JAVA_BUILTIN_UTILS,
-                                    words_withdup))
-        words_nodup = set(words_withdup)
-        acc = []
-        for name in words_nodup:
-            acc.append((name, words_withdup.count(name)))
-        return sorted(acc, key=lambda x: x[1], reverse=True)
-
-
-def flatten(ll):
-    return [elem for lst in ll for elem in lst]
-
-
-def preprocess_intype(raw_intypes):
-    acc = []
-    for raw_intype in raw_intypes:
-        if "," in raw_intype:
-            acc += raw_intype.split(",")
-        else:
-            acc.append(raw_intype)
-    return pd.Series(acc)
-
-
-def find_frequents(**kwargs):
-    if kwargs["target"] == "rtntype":
-        node_rtntypes = NODE_DATA["rtntype"]
-        node_rtntypes = node_rtntypes[~node_rtntypes.isin(JAVA_BUILTIN_TYPES) &
-                                      # ~node_rtntypes.isin(JAVA_BUILTIN_COLLS) &
-                                      # ~node_rtntypes.isin(JAVA_BUILTIN_UTILS) &
-                                      ~node_rtntypes.isin(JAVA_BUILTIN_CLASSES)]
-        counterobj = Counter(node_rtntypes)
-        most_commons = counterobj.most_common(10)
-        return sorted(most_commons, key=lambda x: x[1], reverse=True)
-
-    elif kwargs["target"] == "intype":
-        node_intypes = preprocess_intype(NODE_DATA["intype"])
-        node_intypes = node_intypes[~node_intypes.isin(JAVA_BUILTIN_TYPES) &
-                                    # ~node_intypes.isin(JAVA_BUILTIN_COLLS) &
-                                    # ~node_intypes.isin(JAVA_BUILTIN_UTILS) &
-                                    ~node_intypes.isin(JAVA_BUILTIN_CLASSES)]
-        counterobj = Counter(node_intypes)
-        most_commons = counterobj.most_common(10)
-        return sorted(most_commons, key=lambda x: x[1], reverse=True)
-
-    elif kwargs["target"] == "callees":
-        top10 = CALLGRAPH.id2.value_counts().head(10)
-        return list(top10.index)
-
-
-# Parameters =============================
-# ========================================
-
-
-TOP_FREQ_N_NAME_PREFIXES = 10         # name 접두사의 경우, 상위 몇 순위까지 고려할 거냐?
-TOP_FREQ_N_NAME_WORDS = 10            # name 낱말의 경우, 상위 몇 순위까지 고려할 거냐?
-TOP_FREQ_N_RTNTYPE_PREFIXES = 10      # rtntype 접두사의 경우, 상위 몇 순위까지 고려할 거냐?
-TOP_FREQ_N_RTNTYPE_WORDS = 10         # rtntype 낱말의 경우, 상위 몇 순위까지 고려할 거냐?
-TOP_FREQ_N_RTNTYPE_SUFFIXES = 10      # rtntype의 접두사의 경우, 상위 몇 순위까지 고려할 거냐?
-TOP_FREQ_N_CLASSNAME_PREFIXES = 10    # class 접두사의 경우, 상위 몇 순위까지 고려할 거냐?
-TOP_FREQ_N_CLASSNAME_WORDS = 10       # class 낱말의 경우, 상위 몇 순위까지 고려할 거냐?
-TOP_FREQ_N_CLASSNAME_SUFFIXES = 10    # class 낱말의 경우, 상위 몇 순위까지 고려할 거냐?
-TOP_FREQ_N_RTNTYPES = 10              # rtntype을 통째로 생각했을 때, 상위 몇 순위까지 고려할 거냐?
-TOP_FREQ_N_INTYPES = 10               # intypes 낱말의 경우, 상위 몇 순위까지 고려할 거냐?
-TOP_FREQ_N_CALLEES = 10               # callee들의 경우, 상위 몇 순위까지 고려할 거냐?
-
-
-# Constants ============================
-# ======================================
-
-TOP_FREQ_NAME_PREFIXES = list(map(lambda tup: tup[0],
-                                  find_frequent_words(target="name-prefix")[:TOP_FREQ_N_NAME_PREFIXES]))
-
-TOP_FREQ_NAME_WORDS = list(map(lambda tup: tup[0],
-                               find_frequent_words(target="name")[:TOP_FREQ_N_NAME_WORDS]))
-
-TOP_FREQ_RTNTYPE_WORDS = list(map(lambda tup: tup[0],
-                                  find_frequent_words(target="rtntype")[:TOP_FREQ_N_RTNTYPE_WORDS]))
-
-TOP_FREQ_CLASSNAME_WORDS = list(map(lambda tup: tup[0],
-                                    find_frequent_words(target="classname")[:TOP_FREQ_N_CLASSNAME_WORDS]))
-
-TOP_FREQ_CLASSNAME_SUFFIXES = list(map(lambda tup: tup[0],
-                                    find_frequent_words(target="classname-suffix")[:TOP_FREQ_N_CLASSNAME_SUFFIXES]))
-
-TOP_FREQ_RTNTYPES = list(map(lambda tup: tup[0],
-                             find_frequents(target="rtntype")[:TOP_FREQ_N_RTNTYPES]))
-
-TOP_FREQ_INTYPES = list(map(lambda tup: tup[0],
-                            find_frequents(target="intype")[:TOP_FREQ_N_INTYPES]))
-
-TOP_FREQ_CALLEES = find_frequents(target="callees")[:TOP_FREQ_N_CALLEES]
-
-
 # Syntactic Features =====================
 # ========================================
 # the parameter "node" stands for a row in NODE_DATA
@@ -321,80 +74,52 @@ def has_return_type(node):
 
 
 def method_name_starts_with(node):
-    """Does this method's name start with the given word?
-       NOTE Higher-order feature"""
+    """Extract the method name's prefix."""
     prefix = camel_case_split(node[3])[0]
     prefix = prefix.lower()
-    out = dict()
-    for freq_word in TOP_FREQ_NAME_PREFIXES:
-        out[("method_name_starts_with", freq_word)] = prefix == freq_word
-    return out    # key: word, val: boolean
+    return prefix
 
 
 def method_name_contains(node):
-    """Does this method's name contain the given word?
-       NOTE Higher-order feature"""
+    """Chop up the method name into words."""
     words = camel_case_split(node[3])
     words = list(map(lambda string: string.lower(), words))
-    out = dict()
-    for freq_word in TOP_FREQ_NAME_WORDS:
-        out[("method_name_contains", freq_word)] = freq_word.lower() in words
-    return out    # key: word, val: boolean
+    return words
 
 
 def return_type_contains_name(node):
-    """Does the return type contain the given name?
-       NOTE Higher-order feature"""
+    """Chop up the return type into words."""
     words = camel_case_split(node[2])
     words = list(map(lambda string: string.lower(), words))
-    out = dict()
-    for freq_word in TOP_FREQ_RTNTYPE_WORDS:
-        out[("return_type_contains_name", freq_word)] = freq_word.lower() in words
-    return out    # key: word, val: boolean
+    return words
 
 
 def class_contains_name(node):
-    """Is the method part of class that contains the given name?
-       NOTE Higher-order feature"""
+    """Chop up the class name into words."""
     words = camel_case_split(node[2])
     words = list(map(lambda string: string.lower(), words))
-    out = dict()
-    for freq_word in TOP_FREQ_CLASSNAME_WORDS:
-        out[("class_contains_name", freq_word)] = freq_word.lower() in words
-    return out    # key: word, val: boolean
+    return words
 
 
 def class_endswith_name(node):
-    """Is the method part of class that ends with the given name?
-       NOTE Higher-order feature"""
+    """Extract the class name's suffix."""
     words = camel_case_split(node[1])
     words = list(map(lambda string: string.lower(), words))
     suffix = words[len(words)-1]
-    out = dict()
-    for freq_word in TOP_FREQ_CLASSNAME_SUFFIXES:
-        out[("class_endswith_name", freq_word)] = suffix == freq_word.lower()
-    return out
+    return suffix
 
 
 def rtntype_equals(node):
-    """Is the return type of the method equal to the type given?
-       NOTE Higher-order feature"""
+    """Extract the return type of this method."""
     rtntype = node[2].lower()
-    out = dict()
-    for freq_rtntype in TOP_FREQ_RTNTYPES:
-        out[("returntype_equals", freq_rtntype)] = rtntype == freq_rtntype.lower()
-    return out
+    return rtntype
 
 
 def param_contains_type_or_name(node):
-    """Do any of the parameters' type contain the given name?
-       NOTE Higher-order feature"""
+    """Extract the input types of this method."""
     intypes = node[4].split(",")
-    out = dict()
-    for freq_intype in TOP_FREQ_INTYPES:
-        out[("param_contains_type_or_name", freq_intype)] =\
-            reduce(lambda acc, elem: elem == freq_intype or acc, intypes, False)
-    return out
+    intypes = list(map(lambda string: string.lower(), intypes))
+    return intypes
 
 
 def param_type_matches_return_type(node):
@@ -415,6 +140,7 @@ def is_real_setter(node):
             other_name = row[4]
             if other_name == "set"+other_name[3:]:
                 return True
+        return False
     else:
         return False
 
@@ -444,15 +170,9 @@ list_of_data_passees = list(DF["id2"])
 
 
 def invocation_name(node):
-    """Check if an invocation to a certain method is made."""
-    # take a look at the callgraph
+    """Get the Callees of this node."""
     meth_id = node[5]
-    out = dict()
-    for freq_callee in TOP_FREQ_CALLEES:
-        selected_rows = CALLGRAPH[(CALLGRAPH["id1"] == meth_id) &
-                                  (CALLGRAPH["id2"] == freq_callee)]
-        out[("invocation_name", freq_callee)] = not selected_rows.empty
-    return out
+    return CALLGRAPH[CALLGRAPH["id1"] == meth_id]["id2"].tolist()
 
 
 def calling_but_no_df(node):
@@ -528,18 +248,10 @@ def has_redefine(node):
 # ====================================
 
 
-def handle_multiindex_higherorder(df):
-    keys = list(df.iloc[0].keys())
-    df = pd.DataFrame(df, columns=["original"])
-    df = df.apply(lambda row: row["original"].values(), result_type="expand", axis=1)
-    df.columns = pd.MultiIndex.from_tuples(keys)
-    return df
-
-
 def apply_and_concat():
     """parallel apply to NODE_DATA and concat them altogether"""
     id_df = pd.DataFrame(NODE_DATA["id"])
-    id_df.columns = pd.MultiIndex.from_tuples([("id", "")])
+    id_df.columns = ["id"]
 
     # raw applied dataframes: before handling columns
     has_parameters_df = NODE_DATA.parallel_apply(has_parameters, axis=1)
@@ -563,44 +275,6 @@ def apply_and_concat():
     receiving_and_passing_data_df = NODE_DATA.parallel_apply(receiving_and_passing_data, axis=1)
     has_df_call_and_dead_df = NODE_DATA.parallel_apply(has_df_call_and_dead, axis=1)
     has_redefine_df = NODE_DATA.parallel_apply(has_redefine, axis=1)
-
-    # multi-index first-order features
-    has_parameters_df = pd.DataFrame(has_parameters_df,
-                                     columns=pd.MultiIndex.from_tuples([("has_parameters", "")]))
-    has_return_type_df = pd.DataFrame(has_return_type_df,
-                                      columns=pd.MultiIndex.from_tuples([("has_return_type", "")]))
-    param_type_matches_return_type_df = pd.DataFrame(param_type_matches_return_type_df,
-                                                     columns=pd.MultiIndex.from_tuples([("param_type_matches_return_type", "")]))
-    is_real_setter_df = pd.DataFrame(is_real_setter_df,
-                                     columns=pd.MultiIndex.from_tuples([("is_real_setter", "")]))
-    void_on_method_df = pd.DataFrame(void_on_method_df,
-                                     columns=pd.MultiIndex.from_tuples([("void_on_method", "")]))
-    method_name_contains_return_type_df = pd.DataFrame(method_name_contains_return_type_df,
-                                                               columns=pd.MultiIndex.from_tuples([("method_name_contains_return_type", "")]))
-    calling_but_no_df_df = pd.DataFrame(calling_but_no_df_df,
-                                        columns=pd.MultiIndex.from_tuples([("calling_but_no_df", "")]))
-    called_but_no_df_df = pd.DataFrame(called_but_no_df_df,
-                                       columns=pd.MultiIndex.from_tuples([("called_but_no_df", "")]))
-    making_df_call_df = pd.DataFrame(making_df_call_df,
-                                     columns=pd.MultiIndex.from_tuples([("making_df_call", "")]))
-    has_df_call_df = pd.DataFrame(has_df_call_df,
-                                  columns=pd.MultiIndex.from_tuples([("has_df_call", "")]))
-    receiving_and_passing_data_df = pd.DataFrame(receiving_and_passing_data_df,
-                                                 columns=pd.MultiIndex.from_tuples([("receiving_and_passing_data", "")]))
-    has_df_call_and_dead_df = pd.DataFrame(has_df_call_and_dead_df,
-                                           columns=pd.MultiIndex.from_tuples([("has_df_call_and_dead", "")]))
-    has_redefine_df = pd.DataFrame(has_redefine_df,
-                                   columns=pd.MultiIndex.from_tuples([("has_redefine", "")]))
-
-    # multi-index higher-order features
-    method_name_contains_df = handle_multiindex_higherorder(method_name_contains_df)
-    method_name_starts_with_df = handle_multiindex_higherorder(method_name_starts_with_df)
-    return_type_contains_name_df = handle_multiindex_higherorder(return_type_contains_name_df)
-    class_contains_name_df = handle_multiindex_higherorder(class_contains_name_df)
-    class_endswith_name_df = handle_multiindex_higherorder(class_endswith_name_df)
-    rtntype_equals_df = handle_multiindex_higherorder(rtntype_equals_df)
-    param_contains_type_or_name_df = handle_multiindex_higherorder(param_contains_type_or_name_df)
-    invocation_name_df = handle_multiindex_higherorder(invocation_name_df)
 
     return pd.concat([ id_df,
                        has_parameters_df,
@@ -717,75 +391,87 @@ def get_TrueFalse_ratio_all_columns():
 # pairwise similarity =================
 # =====================================
 
-def get_score_by_column(colname):
-    """Core idea: score columns with different scores.
-       scoring scheme (if two feature value matches) based on T/F ratio:
-       - 01_IsImplicitMethod (18%): score 72
-       - 02_AnonymousClass (0.04%): score 99.96
-       ...you get the idea, right?"""
-    TF_ratio_percent = get_TrueFalse_ratio_one_column(colname) % 100
-    return 100 * (1 - TF_ratio_percent)
+
+def make_scoring_function(this_row):
+    def scoring_function(other_row):
+        assert len(this_row) == len(other_row)
+        score = 0
+        for i in range(1, len(this_row)-1):  # to exclude the id column
+            if type(this_row[i]) == bool or\
+               type(this_row[i]) == str:
+                assert type(this_row[i]) == type(other_row[i])
+                if this_row[i] == other_row[i]:
+                    score += 1
+            elif type(this_row[i]) == list:
+                for this_elem in this_row[i]:
+                    for other_elem in other_row[i]:
+                        if this_elem == other_elem:
+                            score += 1
+        return score
+    return scoring_function
 
 
-def get_scores_of_columns():
-    """Produce a mapping from colnames to their scores"""
-    return dict([(colname, get_score_by_column(colname))
-                 for colname in list(FEATURE_VECTORS.columns)])
+def fetch_methname_by_id(meth_id):
+    return NODE_DATA[NODE_DATA.index == meth_id]["id"].iloc[0]
 
 
-# mapping from colnames to their scores
-score_by_columns = get_scores_of_columns()
-
-
-def get_scores_given_columns(colnames):
-    """Given a list of colnames, find the similarity score."""
-    acc = 0
-    for colname in colnames:
-        acc += score_by_columns[colname]
-    return acc
-
-
-def get_true_columns(row):
-    """Given a row, get the list of column names with True values."""
-    to_dict = dict(row)
-    True_keys = valfilter(lambda x: x, to_dict).keys()
-    return list(True_keys)
-
-
-def pairwise_sim_uneven(FEATURE_VECTORS, row):
+def get_similar_rows_score(this_row):
     """get the scores of all rows regarding a single given row, using an uneven scoring scheme."""
     # Exclude the row in question
-    FEATURE_VECTORS_other = FEATURE_VECTORS[FEATURE_VECTORS.id != row[0]]
+    FEATURE_VECTORS_other = FEATURE_VECTORS[FEATURE_VECTORS["id"] != this_row["id"]]
+    scoring_function = make_scoring_function(this_row)
 
-    # Then, drop the "method_name" column (for convenient row-wise AND-ing)
-    FEATURE_VECTORS_without_id = FEATURE_VECTORS_other.drop("id", axis=1)
+    scores_series = FEATURE_VECTORS_other.apply(scoring_function, axis=1)
 
-    # The row in question, without the "method_name"
-    row_without_id = row.drop("id")
+    threshold = 15              # TEMP
 
-    # Now, perform the row-wise AND
-    anded = FEATURE_VECTORS_without_id.apply(lambda other_row: row_without_id & other_row, axis=1)
+    scores_series_above_thres = scores_series.where(lambda score: (score > threshold)).dropna()
+    converted_to_dict = scores_series_above_thres.to_dict()
 
-    # Vector containing list of column names with True values, row by row.
-    # NOTE This very likely is a bottleneck
-    True_colnames_df = anded.apply(lambda row: get_true_columns(row), axis=1)
+    return keymap(fetch_methname_by_id, converted_to_dict)
 
-    # Now, get the similarity scores based on the above colnames with True values
-    sim_scores_df = True_colnames_df.apply(lambda colnames: get_scores_given_columns(colnames))
 
-    # Append this to the FEAUTURE_VECTOR_other
-    FEATURE_VECTORS_other["score"] = sim_scores_df
+def sort_dict_by_value_rev(dict_):
+    return sorted(tuple(dict_.items()), key=lambda tup: tup[1], reverse=True)
 
-    # Retrieve rows with values greater than threshold
-    threshold = 350  # TEMP: 나중에 따로 튜닝할 것.
 
-    # Select the rows with scores higher than the threshold
-    above_threshold_rows = FEATURE_VECTORS_other[FEATURE_VECTORS_other["score"] >= threshold]
-    above_threshold_rows = above_threshold_rows.reset_index()
+def get_similar_rows_ranking(this_row):
+    # Exclude the row in question
+    FEATURE_VECTORS_other = FEATURE_VECTORS[FEATURE_VECTORS["id"] != this_row["id"]]
+    scoring_function = make_scoring_function(this_row)
 
-    projected = above_threshold_rows[["index", "score"]]
+    scores_series = FEATURE_VECTORS_other.apply(scoring_function, axis=1)
 
-    return projected.to_dict("records")
+    threshold_score = 15
+    threshold_rank = 5
+
+    scores_series_above_thres = scores_series.where(lambda score: (score > threshold_score)).dropna()
+
+    converted_to_dict = scores_series_above_thres.to_dict()
+    sorted_by_val = sort_dict_by_value_rev(converted_to_dict)
+    cut = dict(sorted_by_val[:threshold_rank])
+
+    return keymap(fetch_methname_by_id, cut)
+
+
+def score_all_rows():
+    """Get the 'similar row indices' for all rows.
+       NOTE This is a bottleneck: it takes 60s using Intel i9"""
+    # Call pairwise_sim to every row of FEATURE_VECTORS
+    similar_row_indices_df = FEATURE_VECTORS.parallel_apply(get_similar_rows_ranking, axis=1)
+
+    # and convert the resulting Series to a DataFrame
+    similar_row_indices_df = pd.DataFrame(similar_row_indices_df)
+
+    # Name the columns appropriately
+    similar_row_indices_df = similar_row_indices_df.rename(columns={0: "similar_indices"})
+
+    return similar_row_indices_df
+
+
+def flatten_sim_df(sim_df):
+    """Flatten a dataframe of dictionaries."""
+    # TODO
 
 
 # main ================================
@@ -793,7 +479,12 @@ def pairwise_sim_uneven(FEATURE_VECTORS, row):
 
 
 def main():
-    FEATURE_VECTORS.to_csv("FEATURE_VECTORS.csv", mode="w+")
+    start = time.time()
+
+    pairwise_sims = score_all_rows()
+    pairwise_sims.to_csv("pairwise_sims.csv", mode="w+")
+
+    print("elapsed time:", time.time()-start)
 
 
 if __name__ == "__main__":

@@ -50,10 +50,10 @@ def make_dataframes():
 
 def filtermethod(string):
     return "__" not in string and\
-        "<init>" not in string and\
-        "<clinit>" not in string and\
-        "lambda" not in string and\
-        "Lambda" not in string
+           "<init>" not in string and\
+           "<clinit>" not in string and\
+           "lambda" not in string and\
+           "Lambda" not in string
 
 
 def load_chain_json():
@@ -169,24 +169,16 @@ def no_symmetric(dataframe):
     out = out.set_index('temp')
     out = out.drop_duplicates()
     out = out[out.index % 2 == 0]
-    out = out.reset_index().drop(columns=[('temp', '')])
+    out = out.reset_index().drop(columns=['temp'])
     return out
 
 
 # For observation purposes
-def no_reflexive_simple(dataframe):
+def no_reflexive(dataframe):
     cond1 = dataframe['class1'] != dataframe['class2']
     cond2 = dataframe['rtntype1'] != dataframe['rtntype2']
     cond3 = dataframe['name1'] != dataframe['name2']
     cond4 = dataframe['intype1'] != dataframe['intype2']
-    return dataframe[cond1 | cond2 | cond3 | cond4]
-
-
-def no_reflexive(dataframe):
-    cond1 = dataframe[('edge1', 'class')] != dataframe[('edge2', 'class')]
-    cond2 = dataframe[('edge1', 'rtntype')] != dataframe[('edge2', 'rtntype')]
-    cond3 = dataframe[('edge1', 'name')] != dataframe[('edge2', 'name')]
-    cond4 = dataframe[('edge1', 'intype')] != dataframe[('edge2', 'intype')]
     return dataframe[cond1 | cond2 | cond3 | cond4]
 
 
@@ -216,16 +208,12 @@ def main():
     call_edges = make_calledges()
 
     dataflow_dataframe = make_df_dataframe(dataflow_edges).drop_duplicates()
+    dataflow_dataframe = no_symmetric(dataflow_dataframe)
+    dataflow_dataframe = no_reflexive(dataflow_dataframe)
+
     call_dataframe = make_call_dataframe(call_edges).drop_duplicates()
-
-    edges_dataframe = merge_dataframes(dataflow_dataframe, call_dataframe)
-    edges_dataframe = multiindex_edges(edges_dataframe)
-    edges_dataframe = edges_dataframe.reset_index().drop(columns=[('index', '')])
-
-    edges_dataframe = no_symmetric(edges_dataframe)
-    edges_dataframe = no_reflexive(edges_dataframe)
-
-    edges_dataframe.to_csv("edges.csv", mode='w+')
+    call_dataframe = no_symmetric(call_dataframe)
+    call_dataframe = no_reflexive(call_dataframe)
 
     output_alledges(dataflow_dataframe, call_dataframe)
     print("elapsed time:", time.time()-start)

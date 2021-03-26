@@ -51,6 +51,9 @@ df_reader = csv.reader(df_data)
 call_data = open("callg.csv", "r+")
 call_reader = csv.reader(call_data)
 
+sim_data = open("pairwise_sims.csv", "r+")
+sim_reader = csv.reader(sim_data)
+
 
 def no_reflexive(relation):
     return list(filter(lambda tup: tup[0] != tup[1], relation))
@@ -58,6 +61,9 @@ def no_reflexive(relation):
 
 df_edges = no_reflexive(map(lambda lst: (lst[5], lst[10]), list(df_reader)[1:]))
 call_edges = no_reflexive(map(lambda lst: (lst[5], lst[10]), list(call_reader)[1:]))
+sim_edges = no_reflexive(map(lambda lst: (lst[5], lst[10]), list(sim_reader)[1:]))
+
+edges = no_reflexive(map(lambda lst: (lst[5], lst[10]), list(edges_reader)[1:]))
 
 
 with open(PROJECT_ROOT_DIR+"skip_func.txt", "r+") as skip_func:
@@ -147,17 +153,13 @@ def find_root(G):
 
 def add_edge_to_graph(G):
     """adds edges to `reference graph` G"""
-    next(edges_reader)
-    next(edges_reader)
-    for row in edges_reader:
-        firstNodeID = row[5]
-        secondNodeID = row[10]
+    for firstNodeID, secondNodeID in edges:
         if (firstNodeID, secondNodeID) in df_edges:
             G.add_edge(firstNodeID, secondNodeID, kind="df")
+        elif (firstNodeID, secondNodeID) in sim_edges:
+            G.add_edge(firstNodeID, secondNodeID, kind="sim")
         elif (firstNodeID, secondNodeID) in call_edges:
             G.add_edge(firstNodeID, secondNodeID, kind="call")
-        else:
-            G.add_edge(firstNodeID, secondNodeID, kind="sim")
 
 
 def apply_blacklist(G, blacklist_classes, blacklist_callees, whitelist_classes, whitelist_callees):
@@ -229,6 +231,14 @@ def init_graph(built_in_classes):
     return G
 
 
+def init_graph_given_nodes(edgeless_graph):
+    """Initialize a (directed acyclic) graph for reference."""
+    add_edge_to_graph(edgeless_graph)
+    # filter_edges_from_graph(G, built_in_classes)
+    flip_sim_edges(edgeless_graph)
+    return edgeless_graph
+
+
 def label_edges(G):
     """graph_for_reference G를 받아서, 각 엣지에다 엣지의 종류를 표현하는 레이블을 붙여 준다."""
     print("labelling edges (this may take some time)..")
@@ -279,6 +289,26 @@ def main():
     nx.write_gpickle(graph_for_reference, "graph_for_reference")
 
     print("elapsed time:", time.time()-start)
+
+
+def parameterized_main(edgeless_graph):
+
+    java_lang_url = 'https://docs.oracle.com/javase/7/docs/api/java/lang/package-summary.html'
+    java_utils_url = 'https://docs.oracle.com/javase/8/docs/api/java/util/package-summary.html'
+    java_lang_classes = scrape_class_names(java_lang_url)
+    java_utils_classes = scrape_class_names(java_utils_url)
+    built_in_classes = java_lang_classes + java_utils_classes
+    whitelist_classes, blacklist_classes = create_whitelist_blacklist_classes()
+
+    graph_for_reference = init_graph_given_nodes(edgeless_graph)
+
+    label_edges(graph_for_reference)
+
+    whitelist_callees = recursively_collect_callee(whitelist_classes, graph_for_reference)
+    blacklist_callees = recursively_collect_callee(blacklist_classes, graph_for_reference)
+    apply_blacklist(graph_for_reference, blacklist_classes, blacklist_callees, whitelist_classes, whitelist_callees)
+
+    return graph_for_reference
 
 
 if __name__ == "__main__":

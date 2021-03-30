@@ -7,10 +7,6 @@ import random
 import time
 import argparse
 import re
-
-import pickle # TEMP
-from sys import exit
-
 import make_BN
 import matplotlib.axes as axes
 import matplotlib.patches as ptch
@@ -41,8 +37,10 @@ parser.add_argument("solution_file", help="path to the solution file. input 'Non
                     type=str)
 args = parser.parse_args()
 
+
 # Constants ========================================
 # ==================================================
+
 
 def retrieve_path():
     """paths.json을 읽고 path를 가져온다."""
@@ -85,8 +83,10 @@ with open(PROJECT_ROOT_DIR+"skip_func.txt", "r+") as skip_func:
 
 SIMS = pd.read_csv("pairwise_sims.csv", index_col=False).drop(columns=["Unnamed: 0"])
 
+
 # Random loop ========================================
 # ====================================================
+
 
 def random_loop(global_precision_list, snapshot_dict, graph_for_reference, BN_for_inference,
                   BN_for_inference_x, interaction_number, current_asked, current_evidence,
@@ -140,15 +140,10 @@ def random_loop(global_precision_list, snapshot_dict, graph_for_reference, BN_fo
 
     # exit the function based on various termination measures.
     if there_are_no_nodes_left and not_yet_time_to_terminate:
-        # if set(APIs) == set(current_asked):
-            # print("\nWarning: some distributions are not fully determined.\n")
         print("Early termination: ran out of nodes")
         return (prev_snapshot, precision_list, stability_list,
                 precision_inferred_list, loop_time_list, current_asked,
                 global_precision_list)
-        # else:
-        #     query, dependent_nodes = find_max_d_con(graph_for_reference, BN_for_inference,
-        #                                             [], [], remove_sublist(APIs, current_asked))
     elif there_are_no_nodes_left and its_time_to_terminate:
         return (prev_snapshot, precision_list, stability_list,
                 precision_inferred_list, loop_time_list, current_asked,
@@ -223,55 +218,8 @@ def random_loop(global_precision_list, snapshot_dict, graph_for_reference, BN_fo
                          precision_inferred_list, loop_time_list, window, graph_file)
 
 
-# tactical loop and its calculations =====================
+# Visualization Utils ====================================
 # ========================================================
-
-
-def on_the_fly_propagation(methname, label, BN_for_inference):
-    """Create evidences on the fly, during interaction."""
-
-    state_names = list(map(lambda node: node.name, BN_for_inference.states))
-    state_names_df = pd.DataFrame(state_names)
-
-    # find rows where the given methname appears and
-    # the other row is in state_names
-    occurrences = SIMS[(SIMS["id1"] == methname) |
-                       (SIMS["id2"] == methname)]
-    valid_rows = occurrences[(occurrences["id1"].isin(state_names)) |
-                             (occurrences["id2"].isin(state_names))]
-
-    highest_score = valid_rows["score"].max()
-    highest_score_rows = valid_rows[valid_rows["score"] == highest_score]
-
-    # highest_score_rows = valid_rows[valid_rows["score"] >= 400]
-
-    # 이제 주어진 methname이 아닌 다른 method 이름을 찾아내야 하는데
-    highest_score_dicts = highest_score_rows[["id1", "id2"]].to_dict("records")
-    highest_score_tuplists = list(map(lambda dict_: tuple(dict_.values()), highest_score_dicts))
-
-    highest_score_other_methnames =\
-        list(map(lambda tup: tup[1] if tup[0] == methname else tup[0], highest_score_tuplists))
-
-    labels = [label for _ in range(len(highest_score_other_methnames))]
-
-    # dict() automatically removes duplicate key-value pairs
-    return dict(list(zip(highest_score_other_methnames, labels)))
-
-
-def filter_inferred(inferred_results, current_evidence):
-    """filter out spurious inference results, comparing them against the current set of evidence."""
-    acc = {}
-    if current_evidence == dict():
-        return acc
-    for inferred_method in list(inferred_results.keys()):
-        inferred_method_dist = inferred_results[inferred_method]
-        max_key = max(inferred_method_dist, key=lambda key: inferred_method_dist[key])
-        try:
-            if inferred_results[inferred_method] == current_evidence[inferred_method]:
-                acc[inferred_method] = max_key
-        except KeyError:
-                acc[inferred_method] = max_key
-    return acc
 
 
 node_colordict = {"src": "red", "sin": "orange", "san": "yellow", "non": "green"}
@@ -304,7 +252,6 @@ def visualize_snapshot(state_names, graph_for_reference, snapshot, dependent_nod
     """한번 iteration 돌 때마다, 전체 BN의 snapshot을 가시화한다. 이 때, confident node들 위에는 `conf`라는 문구를 띄운다."""
     network_figure = plt.figure("Bayesian Network", figsize=(30, 15))
     network_figure.clf()
-    # plt.ion()
     ax = network_figure.add_subplot()
     params = list(map(lambda tup: tup[1], snapshot))
     names_and_labels = list(map(lambda tup: (tup[0], find_max_val(tup[1])), snapshot))
@@ -327,9 +274,6 @@ def visualize_snapshot(state_names, graph_for_reference, snapshot, dependent_nod
         if node_name not in state_names:
             graph_for_reference.remove_node(node_name)
 
-    # print(node_colormap)
-    # print(edge_colormap)
-
     nx.draw(graph_for_reference,
             node_color=node_colormap,
             edge_color=edge_colormap,
@@ -338,6 +282,10 @@ def visualize_snapshot(state_names, graph_for_reference, snapshot, dependent_nod
             with_labels=True, node_size=100)
 
     plt.show()
+
+
+# tactical loop and its calculations =====================
+# ========================================================
 
 
 def tactical_loop(global_precision_list, snapshot_dict, graph_for_reference, BN_for_inference,
@@ -383,15 +331,10 @@ def tactical_loop(global_precision_list, snapshot_dict, graph_for_reference, BN_
 
     # exit the function based on various termination measures.
     if there_are_no_nodes_left and not_yet_time_to_terminate:
-        # if set(APIs) == set(current_asked):
-            # print("\nWarning: some distributions are not fully determined.\n")
         print("Early termination: ran out of nodes")
         return (prev_snapshot, precision_list, stability_list,
                 precision_inferred_list, loop_time_list, current_asked,
                 global_precision_list)
-        # else:
-        #     query, dependent_nodes = find_max_d_con(graph_for_reference, BN_for_inference,
-        #                                             [], [], remove_sublist(APIs, current_asked))
     elif there_are_no_nodes_left and its_time_to_terminate:
         return (prev_snapshot, precision_list, stability_list,
                 precision_inferred_list, loop_time_list, current_asked,
@@ -425,14 +368,6 @@ def tactical_loop(global_precision_list, snapshot_dict, graph_for_reference, BN_
     print("query:", query)
     print("current_evidence[query]:", current_evidence[query])
 
-    # locally propagate on the fly!
-    # evidence_on_the_fly = on_the_fly_propagation(query, current_evidence[query], BN_for_inference)
-    # print(evidence_on_the_fly)
-    # merge with preference to the latter
-    # if evidence_on_the_fly != dict():
-    #     print("Propagation on the fly! Propagated to {} methods".format(len(evidence_on_the_fly)))
-    # current_evidence = {**evidence_on_the_fly, **current_evidence}
-
     current_asked.append(query)
 
     # the new snapshot after the observation (with transferred knowledge)
@@ -443,18 +378,10 @@ def tactical_loop(global_precision_list, snapshot_dict, graph_for_reference, BN_
     new_raw_snapshot_x = BN_for_inference_x.predict_proba(current_evidence_x, n_jobs=-1)
     new_snapshot_x = make_names_and_params(state_names, new_raw_snapshot_x)
 
-    # # for debugging purposes
-    # inferred_results = get_interaction_diff(query, prev_snapshot_x, new_snapshot_x)
-
-    # # filter out spurious inferred results
-    # inferred_filtered = filter_inferred(inferred_results, current_evidence)
-    # current_evidence = {**current_evidence, **inferred_filtered}
-
-    # current_asked += list(inferred_filtered.keys())
 
     get_interaction_diff(query, prev_snapshot, new_snapshot)
 
-    visualize_snapshot(state_names, graph_for_reference, new_snapshot, dependent_nodes)
+    # visualize_snapshot(state_names, graph_for_reference, new_snapshot, dependent_nodes)
 
     # update the snapshot_dict
     snapshot_dict[graph_file] = new_snapshot
@@ -610,6 +537,7 @@ def find_max_val(stats):
 # visualizing functions and their dependencies ============
 # =========================================================
 
+
 def draw_n_save(graph_file, BN_for_inference, precision_list, stability_list, precision_inferred_list, **kwargs):
     """available kwargs: random, tactical"""
     interaction_number = len(precision_list)
@@ -717,6 +645,7 @@ def save_data_as_csv(state_names, final_snapshot):
 # Debugging Utilities =====================================
 # =========================================================
 
+
 def print_num_of_APIS(BN_for_inference):
     """Prints the number of API nodes present in the BN."""
     state_names = list(map(lambda node: node.name, BN_for_inference.states))
@@ -762,6 +691,7 @@ def report_meta_statistics(graph_for_reference, BN_for_inference):
 # Methods for calculating graph values ====================
 # =========================================================
 
+
 def calculate_precision(state_names, current_snapshot):
     """현재 확률분포 스냅샷의 정확도를 측정한다."""
     names_and_labels = dict(map(lambda tup: (tup[0], find_max_val(tup[1])), current_snapshot))
@@ -798,11 +728,14 @@ def calculate_precision_inferred(state_names, current_snapshot, number_of_intera
 # Finding graph files =====================================
 # =========================================================
 
+
 def find_pickled_graphs():
     return list([f for f in os.listdir('.') if re.match(r'.*_graph_[0-9]+$', f)])
 
+
 # main ====================================================
 # =========================================================
+
 
 def single_loop(snapshot_dict, graph_file, graph_for_reference,
                 BN_for_inference, BN_for_inference_x, learned_evidence, **kwargs):
@@ -958,9 +891,13 @@ def main():
     for _ in range(len(skip_funcs)-len(global_precision_list)):
         global_precision_list.append(np.nan)
 
-    print("now draw-n-saving global precision graph...", end="")
+    print("Now draw-n-saving global precision graph...", end="")
     draw_n_save_global_precision_graph(global_precision_list)
     print("done")
+
+    print("Now saving inferrence results...", end="")
+    print("done")
+
 
 if __name__ == "__main__":
     main()

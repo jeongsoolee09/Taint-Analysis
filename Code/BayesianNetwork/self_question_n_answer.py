@@ -1,18 +1,13 @@
 import csv
-import itertools as it
 import json
-import os
 import os.path
 import random
 import time
 import argparse
 import re
 import make_BN
-import matplotlib.axes as axes
-import matplotlib.patches as ptch
 import matplotlib.pyplot as plt
 import modin.pandas as pd
-import pandas as pd
 import networkx as nx
 import numpy as np
 import transfer_knowledge
@@ -23,11 +18,7 @@ from create_node import process
 from make_CPT import *
 from make_underlying_graph import find_edge_labels
 from matplotlib.ticker import MaxNLocator
-from pomegranate import *
-from scrape_oracle_docs import *
-from toolz import valmap
 from functools import reduce
-from copy import deepcopy
 
 from traceback_with_variables import activate_in_ipython_by_import, printing_exc
 
@@ -375,7 +366,6 @@ def tactical_loop(global_precision_list, snapshot_dict, graph_for_reference, BN_
     # # the new snapshot after the observation (without transferred knowledge)
     new_raw_snapshot_x = BN_for_inference_x.predict_proba(current_evidence_x, n_jobs=-1)
     new_snapshot_x = make_names_and_params(state_names, new_raw_snapshot_x)
-
 
     get_interaction_diff(query, prev_snapshot, new_snapshot)
 
@@ -750,15 +740,14 @@ def single_loop(snapshot_dict, graph_file, graph_for_reference,
     initial_raw_snapshot_x = BN_for_inference.predict_proba(learned_evidence, n_jobs=-1)
     initial_snapshot = make_names_and_params(state_names, initial_raw_snapshot)
     initial_snapshot_x = make_names_and_params(state_names, initial_raw_snapshot_x)
-    number_of_states = len(BN_for_inference.states)
     initial_precision_list = [np.nan for _ in range(len(BN_for_inference.states))]
     initial_stability_list = [np.nan for _ in range(len(BN_for_inference.states))]
     initial_precision_inferred_list = [np.nan for _ in range(len(BN_for_inference.states))]
     initial_window = [np.ndarray([0]) for _ in range(WINDOW_SIZE)]
     initial_asked = list(learned_evidence.keys())
     initial_evidence_x = {}
-
     initial_updated_nodes = []
+
     for initial_query in initial_asked:
         initial_updated_nodes += list(set(d_connected(graph_for_reference, BN_for_inference,
                                                       initial_query, initial_asked, state_names)))
@@ -768,9 +757,10 @@ def single_loop(snapshot_dict, graph_file, graph_for_reference,
         (final_snapshot, precision_list, stability_list,
          precision_inferred_list, loop_time_list, current_asked,
          global_precisions) =\
-            random_loop([], snapshot_dict, graph_for_reference, BN_for_inference, BN_for_inference_x,
-                          0, initial_asked, learned_evidence, initial_evidence_x, initial_updated_nodes,
-                          initial_snapshot, initial_snapshot_x, initial_precision_list, initial_stability_list, initial_precision_inferred_list, [], initial_window, graph_file)
+             random_loop([], snapshot_dict, graph_for_reference, BN_for_inference, BN_for_inference_x,
+                         0, initial_asked, learned_evidence, initial_evidence_x, initial_updated_nodes,
+                         initial_snapshot, initial_snapshot_x, initial_precision_list, initial_stability_list,
+                         initial_precision_inferred_list, [], initial_window, graph_file)
 
         draw_n_save(graph_file, BN_for_inference, precision_list, stability_list,
                     precision_inferred_list, loop_type='random')
@@ -780,9 +770,10 @@ def single_loop(snapshot_dict, graph_file, graph_for_reference,
         (final_snapshot, precision_list, stability_list,
          precision_inferred_list, loop_time_list, current_asked,
          global_precisions) =\
-            tactical_loop([], snapshot_dict, graph_for_reference, BN_for_inference, BN_for_inference_x,
-                          0, initial_asked, learned_evidence, initial_evidence_x, initial_updated_nodes,
-                          initial_snapshot, initial_snapshot_x, initial_precision_list, initial_stability_list, initial_precision_inferred_list, [], initial_window, graph_file)
+             tactical_loop([], snapshot_dict, graph_for_reference, BN_for_inference, BN_for_inference_x,
+                           0, initial_asked, learned_evidence, initial_evidence_x, initial_updated_nodes,
+                           initial_snapshot, initial_snapshot_x, initial_precision_list, initial_stability_list,
+                           initial_precision_inferred_list, [], initial_window, graph_file)
 
         draw_n_save(graph_file, BN_for_inference, precision_list, stability_list,
                     precision_inferred_list, loop_type='tactical')
@@ -861,7 +852,6 @@ def main():
     print("Baking BNs...", end="")
 
     for graph_file in graph_files:
-        # print("graph_file to BN: ", graph_file)
         graph_for_reference = nx.read_gpickle(graph_file)
         graph_for_reference.name = graph_file
         BN_for_inference = make_BN.main(graph_for_reference)

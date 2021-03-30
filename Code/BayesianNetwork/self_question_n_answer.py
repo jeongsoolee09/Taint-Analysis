@@ -81,8 +81,6 @@ with open(PROJECT_ROOT_DIR+"skip_func.txt", "r+") as skip_func:
     skip_funcs = skip_func.readlines()
     skip_funcs = list(map(lambda string: string.rstrip(), skip_funcs))
 
-SIMS = pd.read_csv("pairwise_sims.csv", index_col=False).drop(columns=["Unnamed: 0"])
-
 
 # Random loop ========================================
 # ====================================================

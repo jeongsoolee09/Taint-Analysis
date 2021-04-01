@@ -322,18 +322,18 @@ def tactical_loop(global_precision_list, snapshot_dict, graph_for_reference, BN_
         print("Early termination: ran out of nodes")
         return (prev_snapshot, prev_snapshot_x, precision_list, stability_list,
                 precision_inferred_list, loop_time_list, current_asked,
-                global_precision_list)
+                current_evidence, global_precision_list)
     elif there_are_no_nodes_left and its_time_to_terminate:
         return (prev_snapshot, prev_snapshot_x, precision_list, stability_list,
                 precision_inferred_list, loop_time_list, current_asked,
-                global_precision_list)
+                current_evidence, global_precision_list)
     elif there_are_nodes_left and not_yet_time_to_terminate:
         pass
     elif there_are_nodes_left and its_time_to_terminate:
         save_data_as_csv(APIs, prev_snapshot)
         return (prev_snapshot, prev_snapshot_x, precision_list, stability_list,
                 precision_inferred_list, loop_time_list, current_asked,
-                global_precision_list)
+                current_evidence, global_precision_list)
 
     # ask the chosen method and fetch the answer from the solutions
     oracle_response = SOLUTION[query]
@@ -748,7 +748,7 @@ def single_loop(snapshot_dict, graph_file, graph_for_reference,
     # random loop
     if kwargs["loop_type"] == "random":
         (final_snapshot, final_snapshot_x, precision_list, stability_list,
-         precision_inferred_list, loop_time_list, current_asked, global_precisions) =\
+         precision_inferred_list, loop_time_list, final_asked, global_precisions) =\
              random_loop([], snapshot_dict, graph_for_reference, BN_for_inference, BN_for_inference_x,
                          0, initial_asked, learned_evidence, initial_evidence_x, initial_updated_nodes,
                          initial_snapshot, initial_snapshot_x, initial_precision_list, initial_stability_list,
@@ -760,7 +760,8 @@ def single_loop(snapshot_dict, graph_file, graph_for_reference,
     # tactical loop
     elif kwargs["loop_type"] == "tactical":
         (final_snapshot, final_snapshot_x, precision_list, stability_list,
-         precision_inferred_list, loop_time_list, current_asked, global_precisions) =\
+         precision_inferred_list, loop_time_list, final_asked,
+         final_evidence, global_precisions) =\
              tactical_loop([], snapshot_dict, graph_for_reference, BN_for_inference, BN_for_inference_x,
                            0, initial_asked, learned_evidence, initial_evidence_x, initial_updated_nodes,
                            initial_snapshot, initial_snapshot_x, initial_precision_list, initial_stability_list,
@@ -769,7 +770,8 @@ def single_loop(snapshot_dict, graph_file, graph_for_reference,
         draw_n_save(graph_file, BN_for_inference, precision_list, stability_list,
                     precision_inferred_list, loop_type='tactical')
 
-    return loop_time_list, final_snapshot, final_snapshot_x, current_asked, global_precisions
+    return (loop_time_list, final_snapshot, final_snapshot_x,
+            final_asked, global_precisions, final_evidence)
 
 
 def one_pass(snapshot_dict, graph_file, graph_for_reference, BN_for_inference, BN_for_inference_x, lessons,
@@ -794,15 +796,17 @@ def one_pass(snapshot_dict, graph_file, graph_for_reference, BN_for_inference, B
 
     print_num_of_APIS(BN_for_inference)
 
-    loop_time_list, final_snapshot, final_snapshot_x, current_asked, global_precisions =\
+    (loop_time_list, final_snapshot, final_snapshot_x,
+     final_asked, global_precisions, final_evidence) =\
         single_loop(snapshot_dict, graph_file, graph_for_reference,
                     BN_for_inference, BN_for_inference_x, learned_evidence, loop_type="tactical")
 
-    lessons = transfer_knowledge.learn(lessons, final_snapshot, current_asked)  # update the lessons
+    lessons = transfer_knowledge.learn(lessons, final_snapshot, final_asked)  # update the lessons
     prev_graph_file = graph_file
     prev_graph_states = state_names
 
-    return lessons, final_snapshot_x, prev_graph_states, prev_graph_file, global_precisions
+    return (lessons, final_snapshot_x, prev_graph_states,
+            prev_graph_file, global_precisions, final_asked, final_evidence)
 
 
 def evaluate_global_precision(snapshot_dict):
@@ -818,8 +822,8 @@ def evaluate_global_precision(snapshot_dict):
 # =========================================================
 
 
-def check_snapshots_x(snapshots_x, lessons, all_APIs):
-    """Filter out spurious entries in snapshots_x.
+def check_snapshots_x(snapshot_dict_x, lessons, all_APIs):
+    """Filter out spurious entries in snapshot_dict_x.
        (m, l) is a spurious entry <=> lessons[m] != l or
                                       very_similar(m, m') and lessons[m'] != l."""
 
@@ -868,19 +872,39 @@ def check_snapshots_x(snapshots_x, lessons, all_APIs):
             max_label = take_a_vote(very_similar_nodes_labels)
             return max_label != label
 
-    for method, label in list(snapshots_x.items()):
+    for method, label in list(snapshot_dict_x.items()):
         if condition1(method, label) or condition1(method, label):
             del out[method]
 
     return out
 
 
-# main ====================================================
+def apply_to_final_snapshots(snapshot_dict_x, snapshot_dict,
+                             final_evidence_dict, BN_dict):
+    """1. Iterating through the snapshot_dict_x, do the following:
+          1. take a snapshot_x of a graph
+          2. add the snapshot_x's content to final_asked of that graph
+          3. recompute the corresponding snapshot with the updated final_asked"""
+    for graph_name, snapshot_x in list(snapshot_dict_x.items()):
+        new_evidence = {**snapshot_x, **final_evidence_dict[graph_name]}
+        my_BN = BN_dict[graph_name]
+        print("new_evidence", new_evidence)
+        new_raw_snapshot = my_BN.predict_proba(new_evidence, n_jobs=-1)
+        my_state_names = list(map(lambda node: node.name, my_BN.states))
+        new_snapshot = make_names_and_params(my_state_names, new_raw_snapshot)
+
+        # now, update the snapshot_dict
+        snapshot_dict[graph_name] = new_snapshot
+
+    return snapshot_dict
+
+
+# Main ====================================================
 # =========================================================
 
 
 def main():
-    graph_files = list([f for f in os.listdir('.') if re.match(r'.*_graph_[0-9]+$', f)])
+    graph_files = [f for f in os.listdir('.') if re.match(r'.*_graph_[0-9]+$', f)]
     graph_files = list(filter(lambda x: '_poor' not in x, graph_files))
     lessons = {}
     prev_graph_states = None
@@ -888,8 +912,10 @@ def main():
     BN_queue = []
     snapshot_dict = {}
     snapshot_dict_x = {}
+    final_evidence_dict = {}
     global_precision_list = []
     all_state_names = []
+    BN_dict = {}
 
     print("Baking BNs...", end="")
 
@@ -906,6 +932,7 @@ def main():
         initial_snapshot = make_names_and_params(state_names, initial_raw_snapshot)
         snapshot_dict[graph_file] = initial_snapshot
         BN_for_inference.name = graph_file
+        BN_dict[graph_file] = BN_for_inference
         BN_queue.append((graph_for_reference, BN_for_inference, BN_for_inference_x))
 
     print("done")
@@ -916,17 +943,22 @@ def main():
     global_precision_list.append(evaluate_global_precision(snapshot_dict))
 
     for graph, BN, BN_x in BN_queue:
-        lessons, final_snapshot_x, prev_graph_states, prev_graph_file, global_precisions =\
+        (lessons, final_snapshot_x, prev_graph_states,
+         prev_graph_file, global_precisions, final_asked, final_evidence) =\
             one_pass(snapshot_dict, graph.name, graph, BN, BN_x, lessons,
                      prev_graph_states, prev_graph_file, debug=True)
         snapshot_dict_x[graph_file] = final_snapshot_x
+        final_evidence_dict[graph_file] = final_evidence
         global_precision_list += global_precisions
 
+    # The blank spaces
     for _ in range(len(skip_funcs)-len(global_precision_list)):
         global_precision_list.append(np.nan)
 
-    # TODO: add conflict-checking and applying mechanism
-    print("Now inspecting BP results...", end="")
+    print("Now inspecting BP results and applying...", end="")
+    filtered_snapshots_x = check_snapshots_x(snapshot_dict_x, lessons, all_APIs)
+    snapshot_dict_applied = apply_to_final_snapshot(filtered_snapshots_x, snapshot_dict,
+                                                    final_evidence_dict, BN_dict)
     print("done")
 
     print("Now draw-n-saving global precision graph...", end="")
@@ -934,6 +966,7 @@ def main():
     print("done")
 
     print("Now saving inferrence results...", end="")
+    # TODO
     print("done")
 
 

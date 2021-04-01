@@ -1,5 +1,5 @@
 %% For double-blind review submission, w/o CCS and ACM Reference (max submission space)
-\documentclass[acmsmall,review,anonymous]{acmart}\settopmatter{printfolios=true,printccs=false,printacmref=false}
+\documentclass[sigconf,review,anonymous]{acmart}\settopmatter{printfolios=true,printccs=false,printacmref=false}
 %% For double-blind review submission, w/ CCS and ACM Reference
 % \documentclass[acmsmall,review,anonymous]{acmart}\settopmatter{printfolios=true}
 %% For single-blind review submission, w/o CCS and ACM Reference (max submission space)
@@ -53,6 +53,7 @@
 \usepackage{subcaption} %% For complex figures with subfigures/subcaptions
 %% http://ctan.org/pkg/subcaption
 
+\usepackage{listing}
 
 \begin{document}
 
@@ -129,42 +130,15 @@
 %%   Note: \begin{abstract}...\end{abstract} environment must come
 %%   before \maketitle command
 \begin{abstract}
-  % Taint analysis becomes a must for Java projects where foreign codes such as
-  % external frameworks are frequently used in building them.
-  % % Taint specification 추론이 왜 필요한지
-  % For accurate taint analysis, the analyzer must first be told which methods are
-  % sources, sinks, sanitizers, or none of them. However, Manually determining such
-  % labels for every method used or defined in a project is a tedious task that
-  % becomes nearly impossible if the codebase becomes large.
-  % % 그러므로 우리의 아이디어를 제시한다
-  % To alleviate such burden, we present Spechunter which, given a small
-  % portion of the entire methods which are not deadcodes, finds out taint specifications
-  % of the rest of the methods in a Java project built with frameworks.
-  % % 우리 아이디어의 특징
-  % Spechunter's uniqueness lies in its efficiency, achieved by only
-  % drawing minimum manpower necessary for doing its job. This is possible due to its
-  % interactive nature: it ends an ongoing interaction as soon as it determines that enough
-  % evidence is obtained from the oracle. To achieve this, Spechunter relies on
-  % building Bayesian networks and performing marginal inference on it given accumulating
-  % evidence. Our experiments show that ...
-
-  % 위의 버전은 영양가도 없으면서 너무 장황하다. Lets give it a full rewrite!
-
-  SpecHunter is a tool for inferring taint specifications, aiming to serve any
-  Java taint analyzers, enabling them to be more precise in finding out data
-  flows from a source method to a sink method, without passing through a
-  sanitizer. By asking questions to an external oracle on selected APIs used in
-  a given Java application, it can acheive the following two goals. First,
-  SpecHunter is language-agnostic, since it only focuses on the Java application at
-  hand, and ignores whether or not the used APIs are implemented in languages
-  other than Java. Therefore, it can be used for any Java application, regardless
-  of what libraries or frameworks they use. Second, SpecHunter is
-  efficient, because the APIs necessary for efficient propagation is automatically selected
-  by SpecHunter itself. This allows the user to skip all trial-and-error in
-  configurating the training set for a learning model, as required by previous
-  machine learning approaches. Results of our experiments show that SpecHunter
-  actually delivers the aforementioned promises, by running on applications with
-  Scala and C++ libraries, with only questions asked to the user.  
+  SpecHunter is a tool for inferring taint specifications, aiming to aid anyone
+  trying to use a Java taint analyzer, but being overwhelmed by the number of APIs that
+  should be marked of their specifications to run it. SpecHunter aims to lessen this burden
+  by constructing a Bayesian network and performing live interaction with the user, in which
+  it systematically picks a method and asks the user of its specification. By taking an
+  interactive approach, SpecHunter can run on Java applications that use libraries that are
+  implemented in languages other than Java. Also, SpecHunter skips all trial-and-errors
+  in configurating the data-set required in using any of the traditional machine-learning approaches.
+  Our experiments show that SpecHunter actually delivers those promises.
 \end{abstract}
 
 
@@ -202,29 +176,15 @@
 \maketitle
 
 \section{Introduction}
-% A large portion of Java projects are built using frameworks such as Spring,
-% Hibernate, or Android. These frameworks are foreign codes, so importing their
-% APIs may introduce new security vulnerabilities. Finding out such security holes
-% requires running taint analysis, which looks for a data flow starting from a
-% source method to a sink method without passing through a sanitizer method.
-% However, taint analyzers should be correctly told which method is a source,
-% sink, sanitizer, or none of them at the first place, otherwise it may result in
-% false negatives or false positives. However, manually labelling all methods used
-% or defined in a project with the above four labels is a laborous task to be
-% manually done, and becomes nearly impossible to do so if the codebase gets
-% larger. Therefore, there have been previous works to lessen this burden.
-
-% 2021-02-15 16:44:59에 다시 쓴 버전:
-
 Taint analysis, whether static or dynamic, aims to find security vulnerabilities lurking
 in the given program. These vulnerabilities include SQL injection, cross-site
 scripting, and abused printf-arguments. They are typically formulated as a
 data flow starting from a `source' method to a `sink' method, without the
-flowing data being `sanitized' by an appropriate method. For such search to be
+flowing data being `sanitized' by a relevant method. For such search to be
 precise enough, the analyzer must first be told which methods are sources,
 sinks, sanitizers, or none of them. However, going through the codebase
-searching for imported APIs and labelling every one of them by hand becomes too
-time-consuming as the codebase gets larger.
+searching for imported APIs and labelling every one of them by hand quickly becomes tedious
+thing to do as the codebase gets larger.
 
 % TODO BibTeX을 쓸 줄 모르므로 일단 툴 이름으로 Reference로의 링크를 대신함
 % Boldface들을 BibTeX으로 바꿀 것.
@@ -240,7 +200,7 @@ APIs. Here, the function bodies are interprocedurally analyzed with a Java
 static analyzer to get the vectors of feature values. Then, they take a whole
 library codebase into the pre-trained learning
 model, and get the mapping from all APIs in the library to their respective
-specifications. While they work nice against libraries written in pure Java
+specifications. While they work nicely against libraries written in pure Java
 code such as Spring, they cannot work if a given application imports libraries
 written in other languages other than Java. This is because in order to extract
 the feature values they would have to be equipped with all the possible
@@ -283,41 +243,124 @@ application to construct probabilistic graphical models of a certain type,
 called Bayesian networks. They are special in that they provide a model of
 conditional-probabilistic reasoning, which infers the marginal probabilities of
 each random variables when some of them are instantiated to a certain value by
-an external source. Therefore, we determine a structure of a Bayesian network by
-running a static analysis on the given application code, and make the system ask
+an external source. Therefore, we first determine a structure of a Bayesian network
+by running a static analysis on the given application code, and make the system ask
 the user, the external entity, for evidence. Then, SpecHunter picks the most
-influential node which has the most other nodes that depend upon it. This makes
-the interaction session both effective and efficient.
+influential node which has the most dependent nodes. This makes the interaction
+session both effective and efficient.
 
-The experiments show that ...   % TODO
+The experiments show that SpecHunter effectively infers taint specifications for
+methods that are untold of its label, with \textbf{xx}\% precision when told only
+\textbf{17.7}\% of all APIs.
+
 
 \paragraph{Contributions.}
 
-- We provide SpecHunter
-- We provide src/sin/san/non ground truths
-- We provide a taint analyzer (is it possible?)
-- We make the tool open source (is it possible?)
+\begin{itemize}
+  \item We provide SpecHunter
+  \item We provide src/sin/san/non ground truths
+  \item We provide a taint analyzer (is it possible?)
+  \item We make the tool open source (is it possible?)
+\end{itemize}
 
 \section{Overview}
 
 \paragraph{Motivation}
 
-Swan sucks: too much variance on its performance
+Swan sucks: too much variance on its performance depending on dataset quality/quantity
 
-\paragraph{Overview of our System}
+\subsection{Overview of our System}
+
+% 적당한 figure 하나 넣자
+
+Figure 1 shows the overall workflow of SpecHunter. Given a Java application's
+source code, SpecHunter labels all API methods provided by the library the application
+uses. There are three main issues regarding building an effective interactive system:
+namely, constructing the network, effectively propagating the evidence given from the
+oracle, and making the system scale to run on large input applications.
+% Question: Should we define what "API" means?
+
+\subsection{Network Construction}
+
+% Network Construction은 반드시 Scalability and Efficiency와 연관되게 되어 있다.
+% 그 점을 유념하면서 쓰자: 적절한 pointer 달아 주기.
+Here we describe how we represent the input java project into a graph form, which will
+later be turned into a series of Bayesian networks. We hope to create a graph G=(V, E),
+where V is the set of all methods used or defined in the given application, and E is a
+subset of V * V, whose elements are gathered in three different ways.
+
+First, there are data-flow-edges. We perform a variant of a data-flow analysis on the
+given input application to calculate lifetimes of all access paths found in the entire code.
+% 여기서 간단한 예제 넣어주기
+
+\begin{figure}[t]
+  \begin{lstlisting}
+
+    public int m1() {
+      return 1;
+    }
+
+    public int m2(int u1) {
+      return ++u1;
+    }
+
+    public void m3(int u2) {
+      System.out.println(u2);
+    }
+
+    public void f() {
+      int x = m1();
+      g(x);
+    }
+
+    public void g(int y) {
+      int z = m2(y);
+      h(z);
+    }
+
+    public void h(int w) {
+      m3(w);
+    }
+    
+  \end{lstlisting}
+\caption{Example Java program with a data flow.}
+vspace{-0.6em}
+\label{fig:sca}
+\end{figure}
 
 
-\paragraph{Static Analysis}
 
 
-\paragraph{Constructing Bayesian Networks}
+Second, there are call-edges.
+
+Last but not least, there are similarity-edges.
+
+
+\subsection{Graph Splitting}
+
+
+
+\subsection{Information Propagation}
 
 
 \section{Evaluation}
 
-\paragraph{Discussions}
+\subsection{RQs}
+\begin{itemize}
+  \item How effective is SH in finding src/sin/san?  % I am really really worried about this
+  \item How efficient is SH?
+  \item Interaction user-study % possible?
+\end{itemize}
 
+% why is this meaningful? (with/without comparison)
+% at least mention comparison
+
+\paragraph{Discussions}
+How well are propagations working? (Quant, Qualit) .
+How stable is SpecHunter over multiple iterations?
 \paragraph{Limitations}
+
+\paragraph{Threats to Validity.}
 
 
 \section{Related Work}

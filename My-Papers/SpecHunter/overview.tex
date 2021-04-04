@@ -197,10 +197,29 @@ one shooting a data-flow edge while another shoots a call- or similarity edge.
 % TODO 여기도 구현 상으로는 위의 high cell이 low cell로 되어 있는데, 나중에 *꼭*
 % 바꾸자. high cell로 두는 게 맞는 것 같다.
 
-So, we are ready to turn chopped graphs into small, yet full-blown Bayesian
-networks.
+Since a CPT has a constraint that the sum of probabilities assigned to each cell
+of a column is 1, we can come up with the following formula to calculate a
+concrete probability value for a cell's relative magnitude of probability.
+Suppose we call four cells of a column $cell_1$, $cell_2$, $cell_3$, $cell_4$,
+then the probability value of one of the four cells is:
 
-\subsection{Graph Splitting}
+\begin{equation*}
+  prob(cell) = \frac{mag(cell)\times coeff(mag(cell))}{\sum_{i=1}^{4}mag(cell)\times coeff(mag(cell_i))}
+\end{equation*}
+
+where $mag$ is the score based on relative magnitude: we give $1$ to cells whose
+probability should be ``very low'', and $4$ to cells whose probability should be
+``very high''. $coeff$ of a relative magnitude is a constant that is multiplied
+to the magnitude score. It helps to widen the gap between probabilities assigned
+to cells in a column, bearing different relative magnitudes.
+
+\subsection{Graph Manipulation}
+
+% TODO cite networkx 
+Here, we explain how we cut the big graph into a handful of small ones, and
+further preprocess them before turning each into a Bayesian network. We used
+\emph{networkx}'s implementation for each core algorithms: Kernighan-Lin
+bisection and cycle detection.
 
 \paragraph{Splitting Graphs}
 
@@ -217,13 +236,31 @@ for this task is described in figure \emph{??}. This algorithm relies heavily on
 the Kernighan-Lin partitioning algorithm, % TODO: should we cite the algorithm's paper?
 which partitions the given graph $G=(V, E)$ into two graphs $G_1=(V_1,E_1)$ and
 $G_2=(V_2, E_2)$, such that $V_1$ and $V_2$ are almost equal and the edges
-connecting $G_1$ and $G_2$ are minimized. % TODO: read the Kernighan-Lin paper!
+connecting $G_1$ and $G_2$ are minimized. % TODO: at least skim the Kernighan-Lin paper!
 % is it really 'minimized'??
 
-\paragraph{Decycling, and controlling in-edges}
+\paragraph{Decycling, and Controlling in-edges}
 
-Since Bayesian networks are DAGs, we need to eliminate all cycles before we turn
-the splitted graphs into Bayesian networks.
+Since Bayesian networks are directed acyclic graphs (DAGs), we need to eliminate
+all cycles before we turn the splitted graphs into Bayesian networks. We first
+use \emph{networkx}'s cycle
+detection algorithm which pinpoints the set of edges forming a cycle by
+searching the graph in a depth-manner for this task. We then randomly pick one of
+such edges causing a cycle and delete it. Repeatedly applying the two
+operations until the algorithm fails to detect a cycle, we transform the
+splitted graphs into DAGs.      % TODO 이거 figure로 굳이 뺄 필요 없겠지...?
+
+% 'incoming edge가 너무 많아서도, 너무 적어서도 안 된다.'
+Next, we control the number of incoming edges of each node. It is already
+mentioned that the size of a node's CPT is exponential to the number of its
+parent nodes. To our empirical knowledge, if the number of incoming edges (hence
+the number of parent nodes) becomes more than 6, the process of converting the
+graph into a Bayesian network becomes drastically intractable. Therefore, we
+use a simple algorithm to deal with those. 
+
+After all these processing, we are finally ready to turn chopped graphs into
+small, yet full-blown Bayesian networks.
 
 \subsection{Information Propagation}
 
+Here, we expound on the core inference algorithm. 

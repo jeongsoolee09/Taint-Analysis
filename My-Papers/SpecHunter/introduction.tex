@@ -1,0 +1,87 @@
+\section{Introduction}
+Taint analysis, whether static or dynamic, aims to find security vulnerabilities lurking
+in the given program. These vulnerabilities include SQL injection, cross-site
+scripting, and abused printf-arguments. They are typically formulated as a
+data flow starting from a `source' method to a `sink' method, without the
+flowing data being `sanitized' by a relevant method. For such search to be
+precise enough, the analyzer must first be told which methods are sources,
+sinks, sanitizers, or none of them. However, going through the codebase
+searching for imported APIs and labelling every one of them by hand quickly becomes tedious
+thing to do as the codebase gets larger.
+
+% TODO BibTeX을 쓸 줄 모르므로 일단 툴 이름으로 Reference로의 링크를 대신함
+% Boldface들을 BibTeX으로 바꿀 것.
+To aid such manpower, previous studies proposed methods such as supervised
+learning (\textbf{SuSI}, \textbf{SWAN}), and semi-supervised learning (\textbf{Seldon}, \textbf{Merlin}).
+However, works belonging to each camp suffers from their own limitations.
+
+\paragraph{Shortcomings of Supervised Learning Camp.}
+
+\textbf{SuSI} and \textbf{SWAN} both work in a similar way: they first train a learning model
+such as a support vector machine with the actual library codes implementing
+APIs. Here, the function bodies are interprocedurally analyzed with a Java
+static analyzer to get the vectors of feature values. Then, they take a whole
+library codebase into the pre-trained learning
+model, and get the mapping from all APIs in the library to their respective
+specifications. While they work nicely against libraries written in pure Java
+code such as Spring, they cannot work if a given application imports libraries
+written in other languages other than Java. This is because in order to extract
+the feature values they would have to be equipped with all the possible
+languages the libraries would be in, and this is practically difficult.
+
+% TODO: add an additional shortcoming: features should also be updated if a new
+% library is provided
+
+\paragraph{Shortcomings of Semi-Supervised Learning Camp.}
+
+As a workaround to the above limitation, one can try a semi-supervised learning
+approach. The state-of-the-art belonging to this camp is \textbf{Seldon}.
+\textbf{Seldon} only takes the application code into consideration, thus it does
+not care which language the library is written in. So, for example, Seldon can
+figure out the label of an API function in a Python program, which is
+actually implemented in C++. However, Seldon suffers from a common problem of
+all machine-learning solutions, that it is largely dependent on quality dataset.
+In fact, the authors reports that \textbf{Seldon}'s precision dropped by 14
+percent-points by just providing half of the original specifications. Moreover,
+this problem is shared with supervised learning solutions, those are also
+data-driven solutions.
+% Seldon 논문의 부분을 인용하고 싶은데... 형식을 모르겠네
+% 해당 부분:
+% Q6: Impact of Seed Specification. We also evaluated Sel-
+% don’s precision for half the seed specification (considering
+% only odd line numbers in App. B). This significantly reduces
+% precision, by 14 percentage-points. Thus, we believe our
+% seed specification strikes a good balance between manual
+% effort and precision. We note that in the extreme case of an
+% empty seed specification, Seldon will predict 0 specifications,
+% because picking 0 for all variables is a trivial solution to its
+% constraint system.
+
+\paragraph{Our Tool: Real-Time Interactive Inference.}
+
+Our tool, SpecHunter, works in a different manner than data-driven
+approaches. Instead of training the model with some predetermined pairs of
+methods and their labels to predict other methods' labels, we analyze the given
+application to construct probabilistic graphical models of a certain type,
+called Bayesian networks. They are special in that they provide a model of
+conditional-probabilistic reasoning, which infers the marginal probabilities of
+each random variables when some of them are instantiated to a certain value by
+an external source. Therefore, we first determine a structure of a Bayesian network
+by running a static analysis on the given application code, and make the system ask
+the user, the external entity, for evidence. Then, SpecHunter picks the most
+influential node which has the most dependent nodes. This makes the interaction
+session both effective and efficient.
+
+The experiments show that SpecHunter effectively infers taint specifications for
+methods that are untold of its label, with \textbf{xx}\% precision when told only
+\textbf{17.7}\% of all APIs.
+
+
+\paragraph{Contributions.}
+
+\begin{itemize}
+  \item We provide SpecHunter
+  \item We provide src/sin/san/non ground truths
+  \item We provide a taint analyzer (is it possible?)
+  \item We make the tool open source (is it possible?)
+\end{itemize}

@@ -1,0 +1,122 @@
+\section{Overview}
+
+\paragraph{Motivation}
+
+Swan sucks: too much variance on its performance depending on dataset quality/quantity
+
+\subsection{Overview of our System}
+
+% 적당한 figure 하나 넣자
+
+Figure 1 shows the overall workflow of SpecHunter. Given a Java application's
+source code, SpecHunter labels all API methods provided by the library the application
+uses. There are three main issues regarding building an effective interactive system:
+namely, constructing the network, effectively propagating the evidence given from the
+oracle, and making the system scale to run on large input applications.
+% Question: Should we define what "API" means?
+
+\subsubsection{Network Construction}
+
+\paragraph{Determining Edges}
+
+% Network Construction은 반드시 Scalability and Efficiency와 연관되게 되어 있다.
+% 그 점을 유념하면서 쓰자: 적절한 pointer 달아 주기.
+Here we describe how we represent the input java project into a large graph form, which will
+later be turned into a series of Bayesian networks. How we splitt this large
+graph into several Bayesian networks will be discussed in the next section. % TODO 좀 더 자연스러운 포인터??
+We hope to create a graph $G=(V, E)$,
+where $V$ is the set of all methods used or defined in the given application, and $E$ is a
+subset of $V\times V$, whose elements are gathered in three different ways. 
+
+First, there are data-flow-edges. We perform a variant of a data-flow analysis on the
+given input application to calculate lifetimes of all access paths found in the
+entire codes, starting from being defined and ending by being ``dead'', between
+which the access path may be ``redefined''.
+% 여기서 간단한 예제 넣어주기
+
+\lstinputlisting[language=Java]{./Codes/SimpleExample.java}
+
+In the above example, a variable \texttt{x} is being defined to hold the value \texttt{1} in the method
+\texttt{f}, using another method \texttt{m1}. This value flows to \texttt{g}, where this
+value is redefined as \texttt{2} using the method \texttt{m2}. After this redefined
+value flows to method \texttt{m3} via \texttt{h}, it is no longer used after the call to
+\texttt{println}. Here, our goal is to capture this lifecycle. To compute these
+for all access paths in the program, we first run a static analysis designed as follows:
+
+\begin{align*}
+  A &\in \mathbb{D} &= \mathbb{C}\rightarrow\mathcal{P}(State)\\
+  s &\in State &= Procname\times Var\times Loc\times Alias\\
+  p &\in Procname &\subseteq Var\\
+  a &\in Alias &\subseteq \mathcal{P}(Var)
+\end{align*}
+
+For example, for an assignment statement \texttt{int a = b;} inside a procedure
+\texttt{f} at line 3, we obtain the tuple set \texttt{\{(f, a, 3, \{a, b\})\}}.
+The fourth component of the tuple means that \texttt{a} and \texttt{b} are
+aliases. After we create such tuples for each program point, we finally construct
+\emph{propagation chains} by threading the tuples via alias relations. The
+relevant generated tuples for our goal is:
+
+\begin{itemize}
+\item \texttt{\{(f, x, 14, \{x, y\})\}}
+\item \texttt{\{(g, y, 18, \{y, u1\})\}}
+\item \texttt{\{(m2, u1, 5, \{u1\})\}}
+\item \texttt{\{(m2, u1, 6, \{u1\})\}}
+\item \texttt{\{(g, z, 6, \{z, u1, w\})\}}
+\item \texttt{\{(g, w, 23, \{w, u2\})\}}
+\item \texttt{\{(m3, u2, 9, \{u2, println\_1\})\}}
+\end{itemize}
+
+>
+where \texttt{println\_1} is a Mangled parameter variable of \texttt{println}.
+Now, connecting the tuples with the aliases, we get two chains:
+\texttt{x -> y -> u1} and \texttt{u1 -> z -> w -> u2 -> println\_1}. Since \texttt{u1} is
+redefined in \texttt{m2}, we glue the two together to get the originally desired
+information: \texttt{x -> y -> u1 -> z -> w -> u2 -> println\_1}. This translates
+into data-flow edges: \texttt{(f, g)}, \texttt{(f, h)}, and \texttt{(m3, println)}.
+
+% TODO 아 이거 실제로 돌려봐서 확인해야 할 거 같은뎅.. 실제로 이렇게 나오나...?
+
+
+% TODO static callee가 무엇인지를 좀 알아와서 디테일을 추가할 것.
+Second, there are call-edges. Since we used Facebook's Infer (fbinfer.com/) to
+implement our static analysis, we used Infer's facility to compute static
+callees of a given method to draw the entire callgraph of a given application
+code. For each caller \texttt{f} and its callee \texttt{g}, we add an edge
+\texttt{(f, g)}.
+
+
+Last but not least, there are similarity-edges. The idea is to take any two
+methods and score its pairwise similarity, and leave only the pairs with score
+above a predefined threshold. We measure them against two large groups of
+criteria: the ``syntactic features'' and ``semantic features''. For the
+syntactic features, we borrrowed largely from \textbf{Swan}'s features that
+check how names of methods or their return types are composed. The below
+figure % TODO: Figure 번호 달기...
+shows all the features we used.
+
+% TODO 표 삐져나간다..!!!!
+\begin{center}
+  \begin{tabular} { |c|c|c| }
+    \hline
+    Syntactic & Semantic\\
+    \hline
+    \hline
+    Both has parameters? & Both has at least one same callee?\\
+    Both has return type? & Both are making calls but not passing data?\\
+    Both contains same word in method name? & Both are being called but not being passed data?\\
+    Both contains same word in class name? & Both are making data flow calls?\\
+    Both has return type contained in parameter type? & Both are being passed data and passing data simultaneously?\\
+    Both has same return type? & Both are being passed data which gets dead in them?\\
+    Both has return type contained in method name? & Both has variable redefinitions?\\
+    \hline
+  \end{tabular}
+\end{center} 
+
+\paragraph{Determining CPTs}
+
+% 여기서는 표를 좀 빡시게 그려야 한다. 셀도 좀 색칠하고...
+
+After we determine which and which methods should be connected with a directed
+edge, we then define a conditional probability table for each directed edge. 
+

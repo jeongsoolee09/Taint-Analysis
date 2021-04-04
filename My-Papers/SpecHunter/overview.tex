@@ -15,7 +15,7 @@ namely, constructing the network, effectively propagating the evidence given fro
 oracle, and making the system scale to run on large input applications.
 % Question: Should we define what "API" means?
 
-\subsubsection{Network Construction}
+\subsection{Network Construction}
 
 \paragraph{Determining Edges}
 
@@ -167,10 +167,10 @@ shooting call-edges or similarity-edges to the node.
 \begin{center}
   \begin{tabular} { |c|c|c|c|c|c|c|c|c|c|c|c|c|c|c|c| }
     \hline
-    high & vl   & vl   & vl   & vl   & vl   & vl   & vl   & vl   & vl   & vl   & vl   & vl  & vl   & vl   & vl \\
-    vl   & vl   & vl   & vl   & vl   & high & vl   & vl   & vl   & vl   & vl   & vl   & vl  & vl   & vl   & vl \\
-    vl   & vl   & vl   & vl   & vl   & vl   & vl   & vl   & vl   & vl   & high & vl   & vl  & vl   & vl   & vl \\
-    vl   & vl   & vl   & vl   & vl   & vl   & vl   & vl   & vl   & vl   & vl   & vl   & vl  & vl   & vl   & high \\
+    high & vl   & vl   & vl   & vl   & vl   & vl   & vl   & vl   & vl   & vl   & vl   & vl  & vl   & vl   & vl  \\
+    vl   & vl   & vl   & vl   & vl   & high & vl   & vl   & vl   & vl   & vl   & vl   & vl  & vl   & vl   & vl  \\
+    vl   & vl   & vl   & vl   & vl   & vl   & vl   & vl   & vl   & vl   & high & vl   & vl  & vl   & vl   & vl  \\
+    vl   & vl   & vl   & vl   & vl   & vl   & vl   & vl   & vl   & vl   & vl   & vl   & vl  & vl   & vl   & high\\
     \hline
   \end{tabular}
 \end{center}
@@ -196,4 +196,34 @@ one shooting a data-flow edge while another shoots a call- or similarity edge.
 \end{center}
 % TODO 여기도 구현 상으로는 위의 high cell이 low cell로 되어 있는데, 나중에 *꼭*
 % 바꾸자. high cell로 두는 게 맞는 것 같다.
+
+So, we are ready to turn chopped graphs into small, yet full-blown Bayesian
+networks.
+
+\subsection{Graph Splitting}
+
+\paragraph{Splitting Graphs}
+
+% TODO: self_question_n_answer.py가 interaction 한번에 얼마나 걸리는지를 측정해
+% 그래프로 그리기
+After we are done making the initial graph, we chop it down to small graphs of
+size under a certain threshold, which will later be converted into Bayesian
+networks. This breaking down is necessary since the time consumed during loopy
+belief propagation and D-separation algorithms, which will be discussed later
+in the next section, gets increasingly inefficient as the graph size increases. Since we are aiming
+to reduce the time for a single interaction under \emph{xx??} seconds, we
+decided that the optimal threshold for a graph is \emph{180??}. The algorithm
+for this task is described in figure \emph{??}. This algorithm relies heavily on
+the Kernighan-Lin partitioning algorithm, % TODO: should we cite the algorithm's paper?
+which partitions the given graph $G=(V, E)$ into two graphs $G_1=(V_1,E_1)$ and
+$G_2=(V_2, E_2)$, such that $V_1$ and $V_2$ are almost equal and the edges
+connecting $G_1$ and $G_2$ are minimized. % TODO: read the Kernighan-Lin paper!
+% is it really 'minimized'??
+
+\paragraph{Decycling, and controlling in-edges}
+
+Since Bayesian networks are DAGs, we need to eliminate all cycles before we turn
+the splitted graphs into Bayesian networks.
+
+\subsection{Information Propagation}
 

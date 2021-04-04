@@ -2,6 +2,7 @@
 
 \paragraph{Motivation}
 
+% TODO
 Swan sucks: too much variance on its performance depending on dataset quality/quantity
 
 \subsection{Overview of our System}
@@ -144,7 +145,7 @@ with two parent nodes, each shooting a data-flow edge to this node.
   \end{tabular}
 \end{center}
 
-Let us first state with the data-flow schemas. In the above table, red cells
+Let us first start with the data-flow schemas. In the above table, red cells
 should contain very high probabilities, orange
 cells should contain relatively high probabilities, whereas green cells should
 be assigned low probabilities, and blue cells should be of very low probabilities.
@@ -248,7 +249,7 @@ detection algorithm which pinpoints the set of edges forming a cycle by
 searching the graph in a depth-manner for this task. We then randomly pick one of
 such edges causing a cycle and delete it. Repeatedly applying the two
 operations until the algorithm fails to detect a cycle, we transform the
-splitted graphs into DAGs.      % TODO 이거 figure로 굳이 뺄 필요 없겠지...?
+splitted graphs into DAGs.
 
 % 'incoming edge가 너무 많아서도, 너무 적어서도 안 된다.'
 Next, we control the number of incoming edges of each node. It is already
@@ -256,11 +257,22 @@ mentioned that the size of a node's CPT is exponential to the number of its
 parent nodes. To our empirical knowledge, if the number of incoming edges (hence
 the number of parent nodes) becomes more than 6, the process of converting the
 graph into a Bayesian network becomes drastically intractable. Therefore, we
-use a simple algorithm to deal with those. 
+reduce the number of parents of such ``rich nodes'' by making the parents of the
+rich node shoot a similarity edge not to the rich node in question, but to some
+other node that is not yet rich.
 
-After all these processing, we are finally ready to turn chopped graphs into
+Also, we minimize the number of ``isolated nodes'' that have no incoming edges
+nor outgoing edges. Since these nodes' marginal probabilities are independent of
+those of any other nodes, their marginals never get updated if any other nodes'
+marginals get updated. Thus, they are one of the major factors that make the
+inference inefficient. We control the number of isolated nodes of a splitted
+graph by sticking the isolated node $n_1$ to a node $n_2$ of other graph if both
+were connected in the initial graph either by edge $(n_1, n_2)$ or $(n_2, n_1)$. 
+
+After all these preprocessing, we are finally ready to turn chopped graphs into
 small, yet full-blown Bayesian networks.
 
 \subsection{Information Propagation}
 
-Here, we expound on the core inference algorithm. 
+Here, we expound on the core inference algorithm. The inference algorithm is
+largely 

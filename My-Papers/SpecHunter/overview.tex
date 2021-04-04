@@ -251,7 +251,6 @@ such edges causing a cycle and delete it. Repeatedly applying the two
 operations until the algorithm fails to detect a cycle, we transform the
 splitted graphs into DAGs.
 
-% 'incoming edge가 너무 많아서도, 너무 적어서도 안 된다.'
 Next, we control the number of incoming edges of each node. It is already
 mentioned that the size of a node's CPT is exponential to the number of its
 parent nodes. To our empirical knowledge, if the number of incoming edges (hence
@@ -270,9 +269,15 @@ graph by sticking the isolated node $n_1$ to a node $n_2$ of other graph if both
 were connected in the initial graph either by edge $(n_1, n_2)$ or $(n_2, n_1)$. 
 
 After all these preprocessing, we are finally ready to turn chopped graphs into
-small, yet full-blown Bayesian networks.
+small, yet full-blown Bayesian networks. Each node corresponds to a random
+variable $\text{The taint specification of method} M$, whose possible values are
+$source$, $sink$, $sanitizer$, and $none$. Now, they are waiting for an external
+oracle to instantiate its value to one of these four.
 
 \subsection{Information Propagation}
 
-Here, we expound on the core inference algorithm. The inference algorithm is
-largely 
+Here, we expound on the core inference algorithm. Inference on the Bayesian
+network is divided into two parts: local propagation and global propagation.
+Local propagations pass information given by the oracle within a single graph,
+whereas global propagations pass the information from one graph to another.
+

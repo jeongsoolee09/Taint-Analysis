@@ -75,7 +75,7 @@ redefined in \texttt{m2}, we glue the two together to get the originally desired
 information: \texttt{x -> y -> u1 -> z -> w -> u2 -> println\_1}. This translates
 into data-flow edges: \texttt{(f, g)}, \texttt{(f, h)}, and \texttt{(m3, println)}.
 
-% TODO 아 이거 실제로 돌려봐서 확인해야 할 거 같은뎅.. 실제로 이렇게 나오나...?
+% TODO 아 이거 실제로 돌려봐서 확인해야 할 거 같은데.. 실제로 이렇게 나오나...?
 
 
 % TODO static callee가 무엇인지를 좀 알아와서 디테일을 추가할 것.
@@ -113,10 +113,43 @@ shows all the features we used.
   \end{tabular}
 \end{center} 
 
+By combining all three kinds of edges, we get a finished graph where every node
+is represents a node, and every edge represent how one method relates to another.
+
 \paragraph{Determining CPTs}
 
-% 여기서는 표를 좀 빡시게 그려야 한다. 셀도 좀 색칠하고...
-
 After we determine which and which methods should be connected with a directed
-edge, we then define a conditional probability table for each directed edge. 
+edge, we then define a conditional probability table (CPT) for each directed
+edge. This step is essential since CPTs are essential components of Bayesian
+Networks and we want our big graph to be broken down into small
+Bayesian networks. Each node should have its own CPT, and it express how the
+node's marginal distribution depends
+on those of the parent nodes. We use largely two different CPT schemas:
+that of the dataflow-edges and those of the call- and similarity-edges.
+Regardless of the schemas, the CPT's size is $4\times 4^n$, where $n$ is the
+number of parent nodes of a node. The below figure demonstrates a CPT of a node
+with two parent nodes, each shooting a data-flow edge to this node.
+
+% TODO 텍스트로만 써 놓은 걸 실제로 색칠하기.
+% VH -> Red, High -> Orange,
+% Low -> Green, VL -> Blue
+\begin{center}
+  \begin{tabular} { |c|c|c|c|c|c|c|c|c|c|c|c|c|c|c|c| }
+    \hline
+    low  & vl   & vl   & vl   & low  & vl   & vl   & vl   & low  & vl   & vl   & vl   & low  & vl   & vl   & vl  \\
+    high & low  & high & high & vl   & low  & vl   & vl   & high & low  & cell & high & high & low  & high & high\\
+    high & vl   & low  & high & vl   & vl   & low  & vl   & vl   & vl   & low  & vl   & high & vl   & low  & high\\
+    high & vl   & high & vh   & vl   & vl   & vl   & low  & high & vl   & high & vh   & high & vl   & high & vh  \\
+    \hline
+\end{tabular}
+\end{center}
+
+In the above table, red cells should contain very high probabilities, orange
+cells should contain relatively high probabilities, whereas green cells should
+be assigned low probabilities, and blue cells should be of very low probability.
+The idea is this: by the definitions of ``source'', ``sanitizer'', and ``sink'',
+data must flow from a source to a sink through possibly a sanitizer, but it
+cannot flow in any other sequence of such methods. For example, data cannot
+possibly flow from a sink through a source to a sanitizer. Therefore, we encode
+this sequence into a tabular form containing probabilities like the above.
 

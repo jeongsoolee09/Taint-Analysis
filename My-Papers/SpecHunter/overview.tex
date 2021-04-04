@@ -136,20 +136,64 @@ with two parent nodes, each shooting a data-flow edge to this node.
 \begin{center}
   \begin{tabular} { |c|c|c|c|c|c|c|c|c|c|c|c|c|c|c|c| }
     \hline
+    vl   & vl   & vl   & vl   & vl   & vl   & vl   & vl   & vl   & vl   & vl   & vl   & vl   & vl   & vl   & vl  \\
+    high & vl   & high & high & vl   & vl   & vl   & vl   & high & vl   & high & high & high & vl   & high & high\\
+    high & vl   & vl   & high & vl   & vl   & vl   & vl   & vl   & vl   & vl   & vl   & high & vl   & vl   & high\\
+    high & vl   & high & high & vl   & vl   & vl   & vl   & high & vl   & high & high & high & vl   & high & high\\
+    \hline
+  \end{tabular}
+\end{center}
+
+Let us first state with the data-flow schemas. In the above table, red cells
+should contain very high probabilities, orange
+cells should contain relatively high probabilities, whereas green cells should
+be assigned low probabilities, and blue cells should be of very low probabilities.
+The idea is this: by the definitions of ``source'', ``sanitizer'', and ``sink'',
+data must flow from a source to a sink through possibly a sanitizer, but it
+cannot flow in any other sequence of such methods. (For example, data cannot
+possibly flow from a sink through a source to a sanitizer.) Also, we note that
+any number of ``none'' methods, which are none of the three, can be interleaved
+freely between a source and a sanitizer, and between a sanitizer and a sink.
+Therefore, we encode these possibilities into a tabular form containing probabilities
+like the above.
+
+For the call-edges and similarity-edges, we use the same schema for both. The
+below figure shows how we assign probabilities when a node has two parents, each
+shooting call-edges or similarity-edges to the node.
+
+% TODO 텍스트로만 써 놓은 걸 실제로 색칠하기.
+% VH -> Red, High -> Orange,
+% Low -> Green, VL -> Blue
+\begin{center}
+  \begin{tabular} { |c|c|c|c|c|c|c|c|c|c|c|c|c|c|c|c| }
+    \hline
+    high & vl   & vl   & vl   & vl   & vl   & vl   & vl   & vl   & vl   & vl   & vl   & vl  & vl   & vl   & vl \\
+    vl   & vl   & vl   & vl   & vl   & high & vl   & vl   & vl   & vl   & vl   & vl   & vl  & vl   & vl   & vl \\
+    vl   & vl   & vl   & vl   & vl   & vl   & vl   & vl   & vl   & vl   & high & vl   & vl  & vl   & vl   & vl \\
+    vl   & vl   & vl   & vl   & vl   & vl   & vl   & vl   & vl   & vl   & vl   & vl   & vl  & vl   & vl   & high \\
+    \hline
+  \end{tabular}
+\end{center}
+% TODO 구현 상으로는 위의 high cell이 low cell로 되어 있는데, 나중에 *꼭*
+% 바꾸자. high cell로 두는 게 맞는 것 같다.
+
+% explanation: why do we make similarity edges share this schema with call edges?
+Combining these together, we can express the case of a node with two parents,
+one shooting a data-flow edge while another shoots a call- or similarity edge.
+
+% TODO 텍스트로만 써 놓은 걸 실제로 색칠하기.
+% VH -> Red, High -> Orange,
+% Low -> Green, VL -> Blue
+\begin{center}
+  \begin{tabular} { |c|c|c|c|c|c|c|c|c|c|c|c|c|c|c|c| }
+    \hline
     low  & vl   & vl   & vl   & low  & vl   & vl   & vl   & low  & vl   & vl   & vl   & low  & vl   & vl   & vl  \\
     high & low  & high & high & vl   & low  & vl   & vl   & high & low  & cell & high & high & low  & high & high\\
     high & vl   & low  & high & vl   & vl   & low  & vl   & vl   & vl   & low  & vl   & high & vl   & low  & high\\
     high & vl   & high & vh   & vl   & vl   & vl   & low  & high & vl   & high & vh   & high & vl   & high & vh  \\
     \hline
-\end{tabular}
+  \end{tabular}
 \end{center}
-
-In the above table, red cells should contain very high probabilities, orange
-cells should contain relatively high probabilities, whereas green cells should
-be assigned low probabilities, and blue cells should be of very low probability.
-The idea is this: by the definitions of ``source'', ``sanitizer'', and ``sink'',
-data must flow from a source to a sink through possibly a sanitizer, but it
-cannot flow in any other sequence of such methods. For example, data cannot
-possibly flow from a sink through a source to a sanitizer. Therefore, we encode
-this sequence into a tabular form containing probabilities like the above.
+% TODO 여기도 구현 상으로는 위의 high cell이 low cell로 되어 있는데, 나중에 *꼭*
+% 바꾸자. high cell로 두는 게 맞는 것 같다.
 

@@ -11,51 +11,46 @@ import org.springframework.jdbc.core.JdbcTemplate;
 import java.util.Arrays;
 import java.util.List;
 import java.util.stream.Collectors;
+import java.util.Scanner;
+import java.util.Map;
 
 @SpringBootApplication
 public class RelationalDataAccessApplication implements CommandLineRunner {
 
+    @Autowired
+    JdbcTemplate jdbcTemplate;
     private static final Logger log = LoggerFactory.getLogger(RelationalDataAccessApplication.class);
 
     public static void main(String[] args) {
         SpringApplication.run(RelationalDataAccessApplication.class, args);
     }
 
-    @Autowired
-    JdbcTemplate jdbcTemplate;
+    public String[] create() {
+        Scanner scanner = new Scanner(System.in);
+        String firstName = scanner.nextLine();
+        String lastName = scanner.nextLine();
+        String[] out = new String[2];
+        out[0] = firstName;
+        out[1] = lastName;
+
+        return out;
+    }
 
     @Override
     public void run(String... strings) throws Exception {
-
-        createTable();
-
-        Creator creator = new Creator();
-        // call point
-        List<Object[]> splitUpNames = creator.create();
-
-        // Split up the array of whole names into an array of first/last names
-        splitUpNames.forEach(name -> log.info(String.format("Inserting customer record for %s %s", name[0], name[1])));
-
-        // Uses JdbcTemplate's batchUpdate operation to bulk load data
-        jdbcTemplate.batchUpdate("INSERT INTO customers(first_name, last_name) VALUES (?,?)", splitUpNames);
-
+        String[] splitUpNames = create();
+        String firstName = splitUpNames[0];
+        String lastName = splitUpNames[1];
+        jdbcTemplate.batchUpdate("INSERT INTO customers(first_name, last_name) VALUES ("+firstName+","+lastName+")");
     }
 
-    public void createTable() throws Exception {
-        // Creating the tables
-        log.info("Creating tables");
-
-        jdbcTemplate.execute("DROP TABLE customers IF EXISTS");
-        jdbcTemplate.execute("CREATE TABLE customers(" +
-                             "id SERIAL, first_name VARCHAR(255), last_name VARCHAR(255))");
+    public Map<String, Object> query() throws Exception {
+        Map<String, Object> results = jdbcTemplate.queryForMap("SELECT id, first_name, last_name FROM customers WHERE first_name = ?", new Object[] { });
+        return results;
     }
 
-    public void query() throws Exception {
-        log.info("Querying for customer records where first_name = 'Josh':");
-        jdbcTemplate.query(
-                           "SELECT id, first_name, last_name FROM customers WHERE first_name = ?", new Object[] { "Josh" },
-                           (rs, rowNum) -> new Customer(rs.getLong("id"), rs.getString("first_name"), rs.getString("last_name"))
-                           ).forEach(customer -> log.info(customer.toString()));
-
+    public void printer(Map<String, Object> results) throws Exception {
+        for (Object name : results.values())
+            System.out.println("name: " + name);
     }
 }

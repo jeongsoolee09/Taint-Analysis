@@ -287,7 +287,28 @@ Bayesian networks and perform local propagations.   % TODO: cite pomegranate
 
 \subparagraph{Picking the Next Node}
 
-We pick the next node based on an algorithm called D-separation 
+We pick the next node based on an decision procedure called \emph{D-separation}.
+This algorithm, given the following:
+
+\begin{itemize}
+\item A Bayesian Network (hence, a DAG),
+\item A set of nodes $x$,
+\item Another set of nodes $y$,
+\item Yet another set of nodes $z$,
+\end{itemize}
+
+tells if nodes of $x$ may be probabilistically independent of those in $y$. We
+utilize this algorithm like the following: For all nodes in a Bayesian network in
+hand, we set $x$ as a singleton set of node $n_1$, $y$ as a singleton set of
+node $n_2$, and $z$ as the set of all nodes that we have asked of its value so
+far. This way, we can count the number of nodes that are sure to be
+probabilisitically dependent to that node.
+
+% 이 알고리즘은 그냥 말로 설명하려고 했는데 figure로 따로 빼야겠다.
+
+% nx.d_separated(graph_for_reference, {node}, {other_node}, set(current_asked))
+
+We use \emph{networkx}'s implementation of D-separation.
 
 \subparagraph{Overview of the Local Propagation Algorithm}
 
@@ -311,4 +332,11 @@ when we pick the next node to ask of its specification.
 \paragraph{Global Propagations}
 
 Global propagations rely on a process which we call ``knowledge transfer''. It
-relies on the 
+relies on three major relations:
+
+\begin{itemize}
+\item
+\item
+\item
+\end{itemize}
+

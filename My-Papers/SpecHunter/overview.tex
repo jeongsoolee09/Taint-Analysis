@@ -279,5 +279,36 @@ oracle to instantiate its value to one of these four.
 Here, we expound on the core inference algorithm. Inference on the Bayesian
 network is divided into two parts: local propagation and global propagation.
 Local propagations pass information given by the oracle within a single graph,
-whereas global propagations pass the information from one graph to another.
+whereas global propagations pass the information from one graph or several to
+another. The Python library \emph{Pomegranate} is used to convert graphs into
+Bayesian networks and perform local propagations.   % TODO: cite pomegranate
 
+\paragraph{Local Propagations}
+
+\subparagraph{Picking the Next Node}
+
+We pick the next node based on an algorithm called D-separation 
+
+\subparagraph{Overview of the Local Propagation Algorithm}
+
+Local propagations rely on loopy belief propagation algorithm (loopy BP): it is an
+approximate version of an exact belief propagation algorithm (sum-product
+algorithm), defined on Bayesian networks. Loopy BP may not converge,
+nevertheless it provides a nice approximation to the original BP algorithm.
+% TODO: cite https://www.jmlr.org/papers/volume6/ihler05a/ihler05a.pdf
+Since the algorithm may not converge, we set the maximum number of iterations to
+100, the default value set by \emph{Pomegranate}.
+
+% TODO: should we explain a little on loopy BP?
+
+% where should we insert the details of using d-separation?
+
+Figure \emph{xx??} shows our local propagation algorithm. D-separation is used
+when we pick the next node to ask of its specification. 
+
+% insert algorithm here
+
+\paragraph{Global Propagations}
+
+Global propagations rely on a process which we call ``knowledge transfer''. It
+relies on the 

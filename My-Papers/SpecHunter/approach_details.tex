@@ -178,7 +178,11 @@ shooting call-edges or similarity-edges to the node.
 % TODO 구현 상으로는 위의 high cell이 low cell로 되어 있는데, 나중에 *꼭*
 % 바꾸자. high cell로 두는 게 맞는 것 같다.
 
-% explanation: why do we make similarity edges share this schema with call edges?
+% TODO explanation: why do we make similarity edges share this schema with call
+% edges?
+
+
+
 Combining these together, we can express the case of a node with two parents,
 one shooting a data-flow edge while another shoots a call- or similarity edge.
 
@@ -329,14 +333,25 @@ when we pick the next node to ask of its specification.
 
 % insert algorithm here
 
+% \label{sec:algorithm}
+% \begin{algorithm}[t]
+%   \caption{}
+%   \begin{algorithmic}[1]
+%     \Require{Bayesian Network $BN$ and transferred evidence $Ev$}
+%     \Ensure{Mapping from all APIs to their labels}
+%   \end{algorithmic}
+% \end{algorithm}
+
+
+
 \paragraph{Global Propagations}
 
 Global propagations rely on a process which we call ``knowledge transfer''. It
-relies on three major relations:
+relies on two major relations:
 
 \begin{itemize}
-\item
-\item
-\item
+\item similarity relation,
+\item 1-call relation.
 \end{itemize}
 
+% insert algorithm here.

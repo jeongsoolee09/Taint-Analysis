@@ -1,0 +1,5 @@
+<org.springframework.jms.connection.UserCredentialsConnectionFactoryAdapter: javax.jms.TopicConnection doCreateTopicConnection(java.lang.String,java.lang.String)> ->_CWE862_
+<org.springframework.jdbc.datasource.UserCredentialsDataSourceAdapter: java.sql.Connection getConnection(java.lang.String,java.lang.String)> ->_CWE862_
+<org.springframework.jdbc.datasource.UserCredentialsDataSourceAdapter: java.sql.Connection doGetConnection(java.lang.String,java.lang.String)> ->_CWE862_
+<org.springframework.jms.connection.UserCredentialsConnectionFactoryAdapter: javax.jms.Connection doCreateConnection(java.lang.String,java.lang.String)> ->_CWE862_
+<org.springframework.jms.connection.UserCredentialsConnectionFactoryAdapter: javax.jms.QueueConnection doCreateQueueConnection(java.lang.String,java.lang.String)> ->_CWE862_

@@ -1,3 +1,0 @@
-<org.springframework.util.unit.DataSize: org.springframework.util.unit.DataSize parse(java.lang.CharSequence,org.springframework.util.unit.DataUnit)> ->_SANITIZER_
-<org.springframework.messaging.rsocket.MetadataEncoder: java.lang.String expand(java.lang.String,java.lang.Object[])> ->_SANITIZER_
-<org.springframework.aop.interceptor.CustomizableTraceInterceptor: java.lang.String replacePlaceholders(java.lang.String,org.aopalliance.intercept.MethodInvocation,java.lang.Object,java.lang.Throwable,long)> ->_SANITIZER_

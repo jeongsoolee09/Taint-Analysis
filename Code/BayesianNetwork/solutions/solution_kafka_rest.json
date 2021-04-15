@@ -1,0 +1,10 @@
+{
+    "StringBuilder StringBuilder.append(String)": "",
+    "int[] JdbcTemplate.batchUpdate(String,List)": "",
+    "Object Map.get(Object)": "",
+    "String Scanner.nextLine()": "",
+    "void PrintStream.println(Object)": "",
+    "Map JdbcTemplate.queryForMap(String,Object[])": "",
+    "ConfigurableApplicationContext SpringApplication.run(Class,String[])": "",
+    "String StringBuilder.toString()": ""
+}

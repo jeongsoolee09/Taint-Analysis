@@ -1,7 +1,7 @@
 import json
 
 # change this variable as needed
-skip_func_path = "/Users/jslee/Taint-Analysis/Code/benchmarks/realworld/FFI/kafka-rest/skip_func.txt"
+skip_func_path = "/Users/jslee/Taint-Analysis/Code/benchmarks/realworld/relational-data-access/skip_func.txt"
 
 with open(skip_func_path, "r+") as f:
     skip_funcs = f.readlines()

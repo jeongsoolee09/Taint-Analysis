@@ -1,0 +1,17 @@
+**/target/**
+
+# Mac
+.DS_Store
+
+# Eclipse
+.classpath
+.project
+.settings
+
+# IntelliJ
+*.iml
+.idea
+
+infer-out/
+.gradle/
+*.infer

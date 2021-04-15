@@ -1,0 +1,4 @@
+<factorypath>
+    <factorypathentry kind="VARJAR" id="M2_REPO/com/google/auto/value/auto-value/1.7.2/auto-value-1.7.2.jar" enabled="true" runInBatchMode="false"/>
+    <factorypathentry kind="VARJAR" id="M2_REPO/com/google/auto/service/auto-service-annotations/1.0-rc6/auto-service-annotations-1.0-rc6.jar" enabled="true" runInBatchMode="false"/>
+</factorypath>

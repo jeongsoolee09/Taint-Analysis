@@ -9,6 +9,7 @@ import re
 import os
 
 from create_node import process
+from java_builtins import builtin_collections, builtin_types
 
 def retrieve_path():
     """paths.json을 읽고 path를 가져온다."""
@@ -30,18 +31,11 @@ with open(os.path.join(PROJECT_ROOT_DIR, "Annotations.json"), "r+") as f:
     ANNOTATIONS = json.load(f)
 
 
-with open("java_builtin_types.txt", "r+") as f:
-    builtin_type_classes = f.readlines()
-    builtin_type_classes = list(map(lambda x: x.rstrip(), builtin_type_classes))
-    builtin_type_classes = list(filter(lambda x:\
-                                 '[' not in x and
-                                 ']' not in x, builtin_type_classes))
-    wrapped_primitives = list(map(lambda string: string[0].upper() + string[1:], builtin_type_classes))
+builtin_type_classes = list(filter(lambda x:\
+                                   '[' not in x and
+                                   ']' not in x, builtin_types))
+wrapped_primitives = list(map(lambda string: string[0].upper() + string[1:], builtin_type_classes))
 
-
-with open("java_builtin_collections.txt", "r+") as f:
-    builtin_collections = f.readlines()
-    builtin_collections = list(map(lambda x: x.rstrip(), builtin_collections))
 
 # feature value setters ========================
 # ==============================================

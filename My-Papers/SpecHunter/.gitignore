@@ -5,3 +5,4 @@
 *.out
 .pdf-view-restore
 _region_.tex
+auto/

@@ -23,3 +23,6 @@ find_import.hy
 skip_func.txt
 skip_func.txt.old
 engine/
+
+.gradle/
+*.infer

@@ -8,6 +8,8 @@ import org.springframework.jdbc.core.JdbcTemplate;
 
 import java.util.Scanner;
 import java.util.Map;
+import java.util.ArrayList;
+import java.util.List;
 
 @SpringBootApplication
 public class RelationalDataAccessApplication {
@@ -22,14 +24,14 @@ public class RelationalDataAccessApplication {
     public String create() {
         Scanner scanner = new Scanner(System.in);
         String name = scanner.nextLine();
-
         return name;
     }
 
     public void run() throws Exception {
         String name = create();
         String sql = "INSERT INTO customers VALUES (" + name + ")";
-        jdbcTemplate.batchUpdate(sql);
+        List<Object[]> args = new ArrayList();
+        jdbcTemplate.batchUpdate(sql, args);
     }
 
     public Map<String, Object> query() throws Exception {
@@ -38,8 +40,12 @@ public class RelationalDataAccessApplication {
     }
 
     public void printer(Map<String, Object> results) throws Exception {
-        
        Object elem = results.get("John");
        System.out.println(elem);
+    }
+
+    public void bridge() throws Exception {
+        Map<String, Object> queryResult = query();
+        printer(queryResult);
     }
 }

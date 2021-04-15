@@ -3,17 +3,21 @@ import networkx as nx
 import pandas as pd
 import extra_features
 import re
+import json
+
+import pickle
 
 from operator import itemgetter
 from split_underlying_graph import draw_callgraph
 from create_edge import no_symmetric
 from create_node import process
 from itertools import product, repeat
+from pomegranate import *
 
 # Constants ============================================
 # ======================================================
 
-SIM_VECTORS = pd.read_csv("sim_vectors.csv", index_col=0)
+SIMS = pd.read_csv("pairwise_sims.csv", index_col=0)
 CALLGRAPH = nx.read_gpickle("callgraph")
 EXTRA_FEATURES_PREV = None      # extra features for previous graph
 EXTRA_FEATURES_NEXT = None      # extra features for next graph
@@ -25,12 +29,11 @@ def retrieve_path():
         pathdict = json.load(pathjson)
     return pathdict["project_root_directory"]
 
+PROJECT_ROOT_DIR = retrieve_path()
 
-SIMS = pd.read_csv("sim.csv", index_col=0)
-
-
-class ThisIsImpossible(Exception):
-    pass
+with open(PROJECT_ROOT_DIR+"skip_func.txt", "r+") as skip_func:
+    SKIP_FUNCS = skip_func.readlines()
+    SKIP_FUNCS = list(map(lambda string: string.rstrip(), SKIP_FUNCS))
 
 
 # Functions ============================================
@@ -87,10 +90,10 @@ def find_conf_sols(final_snapshot, current_asked):
 def learn(previous_lessons, final_snapshot, current_asked):
     """이전의 lesson들과 confident 노드들, 그리고 oracle response를 모두 모아 내놓는다."""
     oracle_response = dict(find_oracle_response(final_snapshot, current_asked))
-    conf_sols = dict(find_conf_sols(final_snapshot, current_asked))
-    previous_lessons_nodes = {**oracle_response, **conf_sols}
-    return {**previous_lessons, **previous_lessons_nodes}
-    # return {**previous_lessons, **oracle_response}
+    # conf_sols = dict(find_conf_sols(final_snapshot, current_asked))
+    # previous_lessons_nodes = {**oracle_response, **conf_sols}
+    # return {**previous_lessons, **previous_lessons_nodes}
+    return {**previous_lessons, **oracle_response}
 
 
 def convert_bool_to_int(df):
@@ -99,26 +102,6 @@ def convert_bool_to_int(df):
     df = df.replace(['False'], [0])
     df = df.replace([False], [0])
     return df
-
-
-def scoring_function(node1, node2):
-    """cartesian product의 한 row를 받아서 두 node가 충분히 similar한지 판단하는 메소드"""
-    # node1의 feature vector를 retrieve
-    node1_vector = SIM_VECTORS.loc[SIM_VECTORS['id'] == node1]
-    node1_vector = node1_vector.drop(columns=['id'])
-
-    # node2의 feature vector를 retrieve
-    node2_vector = SIM_VECTORS.loc[SIM_VECTORS['id'] == node2]
-    node2_vector = node2_vector.drop(columns=['id'])
-
-    node1_vector = convert_bool_to_int(node1_vector)
-    node2_vector = convert_bool_to_int(node2_vector)
-
-    elementwise_and = node1_vector & node2_vector
-
-    true_count = elementwise_and.sum().sum()
-
-    return true_count >= 2
 
 
 # Tentative rule activator ===================================
@@ -326,25 +309,6 @@ def GET_POST_SELECT_is_sin_or_src(**kwargs):
 # evidence builders ==========================================
 # ============================================================
 
-# sample data
-sample_lesson = { "void Iterable.forEach(Consumer)": 2.0,
-                  "String NamedList.getName(int)": 4.0,
-                  "boolean String.isEmpty()": 4.0,
-                  "String String.valueOf(long)": 4.0,
-                  "long Meter.getCount()": 4.0,
-                  "double Meter.getFifteenMinuteRate()": 4.0,
-                  "Object DatumReader.read(Object,Decoder)": 4.0,
-                  "int AtomicInteger.get()": 4.0,
-                  "String String.toLowerCase()": 4.0,
-                  "String String.toUpperCase()": 4.0,
-                  "ExistsBuilder CuratorFramework.checkExists()": 1.0,
-                  "void Logger.info(String)": 4.0,
-                  "BinaryEncoder SpecificData.getEncoder(ObjectOutput)": 4.0 }
-sample_lesson_df = pd.DataFrame(sample_lesson.items(), columns=["lessons_id", "lessons_labels"])
-# sample state
-sample_states = list(nx.read_gpickle("Decision-1.1.0_graph_6").nodes)
-sample_states_df = pd.DataFrame(sample_states, columns=["state_name_id"])
-
 
 def pairwise_similarity(lessons, state_names):
     """lessons의 내용을 보고, state_names 중에서 충분히 닮은 것들을 찾아낸다.
@@ -380,11 +344,16 @@ def pairwise_similarity(lessons, state_names):
     selected = projected[projected["exists?"] == "both"]
 
     # drop the column from sample_lesson_df
-    selected = selected.drop("id1")
+    selected = selected.drop(columns=["id1"])
 
-    raw_dict = selected.to_dict(orient='records')
+    raw_dict = selected.to_dict('records')
 
-    return dict(map(lambda dict: tuple(dict.values()), raw_dict))
+    return dict(map(lambda dict_: tuple(dict_.values())[0:2], raw_dict))
+
+
+def row_isin_dataframe(node1, node2):
+    return not SIMS[(SIMS["id1"] == node1) &
+                    (SIMS["id2"] == node2)].empty
 
 
 def one_call_relation(lessons, state_names):
@@ -412,25 +381,42 @@ def one_call_relation(lessons, state_names):
     return one_call_nodes
 
 
-def a_priori_rules(lessons, state_names):  # 여기서 state_names는 그 다음에 물어볼 그래프의 노드들의 이름들.
+def a_priori_rules(lessons, state_names, # 여기서 state_names는 그 다음에 물어볼 그래프의 노드들의 이름들.
+                   EXTRA_FEATURE_PREV,
+                   EXTRA_FEATURE_NEXT):
     """굳이 물어보지 않아도 아는 것들: activate된 tentative rule들을 바탕으로, 해당되는 노드들을 찾아낸다."""
     # tentative rule들을 사용한다.
-    getter_setter_dict = getter_setter_is_non(activated=activate_getter_setter(lessons))
+    # getter_setter_dict = getter_setter_is_non(activated=activate_getter_setter(lessons))
 
-    hashCode_dict = hashCode_is_san(activated=activate_hashCode_is_san(lessons))
+    # hashCode_dict = hashCode_is_san(activated=activate_hashCode_is_san(lessons))
 
-    assert_dict = assert_is_san(activated=activate_assert_is_san(lessons))
+    # assert_dict = assert_is_san(activated=activate_assert_is_san(lessons))
 
-    to_dict = to_is_non(activated=activate_to_is_non(lessons))
+    # to_dict = to_is_non(activated=activate_to_is_non(lessons))
 
-    wrapping_primitives_dict = wrapping_primitives_is_non(activated=activate_wrapping_primitives_is_non(lessons))
+    # wrapping_primitives_dict = wrapping_primitives_is_non(activated=activate_wrapping_primitives_is_non(lessons))
 
-    builtin_collection_dict = builtin_collection_is_non(activated=activate_builtin_collection_is_non(lessons))
+    # builtin_collection_dict = builtin_collection_is_non(activated=activate_builtin_collection_is_non(lessons))
 
-    get_post_select_dict = GET_POST_SELECT_is_sin_or_src(activated=activate_GET_POST_SELECT(lessons))
+    # get_post_select_dict = GET_POST_SELECT_is_sin_or_src(activated=activate_GET_POST_SELECT(lessons))
 
-    return {**getter_setter_dict, **hashCode_dict, **assert_dict,
-             **to_dict, **wrapping_primitives_dict, **builtin_collection_dict, **get_post_select_dict}
+    getter_setter_dict = getter_setter_is_non(activated=True)
+
+    hashCode_dict = hashCode_is_san(activated=True)
+
+    assert_dict = assert_is_san(activated=True)
+
+    to_dict = to_is_non(activated=True)
+
+    wrapping_primitives_dict = wrapping_primitives_is_non(activated=True)
+
+    builtin_collection_dict = builtin_collection_is_non(activated=True)
+
+    get_post_select_dict = GET_POST_SELECT_is_sin_or_src(activated=True)
+
+
+    return {**getter_setter_dict, **assert_dict, **to_dict, **wrapping_primitives_dict,
+            **builtin_collection_dict, **get_post_select_dict, **hashCode_dict}
 
 
 # main ====================================================
@@ -453,8 +439,19 @@ def main(previous_graph_nodes, next_graph_nodes, lessons):
 
     # 각각의 evidence들을 collect
     pairwise_similarity_dict = pairwise_similarity(lessons, next_graph_nodes)
-    one_call_dict = one_call_relation(lessons, next_graph_nodes)
-    a_priori_dict = a_priori_rules(lessons, next_graph_nodes)
+    # one_call_dict = one_call_relation(lessons, next_graph_nodes)
+    a_priori_dict = a_priori_rules(lessons, next_graph_nodes,
+                                   EXTRA_FEATURES_PREV,
+                                   EXTRA_FEATURES_NEXT)
+
+    print("\npairwise_similarity_dict:", pairwise_similarity_dict, "\n") # TEMP
+    print("a_priori_dict:", a_priori_dict, "\n") # TEMP
+
+    # combined = {**pairwise_similarity_dict, **one_call_dict, **a_priori_dict}
+    combined = {**pairwise_similarity_dict, **a_priori_dict}
+
+    filtered = dict(filter(lambda tup: tup[0] in SKIP_FUNCS, combined.items()))
 
     # 그 evidence를 모두 합쳐서 내놓기
-    return {**pairwise_similarity_dict, **one_call_dict, **a_priori_dict}
+    return filtered
+    # return combined

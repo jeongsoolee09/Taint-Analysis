@@ -76,12 +76,14 @@ let search_target_tuples_by_id (id:Ident.t) (methname:Procname.t) (astate_set:S.
 
 let weak_search_target_tuple_by_id (id:Ident.t) (astate_set:S.t) : T.t =
   let elements = S.elements astate_set in
-  let rec weak_search_target_tuple_by_id_inner id (elements:S.elt list) = 
+  let rec weak_search_target_tuple_by_id_inner id (elements:S.elt list) =
     match elements with
     | [] -> L.die InternalError "weak_search_target_tuple_by_id failed, id: %a, astate_set: %a@." Ident.pp id S.pp astate_set
     | target::t ->
         let aliasset = fourth_of target in
-        if A.mem (Var.of_id id, []) aliasset then target else weak_search_target_tuple_by_id_inner id t in
+        if A.mem (Var.of_id id, []) aliasset
+        then target
+        else weak_search_target_tuple_by_id_inner id t in
   weak_search_target_tuple_by_id_inner id elements
 
 

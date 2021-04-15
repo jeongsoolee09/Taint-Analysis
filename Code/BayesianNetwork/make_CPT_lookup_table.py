@@ -8,6 +8,10 @@ SECOND_WEIGHT = 4
 THIRD_WEIGHT = 64
 FOURTH_WEIGHT = 256
 
+# FIRST_WEIGHT = 1
+# SECOND_WEIGHT = 1
+# THIRD_WEIGHT = 1
+# FOURTH_WEIGHT = 1
 
 def weight_mag(mag):
     """주어진 mag에 weight parameter를 곱한다."""

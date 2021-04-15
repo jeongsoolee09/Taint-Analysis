@@ -147,23 +147,23 @@ def find_optimal_graph_size(G):
         max_graph_size -= 1
 
 
-def split_large_graph(G, max_graph_size):
+def split_large_graph(G, max_graph_size, mother_graph):
     worklist = [G]
     acc = []
     while worklist != []:
-        print(list(map(lambda graph: len(graph.nodes), worklist)))
+        # print(list(map(lambda graph: len(graph.nodes), worklist)))
         target = worklist.pop()
         if len(target.nodes) <= max_graph_size:
             acc.append(target)
         else:
-            small1, small2 = bisect(target)
-            print(len(isolated_nodes(small1)))
-            print(len(isolated_nodes(small2)))
+            small1, small2 = bisect(target, mother_graph)
+            # print(len(isolated_nodes(small1)))
+            # print(len(isolated_nodes(small2)))
 
             if len(small1.nodes) == 0 or len(small2.nodes) == 0:
-                small1, small2 = bisect_naive(target)  # give up minimizing isolated nodes
-                print(len(isolated_nodes(small1)))
-                print(len(isolated_nodes(small2)))
+                small1, small2 = bisect_naive(target, mother_graph)  # give up minimizing isolated nodes
+                # print(len(isolated_nodes(small1)))
+                # print(len(isolated_nodes(small2)))
             worklist.append(small1)
             worklist.append(small2)
     # print("acc: ", list(map(lambda graph: len(graph.nodes),acc)))
@@ -182,7 +182,7 @@ def main():
             masked_graph = mask_graph(graph_for_reference, all_methods)
             nx.write_gpickle(masked_graph, graph_name+"_graph")
             # optimal_max_graph_size = find_optimal_graph_size(masked_graph)
-            small_graphs = split_large_graph(masked_graph, 180)
+            small_graphs = split_large_graph(masked_graph, 150, graph_for_reference)
             i = 0
             for small_graph in small_graphs:
                 decycle(small_graph)
@@ -191,7 +191,7 @@ def main():
         nx.write_gpickle(callgraph, "callgraph")
 
     else:                       # There are no .jar files in PROJECT_ROOT
-        small_graphs = split_large_graph(graph_for_reference, 180)
+        small_graphs = split_large_graph(graph_for_reference, 150, graph_for_reference)
         graph_name = os.path.basename(os.path.normpath(PROJECT_ROOT_PATH))
         i = 0
         for small_graph in small_graphs:
@@ -199,6 +199,21 @@ def main():
             nx.write_gpickle(small_graph, graph_name+"_graph_"+str(i))
             i += 1
         nx.write_gpickle(callgraph, "callgraph")
+
+
+def parameterized_main(graph_for_reference):
+    callgraph = draw_callgraph()
+
+    small_graphs = split_large_graph(graph_for_reference, 130, graph_for_reference)
+    graph_name = "poor"
+    i = 0
+    acc = []
+    for small_graph in small_graphs:
+        decycle(small_graph)
+        small_graph.name = graph_name+"_graph_"+str(i)
+        acc.append(small_graph)
+        i += 1
+    return acc
 
 
 if __name__ == "__main__":

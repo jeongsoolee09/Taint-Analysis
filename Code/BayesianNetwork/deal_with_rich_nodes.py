@@ -1,29 +1,22 @@
 import networkx as nx
 import copy
+import pandas as pd
 from community_detection import isolated_nodes, rich_nodes
 from create_node import process
 from split_underlying_graph import decycle
 
 
-def scoring_function(info1, info2):
-    score = 0
-    if info1[0] == info2[0]:  # The two methods belong to the same class
-        score += 10
-    if info1[1] == info2[1]:  # The two methods have a same return type
-        score += 10
-    if (info1[2] in info2[2]) or (info2[2] in info1[2]) or \
-       (info1[2][0:2] == info2[2][0:2]) or (info1[2][0:2] == info2[2][0:2]):
-        score += 10  # The two methods start with a same prefix
-    if info1[3] == info2[3]:  # The two methods have a same input type
-        score += 10
-    return score
+SIMS = pd.read_csv("pairwise_sims.csv", index_col=0)
+
+
+def row_isin_dataframe(node1, node2):
+    return not SIMS[(SIMS["id1"] == node1) &
+                    (SIMS["id2"] == node2)].empty
 
 
 def can_stick_node_to(G, from_node, to_node):
     """node1을 node2에 붙일 수 있는가?"""
-    from_node_info = process(from_node)
-    to_node_info = process(to_node)
-    if scoring_function(from_node_info, to_node_info) > 20 and\
+    if row_isin_dataframe(from_node, to_node) and\
        len(G.in_edges(nbunch=to_node)) < 6:
         return True
     else:
@@ -52,7 +45,7 @@ def relocate_stashed_nodes(G, stash):
     for stashed_node in stash:
         for other_node in set(G.nodes)-set(stash):
             if can_stick_node_to(G, stashed_node, other_node):
-                G.add_edge(stashed_node, other_node)
+                G.add_edge(stashed_node, other_node, kind="sim")
                 break
 
 
@@ -84,7 +77,7 @@ def decompose_rich_node(G, rich_node):
         popped_node = edge_shooters.pop()
         stickable_node = find_stickable_node(G, popped_node, candidates, rich_node)
         if stickable_node is not None:
-            G.add_edge(popped_node, stickable_node)
+            G.add_edge(popped_node, stickable_node, kind="sim")
         else:
             stash.append(popped_node)
 

@@ -5,11 +5,22 @@ import networkx as nx
 import itertools as it
 import deal_with_rich_nodes
 import copy
+import modin.pandas as pd
+import random
 
 from pomegranate import *
 from make_underlying_graph import find_root, find_edge_labels
 from make_CPT import *
 from community_detection import isolated_nodes
+from pandarallel import pandarallel
+
+
+DF_EDGES = pd.read_csv("df.csv", index_col=0)[["id1", "id2"]]
+CALL_EDGES = pd.read_csv("callg.csv", index_col=0)[["id1", "id2"]]
+SIM_EDGES = pd.read_csv("pairwise_sims.csv", index_col=0)[["id1", "id2"]]
+
+
+mother = nx.read_gpickle("graph_for_reference")
 
 
 # Methods for BNs ====================================
@@ -29,7 +40,7 @@ def create_internal_node_for_BN(graph_for_reference, node_name, BN, prev_states)
     """BN에 internal node를 만들어 추가한다."""
     labels = [1, 2, 3, 4]       # src, sin, san, non
     parents_and_edges = find_edge_labels(graph_for_reference, node_name)
-    parents = list(map(lambda tup: tup[0], parents_and_edges)) 
+    parents = list(map(lambda tup: tup[0], parents_and_edges))
     edges = list(map(lambda tup: tup[1], parents_and_edges))
     parent_dist = list(map(lambda state: state.distribution, prev_states))
     probs = create_CPT(edges).transpose().flatten()
@@ -85,7 +96,7 @@ def add_edge_to_BN(graph_for_reference, BN, currently_defined_states):
 
 def init_BN(graph_for_reference):
     BN = BayesianNetwork("Interactive Inference of Taint Method Specifications")
-    root_states = create_roots_for_BN(graph_for_reference, BN) 
+    root_states = create_roots_for_BN(graph_for_reference, BN)
     states = create_internal_nodes_for_BN(graph_for_reference, BN, root_states)
     add_edge_to_BN(graph_for_reference, BN, states)
     BN.bake()
@@ -94,6 +105,7 @@ def init_BN(graph_for_reference):
 
 # Methods for Graphs =================================
 # ====================================================
+
 
 def exclude_rich(G):
     """incoming edge가 너무 많은 노드들을 그래프에서 삭제한다."""
@@ -152,38 +164,32 @@ def get_maximum_in_edges(G):
     if num_of_in_edges == []:
         return "empty graph"
     return max(num_of_in_edges)
-        
+
 
 # main ====================================================
 # =========================================================
 
-def main(graph_for_reference, **kwargs):
-    """available kwargs:
-       - filename (string): graph file name"""
+def main(graph_for_reference):
     start = time.time()
-    # print("graph has", len(graph_for_reference), "nodes")
-
-    # print("preprocessing...")
-
     num_of_poors = len(isolated_nodes(graph_for_reference))
-    # print("there are", num_of_poors, "poor nodes")
+
+    # 혹시 레이블이 없다면
+    for edge in graph_for_reference.edges:
+        if graph_for_reference.get_edge_data(*edge) == {}:
+            graph_for_reference[edge[0]][edge[1]]["kind"] = mother.get_edge_data(*edge)
 
     tame_rich(graph_for_reference)
 
     # poor node가 있었다면 이를 저장해 두기
-    if kwargs['filename'] and kwargs['stash_poor']:
-        poor_nodes = exclude_poor(graph_for_reference)
+    # if kwargs['filename'] and kwargs['stash_poor']:
+    #     poor_nodes = exclude_poor(graph_for_reference)
 
-        if poor_nodes != []:
-            G = nx.DiGraph()
-            for poor_node_name in poor_nodes:
-                G.add_node(poor_node_name)
-            nx.write_gpickle(G, kwargs['filename']+'_poor')
+    #     if poor_nodes != []:
+    #         G = nx.DiGraph()
+    #         for poor_node_name in poor_nodes:
+    #             G.add_node(poor_node_name)
+    #         nx.write_gpickle(G, kwargs['filename']+'_poor')
 
-    # print("max number of in_edges:", get_maximum_in_edges(graph_for_reference))
-
-    # print("initializing BN...")
     BN_for_inference = init_BN(graph_for_reference)
-    # print("initializing BN...done")
 
     return BN_for_inference

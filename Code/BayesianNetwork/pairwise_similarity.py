@@ -424,7 +424,7 @@ def get_similar_rows_score(this_row):
 
     scores_series = FEATURE_VECTORS_other.apply(scoring_function, axis=1)
 
-    threshold = 15              # TEMP
+    threshold = 17              # TEMP
 
     scores_series_above_thres = scores_series.where(lambda score: (score > threshold)).dropna()
     converted_to_dict = scores_series_above_thres.to_dict()
@@ -443,16 +443,16 @@ def get_similar_rows_ranking(this_row):
 
     scores_series = FEATURE_VECTORS_other.apply(scoring_function, axis=1)
 
-    threshold_score = 15
-    threshold_rank = 5
+    threshold_score = 17        # TEMP
+    # threshold_rank = 5
 
     scores_series_above_thres = scores_series.where(lambda score: (score > threshold_score)).dropna()
 
     converted_to_dict = scores_series_above_thres.to_dict()
     sorted_by_val = sort_dict_by_value_rev(converted_to_dict)
-    cut = dict(sorted_by_val[:threshold_rank])
+    # cut = dict(sorted_by_val[:threshold_rank])
 
-    return keymap(fetch_methname_by_id, cut)
+    return keymap(fetch_methname_by_id, converted_to_dict)
 
 
 def score_all_rows():
@@ -515,6 +515,11 @@ def main():
 
     pairwise_sims = no_symmetric(flatten_sim_df(score_all_rows()))
     pairwise_sims.to_csv("pairwise_sims.csv", mode="w+")
+
+    # now, concat DF, CALL, SIM and output them to a single csv
+    concatted = pd.concat([DF, CALL, pairwise_sims])
+
+    concatted.to_csv("edges.csv", mode="w+")
 
     print("elapsed time:", time.time()-start)
 

@@ -25,11 +25,7 @@ PROJECT_ROOT_DIR = retrieve_path()
 
 
 def flatten(ll):
-    flat_list = []
-    for sublist in ll:
-        for item in sublist:
-            flat_list.append(item)
-    return flat_list
+    return [elem for lst in ll for elem in lst]
 
 
 def filtermethod(string):

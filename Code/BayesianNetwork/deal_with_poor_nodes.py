@@ -1,9 +1,17 @@
-import modin.pandas as pd
+# import modin.pandas as pd
+import pandas as pd
 import networkx as nx
 import glob
 
+import pickle                   # TEMP
+
 from split_underlying_graph import decycle
 from functools import partial, update_wrapper
+from pandarallel import pandarallel
+from itertools import product
+
+
+pandarallel.initialize()
 
 
 def find_poor_node_files():
@@ -16,7 +24,7 @@ def find_poor_node_files():
 
 DF_EDGES = pd.read_csv("df.csv", index_col=0)
 CALL_EDGES = pd.read_csv("callg.csv", index_col=0)
-SIM_EDGES = pd.read_csv("sim.csv", index_col=0)
+SIM_EDGES = pd.read_csv("pairwise_sims.csv", index_col=0)
 
 
 # Methods ==========================================
@@ -32,78 +40,102 @@ def create_graph_without_edges(poor_nodes):
 
 
 def add_df_edges(G):
-    mapfunc = lambda row: row['id1'] in G.nodes and row['id2'] in G.nodes
+    """Given a graph G whose edge set E is empty, add DF edges to the nodes of G."""
+    nodes_df = pd.DataFrame(G.nodes)
 
-    # making original dataframe manageable by dropping irrelevant rows and columns
-    small_df_edges = DF_EDGES[['id1', 'id2']]
-    bool_df = small_df_edges.apply(mapfunc, axis=1)
-    small_df_edges['leave'] = bool_df
-    small_df_edges = small_df_edges[small_df_edges.leave != False]
+    # Warning: SQL Magic ahead!
 
-    # adding edges row by row
-    for rowtuple in small_df_edges.itertuples(index=False):
-        G.add_edge(rowtuple[0], rowtuple[1])  # id1, id2 respectively
+    # The Cartesian Product.
+    carpro = nodes_df.merge(nodes_df, how="cross")
+    carpro.columns = ["id1", "id2"]
+
+    # perform a left-join
+    left_join = pd.merge(carpro, DF_EDGES, on=["id1", "id2"], how="left", indicator="exists?")
+
+    # only select "id1", "id2", and "exists?"
+    projected = left_join.filter(["id1", "id2", "exists?"])
+
+    # only select the rows which exists in both DF_EDGES and carpro
+    selected = projected[projected["exists?"] == "both"]
+
+    # drop the column from sample_nodes_df
+    selected = selected.drop(columns=["exists?"])
+
+    raw_dicts = selected.to_dict('records')
+
+    tuples = list(map(lambda dict_: tuple(dict_.values()), raw_dicts))
+    tuples = list(filter(lambda tup: tup[0] != tup[1], tuples))
+
+    for tuple_ in tuples:
+        G.add_edge(*tuple_, kind="df")
+
+    return G
 
 
 def add_call_edges(G):
-    mapfunc = lambda row: row['id1'] in G.nodes and row['id2'] in G.nodes
+    """Given a graph G whose edge set E is empty, add Call edges to the nodes of G."""
+    nodes_df = pd.DataFrame(G.nodes)
 
-    # making original dataframe manageable
-    small_call_edges = CALL_EDGES[['id1', 'id2']]
-    bool_df = small_call_edges.apply(mapfunc, axis=1)
-    small_call_edges['leave'] = bool_df
-    small_call_edges = small_call_edges[small_call_edges.leave != False]
+    # Warning: SQL Magic ahead!
 
-    # adding edges row by row
-    for rowtuple in small_call_edges.itertuples(index=False):
-        G.add_edge(rowtuple[0], rowtuple[1])  # id1, id2 respectively
+    # The Cartesian Product.
+    carpro = nodes_df.merge(nodes_df, how="cross")
+    carpro.columns = ["id1", "id2"]
 
+    # perform a left-join
+    left_join = pd.merge(carpro, CALL_EDGES, on=["id1", "id2"], how="left", indicator="exists?")
 
-def no_symmetric(dataframe):
-    dataframe['temp'] = dataframe.index * 2
-    dataframe2 = dataframe.iloc[:, [4, 5, 6, 7, 8, 0, 1, 2, 3, 4, 10]]
-    dataframe2.columns = dataframe.columns
-    dataframe2['temp'] = dataframe2.index * 2 + 1
-    out = pd.concat([dataframe, dataframe2])
-    out = out.sort_values(by='temp')
-    out = out.set_index('temp')
-    out = out.drop_duplicates()
-    out = out[out.index % 2 == 0]
-    out = out.reset_index().drop(columns=['temp'])
-    return out
+    # only select "id1", "id2", and "exists?"
+    projected = left_join.filter(["id1", "id2", "exists?"])
 
+    # only select the rows which exists in both CALL_EDGES and carpro
+    selected = projected[projected["exists?"] == "both"]
 
-def no_reflexive(dataframe):
-    cond1 = dataframe['class1'] != dataframe['class2']
-    cond2 = dataframe['rtntype1'] != dataframe['rtntype2']
-    cond3 = dataframe['name1'] != dataframe['name2']
-    cond4 = dataframe['intype1'] != dataframe['intype2']
-    return dataframe[cond1 | cond2 | cond3 | cond4]
+    # drop the column from sample_nodes_df
+    selected = selected.drop(columns=["exists?"])
+
+    raw_dicts = selected.to_dict('records')
+
+    tuples = list(map(lambda dict_: tuple(dict_.values()), raw_dicts))
+    tuples = list(filter(lambda tup: tup[0] != tup[1], tuples))
+
+    for tuple_ in tuples:
+        G.add_edge(*tuple_, kind="call")
+
+    return G
 
 
 def add_sim_edges(G):
-    mapfunc = lambda row: row['id1'] in G.nodes and row['id2'] in G.nodes
+    """Given a graph G whose edge set E is empty, add Sim edges to the nodes of G."""
+    nodes_df = pd.DataFrame(G.nodes)
 
-    print("adding sim_edges...")
+    # Warning: SQL Magic ahead!
 
-    # making dataframe non-reflexive and non-symmetric
-    SIM_EDGES_pandas = SIM_EDGES._to_pandas()
-    sim_edges_new = no_symmetric(SIM_EDGES_pandas)
-    sim_edges_new = no_reflexive(sim_edges_new)
+    # The Cartesian Product.
+    carpro = nodes_df.merge(nodes_df, how="cross")
+    carpro.columns = ["id1", "id2"]
 
-    # making original dataframe manageable
-    small_sim_edges = sim_edges_new[['id1', 'id2']]
-    bool_df = small_sim_edges.apply(mapfunc, axis=1)
-    small_sim_edges['leave'] = bool_df
-    small_sim_edges = small_sim_edges[small_sim_edges.leave != False]
+    # perform a left-join
+    left_join = pd.merge(carpro, SIM_EDGES, on=["id1", "id2"], how="left", indicator="exists?")
 
-    if len(G.nodes) < len(small_sim_edges.index):
-        small_sim_edges = small_sim_edges.sample(n=len(G.nodes))
+    # only select "id1", "id2", and "exists?"
+    projected = left_join.filter(["id1", "id2", "exists?"])
 
-    # adding edges row by row
-    # print(len(small_sim_edges.index))
-    for rowtuple in small_sim_edges.itertuples(index=False):
-        G.add_edge(rowtuple[0], rowtuple[1])  # id1, id2 respectively
+    # only select the rows which exists in both SIM_EDGES and carpro
+    selected = projected[projected["exists?"] == "both"]
+
+    # drop the column from sample_nodes_df
+    selected = selected.drop(columns=["exists?"])
+
+    raw_dicts = selected.to_dict('records')
+
+    tuples = list(map(lambda dict_: tuple(dict_.values()), raw_dicts))
+    tuples = list(filter(lambda tup: tup[0] != tup[1], tuples))
+
+    for tuple_ in tuples:
+        G.add_edge(*tuple_, kind="sim")
+
+    return G
 
 
 def pairup_elems(lst):
@@ -118,9 +150,7 @@ def pairup_elems(lst):
 
 def create_single_graph(input_graph):
     """하나의 poor_node 묶음에 대해 엣지가 모두 연결된 complete graph를 만들어 낸다."""
-    add_df_edges(input_graph)
-    add_call_edges(input_graph)
-    # add_sim_edges(input_graph)
+    input_graph = add_sim_edges(add_call_edges(add_df_edges(input_graph)))
 
     decycle(input_graph)
 
@@ -148,21 +178,30 @@ def main():
     pairedup_graphs = pairup_elems(raw_graphs)
     print("Loading poor graphs...done")
 
-    print("Merging graph pairs...")
-    merged_graphs = []
-    for elem in pairedup_graphs:
-        if type(elem) == tuple:  # 두 개를 merge함
-            G = merge_two_graphs(*elem)
-            merged_graphs.append(G)
-        else:                    # merge하지 않음
-            merged_graphs.append(elem)
-    print("Merging graph pairs...done")
+    # print("Merging graph pairs...")
+    # merged_graphs = []
+    # for elem in pairedup_graphs:
+    #     if type(elem) == tuple:  # 두 개를 merge함
+    #         G = merge_two_graphs(*elem)
+    #         merged_graphs.append(G)
+    #     else:                    # merge하지 않음
+    #         merged_graphs.append(elem)
+    # print("Merging graph pairs...done")
 
     print("creating recycled graphs...")
     complete_graphs = []
-    for graph in merged_graphs:
+    # for graph in merged_graphs:
+    for graph in raw_graphs:
         G = create_single_graph(graph)  # BOTTLENECK
         complete_graphs.append(G)
     print("creating recycled graphs...done")
 
+    # for debugging purposes
+    # with open("poor_graphs.bin", "wb+") as f:
+    #     pickle.dump(complete_graphs, f)
+
     return complete_graphs
+
+
+if __name__ == "__main__":
+    main()

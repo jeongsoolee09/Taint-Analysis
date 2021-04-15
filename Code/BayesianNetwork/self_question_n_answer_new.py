@@ -1077,7 +1077,7 @@ def main():
         (lessons, final_snapshot_x, prev_graph_states, prev_graph_file,
          global_precisions, final_asked, final_asked_x, final_evidence) =\
             one_pass(snapshot_dict, graph.name, graph, BN, BN_x, lessons,
-                     prev_graph_states, prev_graph_file, debug=True)
+                     prev_graph_states, prev_graph_file, debug=False)
         snapshot_dict_x[graph.name] = final_snapshot_x
         final_evidence_dict[graph.name] = final_evidence
         final_asked_x_dict[graph.name] = final_asked_x

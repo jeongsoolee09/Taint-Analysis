@@ -1,0 +1,43 @@
+\section{Overview}
+
+% SAVER보다는 MemFix를 참고하는 게 더 나을 것
+% Overview에 약 2 페이지가 사용되었다.
+% - 약 40%는 motivating example로 채웠고,
+% - 나머지 60%는 concrete한 동작 방식으로 채웠다.
+
+\subsection{A Simple Example}
+
+\lstinputlisting[language=Java]{./Codes/OverviewExample.java}
+
+We illustrate our approach with a simple example. Figure \emph{xx} contains a
+Spring program that interacts with a DBMS via APIs provided bySpring's
+\texttt{JdbcTemplate}. (We assume that necessary modules are imported
+beforehand.) Although the program is short, There are two kinds of
+data flows present in this program. First is one that starts from
+the standart input and comes into the program via \texttt{Scanner.nextLine()},
+flows into \texttt{RelationalData.run()}, which passes it to
+\texttt{JdbcTemplate.batchUpdate()} for database insertion. The another comes from
+the DBMS via \texttt{JdbcTemplate.queryForMap()} for database querying, and then
+flows to the \texttt{Logger.info()} function, which emits this information
+outside the program, to the standard output.
+
+These data flows pose two security risks: one is an SQL injection (CWE-89),
+and another is insertion of sensitive information into log file (CWE-532).
+Therefore, for a taint analyzer to detect these data flows, one must mark
+\texttt{Scanner.nextLine()} and \texttt{JdbcTemplate.queryForMap()} as sources,
+\texttt{JdbcTemplate.batchUpdate()} and \texttt{Logger.info()} as their respective
+sinks.
+
+There are 6 APIs in this program, and we would like to label the APIs with 
+as least number of hints given from the oracle as possible:
+
+\begin{itemize}
+\item \texttt{RelationalData.run()} is a source,
+\item \texttt{JdbcTemplate.batchUpdate()} is a sink,
+\item \texttt{JdbcTemplate.queryForMap()} is a source,
+\item \texttt{Logger.info()} is a sink, and
+\item \texttt{Map.get()} and \texttt{SpringApplication.run()} are none of the three.
+\end{itemize}
+
+\subsection{How SpecHunter works}
+

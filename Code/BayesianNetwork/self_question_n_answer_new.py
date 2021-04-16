@@ -31,8 +31,8 @@ import pickle                   # TEMP
 parser = argparse.ArgumentParser()
 parser.add_argument("solution_file", help="path to the solution file. input 'None' if you don't have any.",
                     type=str)
-# args = parser.parse_args()
-args = parser.parse_args(["solutions/solution_decision.json"])  # For the REPL
+args = parser.parse_args()
+# args = parser.parse_args(["solutions/solution_decision.json"])  # For the REPL
 
 def retrieve_path():
     """paths.json을 읽고 path를 가져온다."""

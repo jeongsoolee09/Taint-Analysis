@@ -16,5 +16,5 @@ for skip_func in skip_funcs:
     else:
         out[skip_func] = ""
 
-with open("solution_kafka_rest.json", "w+") as f:
+with open("solution_relational.json", "w+") as f:
     json.dump(out, f, indent=4)

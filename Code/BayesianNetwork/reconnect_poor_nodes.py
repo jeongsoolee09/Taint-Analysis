@@ -14,6 +14,9 @@ DF_EDGES = pd.read_csv("df.csv", index_col=0)[["id1", "id2"]]
 CALL_EDGES = pd.read_csv("callg.csv", index_col=0)[["id1", "id2"]]
 SIM_EDGES = pd.read_csv("pairwise_sims.csv", index_col=0)[["id1", "id2"]]
 
+ALL_EDGES = pd.read_csv("edges.csv", index_col=0)[["id1", "id2"]]
+
+MOTHER = nx.read_gpickle("graph_for_reference")
 
 class NoSolution():
     def __init__(self, node_name):
@@ -144,43 +147,38 @@ def all_the_same(coll):
 
 
 def reconnect_node(poor_node, graphs):
-    my_df_edges = DF_EDGES[(DF_EDGES["id1"] == poor_node) |
-                           (DF_EDGES["id2"] == poor_node)]
+    all_edges = ALL_EDGES[(ALL_EDGES["id1"] == poor_node) |
+                          (ALL_EDGES["id2"] == poor_node)]
 
-    my_call_edges = CALL_EDGES[(CALL_EDGES["id1"] == poor_node) |
-                               (CALL_EDGES["id2"] == poor_node)]
-
-    my_sim_edges = SIM_EDGES[(SIM_EDGES["id1"] == poor_node) |
-                             (SIM_EDGES["id2"] == poor_node)]
-
-    all_edges = no_reflexive(pd.concat([ my_df_edges
-                                         , my_call_edges
-                                         , my_sim_edges ]))
     if all_edges.empty:
         return NoSolution(poor_node)  # No Success
 
     homelands = lookup_nodes(poor_node, graphs)
 
     random_edge = tuple(pick_random_row(all_edges))
-
-    edgedata_acc = []
-    for homeland in homelands:
-        edgedata = homeland.get_edge_data(*random_edge)
-        edgedata_acc.append(edgedata)
-    assert all_the_same(edgedata_acc)
+    assert random_edge in MOTHER.edges
+    edgedata = MOTHER.get_edge_data(*random_edge)
+    if edgedata is None:
+        edgedata = MOTHER.get_edge_data(*random_edge[::-1])
+    assert edgedata is not None
 
     other_graph = get_other_graph(poor_node, random_edge, graphs)
     other_node = get_other_node(poor_node, random_edge)
 
+    retry = 10
+
     while len(other_graph.in_edges(nbunch=other_node)) >= 6:
+        if retry == 0:
+            return NoSolution(poor_node)
         random_edge = tuple(pick_random_row(all_edges))
         other_graph = get_other_graph(poor_node, random_edge, graphs)
         other_node = get_other_node(poor_node, random_edge)
+        retry -= 1
 
     for homeland in homelands:
         homeland.remove_node(poor_node)  # also deletes the accompanying edges
 
-    edgekind = edgedata_acc[0]["kind"]
+    edgekind = edgedata["kind"]
     other_graph.add_edge(*random_edge, kind=edgekind)
 
     return True                 # Success
@@ -214,6 +212,7 @@ def stick_to_some_graph(no_solution_node, graphs):
 
 
 def deal_with_leftovers(no_solution_nodes, graphs):
+    print(no_solution_nodes, len(no_solution_nodes))
     for no_solution_node in no_solution_nodes:
         stick_to_some_graph(no_solution_node, graphs)
 

@@ -1,7 +1,22 @@
 import graphviz
 import networkx as nx
+import make_BN
+import os
+import re
 
 from functools import reduce
+
+graph_files = [f for f in os.listdir('.') if re.match(r'.*_graph_[0-9]+$', f)]
+
+
+def depickle_all():
+    acc = []
+    for graph_file in graph_files:
+        graph = nx.read_gpickle(graph_file)
+        graph.name = graph_file
+        acc.append(graph)
+    return acc
+
 
 def partition(coll, n):
     # input sanity check
@@ -39,19 +54,31 @@ def make_subgraph_command(digraph_var_name, partition):
 
 def make_grid_layout(nx_graph):
     """networkx graph를 받아서, GraphViz dot 포맷을 빌드한다."""
+    d = graphviz.Digraph()
+
     list_of_nodes = list(nx_graph.nodes)
     partitioned = partition(list_of_nodes, 5)  # 5 * n 사이즈로 만들어 봅시다!
-
-    d = graphviz.Digraph(filename="graph_0.dot")
-
     for part in partitioned:
         subgraph_command = make_subgraph_command("d", part)
         exec(subgraph_command, globals(), locals())
 
+    list_of_edges = list(nx_graph.edges)
+    for edge in list_of_edges:
+        d.edge(*edge)
+
+    return d.source
+
 
 def main():
+    # simulate the process of making a BN:
+    # 1. reconnect the poor nodes
+    # 2. tame the rich nodes
     graph0 = nx.read_gpickle("Decision-1.1.0_graph_0")
-    make_grid_layout(graph0)
+    make_BN.tame_rich(graph0)
+    dot_sourcecode = make_grid_layout(graph0)
+    with open("graph0.dot", "w+") as f:
+        f.write(dot_sourcecode)
+    print("done!")
 
 
 if __name__ == "__main__":

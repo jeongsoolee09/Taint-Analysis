@@ -227,7 +227,7 @@ def init_graph(built_in_classes):
     add_node_to_graph(G)
     add_edge_to_graph(G)
     # filter_edges_from_graph(G, built_in_classes)
-    flip_sim_edges(G)
+    # flip_sim_edges(G)
     return G
 
 
@@ -235,7 +235,7 @@ def init_graph_given_nodes(edgeless_graph):
     """Initialize a (directed acyclic) graph for reference."""
     add_edge_to_graph(edgeless_graph)
     # filter_edges_from_graph(G, built_in_classes)
-    flip_sim_edges(edgeless_graph)
+    # flip_sim_edges(edgeless_graph)
     return edgeless_graph
 
 

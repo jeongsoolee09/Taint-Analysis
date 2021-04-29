@@ -42,7 +42,7 @@ DF_EDGES = no_reflexive(map(lambda lst: (lst[5], lst[10]), list(df_reader)[1:]))
 CALL_EDGES = no_reflexive(map(lambda lst: (lst[5], lst[10]), list(call_reader)[1:]))
 SIM_EDGES = no_reflexive(map(lambda lst: (lst[5], lst[10]), list(sim_reader)[1:]))
 
-MAX_GROUP_SIZE = 3
+MAX_GROUP_SIZE = 6
 
 
 # Functionalities ==================================
@@ -119,8 +119,24 @@ def reconnect(group, nx_graph):
 
 def reconnect_small_groups(nx_graph):
     small_groups = identify_small_groups(nx_graph)
+    print(small_groups)
     for group in small_groups:
         reconnect(group, nx_graph)
+
+
+def visualize_graph(nx_graph, filename):
+    """visualize as graphviz dot"""
+    dot_graph = graphviz.Digraph()
+    list(map(lambda node: dot_graph.node(node), list(nx_graph.nodes)))
+    list(map(lambda edge: (edgekind := nx_graph.get_edge_data(*edge)["kind"]) and\
+             (color := "red" if edgekind == "df" else\
+              "black" if edgekind == "call" else "blue") and\
+             dot_graph.edge(*edge, color=color), list(nx_graph.edges)))
+    dot_graph.render(filename=filename,
+                     format="pdf",
+                     view=False,
+                     quiet=True,
+                     cleanup=True)
 
 
 # Main =============================================
@@ -133,7 +149,9 @@ def main():
     for graph_name in graph_names:
         nx_graph = nx.read_gpickle(graph_name)
         reconnect_small_groups(nx_graph)
-        tame_rich(nx_graph)
+        tame_rich(nx_graph)     # do we need this?
+        visualize_graph(nx_graph, f"{graph_name}_reconnect_small_groups")
+
         # repickle!
         nx.write_gpickle(nx_graph, graph_name)
 

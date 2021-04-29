@@ -15,7 +15,6 @@ infer-out
 /Code/infer/infer/tests/build_systems/codetoanalyze/
 /Code/BayesianNetwork/callgraph
 /Code/benchmarks/realworld/sagan/GetterSetter.json
-graph_*
 *.json
 *.old
 /Code/BayesianNetwork/split_history

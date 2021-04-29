@@ -59,9 +59,9 @@ def partition(coll, n):
     return acc
 
 
-def print_path(graph_for_reference, from_node):
+def print_path_from_to(graph_for_reference, from_node, to_node):
     """BN 상에서 from_node로부터 to_node까지, update가 일어난 path들을 모두 pretty print."""
-    # assert len(rich_nodes(graph_for_reference)) == 0  # 야호! 통과한다. 하지만 혹시 몰라 남겨 놓음
+    assert len(rich_nodes(graph_for_reference)) == 0  # 야호! 통과한다. 하지만 혹시 몰라 남겨 놓음
 
     def inner(path, graph_for_reference):
         """ [1, 2, 4] |-> \"1 --call--> 2 --DF--> 4\" """
@@ -81,11 +81,63 @@ def print_path(graph_for_reference, from_node):
         return mapped
 
     BN_undirected = graph_for_reference.to_undirected()
-    paths = list(dfs.dfs_preorder_nodes(BN_undirected, from_node))
+    paths = list(nxalg.simple_paths.all_simple_paths(BN_undirected, from_node, to_node))
     i = 1
     for path in paths:
         print("path"+str(i)+":", inner(path, graph_for_reference))
         i += 1
+
+
+def print_path(graph_for_reference, from_node):
+    """BN 상에서 from_node로부터 to_node까지, update가 일어난 path들을 모두 pretty print."""
+    # assert len(rich_nodes(graph_for_reference)) == 0  # 야호! 통과한다. 하지만 혹시 몰라 남겨 놓음
+
+    def inner(path, graph_for_reference):
+        """ [1, 2, 4] |-> \"1 --call--> 2 --DF--> 4\" """
+        zipped = list(zip(path[:len(path)-1], path[1:]))
+
+        def make_edgestring(edge):
+            try:
+                edgekind_dict = graph_for_reference.get_edge_data(edge[0], edge[1])
+                edgekind = edgekind_dict["kind"] # may throw TypeError because edgekind_dict may be None
+                return "--" + edgekind + "-->"
+            except TypeError:
+                edgekind_dict = graph_for_reference.get_edge_data(edge[1], edge[0])
+                edgekind = edgekind_dict["kind"]
+                return "<--" + edgekind + "--"
+
+        edgestrings = list(map(make_edgestring, zipped))
+
+        zipped = list(zip(path[:len(path)-1], edgestrings))
+        concatted = list(map(lambda tup: tup[0]+tup[1], zipped))
+        reduced = reduce(lambda acc, elem: acc+elem, concatted, "")
+        out = reduced + path[len(path)-1]
+
+        return out
+
+    BN_undirected = graph_for_reference.to_undirected()
+    edges = list(dfs.dfs_edges(BN_undirected, from_node))
+
+    smol_graph = nx.DiGraph()
+    for edge in edges:
+        smol_graph.add_edge(*edge)
+
+    root = next(nx.topological_sort(smol_graph))
+    leaves = list(filter(lambda node: not len(smol_graph.out_edges(nbunch=node)),
+                         list(smol_graph.nodes)))
+
+    paths = []
+    # get the path from the root to each leaf
+    for leaf in leaves:
+        pathlist = list(nxalg.simple_paths.all_simple_paths(smol_graph, root, leaf))
+        paths += pathlist
+
+    i = 1
+    for path in paths:
+        # print(path)
+        print("path"+str(i)+":", inner(path, graph_for_reference))
+        i += 1
+
 
 def make_bicycle_chain(coll):
     all_bust_last = coll[:len(coll)-1]

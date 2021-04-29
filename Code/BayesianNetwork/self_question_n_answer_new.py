@@ -72,7 +72,6 @@ with open(PROJECT_ROOT_DIR+"skip_func.txt", "r+") as skip_func:
     skip_funcs = skip_func.readlines()
     skip_funcs = list(map(lambda string: string.rstrip(), skip_funcs))
 
-
 PAIRWISE_SIMS = pd.read_csv("pairwise_sims.csv", index_col=0)
 VERY_SIMILAR = PAIRWISE_SIMS[PAIRWISE_SIMS["score"] > 15][["id1", "id2"]]
 
@@ -296,13 +295,13 @@ def get_max_labels(snapshot):
         first_val = first_tup[1]
         second_tup = sorted(dist.items(), key=lambda tup: tup[1], reverse=True)[1]
         second_val = second_tup[1]
-        return first_val - second_val < 0.00001
+        return first_val - second_val < 0.01
 
     def is_uniform(dist):
         """dist가 uniform distribution에 매우 가까움"""
         first_tup = max(dist.items(), key=lambda tup: tup[1])
         first_val = first_tup[1]
-        return abs(first_val-0.25) < 0.00001
+        return abs(first_val-0.25) < 0.01
 
     for node, dist in snapshot:
         if is_tie(dist):
@@ -410,7 +409,7 @@ def tactical_loop(global_precision_list, snapshot_dict, graph_for_reference, BN_
     # TEMP query 노드로부터 각 updated_node까지의 path를 모두 print
     for updated_node, prev_label, new_label in updated_list:
         print("Node {} is updated from {} to {}".format(updated_node, prev_label, new_label))
-        print_path(graph_for_reference, query, updated_node)
+        # print_path(graph_for_reference, query, updated_node)
         print("")
 
     # visualize_snapshot(state_names, graph_for_reference, new_snapshot, dependent_nodes)

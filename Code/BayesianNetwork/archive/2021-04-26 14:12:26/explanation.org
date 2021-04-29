@@ -1,0 +1,26 @@
+*** WORKING DF가 문제?
+
+#+begin_src python
+There are 33 APIs in this BN
+# of d_connected nodes: 4
+query: BinaryDecoder SpecificData.getDecoder(ObjectInput)
+current_evidence[query]: 4
+Node Object DatumReader.read(Object,Decoder) is updated from {1.0: 0.25, 2.0: 0.25, 3.0: 0.25, 4.0: 0.25} to {1.0: 0.2424098174864948, 2.0: 0.1922447232964057, 3.0: 0.3229356417306048, 4.0: 0.24240981748649482}
+
+Node Object GenericDatumReader.read(Object,Decoder) is updated from {1.0: 0.2499999999999999, 2.0: 0.2500000000000001, 3.0: 0.2500000000000001, 4.0: 0.2499999999999999} to {1.0: 0.24243938002789114, 2.0: 0.19246967082008318, 3.0: 0.32265156912413445, 4.0: 0.24243938002789114}
+#+end_src
+
+희한하게도 이런 경우가 있더라. 이런 경우는 어떻게 된 거지...? 왠지 DF 때문일 거 같은데.. 그래프 연결상태를 한번 볼까?
+
+#+begin_src python
+print_path_from_to(graph, "BinaryDecoder SpecificData.getDecoder(ObjectInput)", "Object GenericDatumReader.read(Object,Decoder)")
+path1: ['BinaryDecoder SpecificData.getDecoder(ObjectInput)<--df--void ColumnType.readExternal(ObjectInput)', 'void ColumnType.readExternal(ObjectInput)--call-->Object DatumReader.read(Object,Decoder)', 'Object DatumReader.read(Object,Decoder)--sim-->Object GenericDatumReader.read(Object,Decoder)']
+path2: ['BinaryDecoder SpecificData.getDecoder(ObjectInput)<--df--void ColumnType.readExternal(ObjectInput)', 'void ColumnType.readExternal(ObjectInput)--sim-->void InsertMessage.readExternal(ObjectInput)', 'void InsertMessage.readExternal(ObjectInput)--call-->Object DatumReader.read(Object,Decoder)', 'Object DatumReader.read(Object,Decoder)--sim-->Object GenericDatumReader.read(Object,Decoder)']
+path3: ['BinaryDecoder SpecificData.getDecoder(ObjectInput)<--df--void InsertMessage.readExternal(ObjectInput)', 'void InsertMessage.readExternal(ObjectInput)<--sim--void ColumnType.readExternal(ObjectInput)', 'void ColumnType.readExternal(ObjectInput)--call-->Object DatumReader.read(Object,Decoder)', 'Object DatumReader.read(Object,Decoder)--sim-->Object GenericDatumReader.read(Object,Decoder)']
+path4: ['BinaryDecoder SpecificData.getDecoder(ObjectInput)<--df--void InsertMessage.readExternal(ObjectInput)', 'void InsertMessage.readExternal(ObjectInput)--call-->Object DatumReader.read(Object,Decoder)', 'Object DatumReader.read(Object,Decoder)--sim-->Object GenericDatumReader.read(Object,Decoder)']
+
+In [44]: graph.name
+Out[44]: 'Decision-1.1.0_graph_3'
+#+end_src
+
+일단, 코드까지 살펴본 결과 엣지들은 잘 만들어졌음을 확인할 수 있었다. ~SpecificData.getDecoder()~가 non이면 사실 ~void InsertMessage.readExternal()~ 은 [src|san|non] 셋 중 아무거나 하나일 수 있다. 그런데 readExternal이 san으로 추론된 이유는 무엇이었을까?

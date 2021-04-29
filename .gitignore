@@ -11,7 +11,6 @@ infer-out
 /Code/benchmarks/realworld/relational-data-access/bin/
 /Code/benchmarks/realworld/sagan/Chain.json
 /Code/benchmarks/realworld/sagan/skip_func.txt
-/Code/infer/infer/annotations/
 /Code/infer/infer/tests/build_systems/codetoanalyze/
 /Code/BayesianNetwork/callgraph
 /Code/benchmarks/realworld/sagan/GetterSetter.json

@@ -3,6 +3,8 @@ import json
 import graphviz
 import copy
 import csv
+import os
+import re
 
 from functools import reduce
 from make_BN import tame_rich
@@ -71,13 +73,13 @@ def aggregate_caller_callee(nx_graph, chunks):
                                        chunk, [])
         pred_edges = reduce(lambda acc, pair: acc+[(pred, pair[0]) for pred in pair[1]],
                             chunk_nodes_and_preds, [])
-        pred_edges_data = dict(reduce(lambda acc, edge: acc+[(edge, nx_graph.get_edge_data(*edge))],
+        pred_edges_data = dict(reduce(lambda acc, edge: acc+[(edge, nx_graph.get_edge_data(*edge)["kind"])],
                                       pred_edges, []))
         chunk_nodes_and_succs = reduce(lambda acc, node: acc+[(node, list(nx_graph.successors(node)))],
                                        chunk, [])
         succ_edges = reduce(lambda acc, pair: acc+[(pair[0], succ) for succ in pair[1]],
                             chunk_nodes_and_succs, [])
-        succ_edges_data = dict(reduce(lambda acc, edge: acc+[(edge, nx_graph.get_edge_data(*edge))],
+        succ_edges_data = dict(reduce(lambda acc, edge: acc+[(edge, nx_graph.get_edge_data(*edge)["kind"])],
                                       succ_edges, []))
         for node in chunk:
             new.remove_node(node)
@@ -110,30 +112,55 @@ def visualize_graph(nx_graph, filename):
                      cleanup=True)
 
 
+def find_pickled_graph_names():
+    return [f for f in os.listdir('.') if re.match(r'.*_graph_[0-9]+$', f)]
+
+
 # Main =============================================
 # ==================================================
 
 
 def main():
-    nx_graph = nx.read_gpickle("Decision-1.1.0_graph_0")
-    tame_rich(nx_graph)
+    graph_names = find_pickled_graph_names()
 
-    print(f"Number of nodes (before): {nx_graph.number_of_nodes()}")
+    for graph_name in graph_names:
+        # before ========================================
+        nx_graph = nx.read_gpickle(graph_name)
+        tame_rich(nx_graph)
 
-    # before
-    visualize_graph(nx_graph, "graph_0_before")
+        # print(f"Number of nodes (before): {nx_graph.number_of_nodes()}")
 
-    chunks = identify_chunks(nx_graph)
-    aggregated = aggregate_caller_callee(nx_graph, chunks)
+        # df_edges = reduce(lambda acc, edge: acc+[edge] if nx_graph.get_edge_data(*edge)["kind"] == "df"\
+        #                 else acc, list(nx_graph.edges), [])
 
-    non_super_nodes = set(filter(lambda node: 'supernode' not in node, list(aggregated.nodes)))
+        # number_of_df = len(df_edges)
 
-    print(f"Number of nodes (after): {aggregated.number_of_nodes()}")
-    print(f"Number of non-supernodes (after): {len(non_super_nodes)}")
+        # print(f"Number of DF edges (before): {number_of_df}")
+        # visualize_graph(nx_graph, f"{graph_name}_before")
 
-    # after
-    visualize_graph(aggregated, "graph_0_after")
-    print("done!")
+        chunks = identify_chunks(nx_graph)
+
+        # after =========================================
+        aggregated = aggregate_caller_callee(nx_graph, chunks)
+        # non_super_nodes = set(filter(lambda node: 'supernode' not in node, list(aggregated.nodes)))
+
+        # print(f"Number of nodes (after): {aggregated.number_of_nodes()}")
+        # print(f"Number of non-supernodes (after): {len(non_super_nodes)}")
+
+        # number_of_df = reduce(lambda acc, edge: acc+1 if aggregated.get_edge_data(*edge)["kind"] == "df"\
+        #                       else acc, list(aggregated.edges), 0)
+
+        # print(f"Number of DF edges (after): {number_of_df}")
+
+        # after
+
+        tame_rich(aggregated)
+        # visualize_graph(aggregated, "{graph_name}_after")
+        nx.write_gpickle(aggregated, graph_name)
+
+        print(f"done for {graph_name}")
+
+    print("all done!")
 
 
 if __name__ == "__main__":

@@ -8,3 +8,4 @@ graph_for_reference
 *_stats/
 .pdf-view-restore
 *_graph_*
+.mypy_cache/

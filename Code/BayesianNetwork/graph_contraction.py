@@ -56,17 +56,10 @@ def identify_chunks(nx_graph):
     return chunks
 
 
-def lookup_by_pred(pred, pred_edges_data):
-    pass
-
-
-def lookup_by_succ(succ, succ_edges_data):
-    pass
-
-
 def aggregate_caller_callee(nx_graph, chunks):
     global cnt
     new = copy.deepcopy(nx_graph)
+
     for chunk in chunks:
         # time to do our work!
         # 1. collect the immed. preds
@@ -86,13 +79,18 @@ def aggregate_caller_callee(nx_graph, chunks):
                             chunk_nodes_and_succs, [])
         succ_edges_data = dict(reduce(lambda acc, edge: acc+[(edge, nx_graph.get_edge_data(*edge))],
                                       succ_edges, []))
-        list(map(lambda node: new.remove_node(node), chunk))
+        for node in chunk:
+            new.remove_node(node)
+
         supernode = f"supernode_{cnt}"; cnt += 1
 
-        list(map(lambda pred: new.add_edge(pred, supernode,
-                                           kind=pred_edges_data[(pred, supernode)]), preds))
-        list(map(lambda succ: new.add_edge(supernode, succ,
-                                           kind=succ_edges_data[(supernode, succ)]), succs))
+        for pred_edge in pred_edges:
+            if pred_edge[0] not in chunk:
+                new.add_edge(pred_edge[0], supernode, kind=pred_edges_data[pred_edge])
+
+        for succ_edge in succ_edges:
+            if succ_edge[1] not in chunk:
+                new.add_edge(supernode, succ_edge[1], kind=succ_edges_data[succ_edge])
 
     return new
 
@@ -127,7 +125,11 @@ def main():
 
     chunks = identify_chunks(nx_graph)
     aggregated = aggregate_caller_callee(nx_graph, chunks)
-    print(f"Number of nodes (before): {aggregated.number_of_nodes()}")
+
+    non_super_nodes = set(filter(lambda node: 'supernode' not in node, list(aggregated.nodes)))
+
+    print(f"Number of nodes (after): {aggregated.number_of_nodes()}")
+    print(f"Number of non-supernodes (after): {len(non_super_nodes)}")
 
     # after
     visualize_graph(aggregated, "graph_0_after")

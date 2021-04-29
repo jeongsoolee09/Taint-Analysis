@@ -1,0 +1,1 @@
+'gs-consuming-web-service', 'gs-spring-data-reactive-redis'는 빼도록 합니다. 전자에선 NPE가 나고, 후자에선 요상한 에러가 납니다.

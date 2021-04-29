@@ -1,0 +1,27 @@
+diff -ruN Python-3.8.7/PCbuild/python.props Python-3.8.7-patch/PCbuild/python.props
+--- Python-3.8.7/PCbuild/python.props	2020-12-22 01:25:24.000000000 +0900
++++ Python-3.8.7-patch/PCbuild/python.props	2021-01-13 14:11:39.148620800 +0900
+@@ -107,8 +107,7 @@
+     <_RegistryVersion Condition="$(_RegistryVersion) != '' and !$(_RegistryVersion.EndsWith('.0'))">$(_RegistryVersion).0</_RegistryVersion>
+ 
+     <!-- The minimum allowed SDK version to use for building -->
+-    <DefaultWindowsSDKVersion>10.0.10586.0</DefaultWindowsSDKVersion>
+-    <DefaultWindowsSDKVersion Condition="$([System.Version]::Parse($(_RegistryVersion))) > $([System.Version]::Parse($(DefaultWindowsSDKVersion)))">$(_RegistryVersion)</DefaultWindowsSDKVersion>
++    <DefaultWindowsSDKVersion>$(_RegistryVersion)</DefaultWindowsSDKVersion>
+   </PropertyGroup>
+   
+   <PropertyGroup Condition="$(WindowsTargetPlatformVersion) == ''">
+diff -ruN Python-3.8.7/Python/dynload_win.c Python-3.8.7-patch/Python/dynload_win.c
+--- Python-3.8.7/Python/dynload_win.c	2020-12-22 01:25:24.000000000 +0900
++++ Python-3.8.7-patch/Python/dynload_win.c	2021-01-13 14:54:59.779699200 +0900
+@@ -203,6 +203,10 @@
+         hDLL = LoadLibraryExW(wpathname, NULL,
+                               LOAD_LIBRARY_SEARCH_DEFAULT_DIRS |
+                               LOAD_LIBRARY_SEARCH_DLL_LOAD_DIR);
++        if (hDLL == NULL) {
++            hDLL = LoadLibraryExW(wpathname, NULL,
++                                  LOAD_WITH_ALTERED_SEARCH_PATH);
++        }
+         Py_END_ALLOW_THREADS
+ #if HAVE_SXS
+         _Py_DeactivateActCtx(cookie);

@@ -1,0 +1,27 @@
+<project>
+    <modelVersion>4.0.0</modelVersion>
+    <groupId>org.bytedeco.mkl</groupId>
+    <artifactId>mkl</artifactId>
+    <version>1.5.5-SNAPSHOT</version>
+    <properties>
+        <exec.mainClass>DGEMMExample</exec.mainClass>
+    </properties>
+    <dependencies>
+        <dependency>
+            <groupId>org.bytedeco</groupId>
+            <artifactId>mkl-platform</artifactId>
+            <version>2021.1-1.5.5-SNAPSHOT</version>
+        </dependency>
+
+        <!-- Additional dependencies to use bundled full version of MKL -->
+        <dependency>
+            <groupId>org.bytedeco</groupId>
+            <artifactId>mkl-platform-redist</artifactId>
+            <version>2021.1-1.5.5-SNAPSHOT</version>
+        </dependency>
+
+    </dependencies>
+    <build>
+        <sourceDirectory>.</sourceDirectory>
+    </build>
+</project>

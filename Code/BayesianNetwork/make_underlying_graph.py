@@ -132,6 +132,34 @@ def create_whitelist_blacklist_classes():
     return whitelist, blacklist
 
 
+def count_by_value(lst):
+    return list(set(map(lambda elem: (elem, lst.count(elem)), lst)))
+
+
+def detect_overloads(graph):
+    node_names = list(graph.nodes)
+    rtntype_and_classes = list(map(lambda node_name: node_name.split("(")[0], node_names))
+    duplicate_tups = list(filter(lambda tup: tup[1] > 1, rtntype_and_classes))
+    duplicates = list(map(lambda tup: tup[0], duplicate_tups))
+    return duplicates
+
+
+def group_by_overloads(graph):
+    duplicates = detect_overloads(graph)
+    big_acc = []
+    for duplicate in duplicates:
+        small_acc = []
+        for node_name in list(graph.nodes):
+            if node_name.split("(")[0] == duplicate:
+                small_acc.append(node_name)
+        big_acc.append(small_acc)
+    return big_acc
+
+
+def aggregate_overloads(graph):
+    pass
+
+
 # Methods for Graphs ================================
 # ===================================================
 
@@ -153,7 +181,7 @@ def find_root(G):
 
 def add_edge_to_graph(G):
     """adds edges to `reference graph` G"""
-    for firstNodeID, secondNodeID in edges:
+    for firstNodeID, secondNodeID in G.edges:
         if (firstNodeID, secondNodeID) in df_edges:
             G.add_edge(firstNodeID, secondNodeID, kind="df")
         elif (firstNodeID, secondNodeID) in sim_edges:

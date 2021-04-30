@@ -6,11 +6,10 @@ import os
 import re
 import networkx.algorithms as nxalg
 
-from functools import reduce
-
 from networkx.exception import NetworkXNoCycle
-from make_BN import tame_rich
 from itertools import product
+from make_BN import tame_rich
+from split_underlying_graph import decycle
 
 
 # Constants ========================================
@@ -59,56 +58,40 @@ def identify_small_groups(nx_graph):
     return list(filter(lambda chunk: len(chunk) <= MAX_GROUP_SIZE, groups))
 
 
+def there_is_cycle(nx_graph):
+    try:
+        nxalg.find_cycle(nx_graph)
+        return True
+    except NetworkXNoCycle:
+        return False
+
+
 def connect(node, nx_graph):
-    """주어진 노드들을 nx_graph의 노드들과 연결해 준다.
-       주의할 점: 1. rich node가 생기면 안 됨
-                2. cycle이 생기면 안 됨"""
-    # {node}와 nx_graph.nodes 의 cartesian product
     carpro1 = list(product([node], list(nx_graph.nodes)))
-    applicables = []
-
-    for tup in carpro1:
-        if tup in DF_EDGES:
-            applicables.append((tup, "df"))
-        if tup in CALL_EDGES:
-            applicables.append((tup, "call"))
-        if tup in SIM_EDGES:
-            applicables.append((tup, "sim"))
-
-    for (node, other), edgekind in applicables:
-        edge = (node, other)
-        if len(nx_graph.in_edges(nbunch=other)) >= 6:  # the other node is already rich
-            continue
-        else:                   # we might be able to add this edge: now test if there is a cycle
-            nx_graph.add_edge(*edge, kind=edgekind)
-            try:
-                nx.find_cycle(nx_graph)
-                nx_graph.remove_edge(*edge)  # this will only run if there IS a cycle
-            except NetworkXNoCycle:  # we're good to go
-                pass
-
     carpro2 = list(product(list(nx_graph.nodes), [node]))
-    applicables = []
+    all_edges = set(no_reflexive(carpro1 + carpro2))
 
-    for tup in carpro2:
+    applicables = []
+    for tup in all_edges:
         if tup in DF_EDGES:
             applicables.append((tup, "df"))
-        if tup in CALL_EDGES:
+        elif tup in CALL_EDGES:
             applicables.append((tup, "call"))
-        if tup in SIM_EDGES:
+        elif tup in SIM_EDGES:
             applicables.append((tup, "sim"))
 
-    for (other, node), edgekind in applicables:
-        edge = (other, node)
-        if len(nx_graph.in_edges(nbunch=node)) >= 6:  # the other node is already rich
+    for (node1, node2), edgekind in applicables:
+        if node1 == node2:
+            continue
+        edge = (node1, node2)
+        # print(f"working on {edge}")
+        if len(nx_graph.in_edges(nbunch=node2)) >= 6:  # the node2 is already rich
             continue
         else:                   # we might be able to add this edge: now test if there is a cycle
-            nx_graph.add_edge(*edge, kind=edgekind)
-            try:
-                nx.find_cycle(nx_graph)
-                nx_graph.remove_edge(*edge)  # this will only run if there IS a cycle
-            except NetworkXNoCycle:  # we're good to go
-                pass
+            if edge not in nx_graph.edges:
+                if not there_is_cycle(nx_graph):
+                    nx_graph.add_edge(*edge, kind=edgekind)
+                    # print(f"{edge} added")
 
 
 def reconnect(group, nx_graph):
@@ -119,9 +102,12 @@ def reconnect(group, nx_graph):
 
 def reconnect_small_groups(nx_graph):
     small_groups = identify_small_groups(nx_graph)
-    print(small_groups)
     for group in small_groups:
         reconnect(group, nx_graph)
+
+
+# Debugging Utils ==================================
+# ==================================================
 
 
 def visualize_graph(nx_graph, filename):
@@ -133,10 +119,20 @@ def visualize_graph(nx_graph, filename):
               "black" if edgekind == "call" else "blue") and\
              dot_graph.edge(*edge, color=color), list(nx_graph.edges)))
     dot_graph.render(filename=filename,
-                     format="pdf",
-                     view=False,
-                     quiet=True,
-                     cleanup=True)
+                     format="pdf", view=False,
+                     quiet=True, cleanup=True)
+
+
+def print_edges_diff(graph_names, before_dict, after_dict):
+    for graph_name in graph_names:
+        before = set(before_dict[graph_name])
+        after = set(after_dict[graph_name])
+        print(f"{graph_name}:")
+        print(f"# of edges before: {len(before)}")
+        print(f"# of edges after: {len(after)}")
+        print(f"Only in before: {before-after}")
+        print(f"Only in after: {after-before}")
+        print("==================================================")
 
 
 # Main =============================================
@@ -146,14 +142,19 @@ def visualize_graph(nx_graph, filename):
 def main():
     graph_names = find_pickled_graph_names()
 
+    graphs_and_edges_before = {}
+    graphs_and_edges_after = {}
+
     for graph_name in graph_names:
         nx_graph = nx.read_gpickle(graph_name)
+        graphs_and_edges_before[graph_name] = list(nx_graph.edges)
         reconnect_small_groups(nx_graph)
-        tame_rich(nx_graph)     # do we need this?
+        graphs_and_edges_after[graph_name] = list(nx_graph.edges)
         visualize_graph(nx_graph, f"{graph_name}_reconnect_small_groups")
-
         # repickle!
         nx.write_gpickle(nx_graph, graph_name)
+
+    print_edges_diff(graph_names, graphs_and_edges_before, graphs_and_edges_after)
 
 
 if __name__ == "__main__":

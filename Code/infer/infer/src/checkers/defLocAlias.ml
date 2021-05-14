@@ -42,21 +42,17 @@ module TransferFunctions (CFG : ProcCfg.S) = struct
 
   (** specially mangled variable to mark a value as returned from callee *)
   let mk_returnv procname =
-    Var.of_pvar @@ Pvar.mk (Mangled.from_string "returnv") procname
+    Var.of_pvar @@ Pvar.mk (Mangled.from_string @@ "returnv: "^(Procname.to_string procname)) procname
 
 
   (** specially mangled variable to mark an AP as passed to a callee *)
   let mk_callv procname =
-    Var.of_pvar @@ Pvar.mk (Mangled.from_string "callv") procname
+    Var.of_pvar @@ Pvar.mk (Mangled.from_string @@ "callv: "^(Procname.to_string procname)) procname
 
 
   (** specially mangled variable to mark an AP as passed to a callee *)
   let mk_callv_pvar procname =
-    Pvar.mk (Mangled.from_string "callv") procname
-
-
-  let mk_dummy procname =
-    Var.of_pvar @@ Pvar.mk (Mangled.from_string "dummy") procname
+    Pvar.mk (Mangled.from_string @@ "callv: "^(Procname.to_string procname)) procname
 
 
   let rec extract_nonthisvar_from_args methname (arg_ts:(Exp.t*Typ.t) list)
@@ -200,11 +196,11 @@ module TransferFunctions (CFG : ProcCfg.S) = struct
     F.fprintf fmt "]"
 
 
-  let rec zip (l1:Var.t list) (l2:Var.t list) =
+  let rec my_zip (l1:Var.t list) (l2:Var.t list) =
     match l1, l2 with
     | [], [] -> []
-    | h1::t1, h2::t2 -> (h1, h2)::zip t1 t2
-    | _, _ -> L.die InternalError "zip failed, l1: %a, l2: %a" pp_varlist l1 pp_varlist l2
+    | h1::t1, h2::t2 -> (h1, h2)::my_zip t1 t2
+    | _, _ -> L.die InternalError "my_zip failed, l1: %a, l2: %a" pp_varlist l1 pp_varlist l2
 
 
   (** (Var.t * Var.t) list에서 var이 들어 있는 튜플만을 삭제 *)
@@ -524,7 +520,7 @@ module TransferFunctions (CFG : ProcCfg.S) = struct
 
   let exec_call (ret_id:Ident.t) (callee_methname:Procname.t) (arg_ts:(Exp.t*Typ.t) list)
       analyze_dependency (apair:P.t) (methname:Procname.t) : P.t =
-    let (>>|) = List.(>>|) in
+    let open List in
     match analyze_dependency callee_methname with
     | Some (_, callee_summary) ->
         begin match input_is_void_type arg_ts (fst apair) with
@@ -548,14 +544,14 @@ module TransferFunctions (CFG : ProcCfg.S) = struct
                           begin match var with
                             | LogicalVar id ->
                                 let pvar1 = search_target_tuples_by_id id methname (fst apair) in
-                                let pvar2 = List.map ~f:fourth_of pvar1 in
+                                let pvar2 = map ~f:fourth_of pvar1 in
                                 let pvar = extract_another_pvar id pvar2 in
                                 search_recent_vardef_astate methname pvar apair
                             | _ ->
                                 L.die InternalError "exec_call/mapfunc failed, var: %a" Var.pp var end in
                         let actuals_pvar_tuples = actuals_logical
-                                                  |> List.filter ~f:is_logical_var
-                                                  |> List.map ~f:mapfunc in
+                                                  |> filter ~f:is_logical_var
+                                                  |> map ~f:mapfunc in
                         let mangled_callv = (mk_callv callee_methname, []) in
                         let astate_set_callv_added =
                           S.map (fun (p, v, l, a) ->
@@ -568,20 +564,20 @@ module TransferFunctions (CFG : ProcCfg.S) = struct
                     | _ ->  (* Callee in User Code! *)
                         let actuals_logical = arg_ts >>| (fst >> convert_exp_to_logical) >>| Var.of_id in
                         let actuallog_formal_binding =
-                          leave_only_var_tuples @@ zip actuals_logical formals in
+                          leave_only_var_tuples @@ my_zip actuals_logical formals in
                         (* mapfunc finds pvar tuples transmitted as actual arguments *)
                         let mapfunc = fun (var:Var.t) ->
                           begin match var with
                             | LogicalVar id ->
                                 let pvar = search_target_tuples_by_id id methname (fst apair)
-                                           |> List.map ~f:fourth_of
+                                           |> map ~f:fourth_of
                                            |> extract_another_pvar id in
                                 search_recent_vardef_astate methname pvar apair
                             | _ ->
                                 L.die InternalError "exec_call/mapfunc failed, var: %a" Var.pp var end in
                         let actuals_pvar_tuples = actuals_logical
-                                                  |> List.filter ~f:is_logical_var
-                                                  |> List.map ~f:mapfunc in
+                                                  |> filter ~f:is_logical_var
+                                                  |> map ~f:mapfunc in
                         let actualpvar_alias_added =
                           add_bindings_to_alias_of_tuples methname actuallog_formal_binding
                             actuals_pvar_tuples (snd apair)
@@ -616,7 +612,7 @@ module TransferFunctions (CFG : ProcCfg.S) = struct
   let batch_alias_assoc (astate_set:S.t) (logicals:Ident.t list)
       (pvars:Pvar.t list) : S.t =
     let (>>|) = List.(>>|) in
-    let logicals_and_pvars = zip (logicals >>| Var.of_id) (pvars >>| Var.of_pvar) in
+    let logicals_and_pvars = my_zip (logicals >>| Var.of_id) (pvars >>| Var.of_pvar) in
     let assoc_with_own_astate id =
       (id, weak_search_target_tuple_by_id id astate_set) in
     let id_and_astate = logicals >>| assoc_with_own_astate in
@@ -632,13 +628,14 @@ module TransferFunctions (CFG : ProcCfg.S) = struct
     S.union astate_set_rmvd updated_astates_set
 
 
+  (** Handles calls to library APIs, whose Procdesc.t is empty *)
   let exec_lib_call (ret_id:Ident.t) (callee_methname:Procname.t) (arg_ts:(Exp.t*Typ.t) list)
       analyze_dependency (apair:P.t) (caller_methname:Procname.t) (node:CFG.Node.t) : P.t =
     let astate_set, histmap = apair in
     (* 1. Mangle some parameters.
        formal parameter naming schema:
             param_{callee_name_simple}_{line}_{param_index} *)
-    let (>>|) = List.(>>|) in
+    let open Core_kernel.List in
     let callee_name_simple = Procname.get_method callee_methname in
     let loc = Int.to_string @@ (CFG.Node.loc node).line in
     let param_indices = List.init (List.length arg_ts) ~f:Int.to_string in

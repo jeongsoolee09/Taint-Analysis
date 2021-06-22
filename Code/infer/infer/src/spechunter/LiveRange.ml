@@ -146,7 +146,8 @@ let add_chain (key: (Procname.t * MyAccessPath.t)) (value: chain) = Hashtbl.add 
 (** 주어진 var이 formal arg인지 검사하고, 맞다면 procname과 formal arg의 리스트를 리턴 *)
 let find_procpair_by_var (var: Var.t) =
   let key_values = Hashtbl.fold (fun k v acc -> (k, v)::acc) formal_args [] in
-  List.fold_left key_values ~init:[] ~f:(fun acc ((_, varlist) as target) -> if List.mem varlist var ~equal:Var.equal then target::acc else acc)
+  List.fold_left key_values ~init:[] ~f:(fun acc ((_, varlist) as target) ->
+      if List.mem varlist var ~equal:Var.equal then target::acc else acc)
 
 
 let pp_tuplelistlist fmt (lstlst: T.t list list) =
@@ -257,14 +258,18 @@ let find_direct_caller_to_go_back (target_meth: Procname.t) (acc: chain) : Procn
   let parents = G.pred callgraph target_vertex in
   let rec inner (initial:chain) (acc:chain) =
     match acc with
-    | [] -> L.die InternalError "find_direct_caller failed (1), target_meth: %a, acc: %a@." Procname.pp target_meth pp_chain initial
+    | [] -> L.die InternalError
+              "find_direct_caller failed (1), target_meth: %a, acc: %a@."
+              Procname.pp target_meth pp_chain initial
     | (cand_meth, _) :: t ->
         let is_pred = fun v ->
           List.mem parents v ~equal:equal_btw_vertices in
         let cand_vertex = (cand_meth, get_summary cand_meth) in
         if is_pred cand_vertex then cand_vertex else inner initial t in
   match parents with
-  | [] -> L.die InternalError "find_direct_caller failed (2), target_meth: %a, acc: %a@." Procname.pp target_meth pp_chain acc
+  | [] -> L.die InternalError
+            "find_direct_caller failed (2), target_meth: %a, acc: %a@."
+            Procname.pp target_meth pp_chain acc
   | [parent_and_astateset] -> parent_and_astateset
   | _ -> inner acc acc
 
@@ -298,7 +303,8 @@ let rec have_been_before (astate: S.elt) (acc: chain) : bool =
             then true
             else have_been_before astate t
         | Dead ->
-            have_been_before astate t end
+            have_been_before astate t
+      end
 
 
 (** 가 본 적이 있는 튜플들을 없앰으로써, 가 본 적이 *없는* 튜플들만을 남긴다. *)
@@ -353,14 +359,16 @@ let extract_callee_from (ap: MyAccessPath.t) =
   | ProgramVar pv ->
       begin match Pvar.get_declaring_function pv with
         | Some procname -> procname
-        | None -> L.die InternalError "extract_callee_from failed" end
+        | None -> L.die InternalError "extract_callee_from failed"
+      end
 
 
 (** 바로 다음의 successor들 중에서 파라미터를 들고 있는 함수를 찾아 낸다. 못 찾을 경우, Procname.empty_block을 내뱉는다. *)
 let find_immediate_successor (current_methname: Procname.t) (current_astate_set: S.t) (param: MyAccessPath.t) =
   let succs = G.succ callgraph (current_methname, current_astate_set) in
   (* let not_skip_succs = List.filter ~f:(fun (proc, _) -> not @@ is_skip_function proc) succs in *)
-  let succ_meths_and_formals = List.map ~f:(fun (meth, _) -> (meth, get_formal_args meth)) succs (*not_skip_succs*) in
+  let succ_meths_and_formals = List.map ~f:(fun (meth, _) ->
+      (meth, get_formal_args meth)) succs (*not_skip_succs*) in
   List.fold_left ~init:Procname.empty_block ~f:(fun acc (m, p) ->
       if List.mem p (fst param) ~equal:Var.equal then m else acc) succ_meths_and_formals
 
@@ -372,7 +380,8 @@ let extract_ap_from_chain_slice (slice: (Procname.t*status) option) : MyAccessPa
         | Define (_, ap) -> ap
         | Call (_, ap) -> ap
         | Redefine ap -> ap
-        | Dead -> second_of bottuple end
+        | Dead -> second_of bottuple
+      end
   | None -> second_of bottuple
 
 
@@ -388,7 +397,8 @@ let procname_of (ap:A.elt) : Procname.t =
   | ProgramVar pv ->
       begin match Pvar.get_declaring_function pv with
         | Some proc -> proc
-        | _ -> L.die InternalError "procname_of failed, ap: %a@." MyAccessPath.pp ap end
+        | _ -> L.die InternalError "procname_of failed, ap: %a@." MyAccessPath.pp ap
+      end
   | LogicalVar _ -> L.die InternalError "procname_of failed, ap: %a@." MyAccessPath.pp ap
 
 
@@ -425,7 +435,8 @@ let extract_subchain_from (chain: chain) (chain_slice: Procname.t * status) : ch
       List.sub chain ~pos:index ~len:subchain_length
 
 
-(** returnv가 들어 있는 aliasset을 받아서, 그 안에 callee로부터 carry over된 var가 있다면 날린다. returnv는 무조건 날린다. *)
+(** returnv가 들어 있는 aliasset을 받아서, 그 안에 callee로부터 carry over된 var가 있다면 날린다.
+    returnv는 무조건 날린다. *)
 let filter_carrriedover_ap (aliasset: A.t) : A.t =
   if not @@ List.exists ~f:is_returnv_ap (A.elements aliasset) then aliasset else
     let returnv_ap = List.find_exn (A.elements aliasset) ~f:is_returnv_ap in
@@ -470,7 +481,9 @@ let mk_noparam (procname: Procname.t) : A.elt =
   (noparam, [])
 
 
-(** callee가 astate_set이 없는 skip_function일 때, caller의 returnv 중 skip_function의 methname이 있는 것이 있는지 확인하고, 그에 맞게 다음 chain 조각을 만듦 *)
+(** callee가 astate_set이 없는 skip_function일 때,
+    caller의 returnv 중 skip_function의 methname이 있는 것이 있는지 확인하고,
+    그에 맞게 다음 chain 조각을 만듦 *)
 let handle_empty_astateset (caller_methname: Procname.t) (caller_astate_set: S.t)
     (skip_function: Procname.t) : chain =
   (* 일단 이 안에 있는 returnv를 전부 골라내야 함 *)
@@ -485,16 +498,20 @@ let handle_empty_astateset (caller_methname: Procname.t) (caller_astate_set: S.t
         else acc) ~init:[] filtered_aliasset_list in
   let returnv_list = collect_all_returnv caller_astate_set in
   (* 경우에 따라 returnv를 가진 튜플이 여러 개일 수 있음 *)
-  let target_returnv_list = List.fold ~f:(fun acc returnv -> if Procname.equal (extract_callee_from returnv) skip_function then returnv::acc else acc) ~init:[] returnv_list in
+  let target_returnv_list = List.fold ~f:(fun acc returnv ->
+      if Procname.equal (extract_callee_from returnv) skip_function
+      then returnv::acc else acc) ~init:[] returnv_list in
   let returnv = List.nth target_returnv_list 0 in
   match returnv with
   (* 가정된 invariant: caller 내에서 callee는 한 번만 불렸다 *)
   | None -> (* Data flow가 다시 caller에게로 돌아오지 않음: unsound하게 판단 *)
-      List.rev [(caller_methname, Call (skip_function, mk_noparam skip_function)); (skip_function, Dead)]
+      List.rev [(caller_methname, Call (skip_function, mk_noparam skip_function));
+                (skip_function, Dead)]
   | Some rv ->
       (* returnv를 가진 튜플이 우리가 원하는 것 외에도 많을 수 있지만, MyAccessPath.equal을 사용하므로 상관없음 *)
       let var_defined_in_caller = second_of @@ search_target_tuple_by_pvar_ap rv caller_methname caller_astate_set in
-      List.rev [(caller_methname, Call (skip_function, mk_noparam skip_function)); (caller_methname, Define (skip_function, var_defined_in_caller))]
+      List.rev [(caller_methname, Call (skip_function, mk_noparam skip_function));
+                (caller_methname, Define (skip_function, var_defined_in_caller))]
 
 
 let is_carriedover_ap (ap: A.elt) (current_methname: Procname.t) (current_astate_set: S.t) : bool =
@@ -521,10 +538,10 @@ let extract_procname_from_returnv (returnv: Var.t) : Procname.t =
       L.die InternalError "This is not a returnv: %a@." Var.pp returnv;
   | Var.ProgramVar pvar ->
       begin match Pvar.get_declaring_function pvar with
-        | None ->
-            L.die InternalError "extract_procname_from_returnv failed: %a@." Var.pp returnv
-        | Some procname ->
-            procname end
+        | None -> L.die InternalError
+                    "extract_procname_from_returnv failed: %a@." Var.pp returnv
+        | Some procname -> procname
+      end
 
 
 (** Find returnv tuples in a given aliasset *)
@@ -556,6 +573,13 @@ let find_statetup_holding_aliastup (statetupset: S.t) (aliastup: A.elt) : S.elt 
         if A.mem aliastup target_aliasset
         then statetup else inner t in
   inner statetups
+
+
+(** Are there any callvs in the aliasset? *)
+let alias_with_callv (statetup: S.elt) =
+  let aliasset = fourth_of statetup in
+  A.fold (fun ap acc -> acc || is_callv_ap ap)
+    aliasset false
 
 
 let rec compute_chain_inner (current_methname: Procname.t) (current_astate_set: S.t)
@@ -590,11 +614,17 @@ let rec compute_chain_inner (current_methname: Procname.t) (current_astate_set: 
               find_returnv_holding_callee current_methname current_aliasset_cleanedup in
             let statetup_with_returnv = find_statetup_holding_aliastup parent_astate returnv_aliastup in
             let chain_updated = (current_methname, Define (parent, ap))::current_chain in
-            compute_chain_inner parent parent_astate statetup_with_returnv chain_updated 3)
+            compute_chain_inner parent parent_astate statetup_with_returnv chain_updated retry)
           ~init:current_chain callers_and_astates
-      else  (* simple definition, or call. Check which one is the case
+      else (* simple definition, or call. Check which one is the case
                by checking if there is callv *)
-        raise TODO
+        begin match alias_with_callv current_astate with
+          | true -> (* Call *)
+              (* Now, find the callee and recurse on the landing pad *)
+              raise TODO
+          | false -> (* Simple Definition *)
+              raise TODO
+        end
   | otherwise -> raise TODO
 
 
@@ -628,9 +658,11 @@ let compute_chain (ap: MyAccessPath.t) : chain =
 
 
 let collect_all_proc_and_ap () =
-  let setofallstates = Hashtbl.fold (fun _ v acc -> S.union v acc) summary_table S.empty in
+  let setofallstates = Hashtbl.fold (fun _ v acc ->
+                                      S.union v acc) summary_table S.empty in
   let listofallstates = S.elements setofallstates in
-  let list_of_all_proc_and_ap = List.map ~f:(fun (x:T.t) -> (first_of x, second_of x)) listofallstates in
+  let list_of_all_proc_and_ap = List.map ~f:(fun (x:T.t) ->
+      (first_of x, second_of x)) listofallstates in
   list_of_all_proc_and_ap
 
 
@@ -647,7 +679,8 @@ let chains_to_string hashtbl =
 let save_callgraph () =
   let ch = Out_channel.create "Callgraph.txt" in
   Hashtbl.iter (fun k v ->
-      Out_channel.output_string ch @@ (Procname.to_string k)^" -> "^(Procname.to_string v^"\n")) callgraph_table;
+      Out_channel.output_string ch @@
+      (Procname.to_string k)^" -> "^(Procname.to_string v^"\n")) callgraph_table;
   Out_channel.flush ch;
   Out_channel.close ch
 

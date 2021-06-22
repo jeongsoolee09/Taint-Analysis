@@ -113,11 +113,16 @@ let formal_args = Hashtbl.create 777
 
 let batch_add_formal_args () =
   let procnames = Hashtbl.fold (fun k _ acc -> k::acc) summary_table [] in
-  let pname_and_pdesc_opt = List.map ~f:(fun pname -> (pname, Procdesc.load pname)) procnames in
+  let pname_and_pdesc_opt = List.map ~f:(fun pname ->
+      (pname, Procdesc.load pname)) procnames in
   let pname_and_pdesc = catMaybes_tuplist pname_and_pdesc_opt in
-  let pname_and_params_with_type = List.map ~f:(fun (pname, pdesc) -> (pname, Procdesc.get_pvar_formals pdesc)) pname_and_pdesc in
-  let pname_and_params = List.map ~f:(fun (pname, with_type_list) -> (pname,List.map ~f:(fun (a,_) -> Var.of_pvar a) with_type_list)) pname_and_params_with_type in
-  List.iter pname_and_params ~f:(fun (pname, params) -> Hashtbl.add formal_args pname params)
+  let pname_and_params_with_type = List.map ~f:(fun (pname, pdesc) ->
+      (pname, Procdesc.get_pvar_formals pdesc)) pname_and_pdesc in
+  let pname_and_params = List.map ~f:(fun (pname, with_type_list) ->
+      (pname, List.map ~f:(fun (a,_) -> Var.of_pvar a) with_type_list))
+      pname_and_params_with_type in
+  List.iter pname_and_params ~f:(fun (pname, params) ->
+      Hashtbl.add formal_args pname params)
 
 let get_formal_args (key: Procname.t) = Hashtbl.find formal_args key
 
@@ -233,13 +238,13 @@ let collect_program_var_aps_from
                            not @@ MyAccessPath.equal just_before x) @@ A.elements aliasset
 
 
-let select_up_to (state: S.elt) ~(within: S.t) : S.t =
+let select_up_to (astate: S.elt) ~(within: S.t) : S.t =
   let astates = S.elements within in
-  let select_up_to_inner (astate:S.elt) : S.t =
+  let inner () : S.t =
     S.of_list @@ List.fold_left astates ~init:[]
       ~f:(fun (acc:T.t list) (elem:T.t) ->
           if third_of elem => third_of astate then elem::acc else acc) in
-  select_up_to_inner state
+  inner ()
 
 
 let equal_btw_vertices : PairOfMS.t -> PairOfMS.t -> bool =
@@ -247,22 +252,29 @@ let equal_btw_vertices : PairOfMS.t -> PairOfMS.t -> bool =
 
 
 (** callgraph 상에서, 혹은 accumulator를 따라가면서 최초의 parent (즉, 직전의 caller)와 그 astate_set을 찾아낸다. *)
-let find_direct_caller (target_meth: Procname.t) (acc: chain) : Procname.t * S.t =
+let find_direct_caller_to_go_back (target_meth: Procname.t) (acc: chain) : Procname.t * S.t =
   let target_vertex = (target_meth, get_summary target_meth) in
   let parents = G.pred callgraph target_vertex in
-  let rec find_direct_caller_inner (initial:chain) (acc:chain) =
+  let rec inner (initial:chain) (acc:chain) =
     match acc with
     | [] -> L.die InternalError "find_direct_caller failed (1), target_meth: %a, acc: %a@." Procname.pp target_meth pp_chain initial
     | (cand_meth, _) :: t ->
-        let is_pred = fun v -> List.mem parents v ~equal:equal_btw_vertices in
+        let is_pred = fun v ->
+          List.mem parents v ~equal:equal_btw_vertices in
         let cand_vertex = (cand_meth, get_summary cand_meth) in
-        if is_pred cand_vertex
-        then cand_vertex
-        else find_direct_caller_inner initial t in
+        if is_pred cand_vertex then cand_vertex else inner initial t in
   match parents with
   | [] -> L.die InternalError "find_direct_caller failed (2), target_meth: %a, acc: %a@." Procname.pp target_meth pp_chain acc
   | [parent_and_astateset] -> parent_and_astateset
-  | _ -> find_direct_caller_inner acc acc
+  | _ -> inner acc acc
+
+
+(** Find the immediate callers and their summaries of the given Procname.t. *)
+let find_direct_callers (target_meth: Procname.t) :
+  (Procname.t * S.t) list =
+  let target_vertex = (target_meth, get_summary target_meth) in
+  let parents = List.map ~f:fst @@ G.pred callgraph target_vertex in
+  List.map ~f:(fun parent -> (parent, get_summary parent)) parents
 
 
 (** 가 본 적이 있는지를 검사하는 술어. *)
@@ -278,7 +290,9 @@ let rec have_been_before (astate: S.elt) (acc: chain) : bool =
             if Procname.equal procname methname && MyAccessPath.equal vardef ap
             then true else have_been_before astate t
         | Call (callee, ap) -> (* 맞으려나? *)
-            if (Procname.equal callee procname || Procname.equal callee methname) && MyAccessPath.equal vardef ap then true else have_been_before astate t
+            if (Procname.equal callee procname ||
+                Procname.equal callee methname) &&
+               MyAccessPath.equal vardef ap then true else have_been_before astate t
         | Redefine ap ->
             if Procname.equal procname methname && MyAccessPath.equal vardef ap
             then true
@@ -495,19 +509,92 @@ let is_carriedover_ap (ap: A.elt) (current_methname: Procname.t) (current_astate
     ~init:false callee_nodes
 
 
+let count_vardefs_in_aliasset ~(find_this: MyAccessPath.t) (aliasset: A.t): int =
+  A.fold (fun ap cnt -> if MyAccessPath.equal find_this ap then cnt+1 else cnt) aliasset 0
+
+
+let extract_procname_from_returnv (returnv: Var.t) : Procname.t =
+  if not @@ is_returnv returnv then
+    L.die InternalError "This is not a returnv: %a@." Var.pp returnv;
+  match returnv with
+  | Var.LogicalVar _ ->
+      L.die InternalError "This is not a returnv: %a@." Var.pp returnv;
+  | Var.ProgramVar pvar ->
+      begin match Pvar.get_declaring_function pvar with
+        | None ->
+            L.die InternalError "extract_procname_from_returnv failed: %a@." Var.pp returnv
+        | Some procname ->
+            procname end
+
+
+(** Find returnv tuples in a given aliasset *)
+let find_returnv_holding_callee (callee_name: Procname.t) (aliasset: A.t) : A.elt =
+  let returnvs = A.fold (fun elem acc ->
+      if Var.is_return @@ fst elem then elem::acc else acc) aliasset [] in
+  let rec inner (callee_name: Procname.t) (aliases: A.elt list) : A.elt =
+    match returnvs with
+    | [] -> L.die InternalError
+              "find_returnv failed: callee_name: %a, aliasset: %a@."
+              Procname.pp callee_name A.pp aliasset
+    | ((returnv, _) as elt)::t ->
+        let returnv_content = extract_procname_from_returnv returnv in
+        if Procname.equal callee_name returnv_content then elt
+        else inner callee_name t in
+  inner callee_name returnvs
+
+
+(** Find any one state tuple holding the given alias tuple.
+    Use it with care: perhaps only with callv or returnv *)
+let find_statetup_holding_aliastup (statetupset: S.t) (aliastup: A.elt) : S.elt =
+  let statetups = S.elements statetupset in
+  let rec inner (statetups: S.elt list) : S.elt =
+    match statetups with
+    | [] -> L.die InternalError
+              "find_statetup_holding_aliastup failed: statetupset: %a, aliastup: %a@."
+              S.pp statetupset MyAccessPath.pp aliastup
+    | ((_, _, _, target_aliasset) as statetup)::t ->
+        if A.mem aliastup target_aliasset
+        then statetup else inner t in
+  inner statetups
+
+
 let rec compute_chain_inner (current_methname: Procname.t) (current_astate_set: S.t)
     (current_astate: S.elt) (current_chain: chain) (retry: int): chain =
   (* We need to leverage the information provided by *callv* and *returnv*! *)
+  let current_aliasset = fourth_of current_astate in
   let current_aliasset_cleanedup = A.filter (fun tup ->
       not @@ is_logical_var @@ fst tup &&
       not @@ is_frontend_tmp_var @@ fst tup)
-    @@ fourth_of current_astate in
+    @@ current_aliasset in
   let current_vardef = second_of current_astate in
   (* 직전에 방문했던 astate에서 끄집어낸 variable *)
   let just_before = extract_ap_from_chain_slice @@ List.hd current_chain in
   match collect_program_var_aps_from current_aliasset_cleanedup
           ~self:current_vardef ~just_before:just_before with
-  | [] -> (* either redefinition or dead end *) raise TODO
+  | [] ->
+      (* either redefinition or dead end. Now, we check which one is the case
+         by checking if there are multiple current_vardefs in the alias set *)
+      if count_vardefs_in_aliasset ~find_this:current_vardef current_aliasset >= 2
+      then (* redefinition *)
+        raise TODO
+      else (* dead *)
+        (current_methname, Dead)::current_chain
+  | [ap] ->
+      (* either definition or call *)
+      if Var.is_return @@ fst ap
+      then (* go to the caller *)
+        let callers_and_astates = find_direct_callers current_methname in
+        (* accumulate chains for each parent and its tuple *)
+        List.fold ~f:(fun acc (parent, parent_astate) ->
+            let returnv_aliastup =
+              find_returnv_holding_callee current_methname current_aliasset_cleanedup in
+            let statetup_with_returnv = find_statetup_holding_aliastup parent_astate returnv_aliastup in
+            let chain_updated = (current_methname, Define (parent, ap))::current_chain in
+            compute_chain_inner parent parent_astate statetup_with_returnv chain_updated 3)
+          ~init:current_chain callers_and_astates
+      else  (* simple definition, or call. Check which one is the case
+               by checking if there is callv *)
+        raise TODO
   | otherwise -> raise TODO
 
 

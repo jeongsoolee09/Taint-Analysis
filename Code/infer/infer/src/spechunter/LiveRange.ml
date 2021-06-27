@@ -48,6 +48,16 @@ module PairOfMS = struct
 end
 
 
+(** specially mangled variable to mark a value as returned from callee *)
+let mk_returnv procname =
+  Var.of_pvar @@ Pvar.mk (Mangled.from_string @@ "returnv: "^(Procname.to_string procname)) procname
+
+
+(** specially mangled variable to mark an AP as passed to a callee *)
+let mk_callv procname =
+  Var.of_pvar @@ Pvar.mk (Mangled.from_string @@ "callv: "^(Procname.to_string procname)) procname
+
+
 let rec catMaybes_tuplist (optlist: ('a*'b option) list) : ('a*'b) list =
   match optlist with
   | [] -> []
@@ -261,7 +271,7 @@ let find_direct_caller_to_go_back (target_meth: Procname.t) (acc: chain) : Procn
     | [] -> L.die InternalError
               "find_direct_caller failed (1), target_meth: %a, acc: %a@."
               Procname.pp target_meth pp_chain initial
-    | (cand_meth, _) :: t ->
+    | (cand_meth, _)::t ->
         let is_pred = fun v ->
           mem parents v ~equal:equal_btw_vertices in
         let cand_vertex = (cand_meth, get_summary cand_meth) in
@@ -442,8 +452,8 @@ let extract_subchain_from (chain: chain) (chain_slice: Procname.t * status) : ch
 (** returnv가 들어 있는 aliasset을 받아서, 그 안에 callee로부터 carry over된 var가 있다면 날린다.
     returnv는 무조건 날린다. *)
 let filter_carrriedover_ap (aliasset: A.t) : A.t =
-  if not @@ exists ~f:is_returnv_ap (A.elements aliasset) then aliasset else
-    let returnv_ap = find_exn (A.elements aliasset) ~f:is_returnv_ap in
+  if not @@ exists ~f:is_returnv_ap @@ A.elements aliasset then aliasset else
+    let returnv_ap = find_exn ~f:is_returnv_ap @@ A.elements aliasset in
     let callee_methname = extract_callee_from returnv_ap in
     let callee_astate_set = get_summary callee_methname in
     (* astate_set 안에서 aliasset 안에 returnv가 들어 있는 astate 찾기 *)
@@ -585,6 +595,25 @@ let alias_with_callv (statetup: S.elt) : bool =
     aliasset false
 
 
+let compare_astate astate1 astate2 =
+  let linum_set1 = third_of astate1
+  and linum_set2 = third_of astate2 in
+  let min_linum1 = LocationSet.min_elt linum_set1
+  and min_linum2 = LocationSet.min_elt linum_set2 in
+  Location.compare min_linum1 min_linum2
+
+
+let rec next_elem_of_list (lst: S.elt list) ~(next_to: S.elt) : S.elt =
+  match lst with
+  | [] -> L.die InternalError
+            "next_elem_of_list failed: lst: %a, next_to: %a@."
+            pp_tuplelist lst T.pp next_to
+  | this::t ->
+      if T.equal this next_to
+      then List.hd_exn t
+      else next_elem_of_list t ~next_to
+
+
 let rec compute_chain_inner (current_methname: Procname.t) (current_astate_set: S.t)
     (current_astate: S.elt) (current_chain: chain) (retry: int): chain =
   (* We need to leverage the information provided by *callv* and *returnv*! *)
@@ -599,36 +628,61 @@ let rec compute_chain_inner (current_methname: Procname.t) (current_astate_set: 
   match collect_program_var_aps_from current_aliasset_cleanedup
           ~self:current_vardef ~just_before:just_before with
   | [] ->
-      (* either redefinition or dead end. Now, we check which one is the case
-         by checking if there are multiple current_vardefs in the alias set *)
+      (* either REDEFINITION or DEAD.
+         check which one is the case by checking if there are multiple current_vardefs in the alias set *)
       if count_vardefs_in_aliasset ~find_this:current_vardef current_aliasset >= 2
-      then (* redefinition *)
-        raise TODO
-      else (* dead *)
+      then (* ============ REDEFINITION ============ *)
+        (* Intuition: get to the least recently redefined variable and recurse on that *)
+        let all_states_with_current_ap = List.sort ~compare:compare_astate @@
+          filter ~f:(fun astate ->
+            MyAccessPath.equal (second_of current_astate) (second_of astate)
+            ) @@ S.elements current_astate_set in
+        let least_recently_redefined = next_elem_of_list all_states_with_current_ap ~next_to:current_astate in
+        let current_ap = second_of current_astate in
+        let current_astate_set_updated = S.remove current_astate current_astate_set in (* remove the current_astate from current_astate_set *)
+        let chain_updated = (current_methname, Redefine current_ap)::current_chain in
+        (* recurse *)
+        compute_chain_inner current_methname current_astate_set_updated least_recently_redefined chain_updated retry
+      else (* ============ DEAD ============ *)
+        (* no more recursion; return *)
         (current_methname, Dead)::current_chain
   | [ap] ->
-      (* either definition or call *)
+      (* ============ DEFINITION AT THE CALLER ============ *)
       if Var.is_return @@ fst ap
       then (* go to the caller *)
         let callers_and_astates = find_direct_callers current_methname in
-        (* accumulate chains for each parent and its tuple *)
-        fold ~f:(fun acc (parent, parent_astate) ->
+        (* Intuition: for each caller, get to the callee and recurse on them *)
+        fold ~f:(fun acc (caller, caller_astate) ->
             let returnv_aliastup =
               find_returnv_holding_callee current_methname current_aliasset_cleanedup in
-            let statetup_with_returnv = find_statetup_holding_aliastup parent_astate returnv_aliastup in
-            let chain_updated = (current_methname, Define (parent, ap))::current_chain in
-            compute_chain_inner parent parent_astate statetup_with_returnv chain_updated retry)
+            let statetup_with_returnv = find_statetup_holding_aliastup caller_astate returnv_aliastup in
+            let chain_updated = (caller, Define (caller, ap))::acc in
+            (* recurse *)
+            compute_chain_inner caller caller_astate statetup_with_returnv chain_updated retry)
           ~init:current_chain callers_and_astates
-      else (* simple definition, or call. Check which one is the case
-               by checking if there is callv *)
+      else
+        (* simple DEFINITION, or call.
+           Check which one is the case by checking if there is callv *)
         begin match alias_with_callv current_astate with
-          | true -> (* Call *)
-              (* Now, find the callee and recurse on the landing pad *)
-              (* 1. find the callee and the landing pad *)
+          | true ->
+              (* ============ CALL ============ *)
+              (* Intuition: find the callee and recurse on the landing pad *)
               let callees_and_astates = find_direct_callees current_methname in
-              fold ~f:(fun acc elem -> )
-          | false -> (* Simple Definition *)
-              raise TODO
+              fold ~f:(fun acc (callee, callee_astate) ->
+                  (* landing_pad is a statetup with callv *)
+                  let target_callv = (mk_callv callee, []) in
+                  let landing_pad = find_statetup_holding_aliastup callee_astate target_callv in
+                  let chain_updated = (current_methname, Call (callee, ap))::acc in
+                  (* recurse *)
+                  compute_chain_inner callee callee_astate landing_pad chain_updated retry
+                ) ~init:current_chain callees_and_astates
+          | false ->
+              (* ============ SIMPLE DEFINITION ============ *)
+              (* Intuition: find the other ap and recurse on it *)
+              let other_statetup = search_target_tuple_by_pvar_ap ap current_methname current_astate_set in
+              let chain_updated = (current_methname, Define (current_methname, ap))::current_chain in
+              (* recurse *)
+              compute_chain_inner current_methname current_astate_set other_statetup chain_updated retry
         end
   | otherwise -> raise TODO
 

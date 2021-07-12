@@ -85,6 +85,16 @@ let pp_ap_list fmt aplist =
 let pp_MyAccessChain fmt (var, aplist) = F.fprintf fmt "(%a, %a)" Var.pp var pp_ap_list aplist
 
 
+let string_of_vertex (proc, astateset) =
+  F.asprintf "\"(%a, %a)\"" Procname.pp proc S.pp astateset
+
+
+let pp_tuplelistlist fmt (lstlst: T.t list list) =
+  F.fprintf fmt "[";
+  iter ~f:(fun lst -> pp_tuplelist fmt lst) lstlst;
+  F.fprintf fmt "]"
+
+
 (** specially mangled variable to mark a value as returned from callee *)
 let mk_returnv procname =
   Var.of_pvar @@ Pvar.mk (Mangled.from_string @@ "returnv: "^(Procname.to_string procname)) procname
@@ -95,15 +105,8 @@ let mk_callv procname =
   Var.of_pvar @@ Pvar.mk (Mangled.from_string @@ "callv: "^(Procname.to_string procname)) procname
 
 
-let rec catMaybes_tuplist (optlist: ('a*'b option) list) : ('a*'b) list =
-  match optlist with
-  | [] -> []
-  | (sth1, Some sth2) :: t -> (sth1, sth2)::catMaybes_tuplist t
-  | (_, None) :: _ -> L.die InternalError "catMaybes_tuplist failed"
-
-
-let string_of_vertex (proc, astateset) =
-  F.asprintf "\"(%a, %a)\"" Procname.pp proc S.pp astateset
+(* Ocamlgraph Definitions =========================== *)
+(* ================================================== *)
 
 
 module G = struct
@@ -119,6 +122,10 @@ module G = struct
 end
 module BFS = Graph.Traverse.Bfs (G)
 module Dot = Graph.Graphviz.Dot (G)
+
+
+(* Summary Table ==================================== *)
+(* ================================================== *)
 
 
 (** map from procnames to their summaries. *)
@@ -137,18 +144,15 @@ let pp_summary_table fmt hashtbl : unit =
       F.fprintf fmt "%a -> %a\n" Procname.pp k S.pp v) hashtbl
 
 
-(** Function for debugging by exporting Ocamlgraph to Graphviz Dot *)
-let graph_to_dot (graph: G.t): unit =
-  let out_channel = Out_channel.create "callgraph_with_astate.dot" in
-  Dot.output_graph out_channel graph;
-  Out_channel.flush out_channel;
-  Out_channel.close out_channel
-
-
 (** map from procname to its formal args. *)
 let formal_args = Hashtbl.create 777
 
 let batch_add_formal_args () =
+  let rec catMaybes_tuplist (optlist: ('a*'b option) list) : ('a*'b) list =
+    match optlist with
+    | [] -> []
+    | (sth1, Some sth2) :: t -> (sth1, sth2)::catMaybes_tuplist t
+    | (_, None) :: _ -> L.die InternalError "catMaybes_tuplist failed" in
   let procnames = Hashtbl.fold (fun k _ acc -> k::acc) summary_table [] in
   let pname_and_pdesc_opt = procnames >>| fun pname ->
     (pname, Procdesc.load pname) in
@@ -169,6 +173,22 @@ let batch_print_formal_args () =
                  L.progress "\n") formal_args
 
 
+let refine_summary_table () =
+  let filterfunc = fun tup ->
+    let var, _ = second_of tup in
+    not @@ is_placeholder_vardef var &&
+    not @@ is_logical_var var &&
+    not @@ is_frontend_tmp_var var in
+  Hashtbl.iter (fun key value ->
+      let refined_summary = S.filter filterfunc @@ get_summary key in
+      Hashtbl.replace summary_table key refined_summary
+    ) summary_table
+
+
+(* CallGraph ======================================== *)
+(* ================================================== *)
+
+
 (** a tabular representation of the call graph. *)
 let callgraph_table = Hashtbl.create 777
 
@@ -186,10 +206,31 @@ let find_procpair_by_var (var: Var.t) =
       if mem varlist var ~equal:Var.equal then target::acc else acc)
 
 
-let pp_tuplelistlist fmt (lstlst: T.t list list) =
-  F.fprintf fmt "[";
-  iter ~f:(fun lst -> pp_tuplelist fmt lst) lstlst;
-  F.fprintf fmt "]"
+(** Function for debugging by exporting Ocamlgraph to Graphviz Dot *)
+let graph_to_dot (graph: G.t): unit =
+  let out_channel = Out_channel.create "callgraph_with_astate.dot" in
+  Dot.output_graph out_channel graph;
+  Out_channel.flush out_channel;
+  Out_channel.close out_channel
+
+
+(** 해시 테이블 형태의 콜그래프를 ocamlgraph로 변환한다. *)
+let callg_hash2og () : unit =
+  Hashtbl.iter (fun key value ->
+      let key_astate_set = get_summary key in
+      let value_astate_set = get_summary value in
+      G.add_edge callgraph (key, key_astate_set) (value, value_astate_set)
+    ) callgraph_table
+
+
+(** 주어진 hashtbl의 엔트리 중에서 (callgraph_table이 쓰일 것) summary_table에 있지 않은 엔트리를 날린다. *)
+let filter_callgraph_table hashtbl : unit =
+  let procs = Hashtbl.fold (fun k _ acc -> k::acc) summary_table [] in
+  Hashtbl.iter (fun k v ->
+      if not @@ mem procs k ~equal:Procname.equal &&
+         not @@ mem procs v ~equal:Procname.equal
+      then Hashtbl.remove hashtbl k
+      else ()) hashtbl
 
 
 (** 중복 튜플을 제거함 *)
@@ -214,40 +255,13 @@ let remove_duplicates_from (astate_set: S.t) : S.t =
        not @@ is_placeholder_vardef var && not @@ Var.is_this var) result
 
 
-let refine_summary_table () =
-  let filterfunc = fun tup ->
-    let var, _ = second_of tup in
-    not @@ is_placeholder_vardef var &&
-    not @@ is_logical_var var &&
-    not @@ is_frontend_tmp_var var in
-  Hashtbl.iter (fun key value ->
-      let refined_summary = S.filter filterfunc @@ get_summary key in
-      Hashtbl.replace summary_table key refined_summary
-    ) summary_table
+(** 디버깅 용도로 BFS 사용해서 그래프 출력하기 *)
+let print_graph graph = BFS.iter (fun (proc, astate_set) ->
+    L.progress "proc: %a, astate_set: %a@." Procname.pp proc S.pp astate_set) graph
 
 
-(** 해시 테이블 형태의 콜그래프를 ocamlgraph로 변환한다. *)
-let callg_hash2og () : unit =
-  Hashtbl.iter (fun key value ->
-      let key_astate_set = get_summary key in
-      let value_astate_set = get_summary value in
-      G.add_edge callgraph (key, key_astate_set) (value, value_astate_set)
-    ) callgraph_table
-
-
-(** 주어진 hashtbl의 엔트리 중에서 (callgraph_table이 쓰일 것) summary_table에 있지 않은 엔트리를 날린다. *)
-let filter_callgraph_table hashtbl : unit =
-  let procs = Hashtbl.fold (fun k _ acc -> k::acc) summary_table [] in
-  Hashtbl.iter (fun k v ->
-      if not @@ mem procs k ~equal:Procname.equal &&
-         not @@ mem procs v ~equal:Procname.equal
-      then Hashtbl.remove hashtbl k
-      else ()) hashtbl
-
-
-(** specially mangled variable to mark a value as returned from callee *)
-let mk_returnv procname =
-  Var.of_pvar @@ Pvar.mk (Mangled.from_string "returnv") procname
+(* Computing Chains ================================= *)
+(* ================================================== *)
 
 
 (** 주어진 AccessPath ap에 있어 가장 이른 정의 state를 찾는다. *)
@@ -265,11 +279,6 @@ let find_first_occurrence_of (ap: MyAccessPath.t) : Procname.t * S.t * S.elt =
     let targetTuples = search_target_tuples_by_vardef_ap ap methname astate_set_nodup in
     let earliest_state = find_earliest_astate_within targetTuples methname in
     (methname, astate_set, earliest_state)
-
-
-(** 디버깅 용도로 BFS 사용해서 그래프 출력하기 *)
-let print_graph graph = BFS.iter (fun (proc, astate_set) ->
-    L.progress "proc: %a, astate_set: %a@." Procname.pp proc S.pp astate_set) graph
 
 
 (** alias set에서 자기 자신, ph, 직전 variable을 빼고 남은 program variable들을 리턴 *)
@@ -466,37 +475,6 @@ let extract_subchain_from (chain: chain) (chain_slice: Procname.t * status) : ch
     sub chain ~pos:index ~len:subchain_length
 
 
-(** returnv가 들어 있는 aliasset을 받아서, 그 안에 callee로부터 carry over된 var가 있다면 날린다.
-    returnv는 무조건 날린다. *)
-let filter_carrriedover_ap (aliasset: A.t) : A.t =
-  if not @@ exists ~f:is_returnv_ap @@ A.elements aliasset then aliasset else
-    let returnv_ap = find_exn ~f:is_returnv_ap @@ A.elements aliasset in
-    let callee_methname = extract_callee_from returnv_ap in
-    let callee_astate_set = get_summary callee_methname in
-    (* astate_set 안에서 aliasset 안에 returnv가 들어 있는 astate 찾기 *)
-    let astate_with_return = S.fold (fun astate acc ->
-        let aliasset = fourth_of astate in
-        if A.exists is_return_ap aliasset
-        then astate::acc
-        else acc) callee_astate_set [] in
-    match astate_with_return with
-    | [] -> (* Skip_function으로, summary가 없는 경우이다. -> 아무것도 할 것 없이 returnv만 날려 준다. *)
-      A.remove returnv_ap aliasset
-    | statelist -> (* return 지점이 여러 개인 method로, 제거 대상이 여러 개이다. *)
-      let aps_to_remove = statelist >>| second_of |> A.of_list in
-      A.remove returnv_ap @@ A.diff aliasset aps_to_remove
-
-
-(** pvar가 여러 개 있는 aliasset 내에서 관련 없는 pvar들을 (하나 남기고) 모두 없앰 *)
-let cleanup_aliasset (aliasset: A.t) (self: MyAccessPath.t) : A.t =
-  let carried_over_ap_filtered = filter_carrriedover_ap aliasset in
-  let self_filtered = A.remove self carried_over_ap_filtered in
-  let aliasset_filtered = A.filter (fun (var, _) ->
-      (not @@ is_logical_var var &&
-       not @@ is_frontend_tmp_var var)) self_filtered in
-  aliasset_filtered
-
-
 (** Define에 들어 있는 Procname과 AP의 쌍을 받아서 그것이 들어 있는 chain을 리턴 *)
 let find_entry_containing_chainslice (methname: Procname.t) (status: status) : chain option =
   let all_chains = Hashtbl.fold (fun _ v acc -> v::acc) chains [] in
@@ -505,55 +483,6 @@ let find_entry_containing_chainslice (methname: Procname.t) (status: status) : c
       then chain::acc
       else acc) ~init:[] all_chains in
   nth result_chains 0
-
-
-let mk_noparam (procname: Procname.t) : A.elt =
-  let noparam = Var.of_pvar @@ Pvar.mk (Mangled.from_string "noparam") procname in
-  (noparam, [])
-
-
-(** callee가 astate_set이 없는 skip_function일 때,
-    caller의 returnv 중 skip_function의 methname이 있는 것이 있는지 확인하고,
-    그에 맞게 다음 chain 조각을 만듦 *)
-let handle_empty_astateset (caller_methname: Procname.t) (caller_astate_set: S.t)
-    (skip_function: Procname.t) : chain =
-  (* 일단 이 안에 있는 returnv를 전부 골라내야 함 *)
-  let collect_all_returnv (astate_set:S.t) : A.elt list =
-    let astate_list = S.elements astate_set in
-    let aliasset_list = astate_list >>| fourth_of in
-    let filtered_aliasset_list = aliasset_list >>| A.filter (fun (var, _) -> is_returnv var) in
-    fold ~f:(fun acc set ->
-        if Int.equal (A.cardinal set) 1
-        then (extract_from_singleton set)::acc
-        else acc) ~init:[] filtered_aliasset_list in
-  let returnv_list = collect_all_returnv caller_astate_set in
-  (* 경우에 따라 returnv를 가진 튜플이 여러 개일 수 있음 *)
-  let target_returnv_list = fold ~f:(fun acc returnv ->
-      if Procname.equal (extract_callee_from returnv) skip_function
-      then returnv::acc else acc) ~init:[] returnv_list in
-  let returnv = nth target_returnv_list 0 in
-  match returnv with
-  (* 가정된 invariant: caller 내에서 callee는 한 번만 불렸다 *)
-  | None -> (* Data flow가 다시 caller에게로 돌아오지 않음: unsound하게 판단 *)
-    rev [(caller_methname, Call (skip_function, mk_noparam skip_function));
-         (skip_function, Dead)]
-  | Some rv ->
-    (* returnv를 가진 튜플이 우리가 원하는 것 외에도 많을 수 있지만, MyAccessPath.equal을 사용하므로 상관없음 *)
-    let var_defined_in_caller = second_of @@ search_target_tuple_by_pvar_ap rv caller_methname caller_astate_set in
-    rev [(caller_methname, Call (skip_function, mk_noparam skip_function));
-         (caller_methname, Define (skip_function, var_defined_in_caller))]
-
-
-let is_carriedover_ap (ap: A.elt) (current_methname: Procname.t) (current_astate_set: S.t) : bool =
-  let callee_nodes = G.succ callgraph (current_methname, current_astate_set) in
-  (* 주어진 ap가 callee의 astate_set 중에서 return이랑 alias가 있는 튜플이 있는지 확인 *)
-  fold ~f:(fun acc (proc, astate_set) ->
-      match search_target_tuples_by_vardef_ap ap proc astate_set with
-      | [] -> acc
-      | tuples -> fold ~f:(fun _ elem ->
-          let aliasset = fourth_of elem in
-          A.exists is_returnv_ap aliasset) ~init:false tuples)
-    ~init:false callee_nodes
 
 
 let count_vardefs_in_aliasset ~(find_this: MyAccessPath.t) (aliasset: A.t): int =
@@ -676,7 +605,7 @@ let option_get: 'a option -> 'a = function
 
 let rec compute_chain_inner (current_methname: Procname.t) (current_astate_set: S.t)
     (current_astate: S.elt) (current_chain: chain) (retry: int): chain =
-  L.progress {|compute_chain_inner called. current_methname: %a, current_chain: %a@.|}
+  L.progress "compute_chain_inner called. current_methname: %a, current_chain: %a@."
     Procname.pp current_methname
     pp_chain (rev current_chain);
   let ap_filter = fun tup ->
@@ -684,16 +613,17 @@ let rec compute_chain_inner (current_methname: Procname.t) (current_astate_set: 
     not @@ is_frontend_tmp_var @@ fst tup in
   (* We need to leverage the information provided by *callv* and *returnv*! *)
   let current_aliasset = fourth_of current_astate in
-  let current_aliasset_cleanedup = A.filter ap_filter
-    @@ current_aliasset in
+  let current_aliasset_cleanedup = A.filter ap_filter @@ current_aliasset in
   let current_vardef = second_of current_astate in
   (* 직전에 방문했던 astate에서 끄집어낸 variable *)
   let just_before = extract_ap_from_chain_slice @@ hd current_chain in
   let to_match =
-    L.progress "matching with %a@." pp_ap_list (collect_program_var_aps_from current_aliasset_cleanedup ~self:current_vardef ~just_before:just_before);
+    L.progress "matching with %a@." pp_ap_list
+      (collect_program_var_aps_from current_aliasset_cleanedup
+         ~self:current_vardef ~just_before:just_before);
     collect_program_var_aps_from current_aliasset_cleanedup
       ~self:current_vardef ~just_before:just_before in
-  (* ACTUALLY, WE DON'T NEED ALL THIS PATTERN MATCHING SHIT! *)
+  (* ACTUALLY, WE DON'T NEED ALL THIS PATTERN MATCHING SHIT! 🤔🤔🤔 *)
   match to_match with
   | [] ->
     (* either REDEFINITION or DEAD.
@@ -772,7 +702,6 @@ let rec compute_chain_inner (current_methname: Procname.t) (current_astate_set: 
             let callers_and_astates = find_direct_callers current_methname in
             (* do the return move *)
             fold ~f:(fun acc (caller, caller_astate) ->
-                L.progress "caller: %a, caller_astate: %a" Procname.pp caller S.pp caller_astate;
                 let returnv_aliastup =
                   find_returnv_holding_callee_astateset current_methname caller_astate in
                 let statetup_with_returnv = find_statetup_holding_aliastup caller_astate returnv_aliastup in
@@ -792,8 +721,7 @@ let rec compute_chain_inner (current_methname: Procname.t) (current_astate_set: 
                   try
                     find_statetup_holding_aliastup callee_astate target_returnv
                   with
-                  | IBase.Die.InferInternalError _ -> bottuple
-                  | _ -> L.die InternalError "WTF??!?!?!" in
+                  | IBase.Die.InferInternalError _ -> bottuple in
                 let chain_updated = (current_methname, Call (callee, param_ap_in_question))::acc in
                 if T.equal alias_with_returnv bottuple then acc else
                   compute_chain_inner current_methname current_astate_set alias_with_returnv chain_updated retry
@@ -873,15 +801,6 @@ let collect_all_proc_and_ap () =
   list_of_all_proc_and_ap
 
 
-(** chains 해시 테이블 전체를 프린트한다 *)
-let chains_to_string hashtbl =
-  Hashtbl.fold (fun (proc, ap) v acc ->
-      String.concat ~sep:"\n" [acc; (F.asprintf "(%a, %a): %a"
-                                       Procname.pp proc
-                                       MyAccessPath.pp ap pp_chain v)])
-    hashtbl ""
-
-
 (** 파일로 call graph를 출력 *)
 let save_callgraph () =
   let ch = Out_channel.create "Callgraph.txt" in
@@ -947,8 +866,8 @@ let write_json (json: json) : unit =
 (* ========================================= *)
 
 
-(** interface with the driver *)
 let main () =
+  (* ============ Preliminary moves ============ *)
   MyCallGraph.load_callgraph_from_disk_to callgraph_table;
   save_callgraph ();
   SummaryLoader.load_summary_from_disk_to summary_table;
@@ -959,6 +878,7 @@ let main () =
   callg_hash2og ();
   graph_to_dot callgraph;
 
+  (* ============ Computing Chains ============ *)
   stable_dedup @@ collect_all_proc_and_ap ()
   |> filter ~f:(fun (_, (var, _)) ->
       let pv = extract_pvar_from_var var in
@@ -972,6 +892,8 @@ let main () =
     )
   |> iter ~f:(fun (proc, ap) ->
       add_chain (proc, ap) @@ compute_chain ap);
+
+  (* ============ Serialize ============ *)
   let wrapped_chains = Hashtbl.fold (fun (current_meth, target_ap) chain acc ->
       wrap_chain_representation current_meth target_ap (map ~f:(fun (proc, status) ->
           represent_status proc status) chain)::acc) chains [] in

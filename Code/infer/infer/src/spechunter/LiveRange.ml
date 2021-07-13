@@ -759,9 +759,12 @@ let rec compute_chain_inner (current_methname: Procname.t) (current_astate_set: 
               begin
                 fun acc (callee, callee_astate) ->
                   try
-                    let landing_pad = find_statetup_holding_aliastup callee_astate real_aliastup in
-                    let chain_updated = (current_methname, (Call (callee, real_aliastup)))::acc in
-                    compute_chain_inner callee callee_astate landing_pad chain_updated retry
+                    let landing_pad =
+                      find_statetup_holding_aliastup callee_astate real_aliastup in
+                    let chain_updated =
+                      (current_methname, (Call (callee, real_aliastup)))::acc in
+                    compute_chain_inner callee callee_astate
+                      landing_pad chain_updated retry
                   with
                   | _ -> acc
               end ~init:current_chain callees_and_astates
@@ -908,18 +911,24 @@ let main () =
 
   (* ============ Computing Chains ============ *)
   stable_dedup @@ collect_all_proc_and_ap ()
-  |> filter ~f:(fun (_, (var, _)) ->
-      let pv = extract_pvar_from_var var in
-      not @@ Var.is_this var &&
-      not @@ is_placeholder_vardef var &&
-      not @@ Pvar.is_frontend_tmp pv &&
-      not @@ is_returnv var &&
-      not @@ Var.is_return var &&
-      not @@ is_param var &&
-      not @@ is_callv var
-    )
-  |> iter ~f:(fun (proc, ap) ->
-      add_chain (proc, ap) @@ compute_chain ap);
+  |> filter ~f:
+    begin
+      fun (_, (var, _)) ->
+        let pv = extract_pvar_from_var var in
+        not @@ Var.is_this var &&
+        not @@ is_placeholder_vardef var &&
+        not @@ Pvar.is_frontend_tmp pv &&
+        not @@ is_returnv var &&
+        not @@ Var.is_return var &&
+        not @@ is_param var &&
+        not @@ is_callv var
+    end
+  |> iter ~f:
+    begin fun (proc, ap) ->
+      if String.equal (Procname.to_string proc) "Integer ObjectFlowing.source()" &&
+         String.equal (F.asprintf "%a" Var.pp (fst ap)) "x" then
+        add_chain (proc, ap) @@ compute_chain ap
+    end;
 
   (* ============ Serialize ============ *)
   let wrapped_chains = Hashtbl.fold (fun (current_meth, target_ap) chain acc ->

@@ -632,9 +632,11 @@ let rec compute_chain_inner (current_methname: Procname.t) (current_astate_set: 
     then (* ============ REDEFINITION ============ *)
       (* Intuition: get to the least recently redefined variable and recurse on that *)
       let all_states_with_current_ap = List.sort ~compare:compare_astate @@
-        filter ~f:(fun astate ->
-            MyAccessPath.equal (second_of current_astate) (second_of astate)
-          ) @@ S.elements current_astate_set in
+        filter ~f:
+          begin
+            fun astate ->
+              MyAccessPath.equal (second_of current_astate) (second_of astate)
+          end @@ S.elements current_astate_set in
       let least_recently_redefined = next_elem_of_list all_states_with_current_ap ~next_to:current_astate in
       let current_ap = second_of current_astate in
       let current_astate_set_updated = S.remove current_astate current_astate_set in (* remove the current_astate from current_astate_set *)
@@ -650,14 +652,16 @@ let rec compute_chain_inner (current_methname: Procname.t) (current_astate_set: 
     then (* go to the caller *)
       let callers_and_astates = find_direct_callers current_methname in
       (* Intuition: for each caller, get to the callee and recurse on them *)
-      fold ~f:(fun acc (caller, caller_astate_set) ->
-          let returnv_aliastup =
-            find_returnv_holding_callee_astateset current_methname caller_astate_set in
-          let statetup_with_returnv = find_statetup_holding_aliastup caller_astate_set returnv_aliastup in
-          let chain_updated = (caller, Define (caller, ap))::acc in
-          (* recurse *)
-          compute_chain_inner caller caller_astate_set statetup_with_returnv chain_updated retry)
-        ~init:current_chain callers_and_astates
+      fold ~f:
+        begin
+          fun acc (caller, caller_astate_set) ->
+            let returnv_aliastup =
+              find_returnv_holding_callee_astateset current_methname caller_astate_set in
+            let statetup_with_returnv = find_statetup_holding_aliastup caller_astate_set returnv_aliastup in
+            let chain_updated = (caller, Define (caller, ap))::acc in
+            (* recurse *)
+            compute_chain_inner caller caller_astate_set statetup_with_returnv chain_updated retry
+        end ~init:current_chain callers_and_astates
     else
       (* simple DEFINITION, or call.
          Check which one is the case by checking if there is callv *)
@@ -666,14 +670,16 @@ let rec compute_chain_inner (current_methname: Procname.t) (current_astate_set: 
           (* ============ CALL ============ *)
           (* Intuition: find the callee and recurse on the landing pad *)
           let callees_and_astates = find_direct_callees current_methname in
-          fold ~f:(fun acc (callee, callee_astate) ->
-              (* landing_pad is a statetup with callv *)
-              let target_callv = (mk_callv callee, []) in
-              let landing_pad = find_statetup_holding_aliastup callee_astate target_callv in
-              let chain_updated = (current_methname, Call (callee, ap))::acc in
-              (* recurse *)
-              compute_chain_inner callee callee_astate landing_pad chain_updated retry
-            ) ~init:current_chain callees_and_astates
+          fold ~f:
+            begin
+              fun acc (callee, callee_astate) ->
+                (* landing_pad is a statetup with callv *)
+                let target_callv = (mk_callv callee, []) in
+                let landing_pad = find_statetup_holding_aliastup callee_astate target_callv in
+                let chain_updated = (current_methname, Call (callee, ap))::acc in
+                (* recurse *)
+                compute_chain_inner callee callee_astate landing_pad chain_updated retry
+            end ~init:current_chain callees_and_astates
         | false ->
           (* ============ SIMPLE DEFINITION ============ *)
           (* Intuition: find the other ap and recurse on it *)
@@ -685,47 +691,55 @@ let rec compute_chain_inner (current_methname: Procname.t) (current_astate_set: 
   | otherwise -> (* ============ EDGE CASES: we need to scrutinize carefully ============ *)
     (* die if there is something else than callv, returnv, or return *)
     try
-      let something_else = filter ~f:(fun ap ->
-          not @@ is_logical_var @@ fst ap &&
-          not @@ is_frontend_tmp_var @@ fst ap &&
-          not @@ is_returnv @@ fst ap &&
-          not @@ Var.is_return @@ fst ap &&
-          not @@ is_callv @@ fst ap &&
-          not @@ is_param @@ fst ap
-        ) to_match in
+      let something_else = filter ~f:
+          begin
+            fun ap ->
+              let var = fst ap in
+              not @@ is_logical_var var &&
+              not @@ is_frontend_tmp_var var &&
+              not @@ is_returnv var &&
+              not @@ Var.is_return var &&
+              not @@ is_callv var &&
+              not @@ is_param var
+          end to_match in
       match something_else with
       | [] ->
         begin
           (* the following if-then-else sequences encodes
              the level of preferences among different A.elt's. *)
-          if exists ~f:(fun (var, _) -> Var.is_return var) otherwise then
+          if exists ~f: begin fun (var, _) -> Var.is_return var end otherwise then
             let callers_and_astates = find_direct_callers current_methname in
             (* do the return move *)
-            fold ~f:(fun acc (caller, caller_astate) ->
-                let returnv_aliastup =
-                  find_returnv_holding_callee_astateset current_methname caller_astate in
-                let statetup_with_returnv = find_statetup_holding_aliastup caller_astate returnv_aliastup in
-                let chain_updated = (caller, Define (caller, (second_of statetup_with_returnv)))::acc in
-                (* recurse *)
-                compute_chain_inner caller caller_astate statetup_with_returnv chain_updated retry
-              ) ~init:current_chain callers_and_astates
-          else if exists ~f:(fun ap -> is_param_ap ap) otherwise then
+            fold ~f:
+              begin
+                fun acc (caller, caller_astate) ->
+                  let returnv_aliastup =
+                    find_returnv_holding_callee_astateset current_methname caller_astate in
+                  let statetup_with_returnv = find_statetup_holding_aliastup caller_astate returnv_aliastup in
+                  let chain_updated = (caller, Define (caller, (second_of statetup_with_returnv)))::acc in
+                  (* recurse *)
+                  compute_chain_inner caller caller_astate statetup_with_returnv chain_updated retry
+              end ~init:current_chain callers_and_astates
+          else if exists ~f: begin fun ap -> is_param_ap ap end otherwise then
             (* if one or more param variables exist for a single callee,
                then we don't have summary for that callee *)
             let param_ap_in_question = find_witness_exn otherwise ~pred:is_param_ap in
             let callees_and_astates = find_direct_callees current_methname in
-            fold ~f:(fun acc (callee, callee_astate) ->
-                (* landing_pad is a statetup with callv *)
-                let target_returnv = (mk_returnv callee, []) in
-                let alias_with_returnv =
-                  try
-                    find_statetup_holding_aliastup callee_astate target_returnv
-                  with
-                  | IBase.Die.InferInternalError _ -> bottuple in
-                let chain_updated = (current_methname, Call (callee, param_ap_in_question))::acc in
-                if T.equal alias_with_returnv bottuple then acc else
-                  compute_chain_inner current_methname current_astate_set alias_with_returnv chain_updated retry
-              ) ~init:current_chain callees_and_astates
+            fold ~f:
+              begin
+                fun acc (callee, callee_astate) ->
+                  (* landing_pad is a statetup with callv *)
+                  let target_returnv = (mk_returnv callee, []) in
+                  let alias_with_returnv =
+                    try
+                      find_statetup_holding_aliastup callee_astate target_returnv
+                    with
+                    | IBase.Die.InferInternalError _ -> bottuple in
+                  let chain_updated = (current_methname, Call (callee, param_ap_in_question))::acc in
+                  if T.equal alias_with_returnv bottuple then acc else
+                    compute_chain_inner current_methname current_astate_set
+                      alias_with_returnv chain_updated retry
+              end ~init:current_chain callees_and_astates
           else
             raise TODO
         end
@@ -737,31 +751,39 @@ let rec compute_chain_inner (current_methname: Procname.t) (current_astate_set: 
           if not @@ Procname.equal declaring_function current_methname then
             (* ============ CALL ============ *)
             (* Find the statetup in the callee's astate_set *)
-            fold ~f:(fun acc (callee, callee_astate) ->
-                try
-                  let landing_pad = find_statetup_holding_aliastup callee_astate real_aliastup in
-                  let chain_updated = (current_methname, (Call (callee, real_aliastup)))::acc in
-                  compute_chain_inner callee callee_astate landing_pad chain_updated retry
-                with
-                | _ -> acc
-              ) ~init:current_chain callees_and_astates
+            fold ~f:
+              begin
+                fun acc (callee, callee_astate) ->
+                  try
+                    let landing_pad = find_statetup_holding_aliastup callee_astate real_aliastup in
+                    let chain_updated = (current_methname, (Call (callee, real_aliastup)))::acc in
+                    compute_chain_inner callee callee_astate landing_pad chain_updated retry
+                  with
+                  | _ -> acc
+              end ~init:current_chain callees_and_astates
           else
             raise TODO
         end
       | _ -> raise TODO
     with
     | Assert_failure _ ->
-      let something_else = filter ~f:(fun ap ->
-          not @@ is_logical_var @@ fst ap &&
-          not @@ is_frontend_tmp_var @@ fst ap &&
-          not @@ is_returnv @@ fst ap &&
-          not @@ Var.is_return @@ fst ap &&
-          not @@ is_callv @@ fst ap &&
-          not @@ is_param @@ fst ap
-        ) to_match in
+      let something_else = filter ~f:
+          begin
+            fun ap ->
+              not @@ is_logical_var @@ fst ap &&
+              not @@ is_frontend_tmp_var @@ fst ap &&
+              not @@ is_returnv @@ fst ap &&
+              not @@ Var.is_return @@ fst ap &&
+              not @@ is_callv @@ fst ap &&
+              not @@ is_param @@ fst ap
+          end to_match in
       L.die InternalError "Assertion failed: %a@." pp_ap_list something_else
-    | IBase.Die.InferInternalError slot ->
-      L.die InternalError "current_methname: %a, current_astate_set: %a, current_astate: %a, current_chain: %a@." Procname.pp current_methname S.pp current_astate_set T.pp current_astate pp_chain current_chain
+    | IBase.Die.InferInternalError _ ->
+      L.die InternalError "current_methname: %a, current_astate_set: %a, current_astate: %a, current_chain: %a@."
+        Procname.pp current_methname
+        S.pp current_astate_set
+        T.pp current_astate
+        pp_chain current_chain
 
 
 (** 콜 그래프와 분석 결과를 토대로 체인 (Define -> ... -> Dead)을 계산해 낸다 *)
@@ -784,11 +806,13 @@ let compute_chain (ap: MyAccessPath.t) : chain =
     match A.exists is_returnv_ap first_aliasset with
     | true -> (* 이미 어떤 chain의 subchain이라면 새로 계산할 필요 없음 *)
       let initial_chain_slice = Define (first_methname, ap) in
-      begin match find_entry_containing_chainslice first_methname initial_chain_slice with
+      begin
+        match find_entry_containing_chainslice first_methname initial_chain_slice with
         | None -> (* 이전에 계산해 놓은 게 없네 *)
           compute_chain_ ap
         | Some chain -> (* 이전에 계산해 놓은 게 있네! 거기서 단순 추출만 해야지 *)
-          extract_subchain_from chain (first_methname, initial_chain_slice) end
+          extract_subchain_from chain (first_methname, initial_chain_slice)
+      end
     | false ->
       compute_chain_ ap
 

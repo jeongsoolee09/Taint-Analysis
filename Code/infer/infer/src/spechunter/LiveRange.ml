@@ -702,18 +702,29 @@ let rec compute_chain_inner (current_methname: Procname.t) (current_astate_set: 
       end
   | otherwise -> (* ============ EDGE CASES: we need to scrutinize carefully ============ *)
     (* die if there is something else than callv, returnv, or return *)
-    let just_before = extract_ap_from_chain_slice @@ hd current_chain in
+    let just_before_opt = extract_ap_from_chain_slice @@ hd current_chain in
     let something_else = filter ~f:
         begin
-          fun ap ->
-            let var = fst ap in
-            not @@ is_logical_var var &&
-            not @@ is_frontend_tmp_var var &&
-            not @@ is_returnv var &&
-            not @@ Var.is_return var &&
-            not @@ is_callv var &&
-            not @@ is_param var &&
-            not @@ MyAccessPath.equal just_before ap
+          match just_before_opt with
+          | None ->
+            fun ap ->
+              let var = fst ap in
+              not @@ is_logical_var var &&
+              not @@ is_frontend_tmp_var var &&
+              not @@ is_returnv var &&
+              not @@ Var.is_return var &&
+              not @@ is_callv var &&
+              not @@ is_param var
+          | Some just_before ->
+            fun ap ->
+              let var = fst ap in
+              not @@ is_logical_var var &&
+              not @@ is_frontend_tmp_var var &&
+              not @@ is_returnv var &&
+              not @@ Var.is_return var &&
+              not @@ is_callv var &&
+              not @@ is_param var &&
+              not @@ MyAccessPath.equal just_before ap
         end to_match in
     match something_else with
     | [] ->
@@ -757,7 +768,7 @@ let rec compute_chain_inner (current_methname: Procname.t) (current_astate_set: 
                   compute_chain_inner current_methname current_astate_set
                     alias_with_returnv chain_updated retry
             end ~init:current_chain callees_and_astates
-        else 
+        else
           L.die InternalError "TODO (1)"
       end
     | [real_aliastup] ->

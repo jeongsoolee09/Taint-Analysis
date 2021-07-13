@@ -347,36 +347,13 @@ let find_direct_callees (target_meth: Procname.t) : (Procname.t * S.t) list =
   G.succ callgraph target_vertex
 
 
-(** 가 본 적이 있는지를 검사하는 술어. *)
-(** NOTE: status 패턴 매칭 부분이 맞는지 잘 모르겠다.*)
-let rec have_been_before (astate: S.elt) (acc: chain) : bool =
-  match acc with
-  | [] -> false
-  | (methname, status) :: t ->
-    let procname = first_of astate in
-    let vardef = second_of astate in
-    begin match status with
-      | Define (_, ap) ->
-        if Procname.equal procname methname && MyAccessPath.equal vardef ap
-        then true else have_been_before astate t
-      | Call (callee, ap) -> (* 맞으려나? *)
-        if (Procname.equal callee procname ||
-            Procname.equal callee methname) &&
-           MyAccessPath.equal vardef ap then true else have_been_before astate t
-      | Redefine ap ->
-        if Procname.equal procname methname && MyAccessPath.equal vardef ap
-        then true
-        else have_been_before astate t
-      | Dead ->
-        have_been_before astate t
-    end
-
-
-(** 가 본 적이 있는 튜플들을 없앰으로써, 가 본 적이 *없는* 튜플들만을 남긴다. *)
-let filter_have_been_before (tuplelist: S.elt list) (current_chain: chain) =
-  fold_left tuplelist ~init:[]
-    ~f:(fun acc tup ->
-        if not @@ have_been_before tup current_chain then tup::acc else acc)
+(* this needs a FULL rewrite! *)
+let have_been_before (target_meth: Procname.t) (acc: chain): bool =
+  fold ~f:
+    begin
+      fun acc (current_meth, _) ->
+        Procname.equal current_meth target_meth || found
+    end ~init:false acc
 
 
 (** get_formal_args는 skip_function에 대해 실패한다는 점을 이용한 predicate *)

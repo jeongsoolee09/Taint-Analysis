@@ -715,10 +715,13 @@ let rec compute_chain_inner (current_methname: Procname.t) (current_astate_set: 
                 fun acc (caller, caller_astate) ->
                   let returnv_aliastup =
                     find_returnv_holding_callee_astateset current_methname caller_astate in
-                  let statetup_with_returnv = find_statetup_holding_aliastup caller_astate returnv_aliastup in
-                  let chain_updated = (caller, Define (caller, (second_of statetup_with_returnv)))::acc in
+                  let statetup_with_returnv =
+                    find_statetup_holding_aliastup caller_astate returnv_aliastup in
+                  let chain_updated =
+                    (caller, Define (caller, (second_of statetup_with_returnv)))::acc in
                   (* recurse *)
-                  compute_chain_inner caller caller_astate statetup_with_returnv chain_updated retry
+                  compute_chain_inner caller caller_astate
+                    statetup_with_returnv chain_updated retry
               end ~init:current_chain callers_and_astates
           else if exists ~f: begin fun ap -> is_param_ap ap end otherwise then
             (* if one or more param variables exist for a single callee,
@@ -735,7 +738,8 @@ let rec compute_chain_inner (current_methname: Procname.t) (current_astate_set: 
                       find_statetup_holding_aliastup callee_astate target_returnv
                     with
                     | IBase.Die.InferInternalError _ -> bottuple in
-                  let chain_updated = (current_methname, Call (callee, param_ap_in_question))::acc in
+                  let chain_updated =
+                    (current_methname, Call (callee, param_ap_in_question))::acc in
                   if T.equal alias_with_returnv bottuple then acc else
                     compute_chain_inner current_methname current_astate_set
                       alias_with_returnv chain_updated retry

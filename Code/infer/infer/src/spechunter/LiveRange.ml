@@ -13,7 +13,6 @@ module T = DefLocAliasDomain.AbstractState
 module L = Logging
 module F = Format
 module Exn = Core_kernel.Exn
-module Option = Core_kernel.Option
 
 exception TODO
 exception IDontKnow
@@ -347,12 +346,11 @@ let find_direct_callees (target_meth: Procname.t) : (Procname.t * S.t) list =
   G.succ callgraph target_vertex
 
 
-(* this needs a FULL rewrite! *)
 let have_been_before (target_meth: Procname.t) (acc: chain): bool =
   fold ~f:
     begin
       fun acc (current_meth, _) ->
-        Procname.equal current_meth target_meth || found
+        Procname.equal current_meth target_meth || acc
     end ~init:false acc
 
 

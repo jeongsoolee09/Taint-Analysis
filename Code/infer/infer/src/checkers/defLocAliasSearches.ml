@@ -299,3 +299,11 @@ let search_target_tuple_by_vardef_ap (ap:MyAccessPath.t) (methname:Procname.t) (
         then target
         else search_target_tuple_by_ap_inner ap methname t in
   search_target_tuple_by_ap_inner ap methname elements
+
+
+let search_astate_holding_param (astate_set: S.t) (param: A.elt) : S.elt =
+  let collected = S.fold (fun astate acc ->
+      if A.mem param @@ fourth_of astate then astate::acc else acc
+    ) astate_set [] in
+  assert (Int.equal (List.length collected) 1);
+  List.hd_exn collected

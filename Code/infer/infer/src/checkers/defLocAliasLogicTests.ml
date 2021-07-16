@@ -146,7 +146,7 @@ let is_foreign_ap (ap: A.elt) (current_methname: Procname.t): bool =
     L.die InternalError "is_foreign_ap failed, ap: %a, current_methname: %a"
       MyAccessPath.pp ap Procname.pp current_methname
   | Some declaring_proc ->
-    Procname.equal current_methname declaring_proc
+    not @@ Procname.equal current_methname declaring_proc
 
 
 (** Pvar.is_frontend_tmp를 Var로 일반화하는 wrapping function *)

@@ -724,23 +724,23 @@ let rec compute_chain_inner (current_methname : Procname.t) (current_astate_set 
           (current_methname, Dead)::current_chain
         else
           current_chain
-      (* the following if-then-else sequences encodes
-         the level of preferences among different A.elt's. *)
+          (* the following if-then-else sequences encodes
+             the level of preferences among different A.elt's. *)
     else if exists ~f:(fun (var, _) -> Var.is_return var) var_aps then
       let callers_and_astates = find_direct_callers current_methname in
       (* ============ DEFINITION AT THE CALLER ============ *)
       let collected = fold
-        ~f:(fun acc (caller, caller_astate_set) ->
-            let returnv_aliastup =
-              find_returnv_holding_callee_astateset current_methname caller_astate_set
-            in
-            let statetup_with_returnv =
-              find_statetup_holding_aliastup caller_astate_set returnv_aliastup
-            in
-            let chain_updated = (caller, Define (current_methname, second_of statetup_with_returnv))::acc in
-            (* recurse *)
-            compute_chain_inner caller caller_astate_set statetup_with_returnv chain_updated)
-        ~init:[] callers_and_astates in
+          ~f:(fun acc (caller, caller_astate_set) ->
+              let returnv_aliastup =
+                find_returnv_holding_callee_astateset current_methname caller_astate_set
+              in
+              let statetup_with_returnv =
+                find_statetup_holding_aliastup caller_astate_set returnv_aliastup
+              in
+              let chain_updated = (caller, Define (current_methname, second_of statetup_with_returnv))::acc in
+              (* recurse *)
+              compute_chain_inner caller caller_astate_set statetup_with_returnv chain_updated)
+          ~init:[] callers_and_astates in
       collected @ current_chain
     else if exists ~f:(fun ap -> is_callv_ap ap) var_aps then
       (* ============ CALL ============ *)
@@ -756,22 +756,22 @@ let rec compute_chain_inner (current_methname : Procname.t) (current_astate_set 
                     (current_methname, Call (callee, param_ap_in_question)) :: acc
                   in
                   compute_chain_inner callee callee_astate_set bottuple chain_updated)
-          ~init:[] callees_and_astates in
+            ~init:[] callees_and_astates in
         collected @ current_chain
       else
         (* UDF call *)
         let collected = fold
-          ~f:(fun acc (callee, callee_astate_set) ->
-              try
-                let param_statetup =
-                  search_target_tuple_by_pvar_ap param_ap_in_question callee callee_astate_set
-                in
-                let chain_updated =
-                  (current_methname, Call (callee, param_ap_in_question))::acc
-                in
-                compute_chain_inner callee callee_astate_set param_statetup chain_updated
-              with _ -> acc)
-          ~init:[] callees_and_astates in
+            ~f:(fun acc (callee, callee_astate_set) ->
+                try
+                  let param_statetup =
+                    search_target_tuple_by_pvar_ap param_ap_in_question callee callee_astate_set
+                  in
+                  let chain_updated =
+                    (current_methname, Call (callee, param_ap_in_question))::acc
+                  in
+                  compute_chain_inner callee callee_astate_set param_statetup chain_updated
+                with _ -> acc)
+            ~init:[] callees_and_astates in
         collected @ current_chain
     else if
       (* either REDEFINITION or DEAD.
@@ -811,14 +811,14 @@ let rec compute_chain_inner (current_methname : Procname.t) (current_astate_set 
     if not @@ Procname.equal declaring_function current_methname then
       (* ============ CALL ============ *)
       let collected = fold
-        ~f:(fun acc (callee, callee_astate) ->
-            try
-              let landing_pad = find_statetup_holding_aliastup callee_astate real_aliastup in
-              let chain_updated = (current_methname, Call (callee, real_aliastup))::acc in
-              compute_chain_inner callee callee_astate landing_pad chain_updated
-            with _ -> acc)
-        ~init:[] callees_and_astates in
-        collected @ current_chain
+          ~f:(fun acc (callee, callee_astate) ->
+              try
+                let landing_pad = find_statetup_holding_aliastup callee_astate real_aliastup in
+                let chain_updated = (current_methname, Call (callee, real_aliastup))::acc in
+                compute_chain_inner callee callee_astate landing_pad chain_updated
+              with _ -> acc)
+          ~init:[] callees_and_astates in
+      collected @ current_chain
     else
       (* ============ SIMPLE DEFINITION ============ *)
       let other_statetup =
@@ -965,10 +965,7 @@ let main () =
       && (not @@ is_param var)
       && (not @@ is_callv var))
   |> iter ~f:(fun (proc, ap) ->
-      if
-        String.equal (Procname.to_string proc) "Integer ObjectFlowing.source()"
-        && String.equal (F.asprintf "%a" Var.pp (fst ap)) "x"
-      then add_chain (proc, ap) @@ compute_chain ap) ;
+      add_chain (proc, ap) @@ compute_chain ap) ;
   (* ============ Serialize ============ *)
   let wrapped_chains =
     Hashtbl.fold

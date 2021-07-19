@@ -2,3 +2,5 @@
 infer-out/
 example/
 *.txt
+*.dot
+*.png

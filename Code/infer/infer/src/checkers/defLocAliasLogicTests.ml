@@ -1,5 +1,4 @@
 open! IStd
-open DefLocAliasSearches
 open DefLocAliasDomain
 module L = Logging
 module P = DefLocAliasDomain.AbstractPair
@@ -9,8 +8,34 @@ module T = DefLocAliasDomain.AbstractState
 module String = Core_kernel.String
 
 exception NotImplemented
-
 exception IDontKnow
+
+let weak_search_target_tuple_by_id (id:Ident.t) (astate_set:S.t) : T.t =
+  let elements = S.elements astate_set in
+  let rec inner id (elements:S.elt list) =
+    match elements with
+    | [] -> L.die InternalError
+              "weak_search_target_tuple_by_id failed, id: %a, astate_set: %a@."
+              Ident.pp id S.pp astate_set
+    | target::t ->
+      let aliasset = fourth_of target in
+      if A.mem (Var.of_id id, []) aliasset
+      then target
+      else inner id t in
+  inner id elements
+
+
+let search_target_tuple_by_id (id:Ident.t) (methname:Procname.t) (astate_set:S.t) : T.t =
+  let elements = S.elements astate_set in
+  let rec inner id (methname:Procname.t) elements =
+    match elements with
+    | [] -> raise IDontKnow
+    | ((procname, _, _, aliasset) as target)::t ->
+      if Procname.equal procname methname && A.mem (Var.of_id id, []) aliasset
+      then target
+      else inner id methname t in
+  inner id methname elements
+
 
 let is_program_var_expr (exp : Exp.t) : bool = match exp with Lvar _ -> true | _ -> false
 
@@ -22,6 +47,12 @@ let is_logical_var (var : Var.t) : bool =
 
 let is_program_var (var : Var.t) : bool =
   match var with LogicalVar _ -> false | ProgramVar _ -> true
+
+let is_program_var_ap (ap:A.elt) : bool =
+  let var, _ = ap in
+  match var with
+  | LogicalVar _ -> false
+  | ProgramVar _ -> true
 
 
 let convert_from_mangled : Procname.t -> Mangled.t * Typ.t -> Var.t =

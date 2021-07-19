@@ -668,14 +668,6 @@ let rec compute_chain_inner (current_methname : Procname.t) (current_astate_set 
         acc @ find_returnv_or_carriedover_ap current_astate_set callee_astate_set)
       ~init:[] callees
   in
-  L.progress "current_methname: %a, returnv_or_carriedovers: %a@." Procname.pp current_methname
-    pp_ap_list statetup_with_returnv_or_carriedovers ;
-  iter
-    ~f:(fun ap ->
-      L.progress "statetup_with_returnv_or_carriedovers %a declared at: %a@." MyAccessPath.pp ap
-        Procname.pp
-        (get_declaring_function_ap_exn ap))
-    statetup_with_returnv_or_carriedovers ;
   let something_else =
     filter
       ~f:
@@ -741,7 +733,6 @@ let rec compute_chain_inner (current_methname : Procname.t) (current_astate_set 
         let collected =
           fold
             ~f:(fun acc (caller, caller_astate_set) ->
-              (* if is_empty statetup_with_returnv_or_carriedovers then *)
               let returnv_aliastup =
                 find_returnv_holding_callee_astateset current_methname caller_astate_set
               in
@@ -752,19 +743,7 @@ let rec compute_chain_inner (current_methname : Procname.t) (current_astate_set 
                 (caller, Define (current_methname, second_of statetup_with_returnv)) :: acc
               in
               (* recurse *)
-              compute_chain_inner caller caller_astate_set statetup_with_returnv chain_updated
-              (* else
-               *   let defined =
-               *     fold
-               *       ~f:(fun acc' statetup ->
-               *         (\* L.progress "iterating on statetup: %a@." T.pp statetup ; *\)
-               *         let chain_updated =
-               *           (caller, Define (current_methname, second_of statetup)) :: acc'
-               *         in
-               *         compute_chain_inner caller caller_astate_set statetup chain_updated)
-               *       ~init:acc statetup_with_returnv_or_carriedovers
-               *   in
-               *   defined @ acc *))
+              compute_chain_inner caller caller_astate_set statetup_with_returnv chain_updated)
             ~init:[] callers_and_astates
         in
         collected @ current_chain
@@ -820,7 +799,6 @@ let rec compute_chain_inner (current_methname : Procname.t) (current_astate_set 
         let least_recently_redefined =
           next_elem_of_list all_states_with_current_ap ~next_to:current_astate
         in
-        (* NOTE SKETCHY!!! *)
         let current_ap = second_of current_astate in
         let current_astate_set_updated = S.remove current_astate current_astate_set in
         (* remove the current_astate from current_astate_set *)
@@ -831,9 +809,10 @@ let rec compute_chain_inner (current_methname : Procname.t) (current_astate_set 
       else
         (* ============ DEAD ============ *)
         (* no more recursion; return *)
-        let current_node = (current_methname, current_astate_set) in
-        let is_leaf = is_empty @@ G.succ callgraph current_node in
-        if is_leaf then (current_methname, Dead) :: current_chain else current_chain
+        (* let current_node = (current_methname, current_astate_set) in
+         * let is_leaf = is_empty @@ G.succ callgraph current_node in
+         * if is_leaf then (current_methname, Dead) :: current_chain else current_chain *)
+        (current_methname, Dead) :: current_chain
   | [real_aliastup] ->
       let declaring_function = option_get @@ get_declaring_function_ap real_aliastup in
       let callees_and_astates = find_direct_callees current_methname in
@@ -849,7 +828,6 @@ let rec compute_chain_inner (current_methname : Procname.t) (current_astate_set 
               with _ -> acc)
             ~init:[] callees_and_astates
         in
-        (* L.progress "collected: %a@." pp_chain collected ; *)
         collected @ current_chain
       else
         (* ============ SIMPLE DEFINITION ============ *)
@@ -1004,6 +982,11 @@ let main () =
          && (not @@ is_param var)
          && (not @@ is_callv var))
   |> iter ~f:(fun (proc, ap) -> add_chain (proc, ap) @@ compute_chain ap) ;
+  (* |> iter ~f:(fun (proc, ap) ->
+   *        if
+   *          String.equal (Procname.to_string proc) "void ForLoopExample.f()"
+   *          && String.equal (F.asprintf "%a" Var.pp (fst ap)) "a"
+   *        then add_chain (proc, ap) @@ compute_chain ap) ; *)
   (* ============ Serialize ============ *)
   let wrapped_chains =
     Hashtbl.fold

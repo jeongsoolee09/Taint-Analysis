@@ -1,5 +1,3 @@
-package example;
-
 public class InterLivenessExampleLinear {
     InterLivenessExampleLinear() {}
 

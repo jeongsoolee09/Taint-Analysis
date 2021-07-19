@@ -1,5 +1,3 @@
-package example;
-
 class Node {
     Node next;
 

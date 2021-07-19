@@ -40,8 +40,9 @@ public class RelationalDataAccessApplication {
     }
 
     public void printer(Map<String, Object> results) throws Exception {
-       Object elem = results.get("John");
-       System.out.println(elem);
+        // 이걸 for loop을 통해 traverse하는 방식으로 해 봅시다.
+        for (Object name : results.values())
+            System.out.println("name: " + name);
     }
 
     public void bridge() throws Exception {

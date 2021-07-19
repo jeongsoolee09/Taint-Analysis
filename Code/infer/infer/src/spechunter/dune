@@ -11,6 +11,4 @@
   (pps ppx_compare ppx_deriving.show)))
 
 (documentation
- (package infer)
- ; (mld_files SpecHunter)
-)
+ (package infer))

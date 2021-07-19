@@ -6,3 +6,4 @@ classes/
 infer-out/
 SwanFeatures.csv
 /build
+*.rtf

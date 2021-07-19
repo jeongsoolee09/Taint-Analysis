@@ -518,7 +518,7 @@ let extract_SourceToReturn ~(source_name:string) =
             (* need to leverage the static analysis:
                iterate through the set and search for the return variable,
                and see if params or its aliases are return var's aliases *)
-            let return_tups = Search.find_tuples_with_ret (fst summary) meth in
+            let return_tups = Search.find_tuples_with_ret (fst summary) in
             let return_aliases = List.map ~f:(fun return_tup -> fourth_of return_tup) return_tups
                                  |> List.fold ~f:(fun acc set -> A.union acc set) ~init:A.empty
                                  |> A.elements in
@@ -927,7 +927,7 @@ let extract_ParaFlowsToReturn =
               |> A.elements in
             (* 2. Get the pvar tuples of the return variables *)
             let ret_var_aps =
-              Search.find_tuples_with_ret (fst summary) meth
+              Search.find_tuples_with_ret (fst summary)
               |> List.map ~f:fourth_of
               |> big_union_A
               |> A.elements in

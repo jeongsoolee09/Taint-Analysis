@@ -219,6 +219,20 @@ let find_least_linenumber (statelist : T.t list) : T.t =
   inner statelist (List.nth_exn statelist 0)
 
 
+let find_most_linenumber (statelist : T.t list) : T.t =
+  let rec inner (statelist : T.t list) (current_least : T.t) : T.t =
+    L.d_printfln "statelist: %a@." pp_tuplelist statelist ;
+    match statelist with
+    | [] ->
+        current_least
+    | targetState :: t ->
+        let snd_target = third_of targetState in
+        let snd_current = third_of current_least in
+        if snd_current ==> snd_target then inner t targetState else inner t current_least
+  in
+  inner statelist (List.nth_exn statelist 0)
+
+
 (** pick the earliest TUPLE within a list of astates *)
 let find_earliest_tuple_within (astatelist : S.elt list) : T.t =
   let locations = List.sort ~compare:LocationSet.compare (List.map ~f:third_of astatelist) in

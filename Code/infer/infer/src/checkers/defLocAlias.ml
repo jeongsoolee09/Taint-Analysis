@@ -163,14 +163,14 @@ module TransferFunctions (CFG : ProcCfg.S) = struct
 
   (** callee가 return c;꼴로 끝날 경우 새로 튜플을 만들고 alias set에 c를 추가 *)
   let variable_carryover astate_set callee_methname ret_id methname summ_read =
-    let calleeTuples = find_tuples_with_ret summ_read callee_methname in
+    let calleeTuples = find_tuples_with_ret summ_read in
     (** 콜리 튜플 하나에 대해, 튜플 하나를 새로 만들어 alias set에 추가 *)
     let carryfunc (tup:T.t) =
       let ph = placeholder_vardef methname in
       let callee_vardef, _ = second_of tup in
       let aliasset =
         if Var.is_return callee_vardef
-        then (* 'returnv' itself should not be considered a pvar that is carrried over *)
+        then (* 'return' itself should not be considered a pvar that is carrried over *)
           A.add (mk_returnv callee_methname, []) @@ A.singleton (Var.of_id ret_id, [])
         else
           A.add (mk_returnv callee_methname, []) @@ doubleton (callee_vardef, []) (Var.of_id ret_id, []) in
@@ -526,7 +526,7 @@ module TransferFunctions (CFG : ProcCfg.S) = struct
         begin match input_is_void_type arg_ts (fst apair) with
           | true -> (* All Arguments are Just Constants: just apply the summary, make a new tuple and end *)
             let astate_set_summary_applied =
-              apply_summary (fst apair) apair callee_methname ret_id methname in
+              apply_summary (fst apair) callee_summary callee_methname ret_id methname in
               let aliasset = A.add (mk_returnv callee_methname, []) @@ A.singleton (Var.of_id ret_id, []) in
               let loc = LocationSet.singleton Location.dummy in
               let newtuple = (methname, (placeholder_vardef methname, []), loc, aliasset) in
@@ -535,7 +535,7 @@ module TransferFunctions (CFG : ProcCfg.S) = struct
           | false -> (* There is at least one argument which is a non-thisvar variable *)
               begin try
                   let astate_set_summary_applied =
-                    apply_summary (fst apair) apair callee_methname ret_id methname in
+                    apply_summary (fst apair) callee_summary callee_methname ret_id methname in
                   let formals = get_formal_args analyze_dependency callee_methname in
                   begin match formals with
                     | [] -> (* Callee in Native Code! *)
@@ -686,7 +686,7 @@ module TransferFunctions (CFG : ProcCfg.S) = struct
               (newset, snd apair)
           | true ->
               let targetTuples = search_target_tuples_by_vardef (Var.of_pvar pvar) methname (fst apair) in
-              let (proc, var, loc, aliasset) as targetTuple = find_least_linenumber targetTuples in
+              let (proc, var, loc, aliasset) as targetTuple = find_most_linenumber targetTuples in
               let newtuple = (proc, var, loc, A.add (Var.of_id id, []) aliasset) in
               let newstate = newtuple in
               let astate_rmvd = S.remove targetTuple (fst apair) in

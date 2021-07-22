@@ -8,32 +8,33 @@ module T = DefLocAliasDomain.AbstractState
 module String = Core_kernel.String
 
 exception NotImplemented
+
 exception IDontKnow
 
-let weak_search_target_tuple_by_id (id:Ident.t) (astate_set:S.t) : T.t =
+let weak_search_target_tuple_by_id (id : Ident.t) (astate_set : S.t) : T.t =
   let elements = S.elements astate_set in
-  let rec inner id (elements:S.elt list) =
+  let rec inner id (elements : S.elt list) =
     match elements with
-    | [] -> L.die InternalError
-              "weak_search_target_tuple_by_id failed, id: %a, astate_set: %a@."
-              Ident.pp id S.pp astate_set
-    | target::t ->
-      let aliasset = fourth_of target in
-      if A.mem (Var.of_id id, []) aliasset
-      then target
-      else inner id t in
+    | [] ->
+        L.die InternalError "weak_search_target_tuple_by_id failed, id: %a, astate_set: %a@."
+          Ident.pp id S.pp astate_set
+    | target :: t ->
+        let aliasset = fourth_of target in
+        if A.mem (Var.of_id id, []) aliasset then target else inner id t
+  in
   inner id elements
 
 
-let search_target_tuple_by_id (id:Ident.t) (methname:Procname.t) (astate_set:S.t) : T.t =
+let search_target_tuple_by_id (id : Ident.t) (methname : Procname.t) (astate_set : S.t) : T.t =
   let elements = S.elements astate_set in
-  let rec inner id (methname:Procname.t) elements =
+  let rec inner id (methname : Procname.t) elements =
     match elements with
-    | [] -> raise IDontKnow
-    | ((procname, _, _, aliasset) as target)::t ->
-      if Procname.equal procname methname && A.mem (Var.of_id id, []) aliasset
-      then target
-      else inner id methname t in
+    | [] ->
+        raise IDontKnow
+    | ((procname, _, _, aliasset) as target) :: t ->
+        if Procname.equal procname methname && A.mem (Var.of_id id, []) aliasset then target
+        else inner id methname t
+  in
   inner id methname elements
 
 
@@ -48,11 +49,10 @@ let is_logical_var (var : Var.t) : bool =
 let is_program_var (var : Var.t) : bool =
   match var with LogicalVar _ -> false | ProgramVar _ -> true
 
-let is_program_var_ap (ap:A.elt) : bool =
+
+let is_program_var_ap (ap : A.elt) : bool =
   let var, _ = ap in
-  match var with
-  | LogicalVar _ -> false
-  | ProgramVar _ -> true
+  match var with LogicalVar _ -> false | ProgramVar _ -> true
 
 
 let convert_from_mangled : Procname.t -> Mangled.t * Typ.t -> Var.t =
@@ -142,7 +142,8 @@ let is_return_ap (ap : A.elt) : bool =
 
 let is_callv (var : Var.t) : bool =
   match var with
-  | LogicalVar _ -> false
+  | LogicalVar _ ->
+      false
   | ProgramVar pv ->
       String.is_substring (Pvar.to_string pv) ~substring:"callv"
 
@@ -150,14 +151,16 @@ let is_callv (var : Var.t) : bool =
 let is_callv_ap (ap : A.elt) : bool =
   let var, _ = ap in
   match var with
-  | LogicalVar _ -> false
+  | LogicalVar _ ->
+      false
   | ProgramVar pv ->
       String.is_substring (Pvar.to_string pv) ~substring:"callv"
 
 
 let is_param (var : Var.t) : bool =
   match var with
-  | LogicalVar _ -> false
+  | LogicalVar _ ->
+      false
   | ProgramVar pv ->
       String.is_substring (Pvar.to_string pv) ~substring:"param"
 
@@ -165,19 +168,20 @@ let is_param (var : Var.t) : bool =
 let is_param_ap (ap : A.elt) : bool =
   let var, _ = ap in
   match var with
-  | LogicalVar _ -> false
+  | LogicalVar _ ->
+      false
   | ProgramVar pv ->
       String.is_substring (Pvar.to_string pv) ~substring:"param"
 
 
-let is_foreign_ap (ap: A.elt) (current_methname: Procname.t): bool =
+let is_foreign_ap (ap : A.elt) (current_methname : Procname.t) : bool =
   let var = fst ap in
   match Var.get_declaring_function var with
   | None ->
-    L.die InternalError "is_foreign_ap failed, ap: %a, current_methname: %a"
-      MyAccessPath.pp ap Procname.pp current_methname
+      L.die InternalError "is_foreign_ap failed, ap: %a, current_methname: %a" MyAccessPath.pp ap
+        Procname.pp current_methname
   | Some declaring_proc ->
-    not @@ Procname.equal current_methname declaring_proc
+      not @@ Procname.equal current_methname declaring_proc
 
 
 (** Pvar.is_frontend_tmp를 Var로 일반화하는 wrapping function *)

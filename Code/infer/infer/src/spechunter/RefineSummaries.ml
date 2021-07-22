@@ -41,7 +41,6 @@ let extract_linum_from_param (ap : MyAccessPath.t) : int =
 
 
 let consolidate_irvars (astate_set : S.t) : S.t =
-  (* 1. irvar들을 모두 긁어모아 리스트 (irvars)에 담아둔다. *)
   let irvars =
     S.fold
       (fun astate acc ->
@@ -49,8 +48,6 @@ let consolidate_irvars (astate_set : S.t) : S.t =
         if is_irvar_ap ap then S.add astate acc else acc)
       astate_set S.empty
   in
-  (* 2. irvar들의 locationset에 따라 irvars를 파티션한다. *)
-  (* 하나의 S.t가 하나의 파티션 *)
   let partition_statetups_by_locset (statetups : S.t) : (S.t * LocationSet.t) list =
     let locsets : LocationSet.t list =
       List.stable_dedup
@@ -84,6 +81,30 @@ let consolidate_irvars (astate_set : S.t) : S.t =
       let location = get_singleton locset in
       let statetups_holding_param =
         search_target_tuples_holding_param location.col (S.elements acc)
+        |> List.filter ~f:(fun statetup -> not @@ LocationSet.equal locset @@ third_of statetup)
+        |> S.of_list
       in
-      raise TODO)
+      let locset_aliasset_combined =
+        S.fold
+          (fun statetup acc' ->
+            let aliasset = fourth_of statetup in
+            A.union acc' aliasset)
+          partition A.empty
+      in
+      let updated_tuples =
+        S.map
+          (fun statetup ->
+            let aliasset = fourth_of statetup in
+            let new_aliasset = A.union aliasset locset_aliasset_combined in
+            raise TODO)
+          statetups_holding_param
+      in
+      let acc_updated =
+        (* strong-update *)
+        let acc_rmvd =
+          S.filter (fun statetup -> not @@ S.mem statetup statetups_holding_param) acc
+        in
+        S.union acc_rmvd statetups_holding_param
+      in
+      acc_updated)
     ~init:astate_set partitions

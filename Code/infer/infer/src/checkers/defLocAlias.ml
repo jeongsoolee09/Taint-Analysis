@@ -2,6 +2,7 @@ open! IStd
 open DefLocAliasDomain
 open DefLocAliasSearches
 open DefLocAliasPredicates
+open DefLocAliasPP
 
 (** Interprocedural Liveness Checker with alias relations
     and redefinitions in mind. *)
@@ -101,12 +102,6 @@ module TransferFunctions (CFG : ProcCfg.S) = struct
     inner methname pvar elements
 
 
-  let pp_aliasset_list fmt (varsetlist:A.t list) =
-    F.fprintf fmt "[";
-    List.iter varsetlist ~f:(fun (aliasset:A.t) -> F.fprintf fmt "%a, " A.pp aliasset);
-    F.fprintf fmt "]"
-
-
   (** given a doubleton set of lv and pv, extract the pv. *)
   let rec extract_another_pvar (id:Ident.t) (varsetlist:A.t list) : Var.t =
     match varsetlist with
@@ -125,18 +120,6 @@ module TransferFunctions (CFG : ProcCfg.S) = struct
                    "extract_another_pvar failed, id: %a, varsetlist: %a@."
                    Ident.pp id pp_aliasset_list varsetlist end
         else extract_another_pvar id t
-
-
-  let pp_bindinglist fmt (bindinglist:(Var.t * Var.t) list) =
-    F.fprintf fmt "[";
-    List.iter bindinglist ~f:(fun (a, f) -> F.fprintf fmt "(%a, %a)" Var.pp a Var.pp f);
-    F.fprintf fmt "]"
-
-
-  let pp_astatelist fmt (astatelist:T.t list) =
-    F.fprintf fmt "[";
-    List.iter astatelist ~f:(fun astate -> F.fprintf fmt "%a, " T.pp astate);
-    F.fprintf fmt "]"
 
 
   (** Takes an actual(logical)-formal binding list and adds the formals to the respective pvar tuples of the actual arguments *)
@@ -182,18 +165,6 @@ module TransferFunctions (CFG : ProcCfg.S) = struct
   (** 변수가 리턴된다면 그걸 alias set에 넣는다 (variable carryover) *)
   let apply_summary astate_set callee_summary callee_methname ret_id caller_methname : S.t =
     variable_carryover astate_set callee_methname ret_id caller_methname (fst callee_summary)
-
-
-  let pp_explist fmt (explist:Exp.t list) =
-    F.fprintf fmt "[";
-    List.iter explist ~f:(fun exp -> F.fprintf fmt "%a, " Exp.pp exp);
-    F.fprintf fmt "]"
-
-
-  let pp_varlist fmt (varlist:Var.t list) =
-    F.fprintf fmt "[";
-    List.iter varlist ~f:(fun var -> F.fprintf fmt "%a, " Var.pp var);
-    F.fprintf fmt "]"
 
 
   let rec my_zip (l1:Var.t list) (l2:Var.t list) =

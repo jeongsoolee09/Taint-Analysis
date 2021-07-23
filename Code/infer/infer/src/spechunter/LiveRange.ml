@@ -2,6 +2,7 @@ open! IStd
 open DefLocAliasSearches
 open DefLocAliasPredicates
 open DefLocAliasDomain
+open DefLocAliasPP
 open Yojson.Basic
 open List
 module Hashtbl = Caml.Hashtbl
@@ -62,39 +63,9 @@ let pp_pair fmt (proc, v) = F.fprintf fmt "(%a, %a) ->" Procname.pp proc pp_stat
 
 let pp_chain fmt x = Pp.seq pp_pair fmt x
 
-let pp_pairofms fmt (proc, summ) =
-  F.fprintf fmt "(" ;
-  F.fprintf fmt "%a, %a" Procname.pp proc S.pp summ ;
-  F.fprintf fmt ")"
-
-
-let pp_pairofms_list fmt list =
-  F.fprintf fmt "[" ;
-  List.iter ~f:(fun x -> F.fprintf fmt "%a@." pp_pairofms x) list ;
-  F.fprintf fmt "]"
-
-
-let pp_ap_list fmt aplist =
-  F.fprintf fmt "[" ;
-  List.iter ~f:(fun ap -> F.fprintf fmt "%a, " MyAccessPath.pp ap) aplist ;
-  F.fprintf fmt "]"
-
-
 let pp_MyAccessChain fmt (var, aplist) = F.fprintf fmt "(%a, %a)" Var.pp var pp_ap_list aplist
 
 let string_of_vertex (proc, astateset) = F.asprintf "\"(%a, %a)\"" Procname.pp proc S.pp astateset
-
-let pp_tuplelist fmt (lst : T.t list) =
-  F.fprintf fmt "[" ;
-  iter ~f:(fun tup -> F.fprintf fmt "%a, " T.pp tup) lst ;
-  F.fprintf fmt "]"
-
-
-let pp_tuplelistlist fmt (lstlst : T.t list list) =
-  F.fprintf fmt "[" ;
-  iter ~f:(fun lst -> pp_tuplelist fmt lst) lstlst ;
-  F.fprintf fmt "]"
-
 
 (** specially mangled variable to mark a value as returned from callee *)
 let mk_returnv procname =
@@ -981,11 +952,3 @@ let main () =
   in
   let complete_json_representation = make_complete_representation wrapped_chains in
   write_json complete_json_representation
-
-
-let main () =
-  MyCallGraph.load_callgraph_from_disk_to callgraph_table ;
-  save_callgraph () ;
-  SummaryLoader.load_summary_from_disk_to summary_table ;
-  RefineSummaries.main summary_table ;
-  print_summary_table ()

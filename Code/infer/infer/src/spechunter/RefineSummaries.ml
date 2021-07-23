@@ -12,33 +12,8 @@ module F = Format
 
 exception TODO
 
-(* Summary Table ==================================== *)
+(* Consolidating $irvars ============================ *)
 (* ================================================== *)
-
-let summary_table =
-  let new_table = Hashtbl.create 777 in
-  SummaryLoader.load_summary_from_disk_to new_table ;
-  new_table
-
-
-let get_summary (key : Procname.t) : S.t = try Hashtbl.find summary_table key with _ -> S.empty
-
-let pp_summary_table fmt hashtbl : unit =
-  Hashtbl.iter (fun k v -> F.fprintf fmt "%a -> %a\n" Procname.pp k S.pp v) hashtbl
-
-
-let extract_linum_from_param (ap : MyAccessPath.t) : int =
-  match fst ap with
-  | LogicalVar _ ->
-      L.die InternalError "extract_linum_from_param failed: ap: %a@." MyAccessPath.pp ap
-  | ProgramVar pv -> (
-    match is_param_ap ap with
-    | true ->
-        Pvar.to_string pv |> String.split ~on:'_'
-        |> fun str_list -> List.nth_exn str_list 2 |> int_of_string
-    | false ->
-        L.die InternalError "extract_linum_from_param failed: ap: %a@." MyAccessPath.pp ap )
-
 
 let consolidate_irvars (astate_set : S.t) : S.t =
   let irvars =
@@ -108,3 +83,51 @@ let consolidate_irvars (astate_set : S.t) : S.t =
       in
       acc_updated)
     ~init:astate_set partitions
+
+
+let consolidate_irvar_table (table : (Methname.t, S.t) Hashtbl.t) : (Methname.t, S.t) Hashtbl.t =
+  Hashtbl.iter
+    (fun proc summary ->
+      let consolidated = consolidate_irvars summary in
+      Hashtbl.remove table proc ;
+      Hashtbl.add table proc consolidated)
+    table ;
+  table
+
+
+let return (table : (Methname.t, S.t) Hashtbl.t) : unit = Hashtbl.iter (fun _ _ -> ()) table
+
+(* removing unimportant elements ==================== *)
+(* ================================================== *)
+
+let remove_unimportant_elems (table : (Methname.t, S.t) Hashtbl.t) : (Methname.t, S.t) Hashtbl.t =
+  let filter_garbage_astate tup =
+    let var, _ = second_of tup in
+    (not @@ is_placeholder_vardef var)
+    && (not @@ is_logical_var var)
+    && (not @@ is_frontend_tmp_var var)
+  in
+  let filter_garbage_aliastup ap =
+    let var = fst ap in
+    (not @@ is_placeholder_vardef var)
+    && (not @@ is_logical_var var)
+    && (not @@ is_frontend_tmp_var var)
+  in
+  Hashtbl.iter
+    (fun key summary ->
+      let filtered_garbage_astates =
+        S.filter filter_garbage_astate summary
+        |> S.map (fun (proc, vardef, locset, aliasset) ->
+               let filtered_aliastup = A.filter filter_garbage_aliastup aliasset in
+               (proc, vardef, locset, filtered_aliastup))
+      in
+      Hashtbl.replace table key filtered_garbage_astates)
+    table ;
+  table
+
+
+(* Refining functions =============================== *)
+(* ================================================== *)
+
+let main : (Methname.t, S.t) Hashtbl.t -> unit =
+  consolidate_irvar_table >> remove_unimportant_elems >> return

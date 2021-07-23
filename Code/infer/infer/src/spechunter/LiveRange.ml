@@ -1,6 +1,6 @@
 open! IStd
 open DefLocAliasSearches
-open DefLocAliasLogicTests
+open DefLocAliasPredicates
 open DefLocAliasDomain
 open Yojson.Basic
 open List
@@ -11,9 +11,6 @@ module A = DefLocAliasDomain.SetofAliases
 module T = DefLocAliasDomain.AbstractState
 module L = Logging
 module F = Format
-module Exn = Core_kernel.Exn
-
-exception TODO of string
 
 type status =
   | Define of (Procname.t * MyAccessPath.t)
@@ -145,6 +142,17 @@ let pp_summary_table fmt hashtbl : unit =
   Hashtbl.iter (fun k v -> F.fprintf fmt "%a -> %a\n" Procname.pp k S.pp v) hashtbl
 
 
+let print_summary_table () =
+  Hashtbl.iter
+    (fun proc summary ->
+      L.progress "procname: %a, " Procname.pp proc ;
+      L.progress "summary: %a@." S.pp summary)
+    summary_table
+
+
+(* Procnames and their formal args ================== *)
+(* ================================================== *)
+
 (** map from procname to its formal args. *)
 let formal_args = Hashtbl.create 777
 
@@ -181,31 +189,6 @@ let batch_print_formal_args () =
       iter v ~f:(L.progress "%a, " Var.pp) ;
       L.progress "\n")
     formal_args
-
-
-let refine_summary_table () =
-  let filter_garbage_astate tup =
-    let var, _ = second_of tup in
-    (not @@ is_placeholder_vardef var)
-    && (not @@ is_logical_var var)
-    && (not @@ is_frontend_tmp_var var)
-  in
-  let filter_garbage_aliastup ap =
-    let var = fst ap in
-    (not @@ is_placeholder_vardef var)
-    && (not @@ is_logical_var var)
-    && (not @@ is_frontend_tmp_var var)
-  in
-  Hashtbl.iter
-    (fun key _ ->
-      let filtered_garbage_astates =
-        S.filter filter_garbage_astate @@ get_summary key
-        |> S.map (fun (proc, vardef, locset, aliasset) ->
-               let filtered_aliastup = A.filter filter_garbage_aliastup aliasset in
-               (proc, vardef, locset, filtered_aliastup))
-      in
-      Hashtbl.replace summary_table key filtered_garbage_astates)
-    summary_table
 
 
 (* CallGraph ======================================== *)
@@ -646,6 +629,12 @@ let option_get : 'a option -> 'a = function
       elem
 
 
+let reduce (list : 'a list) ~(f : 'b -> 'a -> 'b) ~(init : 'b) : 'b =
+  if is_empty list then L.die InternalError "reducing an empty list!@." else fold_left list ~f ~init
+
+
+let apis_without_returnvs = ["StringBuilder StringBuilder.append(String)"]
+
 let rec compute_chain_inner (current_methname : Procname.t) (current_astate_set : S.t)
     (current_astate : S.elt) (current_chain : chain) : chain =
   let ap_filter tup =
@@ -695,11 +684,6 @@ let rec compute_chain_inner (current_methname : Procname.t) (current_astate_set 
               && (not @@ mem statetup_with_returnv_or_carriedovers ~equal:MyAccessPath.equal ap) )
       var_aps
   in
-  iter
-    ~f:(fun ap ->
-      L.progress "something_else %a declared at: %a@." MyAccessPath.pp ap Procname.pp
-        (get_declaring_function_ap_exn ap))
-    something_else ;
   L.progress "============ current_methname: %a, something_else: %a, current_chain: %a@."
     Procname.pp current_methname pp_ap_list something_else pp_chain (rev current_chain) ;
   match something_else with
@@ -749,40 +733,42 @@ let rec compute_chain_inner (current_methname : Procname.t) (current_astate_set 
         collected @ current_chain
       else if exists ~f:(fun ap -> is_callv_ap ap) var_aps then
         (* ============ CALL ============ *)
-        let param_ap_in_question = find_param_ap (fourth_of current_astate) current_methname in
-        let callees_and_astates = find_direct_callees current_methname in
-        if is_param_ap param_ap_in_question then
-          (* API call *)
-          let collected =
-            fold
-              ~f:(fun acc (callee, callee_astate_set) ->
-                let param_callee = extract_callee_from param_ap_in_question in
-                if not @@ Procname.equal callee param_callee then acc
-                else
-                  let chain_updated =
-                    (current_methname, Call (callee, param_ap_in_question)) :: acc
-                  in
-                  compute_chain_inner callee callee_astate_set bottuple chain_updated)
-              ~init:[] callees_and_astates
-          in
-          collected @ current_chain
-        else
-          (* UDF call *)
-          let collected =
-            fold
-              ~f:(fun acc (callee, callee_astate_set) ->
-                try
-                  let param_statetup =
-                    search_target_tuple_by_pvar_ap param_ap_in_question callee callee_astate_set
-                  in
-                  let chain_updated =
-                    (current_methname, Call (callee, param_ap_in_question)) :: acc
-                  in
-                  compute_chain_inner callee callee_astate_set param_statetup chain_updated
-                with _ -> acc)
-              ~init:[] callees_and_astates
-          in
-          collected @ current_chain
+        let param_aps_in_question = find_param_aps (fourth_of current_astate) current_methname in
+        let reduced =
+          reduce
+            ~f:(fun acc param_ap ->
+              let callees_and_astates = find_direct_callees current_methname in
+              if is_param_ap param_ap then
+                (* API call *)
+                let collected =
+                  fold
+                    ~f:(fun acc' (callee, callee_astate_set) ->
+                      let param_callee = extract_callee_from param_ap in
+                      if not @@ Procname.equal callee param_callee then acc'
+                      else
+                        let chain_updated = (current_methname, Call (callee, param_ap)) :: acc' in
+                        compute_chain_inner callee callee_astate_set bottuple chain_updated)
+                    ~init:[] callees_and_astates
+                in
+                collected @ acc
+              else
+                (* UDF call *)
+                let collected =
+                  fold
+                    ~f:(fun acc' (callee, callee_astate_set) ->
+                      try
+                        let param_statetup =
+                          search_target_tuple_by_pvar_ap param_ap callee callee_astate_set
+                        in
+                        let chain_updated = (current_methname, Call (callee, param_ap)) :: acc' in
+                        compute_chain_inner callee callee_astate_set param_statetup chain_updated
+                      with _ -> acc')
+                    ~init:[] callees_and_astates
+                in
+                collected @ acc)
+            ~init:[] param_aps_in_question
+        in
+        reduced @ current_chain
       else if
         (* either REDEFINITION or DEAD.
            check which one is the case by checking if there are multiple current_vardefs in the alias set *)
@@ -809,9 +795,6 @@ let rec compute_chain_inner (current_methname : Procname.t) (current_astate_set 
       else
         (* ============ DEAD ============ *)
         (* no more recursion; return *)
-        (* let current_node = (current_methname, current_astate_set) in
-         * let is_leaf = is_empty @@ G.succ callgraph current_node in
-         * if is_leaf then (current_methname, Dead) :: current_chain else current_chain *)
         (current_methname, Dead) :: current_chain
   | [real_aliastup] ->
       let declaring_function = option_get @@ get_declaring_function_ap real_aliastup in
@@ -964,7 +947,7 @@ let main () =
   MyCallGraph.load_callgraph_from_disk_to callgraph_table ;
   save_callgraph () ;
   SummaryLoader.load_summary_from_disk_to summary_table ;
-  refine_summary_table () ;
+  RefineSummaries.main summary_table ;
   batch_add_formal_args () ;
   filter_callgraph_table callgraph_table ;
   save_skip_function () ;
@@ -998,3 +981,11 @@ let main () =
   in
   let complete_json_representation = make_complete_representation wrapped_chains in
   write_json complete_json_representation
+
+
+let main () =
+  MyCallGraph.load_callgraph_from_disk_to callgraph_table ;
+  save_callgraph () ;
+  SummaryLoader.load_summary_from_disk_to summary_table ;
+  RefineSummaries.main summary_table ;
+  print_summary_table ()

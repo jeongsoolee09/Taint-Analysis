@@ -1,6 +1,6 @@
 open! IStd
 open DefLocAliasDomain
-open DefLocAliasLogicTests
+open DefLocAliasPredicates
 module L = Logging
 module F = Format
 module P = DefLocAliasDomain.AbstractPair

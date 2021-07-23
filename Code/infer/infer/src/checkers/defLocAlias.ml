@@ -1,7 +1,7 @@
 open! IStd
 open DefLocAliasDomain
 open DefLocAliasSearches
-open DefLocAliasLogicTests
+open DefLocAliasPredicates
 
 (** Interprocedural Liveness Checker with alias relations
     and redefinitions in mind. *)

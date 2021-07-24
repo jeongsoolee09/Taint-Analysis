@@ -65,3 +65,15 @@ let pp_tuplelistlist fmt (lstlst : T.t list list) =
   F.fprintf fmt "[" ;
   List.iter ~f:(fun lst -> pp_tuplelist fmt lst) lstlst ;
   F.fprintf fmt "]"
+
+
+let pp_tuplesetlist fmt (lst : S.t list) =
+  F.fprintf fmt "[" ;
+  List.iter ~f:(fun tupset -> F.fprintf fmt "%a, " S.pp tupset) lst ;
+  F.fprintf fmt "]"
+
+
+let pp_locationsetlist fmt (lst : LocationSet.t list) =
+  F.fprintf fmt "[" ;
+  List.iter ~f:(fun locset -> F.fprintf fmt "%a, " LocationSet.pp locset) lst ;
+  F.fprintf fmt "]"

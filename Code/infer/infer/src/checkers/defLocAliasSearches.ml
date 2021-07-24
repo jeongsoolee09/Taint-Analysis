@@ -8,7 +8,7 @@ module S = DefLocAliasDomain.AbstractStateSetFinite
 module A = DefLocAliasDomain.SetofAliases
 module T = DefLocAliasDomain.AbstractState
 
-exception TODO of string
+exception TODO
 
 exception IDontKnow
 
@@ -249,16 +249,13 @@ let find_earliest_astate_within (astatelist : S.elt list) (methname : Procname.t
   let locations = List.sort ~compare:LocationSet.compare (List.map ~f:third_of astatelist) in
   match List.nth locations 0 with
   | Some earliest_location ->
-      (* L.progress "looking for %a in %a@." LocationSet.pp earliest_location pp_tuplelist astatelist; *)
       search_astate_by_loc earliest_location astatelist
   | None ->
       raise IDontKnow
 
 
-(* L.die InternalError "find_earliest_astate_within failed, astatelist: %a, Method: %a@." S.pp (S.of_list astatelist) Procname.pp methname *)
-
 let find_earliest_astate_of_var_within (tuplelist : S.elt list) (methname : Procname.t) : T.t =
-  let vartuples = (* List.filter ~f:(fun tup -> Var.equal var (second_of tup)) *) tuplelist in
+  let vartuples = tuplelist in
   find_earliest_astate_within vartuples methname
 
 
@@ -350,7 +347,7 @@ let search_target_tuple_by_vardef_ap (ap : MyAccessPath.t) (methname : Procname.
     match elements with
     | [] ->
         raise IDontKnow
-        (* L.die InternalError "search_target_tuple_by_vardef_ap failed, ap:%a, methname: %a, elements: %a" MyAccessPath.pp ap Procname.pp methname pp_tuplelist elements *)
+    (* L.die InternalError "search_target_tuple_by_vardef_ap failed, ap:%a, methname: %a, elements: %a" MyAccessPath.pp ap Procname.pp methname pp_tuplelist elements *)
     | ((procname, vardef, _, _) as target) :: t ->
         if Procname.equal procname methname && MyAccessPath.equal ap vardef then target
         else inner ap methname t
@@ -368,7 +365,7 @@ let search_astate_holding_param (astate_set : S.t) (param : A.elt) : S.elt =
   List.hd_exn collected
 
 
-let find_param_ap (aliasset : A.t) (current_methname : Procname.t) : A.elt =
+let find_param_aps (aliasset : A.t) (current_methname : Procname.t) : A.elt list =
   let res =
     A.fold
       (fun ap acc ->
@@ -379,12 +376,8 @@ let find_param_ap (aliasset : A.t) (current_methname : Procname.t) : A.elt =
   | [] ->
       L.die InternalError "find_param_ap failed (no match): aliasset: %a, current_methname: %a@."
         A.pp aliasset Procname.pp current_methname
-  | [ap] ->
-      ap
-  | _ ->
-      L.die InternalError
-        "find_param_ap failed (too many matches): aliasset: %a, current_methname: %a@." A.pp
-        aliasset Procname.pp current_methname
+  | ap_list ->
+      ap_list
 
 
 let find_foreign_ap (aliasset : A.t) (current_methname : Procname.t) : A.elt option =
@@ -446,3 +439,32 @@ let find_returnv_or_carriedover_ap (caller_astate_set : S.t) (callee_astate_set 
       caller_astate_set []
   in
   carried_over_vars @ returnvs
+
+
+let extract_linum_from_param (ap : MyAccessPath.t) : int =
+  match fst ap with
+  | LogicalVar _ ->
+      L.die InternalError "extract_linum_from_param failed: ap: %a@." MyAccessPath.pp ap
+  | ProgramVar pv -> (
+    match is_param_ap ap with
+    | true ->
+        Pvar.to_string pv |> String.split ~on:'_'
+        |> fun str_list -> List.nth_exn str_list 2 |> int_of_string
+    | false ->
+        L.die InternalError "extract_linum_from_param failed: ap: %a@." MyAccessPath.pp ap )
+
+
+let search_target_tuples_holding_param (location : int) (tuplelist : T.t list) : T.t list =
+  List.fold
+    ~f:(fun acc statetup ->
+      let astateset = fourth_of statetup in
+      let is_match =
+        A.fold
+          (fun ap acc' ->
+            if is_param_ap ap then
+              (is_param_ap ap && extract_linum_from_param ap == location) || acc'
+            else acc')
+          astateset false
+      in
+      if is_match then statetup :: acc else acc)
+    ~init:[] tuplelist

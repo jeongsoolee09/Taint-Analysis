@@ -2,6 +2,7 @@ open! IStd
 open DefLocAliasSearches
 open DefLocAliasPredicates
 open DefLocAliasDomain
+open DefLocAliasPP
 module Hashtbl = Caml.Hashtbl
 module P = DefLocAliasDomain.AbstractPair
 module S = DefLocAliasDomain.AbstractStateSetFinite
@@ -55,7 +56,7 @@ let consolidate_irvars (astate_set : S.t) : S.t =
     ~f:(fun acc (partition, locset) ->
       let location = get_singleton locset in
       let statetups_holding_param =
-        search_target_tuples_holding_param location.col (S.elements acc)
+        search_target_tuples_holding_param location.line (S.elements acc)
         |> List.filter ~f:(fun statetup -> not @@ LocationSet.equal locset @@ third_of statetup)
         |> S.of_list
       in
@@ -68,10 +69,10 @@ let consolidate_irvars (astate_set : S.t) : S.t =
       in
       let updated_tuples =
         S.map
-          (fun statetup ->
-            let aliasset = fourth_of statetup in
+          (fun (proc, vardef, loc, aliasset) ->
             let new_aliasset = A.union aliasset locset_aliasset_combined in
-            raise TODO)
+            L.progress "proc: %a, new_aliasset: %a@." Procname.pp proc A.pp new_aliasset ;
+            (proc, vardef, loc, new_aliasset))
           statetups_holding_param
       in
       let acc_updated =
@@ -79,7 +80,7 @@ let consolidate_irvars (astate_set : S.t) : S.t =
         let acc_rmvd =
           S.filter (fun statetup -> not @@ S.mem statetup statetups_holding_param) acc
         in
-        S.union acc_rmvd statetups_holding_param
+        S.union acc_rmvd updated_tuples
       in
       acc_updated)
     ~init:astate_set partitions
@@ -88,9 +89,10 @@ let consolidate_irvars (astate_set : S.t) : S.t =
 let consolidate_irvar_table (table : (Methname.t, S.t) Hashtbl.t) : (Methname.t, S.t) Hashtbl.t =
   Hashtbl.iter
     (fun proc summary ->
-      let consolidated = consolidate_irvars summary in
-      Hashtbl.remove table proc ;
-      Hashtbl.add table proc consolidated)
+      if String.equal (Procname.to_string proc) "void RelationalDataAccessApplication.run()" then (
+        let consolidated = consolidate_irvars summary in
+        Hashtbl.remove table proc ;
+        Hashtbl.add table proc consolidated ))
     table ;
   table
 
@@ -126,8 +128,21 @@ let remove_unimportant_elems (table : (Methname.t, S.t) Hashtbl.t) : (Methname.t
   table
 
 
-(* Refining functions =============================== *)
-(* ================================================== *)
+let print_summary_table table =
+  L.progress "==================== printing from RefineSummaries! ====================@." ;
+  Hashtbl.iter
+    (fun proc summary ->
+      L.progress "procname: %a, " Procname.pp proc ;
+      L.progress "summary: %a@." S.pp summary)
+    table ;
+  L.progress "========================================================================@."
+
 
 let main : (Methname.t, S.t) Hashtbl.t -> unit =
-  consolidate_irvar_table >> remove_unimportant_elems >> return
+ fun table ->
+  (* TEMP *)
+  print_summary_table @@ consolidate_irvar_table table ;
+  table |> (consolidate_irvar_table >> return) ;
+  L.die InternalError "STOP!@."
+
+(* >> remove_unimportant_elems  >> return *)

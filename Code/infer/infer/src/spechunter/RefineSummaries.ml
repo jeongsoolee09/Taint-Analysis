@@ -128,6 +128,72 @@ let remove_unimportant_elems (table : (Methname.t, S.t) Hashtbl.t) : (Methname.t
   table
 
 
+(** Extract the callee's method name embedded in returnv, callv, or param. *)
+let extract_callee_from (ap : MyAccessPath.t) =
+  let special, _ = ap in
+  match special with
+  | LogicalVar _ ->
+      L.die InternalError "extract_callee_from failed"
+  | ProgramVar pv -> (
+    match Pvar.get_declaring_function pv with
+    | Some procname ->
+        procname
+    | None ->
+        L.die InternalError "extract_callee_from failed" )
+
+
+(* Delete compensating parmas and returnvs ========== *)
+(* ================================================== *)
+
+(** Extract the callee's method name embedded in returnv, callv, or param. *)
+let extract_callee_from (ap : MyAccessPath.t) =
+  let special, _ = ap in
+  match special with
+  | LogicalVar _ ->
+      L.die InternalError "extract_callee_from failed"
+  | ProgramVar pv -> (
+    match Pvar.get_declaring_function pv with
+    | Some procname ->
+        procname
+    | None ->
+        L.die InternalError "extract_callee_from failed" )
+
+
+let delete_compensating_param_returnv (table : (Methname.t, S.t) Hashtbl.t) :
+    (Methname.t, S.t) Hashtbl.t =
+  let one_pass_A (aliasset : A.t) : A.t =
+    let returnvs = A.elements @@ A.filter is_returnv_ap aliasset in
+    let params = A.elements @@ A.filter is_param_ap aliasset in
+    let carpro =
+      let open List in
+      returnvs >>= fun returnv -> params >>= fun param -> return (returnv, param)
+    in
+    let compensating_pairs =
+      List.filter
+        ~f:(fun (returnv, param) ->
+          let returnv_meth_simple = Procname.get_method @@ extract_callee_from returnv in
+          let param_meth_simple = Procname.get_method @@ extract_callee_from param in
+          String.equal returnv_meth_simple param_meth_simple)
+        carpro
+    in
+    let to_delete =
+      List.fold ~f:(fun acc (returnv, param) -> returnv :: param :: acc) ~init:[] compensating_pairs
+    in
+    (* once we identified the compensating pairs, we remove them from the aliasset *)
+    A.filter (fun alias_ap -> not @@ List.mem to_delete alias_ap ~equal:MyAccessPath.equal) aliasset
+  in
+  let one_pass_S (astate_set : S.t) : S.t =
+    S.map
+      (fun (proc, vardef, locset, aliasset) -> (proc, vardef, locset, one_pass_A aliasset))
+      astate_set
+  in
+  Hashtbl.iter (fun proc astate_set -> Hashtbl.replace table proc (one_pass_S astate_set)) table ;
+  table
+
+
+(* For debugging ==================================== *)
+(* ================================================== *)
+
 let print_summary_table table =
   L.progress "==================== printing from RefineSummaries! ====================@." ;
   Hashtbl.iter
@@ -138,11 +204,11 @@ let print_summary_table table =
   L.progress "========================================================================@."
 
 
+(* Main ============================================= *)
+(* ================================================== *)
+
 let main : (Methname.t, S.t) Hashtbl.t -> unit =
  fun table ->
   (* TEMP *)
   print_summary_table @@ consolidate_irvar_table table ;
-  table |> (consolidate_irvar_table >> return) ;
-  L.die InternalError "STOP!@."
-
-(* >> remove_unimportant_elems  >> return *)
+  table |> (consolidate_irvar_table >> remove_unimportant_elems >> return)

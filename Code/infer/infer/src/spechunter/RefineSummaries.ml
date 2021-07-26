@@ -2,7 +2,8 @@ open! IStd
 open DefLocAliasSearches
 open DefLocAliasPredicates
 open DefLocAliasDomain
-open DefLocAliasPP
+
+(* open DefLocAliasPP *)
 module Hashtbl = Caml.Hashtbl
 module P = DefLocAliasDomain.AbstractPair
 module S = DefLocAliasDomain.AbstractStateSetFinite
@@ -71,7 +72,6 @@ let consolidate_irvars (astate_set : S.t) : S.t =
         S.map
           (fun (proc, vardef, loc, aliasset) ->
             let new_aliasset = A.union aliasset locset_aliasset_combined in
-            L.progress "proc: %a, new_aliasset: %a@." Procname.pp proc A.pp new_aliasset ;
             (proc, vardef, loc, new_aliasset))
           statetups_holding_param
       in
@@ -96,8 +96,6 @@ let consolidate_irvar_table (table : (Methname.t, S.t) Hashtbl.t) : (Methname.t,
     table ;
   table
 
-
-let return (table : (Methname.t, S.t) Hashtbl.t) : unit = Hashtbl.iter (fun _ _ -> ()) table
 
 (* removing unimportant elements ==================== *)
 (* ================================================== *)
@@ -191,6 +189,35 @@ let delete_compensating_param_returnv (table : (Methname.t, S.t) Hashtbl.t) :
   table
 
 
+(* Remove initializer calls *)
+(* ================================================== *)
+
+let delete_initializer_callv_param (table : (Methname.t, S.t) Hashtbl.t) :
+    (Methname.t, S.t) Hashtbl.t =
+  let one_pass_A (aliasset : A.t) : A.t =
+    A.filter
+      (fun ap ->
+        not
+          ( (is_callv_ap ap || is_param_ap ap)
+          &&
+          let procname = extract_callee_from ap in
+          is_initializer procname ))
+      aliasset
+  in
+  let one_pass_S (astate_set : S.t) : S.t =
+    S.map
+      (fun (proc, vardef, locset, aliasset) -> (proc, vardef, locset, one_pass_A aliasset))
+      astate_set
+  in
+  Hashtbl.iter (fun proc astate_set -> Hashtbl.replace table proc (one_pass_S astate_set)) table ;
+  table
+
+
+(* Return =========================================== *)
+(* ================================================== *)
+
+let return (table : (Methname.t, S.t) Hashtbl.t) : unit = Hashtbl.iter (fun _ _ -> ()) table
+
 (* For debugging ==================================== *)
 (* ================================================== *)
 
@@ -209,6 +236,5 @@ let print_summary_table table =
 
 let main : (Methname.t, S.t) Hashtbl.t -> unit =
  fun table ->
-  (* TEMP *)
-  print_summary_table @@ consolidate_irvar_table table ;
-  table |> (consolidate_irvar_table >> remove_unimportant_elems >> return)
+  table |> delete_initializer_callv_param |> consolidate_irvar_table |> remove_unimportant_elems
+  |> delete_compensating_param_returnv |> return

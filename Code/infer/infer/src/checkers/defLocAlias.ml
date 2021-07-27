@@ -619,7 +619,7 @@ module TransferFunctions (CFG : ProcCfg.S) = struct
     (* 1-1. Associate mangled parameters and their resp. actual arguments as aliases. *)
     let actuals_logical = arg_ts >>| (fst >> convert_exp_to_logical) in
     let callvs = List.init (List.length actuals_logical)
-        ~f:(fun _ -> mk_callv_pvar caller_methname) in
+        ~f:(fun _ -> mk_callv_pvar callee_methname) in
     let astate_set' = batch_alias_assoc astate_set actuals_logical mangled_params
                       |> (fun astate_set ->
                           batch_alias_assoc astate_set actuals_logical callvs) in

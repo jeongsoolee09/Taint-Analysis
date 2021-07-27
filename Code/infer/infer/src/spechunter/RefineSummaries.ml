@@ -1,4 +1,5 @@
 open! IStd
+open DefLocAliasPP
 open DefLocAliasSearches
 open DefLocAliasPredicates
 open DefLocAliasDomain
@@ -39,7 +40,7 @@ let partition_statetups_by_locset (statetups : S.t) : (LocationSet.t * S.t) list
 let rec assoc (alist : ('a * 'b) list) (key : 'a) ~equal : 'b =
   match alist with
   | [] ->
-      L.die InternalError "Could not found matching ones"
+      raise (Failure "Could not find matching ones")
   | (key', value) :: t ->
       if equal key key' then value else assoc t key ~equal
 
@@ -264,22 +265,30 @@ let consolidate_frontend_by_locset (table : (Methname.t, S.t) Hashtbl.t) :
            (fun astate acc ->
              let locset = third_of astate in
              locset :: acc)
-           astate_set []
+           real_var_astates []
     in
     (* We got the locsets, so pair the real_var astates and frontend_var_astates by the locset *)
     let realvar_frontendvar_pairedup : (S.t * S.t) list =
-      List.map
-        ~f:(fun locset ->
-          let matching_realvar_partition =
-            assoc real_var_astates_partitioned locset ~equal:LocationSet.equal
-          in
-          let matching_frontendvar_partition =
-            assoc frontend_var_astates_partitioned locset ~equal:LocationSet.equal
-          in
-          (* sanity check *)
-          assert (Int.equal (S.cardinal matching_realvar_partition) 1) ;
-          (matching_realvar_partition, matching_frontendvar_partition))
-        locsets
+      (* gotta fold instead of map *)
+      List.fold
+        ~f:(fun acc locset ->
+          try
+            let matching_frontendvar_partition =
+              assoc frontend_var_astates_partitioned locset ~equal:LocationSet.equal
+            in
+            let matching_realvar_partition =
+              try assoc real_var_astates_partitioned locset ~equal:LocationSet.equal
+              with _ ->
+                L.die InternalError
+                  "assoc failed: locset: %a, astate_set: %a, realvars_partitioned: %a@."
+                  LocationSet.pp locset S.pp astate_set pp_tuplesetlist
+                  (List.map real_var_astates_partitioned ~f:snd)
+            in
+            (* sanity check *)
+            assert (Int.equal (S.cardinal matching_realvar_partition) 1) ;
+            (matching_realvar_partition, matching_frontendvar_partition) :: acc
+          with _ -> acc)
+        locsets ~init:[]
     in
     (* Now, combine them together! *)
     List.fold
@@ -320,7 +329,10 @@ let print_summary_table table =
   L.progress "========================================================================@."
 
 
+let summary_table_to_file table = raise TODO
+
 (* Main ============================================= *)
 (* ================================================== *)
 
-let main : (Methname.t, S.t) Hashtbl.t -> unit = fun table -> raise TODO
+let main : (Methname.t, S.t) Hashtbl.t -> unit =
+ fun table -> table |> consolidate_frontend_by_locset |> return

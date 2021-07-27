@@ -329,10 +329,29 @@ let print_summary_table table =
   L.progress "========================================================================@."
 
 
-let summary_table_to_file table = raise TODO
+let summary_table_to_file_and_return (filename : string) (table : (Methname.t, S.t) Hashtbl.t) :
+    (Methname.t, S.t) Hashtbl.t =
+  let out_chan = Out_channel.create filename in
+  Hashtbl.iter
+    (fun proc astate_set ->
+      let proc_string = Procname.to_string proc in
+      let astate_set_string = F.asprintf "%a" S.pp astate_set in
+      let string_to_write =
+        F.asprintf "Summary for %s: ========================@. %s@.@." proc_string astate_set_string
+      in
+      Out_channel.output_string out_chan string_to_write)
+    table ;
+  Out_channel.close out_chan ;
+  table
+
 
 (* Main ============================================= *)
 (* ================================================== *)
 
 let main : (Methname.t, S.t) Hashtbl.t -> unit =
- fun table -> table |> consolidate_frontend_by_locset |> return
+ fun table ->
+  table
+  |> summary_table_to_file_and_return "raw_astate_set.txt"
+  |> consolidate_frontend_by_locset
+  |> summary_table_to_file_and_return "consolidate_by_locset.txt"
+  |> return

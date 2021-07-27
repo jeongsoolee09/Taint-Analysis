@@ -14,6 +14,36 @@ module F = Format
 
 exception TODO
 
+let partition_statetups_by_locset (statetups : S.t) : (LocationSet.t * S.t) list =
+  let locsets : LocationSet.t list =
+    List.stable_dedup
+    @@ S.fold
+         (fun astate acc ->
+           let locset = third_of astate in
+           locset :: acc)
+         statetups []
+  in
+  List.fold
+    ~f:(fun acc locset ->
+      let matches =
+        S.fold
+          (fun statetup acc' ->
+            if LocationSet.equal locset (third_of statetup) then S.add statetup acc' else acc')
+          statetups S.empty
+      in
+      (locset, matches) :: acc)
+    ~init:[] locsets
+
+
+(** Return the first matching value for a key in a association list. *)
+let rec assoc (alist : ('a * 'b) list) (key : 'a) ~equal : 'b =
+  match alist with
+  | [] ->
+      L.die InternalError "Could not found matching ones"
+  | (key', value) :: t ->
+      if equal key key' then value else assoc t key ~equal
+
+
 (* Consolidating $irvars ============================ *)
 (* ================================================== *)
 
@@ -25,26 +55,6 @@ let consolidate_irvars (astate_set : S.t) : S.t =
         if is_irvar_ap ap then S.add astate acc else acc)
       astate_set S.empty
   in
-  let partition_statetups_by_locset (statetups : S.t) : (S.t * LocationSet.t) list =
-    let locsets : LocationSet.t list =
-      List.stable_dedup
-      @@ S.fold
-           (fun astate acc ->
-             let locset = third_of astate in
-             locset :: acc)
-           statetups []
-    in
-    List.fold
-      ~f:(fun acc locset ->
-        let matches =
-          S.fold
-            (fun statetup acc' ->
-              if LocationSet.equal locset (third_of statetup) then S.add statetup acc' else acc')
-            statetups S.empty
-        in
-        (matches, locset) :: acc)
-      ~init:[] locsets
-  in
   let get_singleton (locset : LocationSet.t) : Location.t =
     match LocationSet.elements locset with
     | [loc] ->
@@ -54,7 +64,7 @@ let consolidate_irvars (astate_set : S.t) : S.t =
   in
   let partitions = partition_statetups_by_locset irvars in
   List.fold
-    ~f:(fun acc (partition, locset) ->
+    ~f:(fun acc (locset, partition) ->
       let location = get_singleton locset in
       let statetups_holding_param =
         search_target_tuples_holding_param location.line (S.elements acc)
@@ -213,6 +223,85 @@ let delete_initializer_callv_param (table : (Methname.t, S.t) Hashtbl.t) :
   table
 
 
+(* EXPERIMENTAL: consolidate all frontend temp vars by their LocationSet.ts *)
+(* ================================================== *)
+
+let consolidate_frontend_by_locset (table : (Methname.t, S.t) Hashtbl.t) :
+    (Methname.t, S.t) Hashtbl.t =
+  let get_singleton (astate_set : S.t) : T.t =
+    match S.elements astate_set with
+    | [statetup] ->
+        statetup
+    | _ ->
+        L.die InternalError "This is not a singleton location set!: %a@." S.pp astate_set
+  in
+  let one_pass_S (astate_set : S.t) : S.t =
+    let real_var_astates =
+      S.filter
+        (fun astate ->
+          let ap = second_of astate in
+          (not @@ is_this_ap ap)
+          && (not @@ is_placeholder_vardef (fst ap))
+          && (not @@ is_frontend_tmp_var_ap ap)
+          && (not @@ is_returnv_ap ap)
+          && (not @@ is_return_ap ap)
+          && (not @@ is_param_ap ap)
+          && (not @@ is_callv_ap ap))
+        astate_set
+    in
+    let frontend_var_astates =
+      S.filter
+        (fun astate ->
+          let ap = second_of astate in
+          is_frontend_tmp_var_ap ap)
+        astate_set
+    in
+    let real_var_astates_partitioned = partition_statetups_by_locset real_var_astates in
+    let frontend_var_astates_partitioned = partition_statetups_by_locset frontend_var_astates in
+    let locsets : LocationSet.t list =
+      List.stable_dedup
+      @@ S.fold
+           (fun astate acc ->
+             let locset = third_of astate in
+             locset :: acc)
+           astate_set []
+    in
+    (* We got the locsets, so pair the real_var astates and frontend_var_astates by the locset *)
+    let realvar_frontendvar_pairedup : (S.t * S.t) list =
+      List.map
+        ~f:(fun locset ->
+          let matching_realvar_partition =
+            assoc real_var_astates_partitioned locset ~equal:LocationSet.equal
+          in
+          let matching_frontendvar_partition =
+            assoc frontend_var_astates_partitioned locset ~equal:LocationSet.equal
+          in
+          (* sanity check *)
+          assert (Int.equal (S.cardinal matching_realvar_partition) 1) ;
+          (matching_realvar_partition, matching_frontendvar_partition))
+        locsets
+    in
+    (* Now, combine them together! *)
+    List.fold
+      ~f:(fun acc (realvar_set, frontendvar_set) ->
+        let real_proc, real_vardef, real_locset, real_aliasset = get_singleton realvar_set in
+        let frontendvar_sets_aliasset =
+          S.fold
+            (fun statetup acc ->
+              let aliasset = fourth_of statetup in
+              A.union acc aliasset)
+            frontendvar_set A.empty
+        in
+        let combined_aliasset = A.fold A.add frontendvar_sets_aliasset real_aliasset in
+        let newtuple = (real_proc, real_vardef, real_locset, combined_aliasset) in
+        S.add newtuple acc)
+      ~init:S.empty realvar_frontendvar_pairedup
+    (* one_pass_S end *)
+  in
+  Hashtbl.iter (fun proc astate_set -> Hashtbl.replace table proc (one_pass_S astate_set)) table ;
+  table
+
+
 (* Return =========================================== *)
 (* ================================================== *)
 
@@ -234,7 +323,4 @@ let print_summary_table table =
 (* Main ============================================= *)
 (* ================================================== *)
 
-let main : (Methname.t, S.t) Hashtbl.t -> unit =
- fun table ->
-  table |> delete_initializer_callv_param |> consolidate_irvar_table |> remove_unimportant_elems
-  |> delete_compensating_param_returnv |> return
+let main : (Methname.t, S.t) Hashtbl.t -> unit = fun table -> raise TODO

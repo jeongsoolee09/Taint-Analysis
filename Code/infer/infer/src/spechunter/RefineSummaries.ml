@@ -268,7 +268,7 @@ let consolidate_frontend_by_locset (table : (Methname.t, S.t) Hashtbl.t) :
            real_var_astates []
     in
     (* We got the locsets, so pair the real_var astates and frontend_var_astates by the locset *)
-    let realvar_frontendvar_pairedup : (S.t * S.t) list =
+    let realvar_frontendvar_alist : (T.t * S.t) list =
       (* gotta fold instead of map *)
       List.fold
         ~f:(fun acc locset ->
@@ -286,25 +286,30 @@ let consolidate_frontend_by_locset (table : (Methname.t, S.t) Hashtbl.t) :
             in
             (* sanity check *)
             assert (Int.equal (S.cardinal matching_realvar_partition) 1) ;
-            (matching_realvar_partition, matching_frontendvar_partition) :: acc
+            (get_singleton matching_realvar_partition, matching_frontendvar_partition) :: acc
           with _ -> acc)
         locsets ~init:[]
     in
     (* Now, combine them together! *)
-    List.fold
-      ~f:(fun acc (realvar_set, frontendvar_set) ->
-        let real_proc, real_vardef, real_locset, real_aliasset = get_singleton realvar_set in
-        let frontendvar_sets_aliasset =
-          S.fold
-            (fun statetup acc ->
-              let aliasset = fourth_of statetup in
-              A.union acc aliasset)
-            frontendvar_set A.empty
+    S.map
+      (fun statetup ->
+        let should_be_touched =
+          List.mem (List.map ~f:fst realvar_frontendvar_alist) statetup ~equal:T.equal
         in
-        let combined_aliasset = A.fold A.add frontendvar_sets_aliasset real_aliasset in
-        let newtuple = (real_proc, real_vardef, real_locset, combined_aliasset) in
-        S.add newtuple acc)
-      ~init:S.empty realvar_frontendvar_pairedup
+        if should_be_touched then
+          let real_proc, real_vardef, real_locset, real_aliasset = statetup in
+          let frontendvar_set = assoc realvar_frontendvar_alist statetup ~equal:T.equal in
+          let frontendvar_sets_aliasset =
+            S.fold
+              (fun statetup acc ->
+                let aliasset = fourth_of statetup in
+                A.union acc aliasset)
+              frontendvar_set A.empty
+          in
+          let combined_aliasset = A.fold A.add frontendvar_sets_aliasset real_aliasset in
+          (real_proc, real_vardef, real_locset, combined_aliasset)
+        else statetup)
+      astate_set
     (* one_pass_S end *)
   in
   Hashtbl.iter (fun proc astate_set -> Hashtbl.replace table proc (one_pass_S astate_set)) table ;

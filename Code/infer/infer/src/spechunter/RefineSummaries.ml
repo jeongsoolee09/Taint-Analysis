@@ -267,9 +267,7 @@ let consolidate_frontend_by_locset (table : (Methname.t, S.t) Hashtbl.t) :
              locset :: acc)
            real_var_astates []
     in
-    (* We got the locsets, so pair the real_var astates and frontend_var_astates by the locset *)
     let realvar_frontendvar_alist : (T.t * S.t) list =
-      (* gotta fold instead of map *)
       List.fold
         ~f:(fun acc locset ->
           try
@@ -290,7 +288,6 @@ let consolidate_frontend_by_locset (table : (Methname.t, S.t) Hashtbl.t) :
           with _ -> acc)
         locsets ~init:[]
     in
-    (* Now, combine them together! *)
     S.map
       (fun statetup ->
         let should_be_touched =

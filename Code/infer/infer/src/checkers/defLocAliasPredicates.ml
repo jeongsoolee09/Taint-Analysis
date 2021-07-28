@@ -189,6 +189,11 @@ let is_frontend_tmp_var (var : Var.t) : bool =
   match var with LogicalVar _ -> false | ProgramVar pv -> Pvar.is_frontend_tmp pv
 
 
+(** Pvar.is_frontend_tmp를 Var로 일반화하는 wrapping function *)
+let is_frontend_tmp_var_ap (ap : MyAccessPath.t) : bool =
+  match fst ap with LogicalVar _ -> false | ProgramVar pv -> Pvar.is_frontend_tmp pv
+
+
 let is_irvar_ap (ap : A.elt) : bool =
   match fst ap with
   | LogicalVar _ ->
@@ -196,7 +201,7 @@ let is_irvar_ap (ap : A.elt) : bool =
   | ProgramVar pv ->
       String.is_substring (Pvar.to_string pv) ~substring:"irvar"
 
-(* let there_is_thisvar (arg_ts:(Exp.t * Typ.t) list) : bool =
-  let actualarg_exp = List.map ~f:fst arg_ts in
-  if not @@ List.exists ~f:is_logical_var_expr actualarg_exp then L.die InternalError "there_is_thisvar failed: there is at least one non-logicalvar in arg_ts";
-  if List.exists ~f:is_this_ actualarg_exp then true else false *)
+
+let is_initializer (procname : Procname.t) =
+  let proc_string = Procname.to_string procname in
+  String.is_substring proc_string ~substring:"<init>"

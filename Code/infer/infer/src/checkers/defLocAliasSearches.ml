@@ -462,7 +462,7 @@ let search_target_tuples_holding_param (location : int) (tuplelist : T.t list) :
         A.fold
           (fun ap acc' ->
             if is_param_ap ap then
-              (is_param_ap ap && extract_linum_from_param ap == location) || acc'
+              (is_param_ap ap && Int.equal (extract_linum_from_param ap) location) || acc'
             else acc')
           astateset false
       in

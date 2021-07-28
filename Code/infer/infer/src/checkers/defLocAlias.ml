@@ -523,7 +523,7 @@ module TransferFunctions (CFG : ProcCfg.S) = struct
                         let actuals_pvar_tuples = actuals_logical
                                                   |> filter ~f:is_logical_var
                                                   |> map ~f:mapfunc in
-                        let mangled_callv = (mk_callv methname, []) in
+                        let mangled_callv = (mk_callv callee_methname, []) in
                         let astate_set_callv_added =
                           S.map (fun (p, v, l, a) ->
                               let aliasset_callv_added = A.add mangled_callv a in
@@ -553,7 +553,7 @@ module TransferFunctions (CFG : ProcCfg.S) = struct
                           add_bindings_to_alias_of_tuples methname actuallog_formal_binding
                             actuals_pvar_tuples (snd apair)
                           |> S.of_list in
-                        let mangled_callv = (mk_callv methname, []) in
+                        let mangled_callv = (mk_callv callee_methname, []) in
                         let actualpvar_callv_added =
                           S.map (fun (p, v, l, a) ->
                               let aliasset_callv_added = A.add mangled_callv a in

@@ -468,3 +468,30 @@ let search_target_tuples_holding_param (location : int) (tuplelist : T.t list) :
       in
       if is_match then statetup :: acc else acc)
     ~init:[] tuplelist
+
+
+let extract_number_from_callv (callv_ap : A.elt) : int =
+  assert (is_callv_ap callv_ap) ;
+  let varname = F.asprintf "%a" Var.pp (fst callv_ap) in
+  (* the callv naming scheme is callv_{number}: {callee_methname} *)
+  let splitted = String.split varname ~on:':' in
+  let callv_string = List.nth_exn splitted 0 in
+  let int_string = String.slice callv_string 6 (String.length callv_string) in
+  int_of_string int_string
+
+
+let find_callv_by_number (ap_set : A.t) (number : int) : A.elt =
+  let res =
+    A.fold
+      (fun ap acc -> if Int.equal number @@ extract_number_from_callv ap then ap :: acc else acc)
+      ap_set []
+  in
+  match res with
+  | [] ->
+      L.die InternalError "find_callv_by_number failed (no matches): ap_set: %a, number: %d" A.pp
+        ap_set number
+  | [ap] ->
+      ap
+  | _ ->
+      L.die InternalError "find_callv_by_number failed (too many matches): ap_set: %a, number: %d"
+        A.pp ap_set number

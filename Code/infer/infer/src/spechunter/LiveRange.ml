@@ -26,7 +26,13 @@ end
 
 type json = Yojson.Basic.t
 
-type chain = (Procname.t * status) list
+type chain_slice = Procname.t * status
+
+and chain = chain_slice list
+
+let chain_slice_equal ((m1, s1) : chain_slice) ((m2, s2) : chain_slice) =
+  Procname.equal m1 m2 && Status.equal s1 s2
+
 
 module type Stype = module type of S
 
@@ -113,6 +119,7 @@ let pp_summary_table fmt hashtbl : unit =
   Hashtbl.iter (fun k v -> F.fprintf fmt "%a -> %a\n" Procname.pp k S.pp v) hashtbl
 
 
+(** Print the contents of the summary table *)
 let print_summary_table () =
   Hashtbl.iter
     (fun proc summary ->
@@ -184,8 +191,8 @@ let find_procpair_by_var (var : Var.t) =
 
 
 (** Function for debugging by exporting Ocamlgraph to Graphviz Dot *)
-let graph_to_dot (graph : G.t) : unit =
-  let out_channel = Out_channel.create "callgraph_with_astate.dot" in
+let graph_to_dot (graph : G.t) ?(filename = "callgraph_with_astate.dot") : unit =
+  let out_channel = Out_channel.create filename in
   Dot.output_graph out_channel graph ;
   Out_channel.flush out_channel ;
   Out_channel.close out_channel
@@ -339,10 +346,9 @@ let find_direct_callees (target_meth : Procname.t) : (Procname.t * S.t) list =
   G.succ callgraph target_vertex
 
 
-let have_been_before (target_meth : Procname.t) (acc : chain) : bool =
-  fold
-    ~f:(fun acc (current_meth, _) -> Procname.equal current_meth target_meth || acc)
-    ~init:false acc
+(** Is the chain_slice already in the given chain? *)
+let have_been_before (chain_slice : chain_slice) (chain : chain) : bool =
+  List.mem ~equal:chain_slice_equal chain chain_slice
 
 
 (** get_formal_args는 skip_function에 대해 실패한다는 점을 이용한 predicate *)
@@ -371,7 +377,8 @@ let save_skip_function () : unit =
     ~f:(fun procname ->
       let func_name = Procname.to_string procname in
       Out_channel.output_string out_chan @@ func_name ^ "\n")
-    procnames_list
+    procnames_list ;
+  Out_channel.close out_chan
 
 
 (** Extract the callee's method name embedded in returnv, callv, or param. *)
@@ -607,7 +614,7 @@ let reduce (list : 'a list) ~(f : 'b -> 'a -> 'b) ~(init : 'b) : 'b =
 let apis_without_returnvs = ["StringBuilder StringBuilder.append(String)"]
 
 let rec compute_chain_inner (current_methname : Procname.t) (current_astate_set : S.t)
-    (current_astate : S.elt) (current_chain : chain) : chain =
+    (current_astate : S.elt) (current_chain : chain) (current_callv_counter : int) : chain =
   let ap_filter tup =
     (not @@ is_logical_var @@ fst tup) && (not @@ is_frontend_tmp_var @@ fst tup)
   in
@@ -675,7 +682,7 @@ let rec compute_chain_inner (current_methname : Procname.t) (current_astate_set 
             :: current_chain
           in
           compute_chain_inner just_before_procname just_before_astate_set aliased_with_returnv
-            chain_updated
+            chain_updated current_callv_counter
         else
           let current_node = (current_methname, current_astate_set) in
           let is_leaf = is_empty @@ G.succ callgraph current_node in
@@ -698,7 +705,8 @@ let rec compute_chain_inner (current_methname : Procname.t) (current_astate_set 
                 (caller, Define (current_methname, second_of statetup_with_returnv)) :: acc
               in
               (* recurse *)
-              compute_chain_inner caller caller_astate_set statetup_with_returnv chain_updated)
+              compute_chain_inner caller caller_astate_set statetup_with_returnv
+                chain_updated current_callv_counter)
             ~init:[] callers_and_astates
         in
         collected @ current_chain
@@ -717,8 +725,11 @@ let rec compute_chain_inner (current_methname : Procname.t) (current_astate_set 
                       let param_callee = extract_callee_from param_ap in
                       if not @@ Procname.equal callee param_callee then acc'
                       else
-                        let chain_updated = (current_methname, Call (callee, param_ap)) :: acc' in
-                        compute_chain_inner callee callee_astate_set bottuple chain_updated)
+                        let new_chain_slice = (current_methname, Call (callee, param_ap)) in
+                        if have_been_before new_chain_slice acc' then acc'
+                        else
+                          let chain_updated = new_chain_slice :: acc' in
+                          compute_chain_inner callee callee_astate_set bottuple chain_updated (current_callv_counter+1))
                     ~init:[] callees_and_astates
                 in
                 collected @ acc
@@ -731,8 +742,11 @@ let rec compute_chain_inner (current_methname : Procname.t) (current_astate_set 
                         let param_statetup =
                           search_target_tuple_by_pvar_ap param_ap callee callee_astate_set
                         in
-                        let chain_updated = (current_methname, Call (callee, param_ap)) :: acc' in
-                        compute_chain_inner callee callee_astate_set param_statetup chain_updated
+                        let new_chain_slice = (current_methname, Call (callee, param_ap)) in
+                        if have_been_before new_chain_slice acc' then acc'
+                        else
+                          let chain_updated = new_chain_slice :: acc' in
+                          compute_chain_inner callee callee_astate_set param_statetup chain_updated (current_callv_counter+1)
                       with _ -> acc')
                     ~init:[] callees_and_astates
                 in
@@ -743,7 +757,7 @@ let rec compute_chain_inner (current_methname : Procname.t) (current_astate_set 
       else if
         (* either REDEFINITION or DEAD.
            check which one is the case by checking if there are multiple current_vardefs in the alias set *)
-        count_vardefs_in_astateset ~find_this:current_vardef current_astate_set >= 2
+        Int.( >= ) (count_vardefs_in_astateset ~find_this:current_vardef current_astate_set) 2
       then
         (* ============ REDEFINITION ============ *)
         (* Intuition: get to the least recently redefined variable and recurse on that *)
@@ -762,7 +776,7 @@ let rec compute_chain_inner (current_methname : Procname.t) (current_astate_set 
         let chain_updated = (current_methname, Redefine current_ap) :: current_chain in
         (* recurse *)
         compute_chain_inner current_methname current_astate_set_updated least_recently_redefined
-          chain_updated
+          chain_updated current_callv_counter
       else
         (* ============ DEAD ============ *)
         (* no more recursion; return *)
@@ -778,7 +792,8 @@ let rec compute_chain_inner (current_methname : Procname.t) (current_astate_set 
               try
                 let landing_pad = find_statetup_holding_aliastup callee_astate real_aliastup in
                 let chain_updated = (current_methname, Call (callee, real_aliastup)) :: acc in
-                compute_chain_inner callee callee_astate landing_pad chain_updated
+
+                compute_chain_inner callee callee_astate landing_pad chain_updated current_callv_counter
               with _ -> acc)
             ~init:[] callees_and_astates
         in
@@ -792,7 +807,7 @@ let rec compute_chain_inner (current_methname : Procname.t) (current_astate_set 
           (current_methname, Define (current_methname, real_aliastup)) :: current_chain
         in
         (* recurse *)
-        compute_chain_inner current_methname current_astate_set other_statetup chain_updated
+        compute_chain_inner current_methname current_astate_set other_statetup chain_updated current_callv_counter
   | otherwise ->
       L.die InternalError
         {|computer_chain_inner failed:
@@ -814,7 +829,7 @@ let compute_chain_ (ap : MyAccessPath.t) : chain =
   in
   rev
   @@ compute_chain_inner first_methname first_astate_set first_astate
-       [(first_methname, Define (source_meth, ap))]
+    [(first_methname, Define (source_meth, ap))] 0
 
 
 (** 본체인 compute_chain_을 포장하는 함수 *)
@@ -923,7 +938,7 @@ let main () =
   filter_callgraph_table callgraph_table ;
   save_skip_function () ;
   callg_hash2og () ;
-  graph_to_dot callgraph ;
+  graph_to_dot callgraph ~filename:"callgraph_with_astate_refined.dot" ;
   (* ============ Computing Chains ============ *)
   stable_dedup @@ collect_all_proc_and_ap ()
   |> filter ~f:(fun (_, (var, _)) ->

@@ -43,17 +43,22 @@ module TransferFunctions (CFG : ProcCfg.S) = struct
 
   (** specially mangled variable to mark a value as returned from callee *)
   let mk_returnv procname =
-    Var.of_pvar @@ Pvar.mk (Mangled.from_string @@ "returnv: "^(Procname.to_string procname)) procname
+    Var.of_pvar @@ Pvar.mk (Mangled.from_string @@ F.asprintf "returnv: %a" Procname.pp procname) procname
 
+
+  (** Ref variable to number all callv special variables *)
+  let callv_number = ref (-1)
 
   (** specially mangled variable to mark an AP as passed to a callee *)
   let mk_callv procname =
-    Var.of_pvar @@ Pvar.mk (Mangled.from_string @@ "callv: "^(Procname.to_string procname)) procname
+    callv_number := !callv_number + 1;
+    Var.of_pvar @@ Pvar.mk (Mangled.from_string @@ F.asprintf "callv_%d : %a" !callv_number Procname.pp procname) procname
 
 
   (** specially mangled variable to mark an AP as passed to a callee *)
   let mk_callv_pvar procname =
-    Pvar.mk (Mangled.from_string @@ "callv: "^(Procname.to_string procname)) procname
+    callv_number := !callv_number + 1;
+    Pvar.mk (Mangled.from_string @@ F.asprintf "callv_%d : %a" !callv_number Procname.pp procname) procname
 
 
   let rec extract_nonthisvar_from_args methname (arg_ts:(Exp.t*Typ.t) list)

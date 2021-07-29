@@ -132,7 +132,7 @@ let print_summary_table () =
 (* ================================================== *)
 
 (** map from procname to its formal args. *)
-let formal_args = Hashtbl.create 777
+let formal_args : (Procname.t, MyAccessPath.t list) Hashtbl.t = Hashtbl.create 777
 
 let batch_add_formal_args () =
   let rec catMaybes_tuplist (optlist : ('a * 'b option) list) : ('a * 'b) list =
@@ -152,7 +152,7 @@ let batch_add_formal_args () =
   in
   let pname_and_params =
     pname_and_params_with_type
-    >>| fun (pname, with_type_list) -> (pname, with_type_list >>| fun (a, _) -> Var.of_pvar a)
+    >>| fun (pname, with_type_list) -> (pname, with_type_list >>| fun (a, _) -> (Var.of_pvar a, []))
   in
   iter ~f:(fun (pname, params) -> Hashtbl.add formal_args pname params) pname_and_params
 
@@ -164,7 +164,7 @@ let batch_print_formal_args () =
     (fun k v ->
       L.progress "procname: %a, " Procname.pp k ;
       L.progress "vars: " ;
-      iter v ~f:(L.progress "%a, " Var.pp) ;
+      iter v ~f:(L.progress "%a, " MyAccessPath.pp) ;
       L.progress "\n")
     formal_args
 
@@ -181,14 +181,6 @@ let chains = Hashtbl.create 777
 
 (** Procname과 AP로부터 chain으로 가는 Hash table *)
 let add_chain (key : Procname.t * MyAccessPath.t) (value : chain) = Hashtbl.add chains key value
-
-(** 주어진 var이 formal arg인지 검사하고, 맞다면 procname과 formal arg의 리스트를
-    리턴 *)
-let find_procpair_by_var (var : Var.t) =
-  let key_values = Hashtbl.fold (fun k v acc -> (k, v) :: acc) formal_args [] in
-  fold_left key_values ~init:[] ~f:(fun acc ((_, varlist) as target) ->
-      if mem varlist var ~equal:Var.equal then target :: acc else acc)
-
 
 (** Function for debugging by exporting Ocamlgraph to Graphviz Dot *)
 let graph_to_dot (graph : G.t) ?(filename = "callgraph_with_astate.dot") : unit =
@@ -403,7 +395,7 @@ let find_immediate_successor (current_methname : Procname.t) (current_astate_set
   (* let not_skip_succs = filter ~f:(fun (proc, _) -> not @@ is_skip_function proc) succs in *)
   let succ_meths_and_formals = succs >>| fun (meth, _) -> (meth, get_formal_args meth) in
   fold ~init:Procname.empty_block
-    ~f:(fun acc (m, p) -> if mem p (fst param) ~equal:Var.equal then m else acc)
+    ~f:(fun acc (m, p) -> if mem p param ~equal:MyAccessPath.equal then m else acc)
     succ_meths_and_formals
 
 
@@ -611,7 +603,18 @@ let reduce (list : 'a list) ~(f : 'b -> 'a -> 'b) ~(init : 'b) : 'b =
   if is_empty list then L.die InternalError "reducing an empty list!@." else fold_left list ~f ~init
 
 
-let apis_without_returnvs = ["StringBuilder StringBuilder.append(String)"]
+let find_matching_param_for_callv (ap_set : A.t) (callv_ap : A.elt) : A.elt =
+  let callee_methname = extract_callee_from callv_ap in
+  (* May contain carriedover vars, so we need to filter the params from it.
+     However, we must do things differently if the callee is an API. *)
+  let callee_params = get_param_args callee_methname in
+  if is_empty callee_params then raise TODO
+  else
+    let callee_aps =
+      A.filter (fun ap -> List.mem callee_params ap ~equal:MyAccesPath.equal) ap_set
+    in
+    raise TODO
+
 
 let rec compute_chain_inner (current_methname : Procname.t) (current_astate_set : S.t)
     (current_astate : S.elt) (current_chain : chain) (current_callv_counter : int) : chain =
@@ -705,55 +708,16 @@ let rec compute_chain_inner (current_methname : Procname.t) (current_astate_set 
                 (caller, Define (current_methname, second_of statetup_with_returnv)) :: acc
               in
               (* recurse *)
-              compute_chain_inner caller caller_astate_set statetup_with_returnv
-                chain_updated current_callv_counter)
+              compute_chain_inner caller caller_astate_set statetup_with_returnv chain_updated
+                current_callv_counter)
             ~init:[] callers_and_astates
         in
         collected @ current_chain
       else if exists ~f:(fun ap -> is_callv_ap ap) var_aps then
         (* ============ CALL ============ *)
-        let param_aps_in_question = find_param_aps (fourth_of current_astate) current_methname in
-        let reduced =
-          reduce
-            ~f:(fun acc param_ap ->
-              let callees_and_astates = find_direct_callees current_methname in
-              if is_param_ap param_ap then
-                (* API call *)
-                let collected =
-                  fold
-                    ~f:(fun acc' (callee, callee_astate_set) ->
-                      let param_callee = extract_callee_from param_ap in
-                      if not @@ Procname.equal callee param_callee then acc'
-                      else
-                        let new_chain_slice = (current_methname, Call (callee, param_ap)) in
-                        if have_been_before new_chain_slice acc' then acc'
-                        else
-                          let chain_updated = new_chain_slice :: acc' in
-                          compute_chain_inner callee callee_astate_set bottuple chain_updated (current_callv_counter+1))
-                    ~init:[] callees_and_astates
-                in
-                collected @ acc
-              else
-                (* UDF call *)
-                let collected =
-                  fold
-                    ~f:(fun acc' (callee, callee_astate_set) ->
-                      try
-                        let param_statetup =
-                          search_target_tuple_by_pvar_ap param_ap callee callee_astate_set
-                        in
-                        let new_chain_slice = (current_methname, Call (callee, param_ap)) in
-                        if have_been_before new_chain_slice acc' then acc'
-                        else
-                          let chain_updated = new_chain_slice :: acc' in
-                          compute_chain_inner callee callee_astate_set param_statetup chain_updated (current_callv_counter+1)
-                      with _ -> acc')
-                    ~init:[] callees_and_astates
-                in
-                collected @ acc)
-            ~init:[] param_aps_in_question
-        in
-        reduced @ current_chain
+        let this_turn_callv_ap = find_callv_by_number var_aps current_callv_counter in
+        (* now, find the matching param_ap. *)
+        raise TODO
       else if
         (* either REDEFINITION or DEAD.
            check which one is the case by checking if there are multiple current_vardefs in the alias set *)
@@ -792,8 +756,8 @@ let rec compute_chain_inner (current_methname : Procname.t) (current_astate_set 
               try
                 let landing_pad = find_statetup_holding_aliastup callee_astate real_aliastup in
                 let chain_updated = (current_methname, Call (callee, real_aliastup)) :: acc in
-
-                compute_chain_inner callee callee_astate landing_pad chain_updated current_callv_counter
+                compute_chain_inner callee callee_astate landing_pad chain_updated
+                  current_callv_counter
               with _ -> acc)
             ~init:[] callees_and_astates
         in
@@ -807,7 +771,8 @@ let rec compute_chain_inner (current_methname : Procname.t) (current_astate_set 
           (current_methname, Define (current_methname, real_aliastup)) :: current_chain
         in
         (* recurse *)
-        compute_chain_inner current_methname current_astate_set other_statetup chain_updated current_callv_counter
+        compute_chain_inner current_methname current_astate_set other_statetup chain_updated
+          current_callv_counter
   | otherwise ->
       L.die InternalError
         {|computer_chain_inner failed:
@@ -829,7 +794,8 @@ let compute_chain_ (ap : MyAccessPath.t) : chain =
   in
   rev
   @@ compute_chain_inner first_methname first_astate_set first_astate
-    [(first_methname, Define (source_meth, ap))] 0
+       [(first_methname, Define (source_meth, ap))]
+       0
 
 
 (** 본체인 compute_chain_을 포장하는 함수 *)

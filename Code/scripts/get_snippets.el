@@ -31,18 +31,6 @@
     res))
 
 
-(defun find-by-tag-and-attribute (data tag attr)
-  "find the tag containing the given attribute"
-  (let ((res))
-    (subst nil nil data :test (lambda (a b)
-                                (when (and (listp b)
-                                           (eql (car b) tag)
-                                           (-contains? (get-attribute-list b) attr))
-                                  (push b res))
-                                nil))
-    res))
-
-
 (defun directory-collect (parsed-html)
   (let* ((ahrefs (find-by-tag parsed-html 'a))
          (all (mapcar #'cdaadr ahrefs))
@@ -71,4 +59,4 @@
                                                           new-url
                                                           acc)))
                                              folders :initial-value nil)))))))
-          (inner (parse-html url) url nil)))
+    (inner (parse-html url) url nil)))

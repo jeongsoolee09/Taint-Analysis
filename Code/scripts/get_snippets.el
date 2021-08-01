@@ -4,12 +4,12 @@
 (require 'cl)
 (require 's)
 
-(defvar *spring-jdbc*
+(defvar *spring-jdbc-url*
   "https://docs.spring.io/spring-framework/docs/current/javadoc-api/org/springframework/jdbc/core/"
   "Spring Jdbc")
 
 
-(defvar *spring-jms*
+(defvar *spring-jms-url*
   "https://docs.spring.io/spring-framework/docs/current/javadoc-api/org/springframework/jms/core/"
   "Spring Jms")
 
@@ -87,6 +87,7 @@
          (mapcar #'extractor)
          (remove-if #'null))))
 
+
 ;; Traverser ========================================
 ;; ==================================================
 
@@ -104,7 +105,7 @@
 
 
 
-(defun recursive-html-collect (url)
+(defun recursive-html-collect (root-url)
   (cl-labels ((inner (current-html current-url htmls-acc)
                      (let* ((result (collect-directory current-html))
                             (folders (plist-get result :folders))
@@ -121,11 +122,17 @@
                                                            new-url
                                                            acc)))
                                               folders :initial-value nil)))))))
-    (inner (parse-html url) url nil)))
+    (inner (parse-html root-url) root-url nil)))
 
 
+(defun collect-all-interfaces (all-htmls)
+  (let ((all-package-frame-urls (remove-if-not #'package-frame? all-htmls)))
+    (append (append (mapcar #'interface-html-collect all-package-frame-urls)))))
 
 
+(defun collect-all-classes (all-htmls)
+  (let ((all-package-frame-urls (remove-if-not #'package-frame? all-htmls)))
+    (append (append (mapcar #'class-html-collect all-package-frame-urls)))))
 
 
 ;; 이제 html을 recursive하게 모았으니, 각각의 html 문서들을 파싱할 차례이다.
@@ -149,23 +156,32 @@
                   (s-contains? "/support/" fullname))))))
 
 
-(defun package-use? (html-filename)
-  (s-equals? html-filename "package-use.html"))
+(defun package-use? (fullname)
+  (s-equals? (get-only-filename fullname) "package-use.html"))
 
 
-(defun package-tree? (html-filename)
-  (s-equals? html-filename "package-tree.html"))
+(defun package-tree? (fullname)
+  (s-equals? (get-only-filename fullname) "package-tree.html"))
 
 
-(defun package-summary? (html-filename)
-  (s-equals? html-filename "package-summary.html"))
+(defun package-summary? (fullname)
+  (s-equals? (get-only-filename fullname) "package-summary.html"))
 
 
-(defun package-frame? (html-filename)
-  (s-equals? html-filename "package-frame.html"))
-
+(defun package-frame? (fullname)
+  (s-equals? (get-only-filename fullname) "package-frame.html"))
 
 
 (defun main ()
-
-  )
+  (let* ((all-htmls (recursive-html-collect *spring-jdbc-url*))
+         (interface-htmls (collect-all-interfaces
+                           all-htmls))
+         (class-htmls (collect-all-classes
+                       all-htmls)))
+    (progn
+      (prin1 "interfaces: ")
+      (dolist (html interface-htmls)
+        (princ html))
+      (prin1 "classes: ")
+      (dolist (html class-htmls)
+        (princ html)))))

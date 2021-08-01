@@ -3,6 +3,12 @@
 
 (require 'cl)
 (require 's)
+(require 'dash)
+
+
+;; target root urls =================================
+;; ==================================================
+
 
 (defvar *spring-jdbc-url*
   "https://docs.spring.io/spring-framework/docs/current/javadoc-api/org/springframework/jdbc/core/"
@@ -104,7 +110,6 @@
     `(:folders ,folders :htmls ,htmls)))
 
 
-
 (defun recursive-html-collect (root-url)
   (cl-labels ((inner (current-html current-url htmls-acc)
                      (let* ((result (collect-directory current-html))
@@ -114,29 +119,60 @@
                                            (plist-get result :htmls))))
                        (if (null result)
                            (append htmls-acc htmls)
-                         (->> htmls-acc
-                              (append htmls)
-                              (append (reduce #'(lambda (acc folder)
-                                                  (let ((new-url (concat current-url folder)))
-                                                    (inner (parse-html new-url)
-                                                           new-url
-                                                           acc)))
-                                              folders :initial-value nil)))))))
+                           (->> htmls-acc
+                                (append htmls)
+                                (append (reduce #'(lambda (acc folder)
+                                                    (let ((new-url (concat current-url folder)))
+                                                      (inner (parse-html new-url)
+                                                             new-url
+                                                             acc)))
+                                                folders :initial-value nil)))))))
     (inner (parse-html root-url) root-url nil)))
 
 
 (defun collect-all-interfaces (all-htmls)
-  (let ((all-package-frame-urls (remove-if-not #'package-frame? all-htmls)))
-    (append (append (mapcar #'interface-html-collect all-package-frame-urls)))))
+  (cl-flet ((get-full-url-based-on-filename (filename)
+                                            (dolist (html all-htmls)
+                                              (when (string= (get-only-filename html)
+                                                             filename)
+                                                (return html)))))
+    (let* ((all-package-frame-urls (remove-if-not #'package-frame? all-htmls))
+           (all-interface-filenames (flatten-list
+                                     (mapcar
+                                      #'interface-html-collect
+                                      all-package-frame-urls))))
+      (mapcar #'get-full-url-based-on-filename all-interface-filenames))))
 
 
 (defun collect-all-classes (all-htmls)
-  (let ((all-package-frame-urls (remove-if-not #'package-frame? all-htmls)))
-    (append (append (mapcar #'class-html-collect all-package-frame-urls)))))
+  (cl-flet ((get-full-url-based-on-filename (filename)
+                                            (dolist (html all-htmls)
+                                              (when (string= (get-only-filename html)
+                                                             filename)
+                                                (return html)))))
+    (let* ((all-package-frame-urls (remove-if-not #'package-frame? all-htmls))
+           (all-class-filenames (flatten-list
+                                 (mapcar
+                                  #'interface-html-collect
+                                  all-package-frame-urls))))
+      (mapcar #'get-full-url-based-on-filename all-class-filenames))))
 
 
-;; 이제 html을 recursive하게 모았으니, 각각의 html 문서들을 파싱할 차례이다.
-;; 그 전에, package-frame.html을 파싱해 html 파일이 인터페이스이고 클래스인지를 찾아내자.
+;; class html page scraper ==========================
+;; ==================================================
+
+(setq sample-class-html  "https://docs.spring.io/spring-framework/docs/current/javadoc-api/org/springframework/jms/core/BrowserCallback.html")
+
+
+;; NOTE under construction
+(defun collect-method-from-scrape-class-html (class-html-name)
+  (cl-flet ((assemble-parts (pre)
+                            ()))
+    (let* ((parsed (parse-html class-html-name))
+           (relevant-parts (find-by-tag parsed 'pre)))
+      (mapcar 'assemble-parts relevant-parts))))
+
+
 ;; 가설: 우리가 원하는 것은 인터페이스가 *아니라* 클래스이다.
 
 ;; Some predicates on html names. ===================
@@ -172,16 +208,16 @@
   (s-equals? (get-only-filename fullname) "package-frame.html"))
 
 
+;; main function ====================================
+;; ==================================================
+
+(parse-html  "https://docs.spring.io/spring-framework/docs/current/javadoc-api/org/springframework/jdbc/core/class-use/StatementCallback.html")
+
+
 (defun main ()
   (let* ((all-htmls (recursive-html-collect *spring-jdbc-url*))
          (interface-htmls (collect-all-interfaces
                            all-htmls))
          (class-htmls (collect-all-classes
                        all-htmls)))
-    (progn
-      (prin1 "interfaces: ")
-      (dolist (html interface-htmls)
-        (princ html))
-      (prin1 "classes: ")
-      (dolist (html class-htmls)
-        (princ html)))))
+    class-htmls))

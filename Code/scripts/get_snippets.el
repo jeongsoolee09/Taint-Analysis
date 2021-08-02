@@ -159,8 +159,9 @@
 (defun collect-all-classes (all-htmls)
   (cl-flet ((get-full-url-based-on-filename (filename)
                                             (dolist (html all-htmls)
-                                              (when (string= (get-only-filename html)
-                                                             filename)
+                                              (when (and (string= (get-only-filename html)
+                                                                  filename)
+                                                         (not (s-contains? "/class-use/" html)))
                                                 (return html)))))
     (let* ((all-package-frame-urls (remove-if-not #'package-frame? all-htmls))
            (all-class-filenames (flatten-list
@@ -196,9 +197,8 @@
                          open-parens-index
                          (+ closing-parens-index 1))))
     (->> sliced
+         (mapcar (lambda (str) (s-replace " " " " str)))
          (mapcar #'s-trim)
-         (mapcar (lambda (x)
-                   (s-chop-prefix " " x)))
          (mapcar (lambda (str) (if (s-contains? ")" str)
                                    (let ((parens-index (s-index-of ")" str)))
                                      (substring str 0 (+ parens-index 1)))
@@ -230,7 +230,6 @@
                                         (s-chop-suffixes '("," ")") str)))))))
 
 
-;; NOTE under construction
 (defun collect-method-from-scrape-class-html (class-html-name)
   (cl-flet* ((scrape-anchors (pre-elem)
                             (let ((anchors (find-by-tag pre-elem 'a)))
@@ -239,20 +238,28 @@
             (scrape-strings (pre-elem)
                             (let ((atoms (remove-if-not #'atom pre-elem)))
                               (find-with-and-between-parens-strings atoms)))
-            (assemble-pre (pre-elem)
+            (assemble-pre (pre-elem classname)
                           (let* ((anchor-contents-plist (->> (reverse (scrape-anchors pre-elem))
                                                              (anchor-content-organize)))
                                  (non-anchor-contents-plist (->> (scrape-strings pre-elem)
                                                                  (non-anchor-content-organize))))
                             `(:annots ,(plist-get anchor-contents-plist :annots)
                                       :rtntype ,(plist-get non-anchor-contents-plist :rtntype)
+                                      :classname ,classname
                                       :methname ,(plist-get non-anchor-contents-plist :methname)
                                       :params-and-types ,(-zip (plist-get anchor-contents-plist :paramtypes)
                                                                 (plist-get non-anchor-contents-plist :params))
                                       :exceptions ,(plist-get anchor-contents-plist :exceptions)))))
     (let* ((parsed (parse-html class-html-name))
-           (pres (find-by-tag parsed 'pre)))
-      (mapcar #'assemble-pre (cdr (reverse pres))))))
+           (pres (find-by-tag parsed 'pre))
+           (classname (car (s-split "\\." (get-only-filename class-html-name)))))
+      (mapcar (lambda (pre) (assemble-pre pre classname)) (cdr (reverse pres))))))
+
+
+(comment
+ (progn
+   (collect-method-from-scrape-class-html sample-class-html)
+   ))
 
 
 ;; 가설: 우리가 원하는 것은 인터페이스가 *아니라* 클래스이다.
@@ -299,10 +306,13 @@
    ))
 
 
-(defun main ()
-  (let* ((all-htmls (recursive-html-collect *spring-jdbc-url*))
+(defun scrape-main ()
+  (let* ((all-htmls (recursive-html-collect *spring-jms-url*))
          (interface-htmls (collect-all-interfaces
                            all-htmls))
          (class-htmls (collect-all-classes
                        all-htmls)))
-    class-htmls))
+    (append (mapcar
+             #'collect-method-from-scrape-class-html
+             class-htmls))
+    ))

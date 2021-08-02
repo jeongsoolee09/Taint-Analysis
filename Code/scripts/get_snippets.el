@@ -6,6 +6,18 @@
 (require 'dash)
 
 
+;; utils ============================================
+;; ==================================================
+
+(defmacro comment (&body)
+  "dummy macro which implements a rich comment block")
+
+
+(defun get-only-filename (fullname)
+  (let* ((splitted (s-split "/" fullname)))
+    (-last-item splitted)))
+
+
 ;; target root urls =================================
 ;; ==================================================
 
@@ -119,14 +131,14 @@
                                            (plist-get result :htmls))))
                        (if (null result)
                            (append htmls-acc htmls)
-                           (->> htmls-acc
-                                (append htmls)
-                                (append (reduce #'(lambda (acc folder)
-                                                    (let ((new-url (concat current-url folder)))
-                                                      (inner (parse-html new-url)
-                                                             new-url
-                                                             acc)))
-                                                folders :initial-value nil)))))))
+                         (->> htmls-acc
+                              (append htmls)
+                              (append (reduce #'(lambda (acc folder)
+                                                  (let ((new-url (concat current-url folder)))
+                                                    (inner (parse-html new-url)
+                                                           new-url
+                                                           acc)))
+                                              folders :initial-value nil)))))))
     (inner (parse-html root-url) root-url nil)))
 
 
@@ -161,27 +173,69 @@
 ;; class html page scraper ==========================
 ;; ==================================================
 
-(setq sample-class-html  "https://docs.spring.io/spring-framework/docs/current/javadoc-api/org/springframework/jms/core/BrowserCallback.html")
+
+(defun find-with-and-between-parens-strings (lst)
+  (cl-flet ((find-first-open-parens (lst)
+                                    (dolist (elem lst)
+                                      (when (and (stringp elem)
+                                                 (s-contains? "(" elem))
+                                        (return elem))))
+            (find-first-closing-parens (lst)
+                                       (dolist (elem lst)
+                                         (when (and (stringp elem)
+                                                    (s-contains? ")" elem))
+                                           (return elem)))))
+    (let* ((open-parens (find-first-open-parens lst))
+           (closing-parens (find-first-closing-parens lst))
+           (open-parens-index (-elem-index open-parens lst))
+           (closing-parens-index (-elem-index closing-parens lst))
+           (sliced (-slice lst
+                           open-parens-index
+                           (+ closing-parens-index 1))))
+      (->> sliced
+           (mapcar #'s-trim)
+           (mapcar (lambda (x)
+                     (s-chop-prefix " " x)))
+           (mapcar (lambda (str) (if (s-contains? ")" str)
+                                     (let ((parens-index (s-index-of ")" str)))
+                                       (substring str 0 (+ parens-index 1)))
+                                   str)))))))
 
 
 ;; NOTE under construction
 (defun collect-method-from-scrape-class-html (class-html-name)
-  (cl-flet ((assemble-parts (pre)
-                            ()))
+  (cl-flet ((scrape-anchors (car-pre)
+                            (let ((anchors (find-by-tag car-pre 'a)))
+                              (mapcar (lambda (a) (nth 2 a))
+                                      anchors)))
+            (scrape-strings (car-pre)
+                            (let ((atoms (remove-if-not #'atom car-pre)))
+                              (find-with-and-between-parens-strings atoms))))
     (let* ((parsed (parse-html class-html-name))
-           (relevant-parts (find-by-tag parsed 'pre)))
-      (mapcar 'assemble-parts relevant-parts))))
+           (car-pre (car (find-by-tag parsed 'pre)))
+           (anchor-contents (reverse (scrape-anchors car-pre)))
+           (non-anchor-contents (scrape-strings car-pre)))
+      (print anchor-contents)
+      (print non-anchor-contents)
+      )))
 
+
+
+(comment
+ (progn
+
+   (collect-method-from-scrape-class-html sample-class-html)
+
+   (pcase '(1 2 3)
+     (`(,a ,b 3) (+ a b)))
+
+
+   ))
 
 ;; 가설: 우리가 원하는 것은 인터페이스가 *아니라* 클래스이다.
 
 ;; Some predicates on html names. ===================
 ;; ==================================================
-
-
-(defun get-only-filename (fullname)
-  (let* ((splitted (s-split "/" fullname)))
-    (car (last splitted))))
 
 
 (defun interesting-html? (fullname)
@@ -211,7 +265,15 @@
 ;; main function ====================================
 ;; ==================================================
 
-(parse-html  "https://docs.spring.io/spring-framework/docs/current/javadoc-api/org/springframework/jdbc/core/class-use/StatementCallback.html")
+(comment
+ (progn
+   (parse-html "https://docs.spring.io/spring-framework/docs/current/javadoc-api/org/springframework/jdbc/core/namedparam/class-use/NamedParameterJdbcOperations.html")
+
+   (setq all-htmls (recursive-html-collect *spring-jdbc-url*))
+   (setq interface-htmls (collect-all-interfaces all-htmls))
+   (setq class-htmls (collect-all-classes all-htmls))
+
+   ))
 
 
 (defun main ()

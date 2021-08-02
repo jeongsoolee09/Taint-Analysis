@@ -173,64 +173,87 @@
 ;; class html page scraper ==========================
 ;; ==================================================
 
+(defun find-first-open-parens (lst)
+  (dolist (elem lst)
+    (when (and (stringp elem)
+               (s-contains? "(" elem))
+      (return elem))))
+
+
+(defun find-first-closing-parens (lst)
+  (dolist (elem lst)
+    (when (and (stringp elem)
+               (s-contains? ")" elem))
+      (return elem))))
+
 
 (defun find-with-and-between-parens-strings (lst)
-  (cl-flet ((find-first-open-parens (lst)
-                                    (dolist (elem lst)
-                                      (when (and (stringp elem)
-                                                 (s-contains? "(" elem))
-                                        (return elem))))
-            (find-first-closing-parens (lst)
-                                       (dolist (elem lst)
-                                         (when (and (stringp elem)
-                                                    (s-contains? ")" elem))
-                                           (return elem)))))
-    (let* ((open-parens (find-first-open-parens lst))
-           (closing-parens (find-first-closing-parens lst))
-           (open-parens-index (-elem-index open-parens lst))
-           (closing-parens-index (-elem-index closing-parens lst))
-           (sliced (-slice lst
-                           open-parens-index
-                           (+ closing-parens-index 1))))
-      (->> sliced
-           (mapcar #'s-trim)
-           (mapcar (lambda (x)
-                     (s-chop-prefix " " x)))
-           (mapcar (lambda (str) (if (s-contains? ")" str)
-                                     (let ((parens-index (s-index-of ")" str)))
-                                       (substring str 0 (+ parens-index 1)))
-                                   str)))))))
+  (let* ((open-parens (find-first-open-parens lst))
+         (closing-parens (find-first-closing-parens lst))
+         (open-parens-index (-elem-index open-parens lst))
+         (closing-parens-index (-elem-index closing-parens lst))
+         (sliced (-slice lst
+                         open-parens-index
+                         (+ closing-parens-index 1))))
+    (->> sliced
+         (mapcar #'s-trim)
+         (mapcar (lambda (x)
+                   (s-chop-prefix " " x)))
+         (mapcar (lambda (str) (if (s-contains? ")" str)
+                                   (let ((parens-index (s-index-of ")" str)))
+                                     (substring str 0 (+ parens-index 1)))
+                                 str))))))
+
+
+(defun anchor-content-organize (anchor-content-list)
+  "Organize the anchor's content into a plist."
+  (let* ((annots (remove-if-not (lambda (str)
+                                  (s-starts-with? "@" str))
+                                anchor-content-list))
+         (exceptions (remove-if-not (lambda (str)
+                                      (s-ends-with? "Exception" str))
+                                    anchor-content-list))
+         (paramtypes (remove-if-not (lambda (str)
+                                      (not (or (-contains? annots str)
+                                               (-contains? exceptions str))))
+                                    anchor-content-list)))
+    `(:annots ,annots :rtntype ,(car paramtypes)
+              :paramtypes ,(cdr paramtypes) :exceptions ,exceptions)))
+
+
+(defun non-anchor-content-organize (non-anchor-content-list)
+  (let ((str-with-open-paren (find-first-open-parens non-anchor-content-list)))
+    `(:methname ,(s-chop-suffix "(" str-with-open-paren)
+                :params ,(->> non-anchor-content-list
+                              (cdr)
+                              (mapcar (lambda (str)
+                                        (s-chop-suffixes '("," ")") str)))))))
 
 
 ;; NOTE under construction
 (defun collect-method-from-scrape-class-html (class-html-name)
-  (cl-flet ((scrape-anchors (car-pre)
-                            (let ((anchors (find-by-tag car-pre 'a)))
+  (cl-flet* ((scrape-anchors (pre-elem)
+                            (let ((anchors (find-by-tag pre-elem 'a)))
                               (mapcar (lambda (a) (nth 2 a))
                                       anchors)))
-            (scrape-strings (car-pre)
-                            (let ((atoms (remove-if-not #'atom car-pre)))
-                              (find-with-and-between-parens-strings atoms))))
+            (scrape-strings (pre-elem)
+                            (let ((atoms (remove-if-not #'atom pre-elem)))
+                              (find-with-and-between-parens-strings atoms)))
+            (assemble-pre (pre-elem)
+                          (let* ((anchor-contents-plist (->> (reverse (scrape-anchors pre-elem))
+                                                             (anchor-content-organize)))
+                                 (non-anchor-contents-plist (->> (scrape-strings pre-elem)
+                                                                 (non-anchor-content-organize))))
+                            `(:annots ,(plist-get anchor-contents-plist :annots)
+                                      :rtntype ,(plist-get non-anchor-contents-plist :rtntype)
+                                      :methname ,(plist-get non-anchor-contents-plist :methname)
+                                      :params-and-types ,(-zip (plist-get anchor-contents-plist :paramtypes)
+                                                                (plist-get non-anchor-contents-plist :params))
+                                      :exceptions ,(plist-get anchor-contents-plist :exceptions)))))
     (let* ((parsed (parse-html class-html-name))
-           (car-pre (car (find-by-tag parsed 'pre)))
-           (anchor-contents (reverse (scrape-anchors car-pre)))
-           (non-anchor-contents (scrape-strings car-pre)))
-      (print anchor-contents)
-      (print non-anchor-contents)
-      )))
+           (pres (find-by-tag parsed 'pre)))
+      (mapcar #'assemble-pre (cdr (reverse pres))))))
 
-
-
-(comment
- (progn
-
-   (collect-method-from-scrape-class-html sample-class-html)
-
-   (pcase '(1 2 3)
-     (`(,a ,b 3) (+ a b)))
-
-
-   ))
 
 ;; 가설: 우리가 원하는 것은 인터페이스가 *아니라* 클래스이다.
 

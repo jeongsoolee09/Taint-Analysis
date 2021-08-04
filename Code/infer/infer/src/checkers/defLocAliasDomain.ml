@@ -2,6 +2,7 @@
 open! IStd
 
 module F = Format
+module L = Logging
 
 exception NotImplemented
 
@@ -150,7 +151,51 @@ module AbstractPair = struct
     , SetofAliases.empty )
 
 
-  let leq ~lhs:(a, _) ~rhs:(b, _) = S.subset a b
+  let get_declaring_function_ap_exn (ap : A.elt) : Procname.t =
+    let var, _ = ap in
+    match var with
+    | LogicalVar _ ->
+        L.die InternalError "get_declaring_function_ap_exn failed: %a@." MyAccessPath.pp ap
+    | ProgramVar pvar -> (
+      match Pvar.get_declaring_function pvar with
+      | None ->
+          L.die InternalError "get_declaring_function_ap_exn failed: %a@." MyAccessPath.pp ap
+      | Some procname ->
+          procname )
+
+
+  let leq ~lhs:(a, _) ~rhs:(b, _) =
+    let is_callv_ap (ap : A.elt) : bool =
+      let var, _ = ap in
+      match var with
+      | LogicalVar _ ->
+          false
+      | ProgramVar pv ->
+          String.is_substring (Pvar.to_string pv) ~substring:"callv"
+    in
+    let if_callv_then_remove_number (ap : MyAccessPath.t) : MyAccessPath.t =
+      if is_callv_ap ap then
+        let callee_name = get_declaring_function_ap_exn ap in
+        let var =
+          Var.of_pvar
+          @@ Pvar.mk
+               (Mangled.from_string @@ F.asprintf "ap: %a" Procname.pp callee_name)
+               callee_name
+        in
+        (var, [])
+      else ap
+    in
+    let preprocess_astate_set (astate_set : S.t) : S.t =
+      S.map
+        (fun (proc, vardef, locset, aliasset) ->
+          let new_vardef = if_callv_then_remove_number vardef in
+          let new_aliasset = A.map if_callv_then_remove_number aliasset in
+          (proc, new_vardef, locset, new_aliasset))
+        astate_set
+    in
+    let new_a, new_b = (preprocess_astate_set a, preprocess_astate_set b) in
+    S.subset new_a new_b
+
 
   (* Utility Functions *)
   let first_of (a, _, _, _) = a

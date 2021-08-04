@@ -43,7 +43,8 @@ module TransferFunctions (CFG : ProcCfg.S) = struct
 
   (** specially mangled variable to mark a value as returned from callee *)
   let mk_returnv procname =
-    Var.of_pvar @@ Pvar.mk (Mangled.from_string @@ F.asprintf "returnv: %a" Procname.pp procname) procname
+    Var.of_pvar
+    @@ Pvar.mk (Mangled.from_string @@ F.asprintf "returnv: %a" Procname.pp procname) procname
 
 
   (** Ref variable to number all callv special variables *)
@@ -51,14 +52,19 @@ module TransferFunctions (CFG : ProcCfg.S) = struct
 
   (** specially mangled variable to mark an AP as passed to a callee *)
   let mk_callv procname =
-    callv_number := !callv_number + 1;
-    Var.of_pvar @@ Pvar.mk (Mangled.from_string @@ F.asprintf "callv_%d: %a" !callv_number Procname.pp procname) procname
+    callv_number := !callv_number + 1 ;
+    Var.of_pvar
+    @@ Pvar.mk
+      (Mangled.from_string @@ F.asprintf "callv_%d: %a" !callv_number Procname.pp procname)
+      procname
 
 
   (** specially mangled variable to mark an AP as passed to a callee *)
   let mk_callv_pvar procname =
-    callv_number := !callv_number + 1;
-    Pvar.mk (Mangled.from_string @@ F.asprintf "callv_%d: %a" !callv_number Procname.pp procname) procname
+    callv_number := !callv_number + 1 ;
+    Pvar.mk
+      (Mangled.from_string @@ F.asprintf "callv_%d: %a" !callv_number Procname.pp procname)
+      procname
 
 
   let rec extract_nonthisvar_from_args methname (arg_ts:(Exp.t*Typ.t) list)
@@ -305,7 +311,7 @@ module TransferFunctions (CFG : ProcCfg.S) = struct
         let loc = LocationSet.singleton @@ CFG.Node.loc node in
         let aliasset_new = A.singleton (pvar_var, []) in
         let newtuple = (methname, (pvar_var, []), loc, aliasset_new) in
-        let newmap = H.add_to_history (methname, (pvar_var, [])) loc (snd apair) in 
+        let newmap = H.add_to_history (methname, (pvar_var, [])) loc (snd apair) in
         let newset = S.add newtuple astate_rmvd in
         (newset, newmap)
     | Lvar pv, BinOp (_, Const _, Const _) ->
@@ -313,7 +319,7 @@ module TransferFunctions (CFG : ProcCfg.S) = struct
         let loc = LocationSet.singleton @@ CFG.Node.loc node in
         let aliasset_new = A.singleton (pvar_var, []) in
         let newtuple = (methname, (pvar_var, []), loc, aliasset_new) in
-        let newmap = H.add_to_history (methname, (pvar_var, [])) loc (snd apair) in 
+        let newmap = H.add_to_history (methname, (pvar_var, [])) loc (snd apair) in
         let newset = S.add newtuple (fst apair) in
         (newset, newmap)
     | Lfield (Var id1, fld, _), Var id2 ->

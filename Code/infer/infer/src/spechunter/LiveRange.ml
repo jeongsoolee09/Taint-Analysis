@@ -3,6 +3,7 @@ open DefLocAliasSearches
 open DefLocAliasPredicates
 open DefLocAliasDomain
 open DefLocAliasPP
+open SpecHunterUtils
 open Yojson.Basic
 open List
 module Hashtbl = Caml.Hashtbl
@@ -15,6 +16,24 @@ module F = Format
 
 (* Exceptions ======================================= *)
 (* ================================================== *)
+
+exception CouldNotExtractCallee of string
+
+exception ReturnvFindFailed of string
+
+exception TooManyMatches of string
+
+exception NoMatches of string
+
+exception NoStateTupHoldingAliasTup of string
+
+exception NoSuchElem of string
+
+exception NoWitness of string
+
+exception ChainComputeFailed of string
+
+exception NotAPVar of string
 
 (* Types ============================================ *)
 (* ================================================== *)
@@ -131,15 +150,6 @@ let print_summary_table () =
 let formal_args : (Procname.t, MyAccessPath.t list) Hashtbl.t = Hashtbl.create 777
 
 let batch_add_formal_args () =
-  let rec catMaybes_tuplist (optlist : ('a * 'b option) list) : ('a * 'b) list =
-    match optlist with
-    | [] ->
-        []
-    | (sth1, Some sth2) :: t ->
-        (sth1, sth2) :: catMaybes_tuplist t
-    | (_, None) :: t ->
-        catMaybes_tuplist t
-  in
   let procnames = Hashtbl.fold (fun k _ acc -> k :: acc) summary_table [] in
   let pname_and_pdesc_opt = procnames >>| fun pname -> (pname, Procdesc.load pname) in
   let pname_and_pdesc = catMaybes_tuplist pname_and_pdesc_opt in
@@ -352,13 +362,17 @@ let extract_callee_from (ap : MyAccessPath.t) =
   let special, _ = ap in
   match special with
   | LogicalVar _ ->
-      L.die InternalError "extract_callee_from failed"
+      F.kasprintf
+        (fun msg -> raise @@ CouldNotExtractCallee msg)
+        "extract_callee_from failed. ap: %a@." MyAccessPath.pp ap
   | ProgramVar pv -> (
     match Pvar.get_declaring_function pv with
     | Some procname ->
         procname
     | None ->
-        L.die InternalError "extract_callee_from failed" )
+        F.kasprintf
+          (fun msg -> raise @@ CouldNotExtractCallee msg)
+          "extract_callee_from failed. ap: %a@." MyAccessPath.pp ap )
 
 
 let extract_ap_from_chain_slice (slice : (Procname.t * Status.t) option) : MyAccessPath.t option =
@@ -433,7 +447,9 @@ let find_returnv_holding_callee_aliasset (callee_name : Procname.t) (aliasset : 
   let rec inner (aliases : A.elt list) : A.elt =
     match aliases with
     | [] ->
-        L.die InternalError "find_returnv failed: callee_name: %a, aliasset: %a@." Procname.pp
+        F.kasprintf
+          (fun msg -> raise @@ ReturnvFindFailed msg)
+          "find_returnv_holding_callee failed. callee_name: %a, aliasset: %a@." Procname.pp
           callee_name A.pp aliasset
     | ((returnv, _) as elt) :: t ->
         let returnv_content = extract_callee_from elt in
@@ -454,11 +470,15 @@ let find_returnv_holding_callee_astateset (callee_name : Procname.t) (astate_set
       astate_set []
   in
   if Int.( > ) (length out) 1 then
-    L.die InternalError "Too many matches: callee_name: %a, astate_set: %a" Procname.pp callee_name
-      S.pp astate_set
+    F.kasprintf
+      (fun msg -> raise @@ TooManyMatches msg)
+      "find_returnv_holding_callee_astateset failed. callee_name: %a, astate_set: %a@." Procname.pp
+      callee_name S.pp astate_set
   else if Int.equal (length out) 0 then
-    L.die InternalError "No matches: callee_name: %a, astate_set: %a" Procname.pp callee_name S.pp
-      astate_set
+    F.kasprintf
+      (fun msg -> raise @@ NoMatches msg)
+      "find_returnv_holding_callee_astateset failed. callee_name: %a, astate_set: %a@." Procname.pp
+      callee_name S.pp astate_set
   else hd_exn out
 
 
@@ -469,8 +489,10 @@ let find_statetup_holding_aliastup (statetupset : S.t) (aliastup : A.elt) : S.el
   let rec inner (statetups : S.elt list) : S.elt =
     match statetups with
     | [] ->
-        L.die InternalError "find_statetup_holding_aliastup failed: statetupset: %a, aliastup: %a@."
-          S.pp statetupset MyAccessPath.pp aliastup
+        F.kasprintf
+          (fun msg -> raise @@ NoStateTupHoldingAliasTup msg)
+          "find_statetup_holding_aliastup failed. statetupset: %a, aliastup: %a@." S.pp statetupset
+          MyAccessPath.pp aliastup
     | ((_, _, _, target_aliasset) as statetup) :: t ->
         if A.mem aliastup target_aliasset then statetup else inner t
   in
@@ -495,8 +517,9 @@ let compare_astate astate1 astate2 =
 let rec next_elem_of_list (lst : S.elt list) ~(next_to : S.elt) : S.elt =
   match lst with
   | [] ->
-      L.die InternalError "next_elem_of_list failed: lst: %a, next_to: %a@." pp_tuplelist lst T.pp
-        next_to
+      F.kasprintf
+        (fun msg -> raise @@ NoSuchElem msg)
+        "next_elem_of_list failed: lst: %a, next_to: %a@." pp_tuplelist lst T.pp next_to
   | this :: t ->
       if T.equal this next_to then hd_exn t else next_elem_of_list t ~next_to
 
@@ -506,7 +529,11 @@ let find_witness_exn (lst : 'a list) ~(pred : 'a -> bool) : 'a =
   let opt =
     fold_left ~f:(fun acc elem -> if pred elem then Some elem else acc) ~init:None @@ rev lst
   in
-  match opt with None -> L.die InternalError "find_witness_exn failed" | Some elem -> elem
+  match opt with
+  | None ->
+      F.kasprintf (fun msg -> raise @@ NoWitness msg) "find_witness_exn failed.@."
+  | Some elem ->
+      elem
 
 
 let get_declaring_function_ap (ap : A.elt) : Procname.t option =
@@ -516,13 +543,6 @@ let get_declaring_function_ap (ap : A.elt) : Procname.t option =
       None
   | ProgramVar pvar -> (
     match Pvar.get_declaring_function pvar with None -> None | Some procname -> Some procname )
-
-
-let option_get : 'a option -> 'a = function
-  | None ->
-      L.die InternalError "Given option is empty"
-  | Some elem ->
-      elem
 
 
 let find_matching_param_for_callv (ap_set : A.t) (callv_ap : A.elt) : A.elt =
@@ -539,15 +559,17 @@ let find_matching_param_for_callv (ap_set : A.t) (callv_ap : A.elt) : A.elt =
   in
   match A.elements param_aps_in_this_set with
   | [] ->
-      L.die InternalError
-        "find_matching_param_for_callv failed (no matching params): ap_set: %a, callv_ap: %a@." A.pp
-        ap_set MyAccessPath.pp callv_ap
+      F.kasprintf
+        (fun msg -> raise @@ NoMatches msg)
+        "find_matching_param_for_callv failed. ap_set: %a, callv_ap: %a@." A.pp ap_set
+        MyAccessPath.pp callv_ap
   | [ap] ->
       ap
   | _ ->
-      L.die InternalError
-        "find_matching_param_for_callv failed (too many matches): ap_set: %a, callv_ap: %a@." A.pp
-        ap_set MyAccessPath.pp callv_ap
+      F.kasprintf
+        (fun msg -> raise @@ TooManyMatches msg)
+        "find_matching_param_for_callv failed. ap_set: %a, callv_ap: %a@." A.pp ap_set
+        MyAccessPath.pp callv_ap
 
 
 let rec compute_chain_inner (current_methname : Procname.t) (current_astate_set : S.t)
@@ -716,7 +738,6 @@ let rec compute_chain_inner (current_methname : Procname.t) (current_astate_set 
                 let landing_pad =
                   search_target_tuple_by_vardef_ap real_aliastup callee callee_astate
                 in
-                L.progress "landing_pad: %a@." T.pp landing_pad ;
                 let chain_updated =
                   (current_methname, Status.Call (callee, real_aliastup)) :: acc
                 in
@@ -738,7 +759,8 @@ let rec compute_chain_inner (current_methname : Procname.t) (current_astate_set 
         compute_chain_inner current_methname current_astate_set other_statetup chain_updated
           current_callv_counter
   | otherwise ->
-      L.die InternalError
+      F.kasprintf
+        (fun msg -> raise @@ ChainComputeFailed msg)
         {|computer_chain_inner failed:
           current_methname: %a,
           current_astate_set: %a,
@@ -804,7 +826,9 @@ let save_callgraph () =
 let extract_pvar_from_var (var : Var.t) : Pvar.t =
   match var with
   | LogicalVar _ ->
-      L.die InternalError "extract_pvar_from_var failed, var: %a@." Var.pp var
+      F.kasprintf
+        (fun msg -> raise @@ NotAPVar msg)
+        "extract_pvar_from_var failed. var: %a@." Var.pp var
   | ProgramVar pv ->
       pv
 
@@ -880,12 +904,12 @@ let main () =
          && (not @@ Var.is_return var)
          && (not @@ is_param var)
          && (not @@ is_callv var))
-  |> iter ~f:(fun (proc, ap) -> add_chain (proc, ap) @@ compute_chain ap) ;
-  (* |> iter ~f:(fun (proc, ap) ->
-   *        if
-   *          String.equal (Procname.to_string proc) "void ForLoopExample.f()"
-   *          && String.equal (F.asprintf "%a" Var.pp (fst ap)) "a"
-   *        then add_chain (proc, ap) @@ compute_chain ap) ; *)
+  (* |> iter ~f:(fun (proc, ap) -> add_chain (proc, ap) @@ compute_chain ap) ; *)
+  |> iter ~f:(fun (proc, ap) ->
+         if
+           String.equal (Procname.to_string proc) "void WhatIWantExample.f()"
+           && String.equal (F.asprintf "%a" Var.pp (fst ap)) "x"
+         then add_chain (proc, ap) @@ compute_chain ap) ;
   (* ============ Serialize ============ *)
   let wrapped_chains =
     Hashtbl.fold

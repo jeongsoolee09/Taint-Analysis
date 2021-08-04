@@ -471,7 +471,9 @@ let search_target_tuples_holding_param (location : int) (tuplelist : T.t list) :
 
 
 let extract_number_from_callv (callv_ap : A.elt) : int =
-  assert (is_callv_ap callv_ap) ;
+  (* assert (is_callv_ap callv_ap) ; *)
+  if not @@ is_callv_ap callv_ap then
+    L.die InternalError "This is not a callv!: %a@." MyAccessPath.pp callv_ap ;
   let varname = F.asprintf "%a" Var.pp (fst callv_ap) in
   (* the callv naming scheme is callv_{number}: {callee_methname} *)
   let splitted = String.split varname ~on:':' in
@@ -480,18 +482,21 @@ let extract_number_from_callv (callv_ap : A.elt) : int =
   int_of_string int_string
 
 
-let find_callv_by_number (ap_set : A.t) (number : int) : A.elt =
-  let res =
-    A.fold
-      (fun ap acc -> if Int.equal number @@ extract_number_from_callv ap then ap :: acc else acc)
-      ap_set []
+let find_callv_greater_than_number (ap_set : A.t) (number : int) : A.elt =
+  let callvs = A.elements @@ A.filter is_callv_ap ap_set in
+  let greater_callvs =
+    List.filter ~f:(fun callv -> Int.( > ) (extract_number_from_callv callv) number) callvs
   in
-  match res with
-  | [] ->
-      L.die InternalError "find_callv_by_number failed (no matches): ap_set: %a, number: %d" A.pp
+  let callvs_and_numbers =
+    List.map greater_callvs ~f:(fun callv -> (callv, extract_number_from_callv callv))
+  in
+  let min_callv_opt =
+    List.min_elt callvs_and_numbers ~compare:(fun (_, number1) (_, number2) ->
+        Int.compare number1 number2)
+  in
+  match min_callv_opt with
+  | None ->
+      L.die InternalError "find_callv_greater_than_number failed: ap_set: %a, number: %d@." A.pp
         ap_set number
-  | [ap] ->
-      ap
-  | _ ->
-      L.die InternalError "find_callv_by_number failed (too many matches): ap_set: %a, number: %d"
-        A.pp ap_set number
+  | Some (callv, _) ->
+      callv

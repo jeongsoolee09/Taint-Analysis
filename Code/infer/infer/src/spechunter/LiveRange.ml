@@ -13,26 +13,39 @@ module T = DefLocAliasDomain.AbstractState
 module L = Logging
 module F = Format
 
-type status =
-  | Define of (Procname.t * MyAccessPath.t)
-  | Call of (Procname.t * MyAccessPath.t)
-  | Redefine of MyAccessPath.t
-  | Dead
-[@@deriving equal]
+(* Exceptions ======================================= *)
+(* ================================================== *)
+
+(* Types ============================================ *)
+(* ================================================== *)
 
 module Status = struct
-  type t = status [@@deriving equal]
+  type t =
+    | Define of (Procname.t * MyAccessPath.t)
+    | Call of (Procname.t * MyAccessPath.t)
+    | Redefine of MyAccessPath.t
+    | Dead
+  [@@deriving equal]
+
+  let pp fmt x =
+    match x with
+    | Define (proc, ap) ->
+        F.fprintf fmt "Define (%a using %a)" MyAccessPath.pp ap Procname.pp proc
+    | Call (proc, ap) ->
+        F.fprintf fmt "Call (%a with %a)" Procname.pp proc MyAccessPath.pp ap
+    | Redefine ap ->
+        F.fprintf fmt "Redefine (%a)" MyAccessPath.pp ap
+    | Dead ->
+        F.fprintf fmt "Dead"
 end
 
 type json = Yojson.Basic.t
 
-type chain_slice = Procname.t * status
+module Chain = struct
+  type chain_slice = Procname.t * Status.t [@@deriving equal]
 
-and chain = chain_slice list
-
-let chain_slice_equal ((m1, s1) : chain_slice) ((m2, s2) : chain_slice) =
-  Procname.equal m1 m2 && Status.equal s1 s2
-
+  type t = chain_slice list [@@deriving equal]
+end
 
 module type Stype = module type of S
 
@@ -53,19 +66,7 @@ end
 (*  Pretty Printers ================================= *)
 (* ================================================== *)
 
-let pp_status fmt x =
-  match x with
-  | Define (proc, ap) ->
-      F.fprintf fmt "Define (%a using %a)" MyAccessPath.pp ap Procname.pp proc
-  | Call (proc, ap) ->
-      F.fprintf fmt "Call (%a with %a)" Procname.pp proc MyAccessPath.pp ap
-  | Redefine ap ->
-      F.fprintf fmt "Redefine (%a)" MyAccessPath.pp ap
-  | Dead ->
-      F.fprintf fmt "Dead"
-
-
-let pp_pair fmt (proc, v) = F.fprintf fmt "(%a, %a) ->" Procname.pp proc pp_status v
+let pp_pair fmt (proc, v) = F.fprintf fmt "(%a, %a) ->" Procname.pp proc Status.pp v
 
 let pp_chain fmt x = Pp.seq pp_pair fmt x
 
@@ -193,7 +194,7 @@ let callgraph = G.create ()
 let chains = Hashtbl.create 777
 
 (** Procname과 AP로부터 chain으로 가는 Hash table *)
-let add_chain (key : Procname.t * MyAccessPath.t) (value : chain) = Hashtbl.add chains key value
+let add_chain (key : Procname.t * MyAccessPath.t) (value : Chain.t) = Hashtbl.add chains key value
 
 (** Function for debugging by exporting Ocamlgraph to Graphviz Dot *)
 let graph_to_dot (graph : G.t) ?(filename = "callgraph_with_astate.dot") : unit =
@@ -312,9 +313,9 @@ let find_direct_callees (target_meth : Procname.t) : (Procname.t * S.t) list =
   G.succ callgraph target_vertex
 
 
-(** Is the chain_slice already in the given chain? *)
-let have_been_before (chain_slice : chain_slice) (chain : chain) : bool =
-  List.mem ~equal:chain_slice_equal chain chain_slice
+(** Is the Chain.chain_slice already in the given chain? *)
+let have_been_before (chain_slice : Chain.chain_slice) (chain : Chain.t) : bool =
+  List.mem chain chain_slice ~equal:Chain.equal_chain_slice
 
 
 let is_skip_function (methname : Procname.t) : bool = Option.is_none @@ Procdesc.load methname
@@ -360,7 +361,7 @@ let extract_callee_from (ap : MyAccessPath.t) =
         L.die InternalError "extract_callee_from failed" )
 
 
-let extract_ap_from_chain_slice (slice : (Procname.t * status) option) : MyAccessPath.t option =
+let extract_ap_from_chain_slice (slice : (Procname.t * Status.t) option) : MyAccessPath.t option =
   match slice with
   | Some (_, status) -> (
     match status with
@@ -382,34 +383,21 @@ let remove_from_aliasset ~(from : T.t) ~remove:var =
   (a, b, c, aliasset')
 
 
-(** chain_slice 끼리의 equal *)
-let double_equal ((methname1, status1) : Procname.t * status)
-    ((methname2, status2) : Procname.t * status) : bool =
-  Procname.equal methname1 methname2 && Status.equal status1 status2
-
-
-(** 주어진 (methname, status)가 chain의 일부분인지를 확인한다. *)
-let is_contained_in_chain (chain_slice : Procname.t * status) (chain : chain) =
-  mem chain chain_slice ~equal:double_equal
-
-
 (** chain_slice가 chain 안에 들어 있다는 전제 하에 그 index를 찾아 냄 *)
-let elem_is_at (chain : chain) (chain_slice : Procname.t * status) : int =
-  fold ~f:(fun acc elem -> if double_equal chain_slice elem then acc + 1 else acc) ~init:0 chain
+let elem_is_at (chain : Chain.t) (chain_slice : Procname.t * Status.t) : int =
+  fold
+    ~f:(fun acc elem -> if Chain.equal_chain_slice chain_slice elem then acc + 1 else acc)
+    ~init:0 chain
 
 
 (** -1을 리턴할 수도 있게끔 elem_is_at을 포장 *)
-let find_index_in_chain (chain : chain) (chain_slice : Procname.t * status) : int =
-  match is_contained_in_chain chain_slice chain with
-  | true ->
-      elem_is_at chain chain_slice
-  | false ->
-      -1
+let find_index_in_chain (chain : Chain.t) (chain_slice : Chain.chain_slice) : int =
+  match have_been_before chain_slice chain with true -> elem_is_at chain chain_slice | false -> -1
 
 
 (** chain과 chain_slice를 받아, chain_slice가 있는 지점부터 시작되는 subchain을
     꺼내 온다. 실패하면 empty list. *)
-let extract_subchain_from (chain : chain) (chain_slice : Procname.t * status) : chain =
+let extract_subchain_from (chain : Chain.t) (chain_slice : Chain.chain_slice) : Chain.t =
   let index = find_index_in_chain chain chain_slice in
   match index with
   | -1 ->
@@ -421,12 +409,11 @@ let extract_subchain_from (chain : chain) (chain_slice : Procname.t * status) : 
 
 (** Define에 들어 있는 Procname과 AP의 쌍을 받아서 그것이 들어 있는 chain을
     리턴 *)
-let find_entry_containing_chainslice (methname : Procname.t) (status : status) : chain option =
+let find_entry_containing_chainslice (methname : Procname.t) (status : Status.t) : Chain.t option =
   let all_chains = Hashtbl.fold (fun _ v acc -> v :: acc) chains [] in
   let result_chains =
     fold
-      ~f:(fun acc chain ->
-        if is_contained_in_chain (methname, status) chain then chain :: acc else acc)
+      ~f:(fun acc chain -> if have_been_before (methname, status) chain then chain :: acc else acc)
       ~init:[] all_chains
   in
   nth result_chains 0
@@ -564,7 +551,7 @@ let find_matching_param_for_callv (ap_set : A.t) (callv_ap : A.elt) : A.elt =
 
 
 let rec compute_chain_inner (current_methname : Procname.t) (current_astate_set : S.t)
-    (current_astate : S.elt) (current_chain : chain) (current_callv_counter : int) : chain =
+    (current_astate : S.elt) (current_chain : Chain.t) (current_callv_counter : int) : Chain.t =
   let ap_filter tup =
     (not @@ is_logical_var @@ fst tup) && (not @@ is_frontend_tmp_var @@ fst tup)
   in
@@ -630,7 +617,7 @@ let rec compute_chain_inner (current_methname : Procname.t) (current_astate_set 
             find_statetup_holding_aliastup just_before_astate_set target_returnv
           in
           let chain_updated =
-            (just_before_procname, Define (current_methname, second_of aliased_with_returnv))
+            (just_before_procname, Status.Define (current_methname, second_of aliased_with_returnv))
             :: current_chain
           in
           compute_chain_inner just_before_procname just_before_astate_set aliased_with_returnv
@@ -655,7 +642,7 @@ let rec compute_chain_inner (current_methname : Procname.t) (current_astate_set 
                 find_statetup_holding_aliastup caller_astate_set returnv_aliastup
               in
               let chain_updated =
-                (caller, Define (current_methname, second_of statetup_with_returnv)) :: acc
+                (caller, Status.Define (current_methname, second_of statetup_with_returnv)) :: acc
               in
               (* recurse *)
               compute_chain_inner caller caller_astate_set statetup_with_returnv chain_updated
@@ -674,7 +661,9 @@ let rec compute_chain_inner (current_methname : Procname.t) (current_astate_set 
           find_matching_param_for_callv (A.of_list var_aps) this_turn_callv_ap
         in
         let callee_methname = extract_callee_from param_ap_matching_callv in
-        let new_chain_slice = (current_methname, Call (callee_methname, param_ap_matching_callv)) in
+        let new_chain_slice =
+          (current_methname, Status.Call (callee_methname, param_ap_matching_callv))
+        in
         let chain_updated = new_chain_slice :: current_chain in
         let callee_astate_set = get_summary callee_methname in
         if is_param_ap param_ap_matching_callv then
@@ -706,7 +695,7 @@ let rec compute_chain_inner (current_methname : Procname.t) (current_astate_set 
         let current_ap = second_of current_astate in
         let current_astate_set_updated = S.remove current_astate current_astate_set in
         (* remove the current_astate from current_astate_set *)
-        let chain_updated = (current_methname, Redefine current_ap) :: current_chain in
+        let chain_updated = (current_methname, Status.Redefine current_ap) :: current_chain in
         (* recurse *)
         compute_chain_inner current_methname current_astate_set_updated least_recently_redefined
           chain_updated current_callv_counter
@@ -728,7 +717,9 @@ let rec compute_chain_inner (current_methname : Procname.t) (current_astate_set 
                   search_target_tuple_by_vardef_ap real_aliastup callee callee_astate
                 in
                 L.progress "landing_pad: %a@." T.pp landing_pad ;
-                let chain_updated = (current_methname, Call (callee, real_aliastup)) :: acc in
+                let chain_updated =
+                  (current_methname, Status.Call (callee, real_aliastup)) :: acc
+                in
                 compute_chain_inner callee callee_astate landing_pad chain_updated
                   current_callv_counter
               with _ -> acc)
@@ -741,7 +732,7 @@ let rec compute_chain_inner (current_methname : Procname.t) (current_astate_set 
           search_target_tuple_by_pvar_ap real_aliastup current_methname current_astate_set
         in
         let chain_updated =
-          (current_methname, Define (current_methname, real_aliastup)) :: current_chain
+          (current_methname, Status.Define (current_methname, real_aliastup)) :: current_chain
         in
         (* recurse *)
         compute_chain_inner current_methname current_astate_set other_statetup chain_updated
@@ -758,7 +749,7 @@ let rec compute_chain_inner (current_methname : Procname.t) (current_astate_set 
 
 
 (** 콜 그래프와 분석 결과를 토대로 체인 (Define -> ... -> Dead)을 계산해 낸다 *)
-let compute_chain_ (ap : MyAccessPath.t) : chain =
+let compute_chain_ (ap : MyAccessPath.t) : Chain.t =
   let first_methname, first_astate_set, first_astate = find_first_occurrence_of ap in
   let first_aliasset = fourth_of first_astate in
   let returnv_opt = A.find_first_opt is_returnv_ap first_aliasset in
@@ -772,7 +763,7 @@ let compute_chain_ (ap : MyAccessPath.t) : chain =
 
 
 (** 본체인 compute_chain_을 포장하는 함수 *)
-let compute_chain (ap : MyAccessPath.t) : chain =
+let compute_chain (ap : MyAccessPath.t) : Chain.t =
   let first_methname, _, first_astate = find_first_occurrence_of ap in
   if Procname.equal first_methname Procname.empty_block then []
   else
@@ -780,7 +771,7 @@ let compute_chain (ap : MyAccessPath.t) : chain =
     match A.exists is_returnv_ap first_aliasset with
     | true -> (
         (* 이미 어떤 chain의 subchain이라면 새로 계산할 필요 없음 *)
-        let initial_chain_slice = Define (first_methname, ap) in
+        let initial_chain_slice = Status.Define (first_methname, ap) in
         match find_entry_containing_chainslice first_methname initial_chain_slice with
         | None ->
             (* 이전에 계산해 놓은 게 없네 *)
@@ -822,7 +813,7 @@ let extract_pvar_from_var (var : Var.t) : Pvar.t =
 (* ========================================= *)
 
 (** 하나의 status에 대한 representation을 만든다. *)
-let represent_status (current_method : Procname.t) (status : status) : json =
+let represent_status (current_method : Procname.t) (status : Status.t) : json =
   match status with
   | Define (callee, ap) ->
       `Assoc

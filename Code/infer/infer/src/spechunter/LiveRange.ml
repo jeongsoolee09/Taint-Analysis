@@ -157,7 +157,9 @@ let batch_add_formal_args () =
   iter ~f:(fun (pname, params) -> Hashtbl.add formal_args pname params) pname_and_params
 
 
-let get_formal_args (key : Procname.t) = Hashtbl.find formal_args key
+let get_formal_args (key : Procname.t) : MyAccessPath.t list =
+  match Hashtbl.find_opt formal_args key with None -> [] | Some ap_list -> ap_list
+
 
 let batch_print_formal_args () =
   Hashtbl.iter
@@ -167,6 +169,22 @@ let batch_print_formal_args () =
       iter v ~f:(L.progress "%a, " MyAccessPath.pp) ;
       L.progress "\n")
     formal_args
+
+
+(* Procname and their callv counters ================ *)
+(* ================================================== *)
+
+let procname_callv_counter : (Procname.t, int) Hashtbl.t =
+  let new_table = Hashtbl.create 777 in
+  let procnames = Hashtbl.fold (fun k v acc -> k :: acc) summary_table [] in
+  iter ~f:(fun procname -> Hashtbl.add new_table procname 0) procnames ;
+  new_table
+
+
+let get_and_increment_counter procname =
+  let out = Hashtbl.find procname_callv_counter procname in
+  Hashtbl.replace procname_callv_counter procname (out + 1) ;
+  out
 
 
 (* CallGraph ======================================== *)

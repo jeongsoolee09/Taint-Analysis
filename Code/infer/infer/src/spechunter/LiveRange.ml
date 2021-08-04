@@ -78,11 +78,6 @@ let mk_returnv procname =
   Var.of_pvar @@ Pvar.mk (Mangled.from_string @@ "returnv: " ^ Procname.to_string procname) procname
 
 
-(** specially mangled variable to mark an AP as passed to a callee *)
-let mk_callv procname =
-  Var.of_pvar @@ Pvar.mk (Mangled.from_string @@ "callv: " ^ Procname.to_string procname) procname
-
-
 (* Ocamlgraph Definitions =========================== *)
 (* ================================================== *)
 
@@ -141,8 +136,8 @@ let batch_add_formal_args () =
         []
     | (sth1, Some sth2) :: t ->
         (sth1, sth2) :: catMaybes_tuplist t
-    | (_, None) :: _ ->
-        L.die InternalError "catMaybes_tuplist failed"
+    | (_, None) :: t ->
+        catMaybes_tuplist t
   in
   let procnames = Hashtbl.fold (fun k _ acc -> k :: acc) summary_table [] in
   let pname_and_pdesc_opt = procnames >>| fun pname -> (pname, Procdesc.load pname) in
@@ -305,45 +300,6 @@ let collect_program_var_aps_from (aliasset : A.t) ~(self : MyAccessPath.t)
       @@ A.elements aliasset
 
 
-let select_up_to (astate : S.elt) ~(within : S.t) : S.t =
-  let astates = S.elements within in
-  let inner () : S.t =
-    S.of_list
-    @@ fold_left astates ~init:[] ~f:(fun (acc : T.t list) (elem : T.t) ->
-           if third_of elem => third_of astate then elem :: acc else acc)
-  in
-  inner ()
-
-
-let equal_btw_vertices : PairOfMS.t -> PairOfMS.t -> bool =
- fun (m1, s1) (m2, s2) -> Procname.equal m1 m2 && S.equal s1 s2
-
-
-(** callgraph 상에서, 혹은 accumulator를 따라가면서 최초의 parent (즉, 직전의
-    caller)와 그 astate_set을 찾아낸다. *)
-let find_direct_caller_to_go_back (target_meth : Procname.t) (acc : chain) : Procname.t * S.t =
-  let target_vertex = (target_meth, get_summary target_meth) in
-  let parents = G.pred callgraph target_vertex in
-  let rec inner (initial : chain) (acc : chain) =
-    match acc with
-    | [] ->
-        L.die InternalError "find_direct_caller failed (1), target_meth: %a, acc: %a@." Procname.pp
-          target_meth pp_chain initial
-    | (cand_meth, _) :: t ->
-        let is_pred v = mem parents v ~equal:equal_btw_vertices in
-        let cand_vertex = (cand_meth, get_summary cand_meth) in
-        if is_pred cand_vertex then cand_vertex else inner initial t
-  in
-  match parents with
-  | [] ->
-      L.die InternalError "find_direct_caller failed (2), target_meth: %a, acc: %a@." Procname.pp
-        target_meth pp_chain acc
-  | [parent_and_astateset] ->
-      parent_and_astateset
-  | _ ->
-      inner acc acc
-
-
 (** Find the immediate callers and their summaries of the given Procname.t. *)
 let find_direct_callers (target_meth : Procname.t) : (Procname.t * S.t) list =
   let target_vertex = (target_meth, get_summary target_meth) in
@@ -361,7 +317,6 @@ let have_been_before (chain_slice : chain_slice) (chain : chain) : bool =
   List.mem ~equal:chain_slice_equal chain chain_slice
 
 
-(** get_formal_args는 skip_function에 대해 실패한다는 점을 이용한 predicate *)
 let is_skip_function (methname : Procname.t) : bool = Option.is_none @@ Procdesc.load methname
 
 let save_skip_function () : unit =
@@ -405,18 +360,6 @@ let extract_callee_from (ap : MyAccessPath.t) =
         L.die InternalError "extract_callee_from failed" )
 
 
-(** 바로 다음의 successor들 중에서 파라미터를 들고 있는 함수를 찾아 낸다.
-    못 찾을 경우, Procname.empty_block을 내뱉는다. *)
-let find_immediate_successor (current_methname : Procname.t) (current_astate_set : S.t)
-    (param : MyAccessPath.t) =
-  let succs = G.succ callgraph (current_methname, current_astate_set) in
-  (* let not_skip_succs = filter ~f:(fun (proc, _) -> not @@ is_skip_function proc) succs in *)
-  let succ_meths_and_formals = succs >>| fun (meth, _) -> (meth, get_formal_args meth) in
-  fold ~init:Procname.empty_block
-    ~f:(fun acc (m, p) -> if mem p param ~equal:MyAccessPath.equal then m else acc)
-    succ_meths_and_formals
-
-
 let extract_ap_from_chain_slice (slice : (Procname.t * status) option) : MyAccessPath.t option =
   match slice with
   | Some (_, status) -> (
@@ -437,19 +380,6 @@ let remove_from_aliasset ~(from : T.t) ~remove:var =
   let a, b, c, aliasset = from in
   let aliasset' = A.remove var aliasset in
   (a, b, c, aliasset')
-
-
-let procname_of (ap : A.elt) : Procname.t =
-  let var, _ = ap in
-  match var with
-  | ProgramVar pv -> (
-    match Pvar.get_declaring_function pv with
-    | Some proc ->
-        proc
-    | _ ->
-        L.die InternalError "procname_of failed, ap: %a@." MyAccessPath.pp ap )
-  | LogicalVar _ ->
-      L.die InternalError "procname_of failed, ap: %a@." MyAccessPath.pp ap
 
 
 (** chain_slice 끼리의 equal *)
@@ -508,19 +438,6 @@ let count_vardefs_in_astateset ~(find_this : MyAccessPath.t) (astate_set : S.t) 
     astate_set 0
 
 
-let extract_procname_from_returnv (returnv : Var.t) : Procname.t =
-  if not @@ is_returnv returnv then L.die InternalError "This is not a returnv: %a@." Var.pp returnv ;
-  match returnv with
-  | Var.LogicalVar _ ->
-      L.die InternalError "This is not a returnv: %a@." Var.pp returnv
-  | Var.ProgramVar pvar -> (
-    match Pvar.get_declaring_function pvar with
-    | None ->
-        L.die InternalError "extract_procname_from_returnv failed: %a@." Var.pp returnv
-    | Some procname ->
-        procname )
-
-
 (** Find returnv tuples in a given aliasset *)
 let find_returnv_holding_callee_aliasset (callee_name : Procname.t) (aliasset : A.t) : A.elt =
   let returnvs =
@@ -532,7 +449,7 @@ let find_returnv_holding_callee_aliasset (callee_name : Procname.t) (aliasset : 
         L.die InternalError "find_returnv failed: callee_name: %a, aliasset: %a@." Procname.pp
           callee_name A.pp aliasset
     | ((returnv, _) as elt) :: t ->
-        let returnv_content = extract_procname_from_returnv returnv in
+        let returnv_content = extract_callee_from elt in
         if Procname.equal callee_name returnv_content then elt else inner t
   in
   inner returnvs
@@ -572,9 +489,6 @@ let find_statetup_holding_aliastup (statetupset : S.t) (aliastup : A.elt) : S.el
   in
   inner statetups
 
-
-(** Are there any callvs in the aliasset? *)
-let alias_with_callv (statetup : S.elt) : bool = A.exists is_callv_ap (fourth_of statetup)
 
 (** Are there any returnvs in the aliasset? *)
 let alias_with_returnv (statetup : S.elt) (callee_methname : Procname.t) : bool =
@@ -622,10 +536,6 @@ let option_get : 'a option -> 'a = function
       L.die InternalError "Given option is empty"
   | Some elem ->
       elem
-
-
-let reduce (list : 'a list) ~(f : 'b -> 'a -> 'b) ~(init : 'b) : 'b =
-  if is_empty list then L.die InternalError "reducing an empty list!@." else fold_left list ~f ~init
 
 
 let find_matching_param_for_callv (ap_set : A.t) (callv_ap : A.elt) : A.elt =
@@ -853,7 +763,7 @@ let compute_chain_ (ap : MyAccessPath.t) : chain =
   let first_aliasset = fourth_of first_astate in
   let returnv_opt = A.find_first_opt is_returnv_ap first_aliasset in
   let source_meth =
-    match returnv_opt with Some returnv -> procname_of returnv | None -> first_methname
+    match returnv_opt with Some returnv -> extract_callee_from returnv | None -> first_methname
   in
   rev
   @@ compute_chain_inner first_methname first_astate_set first_astate

@@ -558,7 +558,14 @@ let find_statetup_holding_aliastup (statetupset : S.t) (aliastup : A.elt) : S.el
 (** Are there any callvs in the aliasset? *)
 let alias_with_callv (statetup : S.elt) : bool = A.exists is_callv_ap (fourth_of statetup)
 
-let alias_with_returnv (statetup : S.elt) : bool = A.exists is_returnv_ap (fourth_of statetup)
+(** Are there any returnvs in the aliasset? *)
+let alias_with_returnv (statetup : S.elt) (callee_methname : Procname.t) : bool =
+  A.exists
+    (fun ap ->
+      let methname = extract_callee_from ap in
+      is_returnv_ap ap && Procname.equal methname callee_methname)
+    (fourth_of statetup)
+
 
 let compare_astate astate1 astate2 =
   let linum_set1 = third_of astate1 and linum_set2 = third_of astate2 in
@@ -605,15 +612,27 @@ let reduce (list : 'a list) ~(f : 'b -> 'a -> 'b) ~(init : 'b) : 'b =
 
 let find_matching_param_for_callv (ap_set : A.t) (callv_ap : A.elt) : A.elt =
   let callee_methname = extract_callee_from callv_ap in
-  (* May contain carriedover vars, so we need to filter the params from it.
-     However, we must do things differently if the callee is an API. *)
-  let callee_params = get_param_args callee_methname in
-  if is_empty callee_params then raise TODO
-  else
-    let callee_aps =
-      A.filter (fun ap -> List.mem callee_params ap ~equal:MyAccesPath.equal) ap_set
-    in
-    raise TODO
+  let callee_params = get_formal_args callee_methname in
+  let param_aps_in_this_set =
+    if is_empty callee_params then
+      A.filter
+        (fun ap ->
+          let methname = extract_callee_from ap in
+          is_param_ap ap && Procname.equal methname callee_methname)
+        ap_set
+    else A.filter (fun ap -> List.mem callee_params ap ~equal:MyAccessPath.equal) ap_set
+  in
+  match A.elements param_aps_in_this_set with
+  | [] ->
+      L.die InternalError
+        "find_matching_param_for_callv failed (no matching params): ap_set: %a, callv_ap: %a@." A.pp
+        ap_set MyAccessPath.pp callv_ap
+  | [ap] ->
+      ap
+  | _ ->
+      L.die InternalError
+        "find_matching_param_for_callv failed (too many matches): ap_set: %a, callv_ap: %a@." A.pp
+        ap_set MyAccessPath.pp callv_ap
 
 
 let rec compute_chain_inner (current_methname : Procname.t) (current_astate_set : S.t)
@@ -673,7 +692,9 @@ let rec compute_chain_inner (current_methname : Procname.t) (current_astate_set 
         (* This is an Library API function *)
         let just_before_astate_set = get_summary just_before_procname in
         let just_before_astate_set_has_returnv =
-          S.exists alias_with_returnv just_before_astate_set
+          S.exists
+            (fun statetup -> alias_with_returnv statetup current_methname)
+            just_before_astate_set
         in
         if just_before_astate_set_has_returnv then
           let target_returnv = (mk_returnv current_methname, []) in
@@ -690,6 +711,7 @@ let rec compute_chain_inner (current_methname : Procname.t) (current_astate_set 
           let current_node = (current_methname, current_astate_set) in
           let is_leaf = is_empty @@ G.succ callgraph current_node in
           if is_leaf then (current_methname, Dead) :: current_chain else current_chain
+        (* (current_methname, Dead) :: current_chain *)
         (* the following if-then-else sequences encodes
            the level of preferences among different A.elt's. *)
       else if exists ~f:(fun (var, _) -> Var.is_return var) var_aps then
@@ -715,9 +737,28 @@ let rec compute_chain_inner (current_methname : Procname.t) (current_astate_set 
         collected @ current_chain
       else if exists ~f:(fun ap -> is_callv_ap ap) var_aps then
         (* ============ CALL ============ *)
-        let this_turn_callv_ap = find_callv_by_number var_aps current_callv_counter in
+        let this_turn_callv_ap =
+          find_callv_greater_than_number (A.of_list var_aps) current_callv_counter
+        in
+        let callv_number = extract_number_from_callv this_turn_callv_ap in
         (* now, find the matching param_ap. *)
-        raise TODO
+        let param_ap_matching_callv =
+          find_matching_param_for_callv (A.of_list var_aps) this_turn_callv_ap
+        in
+        let callee_methname = extract_callee_from param_ap_matching_callv in
+        let new_chain_slice = (current_methname, Call (callee_methname, param_ap_matching_callv)) in
+        let chain_updated = new_chain_slice :: current_chain in
+        let callee_astate_set = get_summary callee_methname in
+        if is_param_ap param_ap_matching_callv then
+          (* API Call *)
+          compute_chain_inner callee_methname callee_astate_set bottuple chain_updated callv_number
+        else
+          (* UDF call *)
+          let param_statetup =
+            search_target_tuple_by_pvar_ap param_ap_matching_callv callee_methname callee_astate_set
+          in
+          compute_chain_inner callee_methname callee_astate_set param_statetup chain_updated
+            callv_number
       else if
         (* either REDEFINITION or DEAD.
            check which one is the case by checking if there are multiple current_vardefs in the alias set *)
@@ -750,11 +791,15 @@ let rec compute_chain_inner (current_methname : Procname.t) (current_astate_set 
       let callees_and_astates = find_direct_callees current_methname in
       if not @@ Procname.equal declaring_function current_methname then
         (* ============ CALL ============ *)
+        (* TODO: 여기 보강 *)
         let collected =
           fold
             ~f:(fun acc (callee, callee_astate) ->
               try
-                let landing_pad = find_statetup_holding_aliastup callee_astate real_aliastup in
+                let landing_pad =
+                  search_target_tuple_by_vardef_ap real_aliastup callee callee_astate
+                in
+                L.progress "landing_pad: %a@." T.pp landing_pad ;
                 let chain_updated = (current_methname, Call (callee, real_aliastup)) :: acc in
                 compute_chain_inner callee callee_astate landing_pad chain_updated
                   current_callv_counter

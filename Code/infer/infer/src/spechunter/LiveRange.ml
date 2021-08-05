@@ -180,11 +180,11 @@ let batch_print_formal_args () =
 (* Procname and their callv counters ================ *)
 (* ================================================== *)
 
-let procname_callv_counter : (Procname.t, int) Hashtbl.t =
-  let new_table = Hashtbl.create 777 in
+let procname_callv_counter : (Procname.t, int) Hashtbl.t = Hashtbl.create 777
+
+let initialize_callv_counter () =
   let procnames = Hashtbl.fold (fun k v acc -> k :: acc) summary_table [] in
-  iter ~f:(fun procname -> Hashtbl.add new_table procname 0) procnames ;
-  new_table
+  iter ~f:(fun procname -> Hashtbl.add procname_callv_counter procname 0) procnames
 
 
 let get_and_increment_counter procname =
@@ -573,7 +573,7 @@ let find_matching_param_for_callv (ap_set : A.t) (callv_ap : A.elt) : A.elt =
 
 
 let rec compute_chain_inner (current_methname : Procname.t) (current_astate_set : S.t)
-    (current_astate : S.elt) (current_chain : Chain.t) (current_callv_counter : int) : Chain.t =
+    (current_astate : S.elt) (current_chain : Chain.t) : Chain.t =
   let ap_filter tup =
     (not @@ is_logical_var @@ fst tup) && (not @@ is_frontend_tmp_var @@ fst tup)
   in
@@ -643,7 +643,7 @@ let rec compute_chain_inner (current_methname : Procname.t) (current_astate_set 
             :: current_chain
           in
           compute_chain_inner just_before_procname just_before_astate_set aliased_with_returnv
-            chain_updated current_callv_counter
+            chain_updated
         else
           let current_node = (current_methname, current_astate_set) in
           let is_leaf = is_empty @@ G.succ callgraph current_node in
@@ -667,17 +667,14 @@ let rec compute_chain_inner (current_methname : Procname.t) (current_astate_set 
                 (caller, Status.Define (current_methname, second_of statetup_with_returnv)) :: acc
               in
               (* recurse *)
-              compute_chain_inner caller caller_astate_set statetup_with_returnv chain_updated
-                current_callv_counter)
+              compute_chain_inner caller caller_astate_set statetup_with_returnv chain_updated)
             ~init:[] callers_and_astates
         in
         collected @ current_chain
       else if exists ~f:(fun ap -> is_callv_ap ap) var_aps then
         (* ============ CALL ============ *)
-        let this_turn_callv_ap =
-          find_callv_greater_than_number (A.of_list var_aps) current_callv_counter
-        in
-        let callv_number = extract_number_from_callv this_turn_callv_ap in
+        let callv_counter = get_and_increment_counter current_methname in
+        let this_turn_callv_ap = find_callv_greater_than_number (A.of_list var_aps) callv_counter in
         (* now, find the matching param_ap. *)
         let param_ap_matching_callv =
           find_matching_param_for_callv (A.of_list var_aps) this_turn_callv_ap
@@ -690,14 +687,13 @@ let rec compute_chain_inner (current_methname : Procname.t) (current_astate_set 
         let callee_astate_set = get_summary callee_methname in
         if is_param_ap param_ap_matching_callv then
           (* API Call *)
-          compute_chain_inner callee_methname callee_astate_set bottuple chain_updated callv_number
+          compute_chain_inner callee_methname callee_astate_set bottuple chain_updated
         else
           (* UDF call *)
           let param_statetup =
             search_target_tuple_by_pvar_ap param_ap_matching_callv callee_methname callee_astate_set
           in
           compute_chain_inner callee_methname callee_astate_set param_statetup chain_updated
-            callv_number
       else if
         (* either REDEFINITION or DEAD.
            check which one is the case by checking if there are multiple current_vardefs in the alias set *)
@@ -720,7 +716,7 @@ let rec compute_chain_inner (current_methname : Procname.t) (current_astate_set 
         let chain_updated = (current_methname, Status.Redefine current_ap) :: current_chain in
         (* recurse *)
         compute_chain_inner current_methname current_astate_set_updated least_recently_redefined
-          chain_updated current_callv_counter
+          chain_updated
       else
         (* ============ DEAD ============ *)
         (* no more recursion; return *)
@@ -742,8 +738,7 @@ let rec compute_chain_inner (current_methname : Procname.t) (current_astate_set 
                   (current_methname, Status.Call (callee, real_aliastup)) :: acc
                 in
                 compute_chain_inner callee callee_astate landing_pad chain_updated
-                  current_callv_counter
-              with _ -> acc)
+              with SearchAstateByPVarFailed _ -> acc)
             ~init:[] callees_and_astates
         in
         collected @ current_chain
@@ -757,7 +752,6 @@ let rec compute_chain_inner (current_methname : Procname.t) (current_astate_set 
         in
         (* recurse *)
         compute_chain_inner current_methname current_astate_set other_statetup chain_updated
-          current_callv_counter
   | otherwise ->
       F.kasprintf
         (fun msg -> raise @@ ChainComputeFailed msg)
@@ -781,11 +775,11 @@ let compute_chain_ (ap : MyAccessPath.t) : Chain.t =
   rev
   @@ compute_chain_inner first_methname first_astate_set first_astate
        [(first_methname, Define (source_meth, ap))]
-       0
 
 
 (** 본체인 compute_chain_을 포장하는 함수 *)
 let compute_chain (ap : MyAccessPath.t) : Chain.t =
+  initialize_callv_counter () ;
   let first_methname, _, first_astate = find_first_occurrence_of ap in
   if Procname.equal first_methname Procname.empty_block then []
   else
@@ -884,13 +878,20 @@ let write_json (json : json) : unit =
 
 let main () =
   (* ============ Preliminary moves ============ *)
+  (* Initialize the callgraph_table *)
   MyCallGraph.load_callgraph_from_disk_to callgraph_table ;
   save_callgraph () ;
+  (* Initialize the summary_table *)
   SummaryLoader.load_summary_from_disk_to summary_table ;
   RefineSummaries.main summary_table ;
+  (* Initialize the formal_args table *)
   batch_add_formal_args () ;
-  filter_callgraph_table callgraph_table ;
   save_skip_function () ;
+  (* Initialize the procname_callv_counter *)
+  (* initialize_callv_counter () ; *)
+  (* Filter the callgraph_table *)
+  filter_callgraph_table callgraph_table ;
+  (* Initialize OCamlgraph *)
   callg_hash2og () ;
   graph_to_dot callgraph ~filename:"callgraph_with_astate_refined.dot" ;
   (* ============ Computing Chains ============ *)
@@ -904,12 +905,12 @@ let main () =
          && (not @@ Var.is_return var)
          && (not @@ is_param var)
          && (not @@ is_callv var))
-  (* |> iter ~f:(fun (proc, ap) -> add_chain (proc, ap) @@ compute_chain ap) ; *)
-  |> iter ~f:(fun (proc, ap) ->
-         if
-           String.equal (Procname.to_string proc) "void WhatIWantExample.f()"
-           && String.equal (F.asprintf "%a" Var.pp (fst ap)) "x"
-         then add_chain (proc, ap) @@ compute_chain ap) ;
+  |> iter ~f:(fun (proc, ap) -> add_chain (proc, ap) @@ compute_chain ap) ;
+  (* |> iter ~f:(fun (proc, ap) ->
+   *        if
+   *          String.equal (Procname.to_string proc) "void WhatIWantExample.f()"
+   *          && String.equal (F.asprintf "%a" Var.pp (fst ap)) "x"
+   *        then add_chain (proc, ap) @@ compute_chain ap) ; *)
   (* ============ Serialize ============ *)
   let wrapped_chains =
     Hashtbl.fold

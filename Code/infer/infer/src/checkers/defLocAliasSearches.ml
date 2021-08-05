@@ -346,6 +346,23 @@ let find_ap_with_field (aliasset : A.t) : A.elt =
   inner elements
 
 
+let search_target_tuple_by_vardef_ap (ap : MyAccessPath.t) (methname : Procname.t)
+    (astate_set : S.t) : T.t =
+  let elements = S.elements astate_set in
+  let rec inner (ap : MyAccessPath.t) (methname : Procname.t) (elements : S.elt list) =
+    match elements with
+    | [] ->
+        F.kasprintf
+          (fun msg -> raise @@ SearchAstateByPVarFailed msg)
+          "search_target_tuple_by_vardef_ap failed, ap:%a, methname: %a, elements: %a"
+          MyAccessPath.pp ap Procname.pp methname pp_tuplelist elements
+    | ((procname, vardef, _, _) as target) :: t ->
+        if Procname.equal procname methname && MyAccessPath.equal ap vardef then target
+        else inner ap methname t
+  in
+  inner ap methname elements
+
+
 let find_foreign_ap (aliasset : A.t) (current_methname : Procname.t) : A.elt option =
   let res =
     A.fold (fun ap acc -> if is_foreign_ap ap current_methname then ap :: acc else acc) aliasset []

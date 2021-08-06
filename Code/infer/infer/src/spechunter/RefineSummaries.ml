@@ -76,7 +76,7 @@ let partition_statetups_by_locset (statetups : S.t) : (LocationSet.t * S.t) list
     ~init:[] locsets
 
 
-let partition_statetups_by_aliasset (statetups : S.t) : (Procname.t * S.t) list =
+let partition_statetups_by_aliasset (statetups : S.t) : (A.t * S.t) list =
   let partitions =
     List.stable_dedup
     @@ S.fold
@@ -90,7 +90,7 @@ let partition_statetups_by_aliasset (statetups : S.t) : (Procname.t * S.t) list 
       let matches =
         S.fold
           (fun statetup acc' ->
-            if LocationSet.equal locset (third_of statetup) then S.add statetup acc' else acc')
+            if A.equal locset (fourth_of statetup) then S.add statetup acc' else acc')
           statetups S.empty
       in
       (locset, matches) :: acc)

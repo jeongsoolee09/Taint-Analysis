@@ -11,10 +11,6 @@ exception NotImplemented
 
 (** An tuple (element of an astate_set) represents a single data definition *)
 
-module Methname = Procname
-
-module type Methname = module type of Procname
-
 module MyAccessPath = struct
   type t = Var.t * AccessPath.access list [@@deriving equal, compare]
 
@@ -34,18 +30,11 @@ module MyAccessPath = struct
   let to_string (x : t) : string = F.asprintf "%a" pp x
 end
 
-(** AccessPath (with either Logical or Program Vars) Definitions. *)
-module type MAtype = module type of MyAccessPath
-
 (** set of locations (source-code level) where pieces of data are defined. *)
 module LocationSet = AbstractDomain.FiniteSet (Location)
 
-module type LocSetType = module type of LocationSet
-
 (** Set of AccessPath (with either Logical or Programs Vars) in an alias relationship. *)
 module SetofAliases = AbstractDomain.FiniteSet (MyAccessPath)
-
-module type SetofAliases = AbstractDomain.FiniteSetS with type elt = Var.t * AccessPath.access list
 
 let doubleton (a : SetofAliases.elt) (b : SetofAliases.elt) : SetofAliases.t =
   let aset = SetofAliases.singleton a in
@@ -55,20 +44,20 @@ let doubleton (a : SetofAliases.elt) (b : SetofAliases.elt) : SetofAliases.t =
 
 (** The Quadruple of the above four. *)
 module Quadruple
-    (Domain1 : Methname)
-    (Domain2 : MAtype)
-    (Domain3 : LocSetType)
-    (Domain4 : SetofAliases) =
+    (Domain1 : module type of Procname)
+    (Domain2 : module type of MyAccessPath)
+    (Domain3 : module type of LocationSet)
+    (Domain4 : module type of SetofAliases) =
 struct
   type t = Domain1.t * Domain2.t * Domain3.t * Domain4.t [@@deriving equal, compare]
 end
 
 module QuadrupleWithPP = struct
-  include Quadruple (Methname) (MyAccessPath) (LocationSet) (SetofAliases)
+  include Quadruple (Procname) (MyAccessPath) (LocationSet) (SetofAliases)
 
   let pp : F.formatter -> t -> unit =
    fun fmt (methname, vardefs, defloc, aliasset) ->
-    F.fprintf fmt "(%a, %a, %a, %a)" Methname.pp methname MyAccessPath.pp vardefs LocationSet.pp
+    F.fprintf fmt "(%a, %a, %a, %a)" Procname.pp methname MyAccessPath.pp vardefs LocationSet.pp
       defloc SetofAliases.pp aliasset
 end
 
@@ -118,15 +107,11 @@ module HistoryMap = struct
     batch_add_to_history2_inner keys_and_loc history
 end
 
-module type HistoryMap = module type of HistoryMap
-
 (* An Abtract State is just a quadruple. *)
 module AbstractState = QuadrupleWithPP
 
 (** A set of Abstract States. *)
 module AbstractStateSetFinite = AbstractDomain.FiniteSet (AbstractState)
-
-module type AbstractStateSetFinite = module type of AbstractStateSetFinite
 
 (* The pair of 1) set of abstract states and 2) the history map *)
 module AbstractPair = struct

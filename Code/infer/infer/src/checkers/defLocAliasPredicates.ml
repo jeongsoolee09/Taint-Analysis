@@ -205,3 +205,19 @@ let is_irvar_ap (ap : A.elt) : bool =
 let is_initializer (procname : Procname.t) =
   let proc_string = Procname.to_string procname in
   String.is_substring proc_string ~substring:"<init>"
+
+
+(* x => y: y is more recent than x in a same file *)
+let ( => ) (x : LocationSet.t) (y : LocationSet.t) : bool =
+  let x_min = LocationSet.min_elt x in
+  let y_min = LocationSet.min_elt y in
+  let loc_cond = x_min.line <= y_min.line in
+  SourceFile.equal x_min.file y_min.file && loc_cond
+
+
+(* x ==> y: y is STRICTLY more recent than x in a same file *)
+let ( ==> ) (x : LocationSet.t) (y : LocationSet.t) : bool =
+  let x_min = LocationSet.min_elt x in
+  let y_min = LocationSet.min_elt y in
+  let loc_cond = x_min.line < y_min.line in
+  SourceFile.equal x_min.file y_min.file && loc_cond

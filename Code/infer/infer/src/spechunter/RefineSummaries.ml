@@ -13,7 +13,47 @@ module T = DefLocAliasDomain.AbstractState
 module L = Logging
 module F = Format
 
-exception TODO
+let partition_statetups_by_procname (statetups : S.t) : (Procname.t * S.t) list =
+  let partitions =
+    List.stable_dedup
+    @@ S.fold
+         (fun astate acc ->
+           let procname = first_of astate in
+           procname :: acc)
+         statetups []
+  in
+  List.fold
+    ~f:(fun acc procname ->
+      let matches =
+        S.fold
+          (fun statetup acc' ->
+            if Procname.equal procname (first_of statetup) then S.add statetup acc' else acc')
+          statetups S.empty
+      in
+      (procname, matches) :: acc)
+    ~init:[] partitions
+
+
+let partition_statetups_by_vardef (statetups : S.t) : (MyAccessPath.t * S.t) list =
+  let partitions =
+    List.stable_dedup
+    @@ S.fold
+         (fun astate acc ->
+           let vardef = second_of astate in
+           vardef :: acc)
+         statetups []
+  in
+  List.fold
+    ~f:(fun acc vardef ->
+      let matches =
+        S.fold
+          (fun statetup acc' ->
+            if MyAccessPath.equal vardef (second_of statetup) then S.add statetup acc' else acc')
+          statetups S.empty
+      in
+      (vardef, matches) :: acc)
+    ~init:[] partitions
+
 
 let partition_statetups_by_locset (statetups : S.t) : (LocationSet.t * S.t) list =
   let locsets : LocationSet.t list =
@@ -34,6 +74,27 @@ let partition_statetups_by_locset (statetups : S.t) : (LocationSet.t * S.t) list
       in
       (locset, matches) :: acc)
     ~init:[] locsets
+
+
+let partition_statetups_by_aliasset (statetups : S.t) : (Procname.t * S.t) list =
+  let partitions =
+    List.stable_dedup
+    @@ S.fold
+         (fun astate acc ->
+           let aliasset = fourth_of astate in
+           aliasset :: acc)
+         statetups []
+  in
+  List.fold
+    ~f:(fun acc locset ->
+      let matches =
+        S.fold
+          (fun statetup acc' ->
+            if LocationSet.equal locset (third_of statetup) then S.add statetup acc' else acc')
+          statetups S.empty
+      in
+      (locset, matches) :: acc)
+    ~init:[] partitions
 
 
 (** Return the first matching value for a key in a association list. *)

@@ -4,8 +4,6 @@ open! IStd
 module F = Format
 module L = Logging
 
-exception NotImplemented
-
 (** astate_set = Set of (defined variable, location of definition, Aliased Variables including both
     logical and program variables) *)
 

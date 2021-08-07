@@ -163,7 +163,7 @@ let consolidate_irvars (astate_set : S.t) : S.t =
     ~init:astate_set partitions
 
 
-let consolidate_irvar_table (table : (Methname.t, S.t) Hashtbl.t) : (Methname.t, S.t) Hashtbl.t =
+let consolidate_irvar_table (table : (Procname.t, S.t) Hashtbl.t) : (Procname.t, S.t) Hashtbl.t =
   Hashtbl.iter
     (fun proc summary ->
       if String.equal (Procname.to_string proc) "void RelationalDataAccessApplication.run()" then (
@@ -177,7 +177,7 @@ let consolidate_irvar_table (table : (Methname.t, S.t) Hashtbl.t) : (Methname.t,
 (* Consolidate duplicated Pvar tuples =============== *)
 (* ================================================== *)
 
-let consolidate_dup_pvars (table : (Methname.t, S.t) Hashtbl.t) : (Methname.t, S.t) Hashtbl.t =
+let consolidate_dup_pvars (table : (Procname.t, S.t) Hashtbl.t) : (Procname.t, S.t) Hashtbl.t =
   let one_pass_S (astate_set : S.t) : S.t =
     let pvar_astates =
       S.filter
@@ -192,6 +192,7 @@ let consolidate_dup_pvars (table : (Methname.t, S.t) Hashtbl.t) : (Methname.t, S
           && (not @@ is_callv_ap ap))
         astate_set
     in
+    let non_pvar_astates = S.filter (fun astate -> not @@ S.mem astate pvar_astates) astate_set in
     let partitions = partition_statetups_by_vardef pvar_astates in
     let partition_mapfunc ((ap, partition) : MyAccessPath.t * S.t) : T.t =
       (* sanity check *)
@@ -209,7 +210,8 @@ let consolidate_dup_pvars (table : (Methname.t, S.t) Hashtbl.t) : (Methname.t, S
       in
       (proc, vardef, locset, aliasset_combined)
     in
-    S.of_list @@ List.( >>| ) partitions partition_mapfunc
+    let processed_pvar_astates = S.of_list @@ List.( >>| ) partitions partition_mapfunc in
+    S.union processed_pvar_astates non_pvar_astates
   in
   Hashtbl.iter (fun proc astate_set -> Hashtbl.replace table proc (one_pass_S astate_set)) table ;
   table
@@ -218,7 +220,7 @@ let consolidate_dup_pvars (table : (Methname.t, S.t) Hashtbl.t) : (Methname.t, S
 (* removing unimportant elements ==================== *)
 (* ================================================== *)
 
-let remove_unimportant_elems (table : (Methname.t, S.t) Hashtbl.t) : (Methname.t, S.t) Hashtbl.t =
+let remove_unimportant_elems (table : (Procname.t, S.t) Hashtbl.t) : (Procname.t, S.t) Hashtbl.t =
   let filter_garbage_astate tup =
     let var, _ = second_of tup in
     (not @@ is_placeholder_vardef var)
@@ -275,8 +277,8 @@ let extract_callee_from (ap : MyAccessPath.t) =
         L.die InternalError "extract_callee_from failed" )
 
 
-let delete_compensating_param_returnv (table : (Methname.t, S.t) Hashtbl.t) :
-    (Methname.t, S.t) Hashtbl.t =
+let delete_compensating_param_returnv (table : (Procname.t, S.t) Hashtbl.t) :
+    (Procname.t, S.t) Hashtbl.t =
   let one_pass_A (aliasset : A.t) : A.t =
     let returnvs = A.elements @@ A.filter is_returnv_ap aliasset in
     let params = A.elements @@ A.filter is_param_ap aliasset in
@@ -310,8 +312,8 @@ let delete_compensating_param_returnv (table : (Methname.t, S.t) Hashtbl.t) :
 (* Remove initializer calls ========================= *)
 (* ================================================== *)
 
-let delete_initializer_callv_param (table : (Methname.t, S.t) Hashtbl.t) :
-    (Methname.t, S.t) Hashtbl.t =
+let delete_initializer_callv_param (table : (Procname.t, S.t) Hashtbl.t) :
+    (Procname.t, S.t) Hashtbl.t =
   let one_pass_A (aliasset : A.t) : A.t =
     A.filter
       (fun ap ->
@@ -334,8 +336,8 @@ let delete_initializer_callv_param (table : (Methname.t, S.t) Hashtbl.t) :
 (* EXPERIMENTAL: consolidate all frontend temp vars by their LocationSet.ts *)
 (* ================================================== *)
 
-let consolidate_frontend_by_locset (table : (Methname.t, S.t) Hashtbl.t) :
-    (Methname.t, S.t) Hashtbl.t =
+let consolidate_frontend_by_locset (table : (Procname.t, S.t) Hashtbl.t) :
+    (Procname.t, S.t) Hashtbl.t =
   let get_singleton (astate_set : S.t) : T.t =
     match S.elements astate_set with
     | [statetup] ->
@@ -423,7 +425,7 @@ let consolidate_frontend_by_locset (table : (Methname.t, S.t) Hashtbl.t) :
 (* Return =========================================== *)
 (* ================================================== *)
 
-let return (table : (Methname.t, S.t) Hashtbl.t) : unit = Hashtbl.iter (fun _ _ -> ()) table
+let return (table : (Procname.t, S.t) Hashtbl.t) : unit = Hashtbl.iter (fun _ _ -> ()) table
 
 (* For debugging ==================================== *)
 (* ================================================== *)
@@ -438,8 +440,8 @@ let print_summary_table table =
   L.progress "========================================================================@."
 
 
-let summary_table_to_file_and_return (filename : string) (table : (Methname.t, S.t) Hashtbl.t) :
-    (Methname.t, S.t) Hashtbl.t =
+let summary_table_to_file_and_return (filename : string) (table : (Procname.t, S.t) Hashtbl.t) :
+    (Procname.t, S.t) Hashtbl.t =
   let out_chan = Out_channel.create filename in
   Hashtbl.iter
     (fun proc astate_set ->
@@ -457,16 +459,16 @@ let summary_table_to_file_and_return (filename : string) (table : (Methname.t, S
 (* Main ============================================= *)
 (* ================================================== *)
 
-let main : (Methname.t, S.t) Hashtbl.t -> unit =
+let main : (Procname.t, S.t) Hashtbl.t -> unit =
  fun table ->
   table
   |> summary_table_to_file_and_return "1_raw_astate_set.txt"
   |> consolidate_frontend_by_locset
   |> summary_table_to_file_and_return "2_consolidate_by_locset.txt"
+  |> consolidate_dup_pvars
+  |> summary_table_to_file_and_return "3_consolidate_dup_pvars.txt"
   |> delete_initializer_callv_param
-  |> summary_table_to_file_and_return "3_delete_initizalizer_callv_param.txt"
+  |> summary_table_to_file_and_return "4_delete_initizalizer_callv_param.txt"
   |> remove_unimportant_elems
-  |> summary_table_to_file_and_return "4_remove_unimportant_elems.txt"
-  (* |> delete_compensating_param_returnv
-   * |> summary_table_to_file_and_return "5_delete_compensating_param_returnv.txt" *)
+  |> summary_table_to_file_and_return "5_remove_unimportant_elems.txt"
   |> return

@@ -1,5 +1,6 @@
 open! IStd
-open DefLocAliasPP
+
+(* open DefLocAliasPP *)
 open DefLocAliasSearches
 open DefLocAliasPredicates
 open DefLocAliasDomain
@@ -15,6 +16,7 @@ module F = Format
 
 (* Exceptions ======================================= *)
 (* ================================================== *)
+exception TODO
 
 exception NotASingleton of string
 
@@ -111,69 +113,6 @@ let rec assoc (alist : ('a * 'b) list) (key : 'a) ~equal : 'b =
       if equal key key' then value else assoc t key ~equal
 
 
-(* Consolidating $irvars ============================ *)
-(* ================================================== *)
-
-let consolidate_irvars (astate_set : S.t) : S.t =
-  let irvars =
-    S.fold
-      (fun astate acc ->
-        let ap = second_of astate in
-        if is_irvar_ap ap then S.add astate acc else acc)
-      astate_set S.empty
-  in
-  let get_singleton (locset : LocationSet.t) : Location.t =
-    match LocationSet.elements locset with
-    | [loc] ->
-        loc
-    | _ ->
-        L.die InternalError "This is not a singleton location set!: %a@." LocationSet.pp locset
-  in
-  let partitions = partition_statetups_by_locset irvars in
-  List.fold
-    ~f:(fun acc (locset, partition) ->
-      let location = get_singleton locset in
-      let statetups_holding_param =
-        search_target_tuples_holding_param location.line (S.elements acc)
-        |> List.filter ~f:(fun statetup -> not @@ LocationSet.equal locset @@ third_of statetup)
-        |> S.of_list
-      in
-      let locset_aliasset_combined =
-        S.fold
-          (fun statetup acc' ->
-            let aliasset = fourth_of statetup in
-            A.union acc' aliasset)
-          partition A.empty
-      in
-      let updated_tuples =
-        S.map
-          (fun (proc, vardef, loc, aliasset) ->
-            let new_aliasset = A.union aliasset locset_aliasset_combined in
-            (proc, vardef, loc, new_aliasset))
-          statetups_holding_param
-      in
-      let acc_updated =
-        (* strong-update *)
-        let acc_rmvd =
-          S.filter (fun statetup -> not @@ S.mem statetup statetups_holding_param) acc
-        in
-        S.union acc_rmvd updated_tuples
-      in
-      acc_updated)
-    ~init:astate_set partitions
-
-
-let consolidate_irvar_table (table : (Procname.t, S.t) Hashtbl.t) : (Procname.t, S.t) Hashtbl.t =
-  Hashtbl.iter
-    (fun proc summary ->
-      if String.equal (Procname.to_string proc) "void RelationalDataAccessApplication.run()" then (
-        let consolidated = consolidate_irvars summary in
-        Hashtbl.remove table proc ;
-        Hashtbl.add table proc consolidated ))
-    table ;
-  table
-
-
 (* Consolidate duplicated Pvar tuples =============== *)
 (* ================================================== *)
 
@@ -185,7 +124,7 @@ let consolidate_dup_pvars (table : (Procname.t, S.t) Hashtbl.t) : (Procname.t, S
           let ap = second_of astate in
           (not @@ is_this_ap ap)
           && (not @@ is_placeholder_vardef (fst ap))
-          && (not @@ is_frontend_tmp_var_ap ap)
+          (* && (not @@ is_frontend_tmp_var_ap ap) *)
           && (not @@ is_returnv_ap ap)
           && (not @@ is_return_ap ap)
           && (not @@ is_param_ap ap)
@@ -338,13 +277,6 @@ let delete_initializer_callv_param (table : (Procname.t, S.t) Hashtbl.t) :
 
 let consolidate_frontend_by_locset (table : (Procname.t, S.t) Hashtbl.t) :
     (Procname.t, S.t) Hashtbl.t =
-  let get_singleton (astate_set : S.t) : T.t =
-    match S.elements astate_set with
-    | [statetup] ->
-        statetup
-    | _ ->
-        L.die InternalError "This is not a singleton location set!: %a@." S.pp astate_set
-  in
   let one_pass_S (astate_set : S.t) : S.t =
     let pvar_astates =
       S.filter
@@ -358,64 +290,42 @@ let consolidate_frontend_by_locset (table : (Procname.t, S.t) Hashtbl.t) :
           && (not @@ is_param_ap ap)
           && (not @@ is_callv_ap ap))
         astate_set
-    in
-    let frontend_var_astates =
+    and frontend_var_astates =
       S.filter
         (fun astate ->
           let ap = second_of astate in
           is_frontend_tmp_var_ap ap)
         astate_set
     in
-    let real_var_astates_partitioned = partition_statetups_by_locset pvar_astates in
-    let frontend_var_astates_partitioned = partition_statetups_by_locset frontend_var_astates in
-    let locsets : LocationSet.t list =
-      List.stable_dedup
-      @@ S.fold
-           (fun astate acc ->
-             let locset = third_of astate in
-             locset :: acc)
-           pvar_astates []
+    let locsets =
+      List.stable_dedup @@ S.fold (fun astate acc -> third_of astate :: acc) astate_set []
     in
-    let realvar_frontendvar_alist : (T.t * S.t) list =
+    let there_is_only_one_pvar_per_locset =
       List.fold
         ~f:(fun acc locset ->
-          try
-            let matching_frontendvar_partition =
-              assoc frontend_var_astates_partitioned locset ~equal:LocationSet.equal
-            in
-            let matching_realvar_partition =
-              try assoc real_var_astates_partitioned locset ~equal:LocationSet.equal
-              with _ ->
-                L.die InternalError
-                  "assoc failed: locset: %a, astate_set: %a, realvars_partitioned: %a@."
-                  LocationSet.pp locset S.pp astate_set pp_tuplesetlist
-                  (List.map real_var_astates_partitioned ~f:snd)
-            in
-            (* sanity check *)
-            assert (Int.equal (S.cardinal matching_realvar_partition) 1) ;
-            (get_singleton matching_realvar_partition, matching_frontendvar_partition) :: acc
-          with _ -> acc)
-        locsets ~init:[]
-    in
-    S.map
-      (fun statetup ->
-        let should_be_touched =
-          List.mem (List.map ~f:fst realvar_frontendvar_alist) statetup ~equal:T.equal
-        in
-        if should_be_touched then
-          let real_proc, real_vardef, real_locset, real_aliasset = statetup in
-          let frontendvar_set = assoc realvar_frontendvar_alist statetup ~equal:T.equal in
-          let frontendvar_sets_aliasset =
-            S.fold
-              (fun statetup acc ->
-                let aliasset = fourth_of statetup in
-                A.union acc aliasset)
-              frontendvar_set A.empty
+          let there_is_only_one =
+            Int.( > ) 2 @@ S.cardinal
+            @@ S.filter (fun astate -> LocationSet.equal locset @@ third_of astate) pvar_astates
           in
-          let combined_aliasset = A.fold A.add frontendvar_sets_aliasset real_aliasset in
-          (real_proc, real_vardef, real_locset, combined_aliasset)
-        else statetup)
-      astate_set
+          there_is_only_one && acc)
+        ~init:true locsets
+    in
+    assert there_is_only_one_pvar_per_locset ;
+    let pvar_frontend_carpro =
+      let open List in
+      S.elements pvar_astates
+      >>= fun pvar_astate ->
+      S.elements frontend_var_astates
+      >>= fun frontend_astate -> return (pvar_astate, frontend_astate)
+    in
+    let mapfunc ((pvar_astate, frontend_astate) : T.t * T.t) : T.t =
+      let pvar_proc, pvar_vardef, pvar_locset, pvar_astate = pvar_astate
+      and frontend_proc, frontend_vardef, frontend_locset, frontend_astate = pvar_astate in
+      assert (
+        Procname.equal pvar_proc frontend_proc && LocationSet.equal pvar_locset frontend_locset ) ;
+      (pvar_proc, pvar_vardef, pvar_locset, A.union pvar_astate frontend_astate)
+    in
+    S.of_list @@ List.map ~f:mapfunc pvar_frontend_carpro
     (* one_pass_S end *)
   in
   Hashtbl.iter (fun proc astate_set -> Hashtbl.replace table proc (one_pass_S astate_set)) table ;
@@ -463,10 +373,10 @@ let main : (Procname.t, S.t) Hashtbl.t -> unit =
  fun table ->
   table
   |> summary_table_to_file_and_return "1_raw_astate_set.txt"
-  |> consolidate_frontend_by_locset
-  |> summary_table_to_file_and_return "2_consolidate_by_locset.txt"
   |> consolidate_dup_pvars
-  |> summary_table_to_file_and_return "3_consolidate_dup_pvars.txt"
+  |> summary_table_to_file_and_return "2_consolidate_dup_pvars.txt"
+  |> consolidate_frontend_by_locset
+  |> summary_table_to_file_and_return "3_consolidate_by_locset.txt"
   |> delete_initializer_callv_param
   |> summary_table_to_file_and_return "4_delete_initizalizer_callv_param.txt"
   |> remove_unimportant_elems

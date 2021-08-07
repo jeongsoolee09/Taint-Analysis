@@ -76,6 +76,8 @@ module AbstractPair : sig
   val pp : F.formatter -> t -> unit
 
   val double_equal : Procname.t * SetofAliases.elt -> Procname.t * SetofAliases.elt -> bool
+
+  val partition_tuples_modulo_123 : AbstractStateSetFinite.t -> AbstractState.t list list
 end
 
 val pp : F.formatter -> AbstractPair.t -> unit

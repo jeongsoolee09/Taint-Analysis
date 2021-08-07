@@ -13,6 +13,11 @@ module T = DefLocAliasDomain.AbstractState
 module L = Logging
 module F = Format
 
+(* Exceptions ======================================= *)
+(* ================================================== *)
+
+exception NotASingleton of string
+
 let partition_statetups_by_procname (statetups : S.t) : (Procname.t * S.t) list =
   let partitions =
     List.stable_dedup
@@ -169,6 +174,47 @@ let consolidate_irvar_table (table : (Methname.t, S.t) Hashtbl.t) : (Methname.t,
   table
 
 
+(* Consolidate duplicated Pvar tuples =============== *)
+(* ================================================== *)
+
+let consolidate_dup_pvars (table : (Methname.t, S.t) Hashtbl.t) : (Methname.t, S.t) Hashtbl.t =
+  let one_pass_S (astate_set : S.t) : S.t =
+    let pvar_astates =
+      S.filter
+        (fun astate ->
+          let ap = second_of astate in
+          (not @@ is_this_ap ap)
+          && (not @@ is_placeholder_vardef (fst ap))
+          && (not @@ is_frontend_tmp_var_ap ap)
+          && (not @@ is_returnv_ap ap)
+          && (not @@ is_return_ap ap)
+          && (not @@ is_param_ap ap)
+          && (not @@ is_callv_ap ap))
+        astate_set
+    in
+    let partitions = partition_statetups_by_vardef pvar_astates in
+    let partition_mapfunc ((ap, partition) : MyAccessPath.t * S.t) : T.t =
+      (* sanity check *)
+      let proc, vardef, locset, aliasset = List.hd_exn @@ S.elements partition in
+      let other_threes_are_all_equal =
+        S.fold
+          (fun (proc', vardef', locset', _) acc ->
+            Procname.equal proc proc' && MyAccessPath.equal vardef vardef'
+            && LocationSet.equal locset locset' && acc)
+          partition true
+      in
+      assert other_threes_are_all_equal ;
+      let aliasset_combined =
+        S.fold (fun statetup acc -> A.union acc @@ fourth_of statetup) partition A.empty
+      in
+      (proc, vardef, locset, aliasset_combined)
+    in
+    S.of_list @@ List.( >>| ) partitions partition_mapfunc
+  in
+  Hashtbl.iter (fun proc astate_set -> Hashtbl.replace table proc (one_pass_S astate_set)) table ;
+  table
+
+
 (* removing unimportant elements ==================== *)
 (* ================================================== *)
 
@@ -261,7 +307,7 @@ let delete_compensating_param_returnv (table : (Methname.t, S.t) Hashtbl.t) :
   table
 
 
-(* Remove initializer calls *)
+(* Remove initializer calls ========================= *)
 (* ================================================== *)
 
 let delete_initializer_callv_param (table : (Methname.t, S.t) Hashtbl.t) :
@@ -298,7 +344,7 @@ let consolidate_frontend_by_locset (table : (Methname.t, S.t) Hashtbl.t) :
         L.die InternalError "This is not a singleton location set!: %a@." S.pp astate_set
   in
   let one_pass_S (astate_set : S.t) : S.t =
-    let real_var_astates =
+    let pvar_astates =
       S.filter
         (fun astate ->
           let ap = second_of astate in
@@ -318,7 +364,7 @@ let consolidate_frontend_by_locset (table : (Methname.t, S.t) Hashtbl.t) :
           is_frontend_tmp_var_ap ap)
         astate_set
     in
-    let real_var_astates_partitioned = partition_statetups_by_locset real_var_astates in
+    let real_var_astates_partitioned = partition_statetups_by_locset pvar_astates in
     let frontend_var_astates_partitioned = partition_statetups_by_locset frontend_var_astates in
     let locsets : LocationSet.t list =
       List.stable_dedup
@@ -326,7 +372,7 @@ let consolidate_frontend_by_locset (table : (Methname.t, S.t) Hashtbl.t) :
            (fun astate acc ->
              let locset = third_of astate in
              locset :: acc)
-           real_var_astates []
+           pvar_astates []
     in
     let realvar_frontendvar_alist : (T.t * S.t) list =
       List.fold
@@ -414,7 +460,13 @@ let summary_table_to_file_and_return (filename : string) (table : (Methname.t, S
 let main : (Methname.t, S.t) Hashtbl.t -> unit =
  fun table ->
   table
-  |> summary_table_to_file_and_return "raw_astate_set.txt"
+  |> summary_table_to_file_and_return "1_raw_astate_set.txt"
   |> consolidate_frontend_by_locset
-  |> summary_table_to_file_and_return "consolidate_by_locset.txt"
+  |> summary_table_to_file_and_return "2_consolidate_by_locset.txt"
+  |> delete_initializer_callv_param
+  |> summary_table_to_file_and_return "3_delete_initizalizer_callv_param.txt"
+  |> remove_unimportant_elems
+  |> summary_table_to_file_and_return "4_remove_unimportant_elems.txt"
+  (* |> delete_compensating_param_returnv
+   * |> summary_table_to_file_and_return "5_delete_compensating_param_returnv.txt" *)
   |> return

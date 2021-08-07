@@ -8,10 +8,6 @@ module F = Format
 
 (** An tuple (element of an astate_set) represents a single data definition *)
 
-module Methname = Procname
-
-module type Methname = module type of Procname
-
 module MyAccessPath : sig
   type t = Var.t * AccessPath.access list [@@deriving equal, compare]
 
@@ -22,32 +18,27 @@ module MyAccessPath : sig
   val to_string : t -> string
 end
 
-(** AccessPath (with either Logical or Program Vars) Definitions. **)
-module type MAtype = module type of MyAccessPath
+(* module LocationSet : AbstractDomain.FiniteSetS with type elt = Location.t *)
 
-(** set of locations (source-code level) where pieces of data are defined. **)
+(** set of locations (source-code level) where pieces of data are defined. *)
 module LocationSet : module type of AbstractDomain.FiniteSet (Location)
 
-module type LocSetType = module type of LocationSet
-
 (** Set of AccessPath (with either Logical or Programs Vars) in an alias relationship. **)
-module SetofAliases : AbstractDomain.FiniteSetS with type elt = Var.t * AccessPath.access list
-
-module type SetofAliases = AbstractDomain.FiniteSetS with type elt = Var.t * AccessPath.access list
+module SetofAliases : module type of AbstractDomain.FiniteSet (MyAccessPath)
 
 val doubleton : SetofAliases.elt -> SetofAliases.elt -> SetofAliases.t
 
 (** The Quadruple of the above four. **)
 module Quadruple
-    (Domain1 : Methname)
-    (Domain2 : MAtype)
-    (Domain3 : LocSetType)
-    (Domain4 : SetofAliases) : sig
+    (Domain1 : module type of Procname)
+    (Domain2 : module type of MyAccessPath)
+    (Domain3 : module type of LocationSet)
+    (Domain4 : module type of SetofAliases) : sig
   type t = Domain1.t * Domain2.t * Domain3.t * Domain4.t [@@deriving equal, compare]
 end
 
 module QuadrupleWithPP : sig
-  include module type of Quadruple (Methname) (MyAccessPath) (LocationSet) (SetofAliases)
+  include module type of Quadruple (Procname) (MyAccessPath) (LocationSet) (SetofAliases)
 
   val pp : F.formatter -> t -> unit
 end
@@ -81,8 +72,6 @@ module AbstractPair : sig
   val join : t -> t -> t
 
   val widen : prev:t -> next:t -> num_iters:int -> t
-
-  val partition_tuples_modulo_123 : AbstractStateSetFinite.t -> AbstractState.t list list
 
   val pp : F.formatter -> t -> unit
 

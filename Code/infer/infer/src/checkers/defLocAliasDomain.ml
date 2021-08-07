@@ -249,9 +249,7 @@ module AbstractPair = struct
       | [] ->
           []
       | ((proc, name, loc, _) as targetTuple) :: t ->
-          if triple_equal key (proc, name, loc) then
-            (*L.progress "generating key: %a, targetTuple: %a\n" Var.pp name QuadrupleWithPP.pp targetTuple;*)
-            targetTuple :: get_tuple_by_key t key
+          if triple_equal key (proc, name, loc) then targetTuple :: get_tuple_by_key t key
           else get_tuple_by_key t key
     in
     let get_tuples_by_keys tuplelist keys = List.map ~f:(get_tuple_by_key tuplelist) keys in

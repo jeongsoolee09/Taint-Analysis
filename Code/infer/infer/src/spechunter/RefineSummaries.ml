@@ -1,6 +1,5 @@
 open! IStd
-
-(* open DefLocAliasPP *)
+open DefLocAliasPP
 open DefLocAliasSearches
 open DefLocAliasPredicates
 open DefLocAliasDomain
@@ -19,6 +18,8 @@ module F = Format
 exception TODO
 
 exception NotASingleton of string
+
+exception TooManyMatches of string
 
 let partition_statetups_by_procname (statetups : S.t) : (Procname.t * S.t) list =
   let partitions =
@@ -183,20 +184,6 @@ let remove_unimportant_elems (table : (Procname.t, S.t) Hashtbl.t) : (Procname.t
       Hashtbl.replace table key filtered_garbage_astates)
     table ;
   table
-
-
-(** Extract the callee's method name embedded in returnv, callv, or param. *)
-let extract_callee_from (ap : MyAccessPath.t) =
-  let special, _ = ap in
-  match special with
-  | LogicalVar _ ->
-      L.die InternalError "extract_callee_from failed"
-  | ProgramVar pv -> (
-    match Pvar.get_declaring_function pv with
-    | Some procname ->
-        procname
-    | None ->
-        L.die InternalError "extract_callee_from failed" )
 
 
 (* Delete compensating parmas and returnvs ========== *)

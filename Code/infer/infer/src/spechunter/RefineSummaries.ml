@@ -328,7 +328,7 @@ let consolidate_frontend_by_locset (table : (Procname.t, S.t) Hashtbl.t) :
 (* Return =========================================== *)
 (* ================================================== *)
 
-let return (table : (Procname.t, S.t) Hashtbl.t) : unit = Hashtbl.iter (fun _ _ -> ()) table
+let return (table : (Procname.t, S.t) Hashtbl.t) : unit = ()
 
 (* For debugging ==================================== *)
 (* ================================================== *)

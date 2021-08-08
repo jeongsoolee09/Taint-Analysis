@@ -298,23 +298,29 @@ let consolidate_frontend_by_locset (table : (Procname.t, S.t) Hashtbl.t) :
         ~init:true locsets
     in
     assert there_is_only_one_pvar_per_locset ;
-    let pvar_frontend_carpro =
-      let open List in
-      S.elements pvar_astates
-      >>= fun pvar_astate ->
-      S.elements frontend_var_astates
-      >>= fun frontend_astate -> return (pvar_astate, frontend_astate)
-    in
-    let mapfunc ((pvar_astate, frontend_astate) : T.t * T.t) : T.t =
-      let pvar_proc, pvar_vardef, pvar_locset, pvar_astate = pvar_astate
-      and frontend_proc, frontend_vardef, frontend_locset, frontend_astate = pvar_astate in
-      assert (
-        Procname.equal pvar_proc frontend_proc && LocationSet.equal pvar_locset frontend_locset ) ;
-      (pvar_proc, pvar_vardef, pvar_locset, A.union pvar_astate frontend_astate)
-    in
-    S.of_list @@ List.map ~f:mapfunc pvar_frontend_carpro
-    (* one_pass_S end *)
+    S.fold
+      (fun frontend_astate acc ->
+        let frontend_proc, _, frontend_locset, frontend_aliasset = frontend_astate in
+        match
+          List.filter ~f:(fun statetup -> S.mem statetup pvar_astates)
+          @@ search_tuples_by_loc frontend_locset (S.elements acc)
+        with
+        | [] ->
+            acc
+        | [((pvar_proc, pvar_vardef, pvar_locset, pvar_aliasset) as pvar_astate)] ->
+            if LocationSet.equal pvar_locset frontend_locset then
+              let new_pvar_astate =
+                (pvar_proc, pvar_vardef, pvar_locset, A.union frontend_aliasset pvar_aliasset)
+              in
+              S.strong_update acc pvar_astate new_pvar_astate
+            else acc
+        | lst ->
+            F.kasprintf
+              (fun msg -> raise @@ TooManyMatches msg)
+              "consolidate_frontend_by_locset failed: %a@." pp_tuplelist lst)
+      frontend_var_astates astate_set
   in
+  (* one_pass_S end *)
   Hashtbl.iter (fun proc astate_set -> Hashtbl.replace table proc (one_pass_S astate_set)) table ;
   table
 

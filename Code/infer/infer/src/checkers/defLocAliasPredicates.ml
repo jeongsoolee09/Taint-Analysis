@@ -118,6 +118,10 @@ let input_is_void_type (arg_ts : (Exp.t * Typ.t) list) (astate_set : S.t) : bool
       false
 
 
+let is_pvar_ap (ap : MyAccessPath.t) : bool =
+  match fst ap with LogicalVar _ -> false | ProgramVar _ -> true
+
+
 let is_returnv (var : Var.t) : bool =
   match var with
   | LogicalVar _ ->

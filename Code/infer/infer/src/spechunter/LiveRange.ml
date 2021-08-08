@@ -69,7 +69,7 @@ end
 module type Stype = module type of S
 
 (* Domain 과 Summary의 쌍 *)
-module Pair (Domain1 : Methname) (Domain2 : Stype) = struct
+module Pair (Domain1 : module type of Procname) (Domain2 : Stype) = struct
   type t = Domain1.t * Domain2.t [@@deriving compare, equal]
 end
 
@@ -187,10 +187,10 @@ let initialize_callv_counter () =
   iter ~f:(fun procname -> Hashtbl.add procname_callv_counter procname 0) procnames
 
 
-let get_and_increment_counter procname =
-  let out = Hashtbl.find procname_callv_counter procname in
-  Hashtbl.replace procname_callv_counter procname (out + 1) ;
-  out
+let get_counter (procname : Procname.t) = Hashtbl.find procname_callv_counter procname
+
+let update_counter (procname : Procname.t) (new_counter : int) =
+  Hashtbl.replace procname_callv_counter procname new_counter
 
 
 (* CallGraph ======================================== *)
@@ -671,10 +671,12 @@ let rec compute_chain_inner (current_methname : Procname.t) (current_astate_set 
             ~init:[] callers_and_astates
         in
         collected @ current_chain
-      else if exists ~f:(fun ap -> is_callv_ap ap) var_aps then
+      else if exists ~f:(fun ap -> is_callv_ap ap) var_aps then (
         (* ============ CALL ============ *)
-        let callv_counter = get_and_increment_counter current_methname in
+        (* Retrieve and update the callv counter. *)
+        let callv_counter = get_counter current_methname in
         let this_turn_callv_ap = find_callv_greater_than_number (A.of_list var_aps) callv_counter in
+        update_counter current_methname (extract_number_from_callv this_turn_callv_ap) ;
         (* now, find the matching param_ap. *)
         let param_ap_matching_callv =
           find_matching_param_for_callv (A.of_list var_aps) this_turn_callv_ap
@@ -693,7 +695,7 @@ let rec compute_chain_inner (current_methname : Procname.t) (current_astate_set 
           let param_statetup =
             search_target_tuple_by_pvar_ap param_ap_matching_callv callee_methname callee_astate_set
           in
-          compute_chain_inner callee_methname callee_astate_set param_statetup chain_updated
+          compute_chain_inner callee_methname callee_astate_set param_statetup chain_updated )
       else if
         (* either REDEFINITION or DEAD.
            check which one is the case by checking if there are multiple current_vardefs in the alias set *)
@@ -887,8 +889,6 @@ let main () =
   (* Initialize the formal_args table *)
   batch_add_formal_args () ;
   save_skip_function () ;
-  (* Initialize the procname_callv_counter *)
-  (* initialize_callv_counter () ; *)
   (* Filter the callgraph_table *)
   filter_callgraph_table callgraph_table ;
   (* Initialize OCamlgraph *)

@@ -32,7 +32,13 @@ end
 module LocationSet = AbstractDomain.FiniteSet (Location)
 
 (** Set of AccessPath (with either Logical or Programs Vars) in an alias relationship. *)
-module SetofAliases = AbstractDomain.FiniteSet (MyAccessPath)
+module SetofAliases = struct
+  include AbstractDomain.FiniteSet (MyAccessPath)
+
+  let strong_update (set : t) (old : elt) (fresh : elt) : t =
+    let set_rmvd = remove old set in
+    add fresh set_rmvd
+end
 
 let doubleton (a : SetofAliases.elt) (b : SetofAliases.elt) : SetofAliases.t =
   let aset = SetofAliases.singleton a in
@@ -109,7 +115,13 @@ end
 module AbstractState = QuadrupleWithPP
 
 (** A set of Abstract States. *)
-module AbstractStateSetFinite = AbstractDomain.FiniteSet (AbstractState)
+module AbstractStateSetFinite = struct
+  include AbstractDomain.FiniteSet (AbstractState)
+
+  let strong_update (set : t) (old : elt) (fresh : elt) : t =
+    let set_rmvd = remove old set in
+    add fresh set_rmvd
+end
 
 (* The pair of 1) set of abstract states and 2) the history map *)
 module AbstractPair = struct

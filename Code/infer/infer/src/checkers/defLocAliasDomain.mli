@@ -18,13 +18,15 @@ module MyAccessPath : sig
   val to_string : t -> string
 end
 
-(* module LocationSet : AbstractDomain.FiniteSetS with type elt = Location.t *)
-
 (** set of locations (source-code level) where pieces of data are defined. *)
 module LocationSet : module type of AbstractDomain.FiniteSet (Location)
 
 (** Set of AccessPath (with either Logical or Programs Vars) in an alias relationship. **)
-module SetofAliases : module type of AbstractDomain.FiniteSet (MyAccessPath)
+module SetofAliases : sig
+  include module type of AbstractDomain.FiniteSet (MyAccessPath)
+
+  val strong_update : t -> elt -> elt -> t
+end
 
 val doubleton : SetofAliases.elt -> SetofAliases.elt -> SetofAliases.t
 
@@ -62,7 +64,11 @@ end
 
 module AbstractState : module type of QuadrupleWithPP
 
-module AbstractStateSetFinite : AbstractDomain.FiniteSetS with type elt = AbstractState.t
+module AbstractStateSetFinite : sig
+  include module type of AbstractDomain.FiniteSet (AbstractState)
+
+  val strong_update : t -> elt -> elt -> t
+end
 
 module AbstractPair : sig
   include module type of AbstractDomain.Pair (AbstractStateSetFinite) (HistoryMap)

@@ -198,12 +198,36 @@ let is_frontend_tmp_var_ap (ap : MyAccessPath.t) : bool =
   match fst ap with LogicalVar _ -> false | ProgramVar pv -> Pvar.is_frontend_tmp pv
 
 
+let is_irvar (var : Var.t) : bool =
+  match var with
+  | LogicalVar _ ->
+      false
+  | ProgramVar pv ->
+      String.is_substring (Pvar.to_string pv) ~substring:"irvar"
+
+
+let is_bcvar (var : Var.t) : bool =
+  match var with
+  | LogicalVar _ ->
+      false
+  | ProgramVar pv ->
+      String.is_substring (Pvar.to_string pv) ~substring:"bcvar"
+
+
 let is_irvar_ap (ap : A.elt) : bool =
   match fst ap with
   | LogicalVar _ ->
       false
   | ProgramVar pv ->
       String.is_substring (Pvar.to_string pv) ~substring:"irvar"
+
+
+let is_bcvar_ap (ap : A.elt) : bool =
+  match fst ap with
+  | LogicalVar _ ->
+      false
+  | ProgramVar pv ->
+      String.is_substring (Pvar.to_string pv) ~substring:"bcvar"
 
 
 let is_initializer (procname : Procname.t) =

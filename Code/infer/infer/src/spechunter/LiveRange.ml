@@ -503,8 +503,10 @@ let find_statetup_holding_aliastup (statetupset : S.t) (aliastup : A.elt) : S.el
 let alias_with_returnv (statetup : S.elt) (callee_methname : Procname.t) : bool =
   A.exists
     (fun ap ->
+      is_returnv_ap ap
+      &&
       let methname = extract_callee_from ap in
-      is_returnv_ap ap && Procname.equal methname callee_methname)
+      Procname.equal methname callee_methname)
     (fourth_of statetup)
 
 
@@ -563,20 +565,20 @@ let find_matching_param_for_callv (ap_set : A.t) (callv_ap : A.elt) : A.elt =
         (fun msg -> raise @@ NoMatches msg)
         "find_matching_param_for_callv failed. ap_set: %a, callv_ap: %a@." A.pp ap_set
         MyAccessPath.pp callv_ap
-  | [ap] ->
-      ap
-  | _ ->
-      F.kasprintf
-        (fun msg -> raise @@ TooManyMatches msg)
-        "find_matching_param_for_callv failed. ap_set: %a, callv_ap: %a@." A.pp ap_set
-        MyAccessPath.pp callv_ap
+  (* | [ap] -> *)
+  (*     ap *)
+  (* | _ -> *)
+  (*     F.kasprintf *)
+  (*       (fun msg -> raise @@ TooManyMatches msg) *)
+  (*       "find_matching_param_for_callv failed. ap_set: %a, callv_ap: %a@." A.pp ap_set *)
+  (*       MyAccessPath.pp callv_ap *)
+  | nonempty_list ->
+      List.hd_exn nonempty_list
 
 
 let rec compute_chain_inner (current_methname : Procname.t) (current_astate_set : S.t)
     (current_astate : S.elt) (current_chain : Chain.t) : Chain.t =
-  let ap_filter tup =
-    (not @@ is_logical_var @@ fst tup) && (not @@ is_frontend_tmp_var @@ fst tup)
-  in
+  let ap_filter tup = (not @@ is_logical_var @@ fst tup) && (not @@ is_irvar_ap tup) in
   let current_aliasset = fourth_of current_astate in
   let current_aliasset_cleanedup = A.filter ap_filter @@ current_aliasset in
   let current_vardef = second_of current_astate in
@@ -602,7 +604,8 @@ let rec compute_chain_inner (current_methname : Procname.t) (current_astate_set 
             fun ap ->
               let var = fst ap in
               (not @@ is_logical_var var)
-              && (not @@ is_frontend_tmp_var var)
+              && (not @@ is_this_ap ap)
+              && (not @@ is_irvar_ap ap)
               && (not @@ is_returnv var)
               && (not @@ Var.is_return var)
               && (not @@ is_callv var)
@@ -612,7 +615,8 @@ let rec compute_chain_inner (current_methname : Procname.t) (current_astate_set 
             fun ap ->
               let var = fst ap in
               (not @@ is_logical_var var)
-              && (not @@ is_frontend_tmp_var var)
+              && (not @@ is_this_ap ap)
+              && (not @@ is_irvar_ap ap)
               && (not @@ is_returnv var)
               && (not @@ Var.is_return var)
               && (not @@ is_callv var)
@@ -724,6 +728,7 @@ let rec compute_chain_inner (current_methname : Procname.t) (current_astate_set 
         (* no more recursion; return *)
         (current_methname, Dead) :: current_chain
   | [real_aliastup] ->
+      L.progress "real_aliastup: %a@." MyAccessPath.pp real_aliastup ;
       let declaring_function = option_get @@ get_declaring_function_ap real_aliastup in
       let callees_and_astates = find_direct_callees current_methname in
       if not @@ Procname.equal declaring_function current_methname then
@@ -757,13 +762,14 @@ let rec compute_chain_inner (current_methname : Procname.t) (current_astate_set 
   | otherwise ->
       F.kasprintf
         (fun msg -> raise @@ ChainComputeFailed msg)
-        {|computer_chain_inner failed:
+        {|compute_chain_inner failed:
+          otherwise: %a,
           current_methname: %a,
           current_astate_set: %a,
           current_astate: %a,
           current_chain: %a|}
-        Procname.pp current_methname S.pp current_astate_set T.pp current_astate pp_chain
-        current_chain
+        pp_ap_list otherwise Procname.pp current_methname S.pp current_astate_set T.pp
+        current_astate pp_chain current_chain
 
 
 (** 콜 그래프와 분석 결과를 토대로 체인 (Define -> ... -> Dead)을 계산해 낸다 *)

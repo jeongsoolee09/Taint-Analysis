@@ -191,7 +191,7 @@ let rec search_astate_by_loc (loc_set : LocationSet.t) (tuplelist : T.t list) : 
   | [] ->
       F.kasprintf
         (fun msg -> raise @@ SearchAstateByLocFailed msg)
-        "search_tuple_by_loc failed, loc_set: %a, tuplelist: %a@." LocationSet.pp loc_set
+        "search_astate_by_loc failed, loc_set: %a, tuplelist: %a@." LocationSet.pp loc_set
         pp_tuplelist tuplelist
   | astate :: t ->
       let l = third_of astate in

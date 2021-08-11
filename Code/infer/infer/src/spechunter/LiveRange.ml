@@ -651,8 +651,8 @@ let rec compute_chain_inner (current_methname : Procname.t) (current_astate_set 
               && (not @@ mem statetup_with_returnv_or_carriedovers ~equal:MyAccessPath.equal ap) )
       var_aps
   in
-  L.progress "============ current_methname: %a, something_else: %a, current_chain: %a@."
-    Procname.pp current_methname pp_ap_list something_else pp_chain (rev current_chain) ;
+  (* L.progress "============ current_methname: %a, something_else: %a, current_chain: %a@."
+   *   Procname.pp current_methname pp_ap_list something_else pp_chain (rev current_chain) ; *)
   match something_else with
   | [] ->
       if S.is_empty current_astate_set then

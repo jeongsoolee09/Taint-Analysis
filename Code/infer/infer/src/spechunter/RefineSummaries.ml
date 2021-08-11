@@ -1,7 +1,7 @@
 open! IStd
 
 (* open DefLocAliasPP *)
-(* open DefLocAliasSearches *)
+open DefLocAliasSearches
 open DefLocAliasPredicates
 open DefLocAliasDomain
 
@@ -22,6 +22,8 @@ exception TODO
 exception NotASingleton of string
 
 exception TooManyMatches of string
+
+exception ConsolidateByLocsetFailed of string
 
 (* Partitioners ===================================== *)
 (* ================================================== *)
@@ -175,7 +177,6 @@ let consolidate_dup_pvars (table : (Procname.t, S.t) Hashtbl.t) : (Procname.t, S
     let partitions = partition_statetups_by_vardef_and_locset pvar_astates in
     let partition_mapfunc (partition : S.t) : T.t =
       (* sanity check *)
-      L.progress "partition: %a@." S.pp partition ;
       let proc, vardef, locset, aliasset = List.hd_exn @@ S.elements partition in
       let other_threes_are_all_equal =
         S.fold
@@ -302,13 +303,16 @@ let delete_initializer_callv_param (table : (Procname.t, S.t) Hashtbl.t) :
 
 let consolidate_by_locset (table : (Procname.t, S.t) Hashtbl.t) : (Procname.t, S.t) Hashtbl.t =
   let one_pass_S (astate_set : S.t) : S.t =
-    let to_process =
+    let irvars = S.filter (fun astate -> is_irvar_ap @@ second_of astate) astate_set in
+    L.progress "irvars: %a@." S.pp irvars ;
+    let pvars =
       S.filter
         (fun astate ->
           let ap = second_of astate in
           (not @@ is_this_ap ap)
           && (not @@ is_placeholder_vardef @@ fst ap)
           && (not @@ is_bcvar_ap ap)
+          && (not @@ is_irvar_ap ap)
           && (not @@ is_returnv_ap ap)
           && (not @@ is_return_ap ap)
           && (not @@ is_param_ap ap)
@@ -316,22 +320,65 @@ let consolidate_by_locset (table : (Procname.t, S.t) Hashtbl.t) : (Procname.t, S
         astate_set
     in
     (* save this for merging later *)
-    let not_for_process = S.diff astate_set to_process in
-    let partitions = partition_statetups_by_locset to_process in
-    let mapfunc (partition : S.t) : T.t =
-      let sample_astate = List.hd_exn @@ S.elements partition in
-      S.fold
-        (fun astate (proc, vardef, locset, aliasset) ->
-          let aliasset' = fourth_of astate in
-          let aliasset_updated = A.remove vardef (A.union aliasset aliasset') in
-          (proc, vardef, locset, aliasset_updated))
-        partition sample_astate
-    in
-    let processed = S.of_list @@ List.map ~f:mapfunc partitions in
-    S.union not_for_process processed
+    let rest = S.diff (S.diff astate_set irvars) pvars in
+    let partitions = partition_statetups_by_locset irvars in
+    try
+      (* al iz wel *)
+      let processed =
+        S.of_list
+        @@ List.map
+             ~f:(fun (partition : S.t) ->
+               L.progress "partition: %a@." S.pp partition ;
+               let this_partition_locset = third_of @@ List.hd_exn @@ S.elements partition in
+               let pvar_astate = search_astate_by_loc this_partition_locset (S.elements pvars) in
+               S.fold
+                 (fun astate (proc, vardef, locset, aliasset) ->
+                   let aliasset' = fourth_of astate in
+                   let aliasset_updated = A.remove vardef (A.union aliasset aliasset') in
+                   (proc, vardef, locset, aliasset_updated))
+                 partition pvar_astate)
+             partitions
+      in
+      let failed_pvars = S.filter (fun astate -> not @@ S.mem astate processed) pvars in
+      S.union rest processed |> S.union failed_pvars
+    with SearchAstateByLocFailed _ ->
+      (* some trials are borken *)
+      let process_succeeded, leftovers =
+        List.fold
+          ~f:(fun (succeeded_irvars, failed_irvars) partition ->
+            L.progress "partition: %a@." S.pp partition ;
+            let this_partition_locset = third_of @@ List.hd_exn @@ S.elements partition in
+            let pvar_astates = search_tuples_by_loc this_partition_locset (S.elements pvars) in
+            match pvar_astates with
+            | [] ->
+                (succeeded_irvars, S.union failed_irvars partition)
+            | [pvar_astate] ->
+                ( S.add
+                    (S.fold
+                       (fun astate (proc, vardef, locset, aliasset) ->
+                         let aliasset' = fourth_of astate in
+                         let aliasset_updated = A.remove vardef (A.union aliasset aliasset') in
+                         (proc, vardef, locset, aliasset_updated))
+                       partition pvar_astate)
+                    succeeded_irvars
+                , failed_irvars )
+            | _ ->
+                F.kasprintf
+                  (fun msg -> raise @@ ConsolidateByLocsetFailed msg)
+                  "consolidate_by_locset failed. astate_set: %a@." S.pp astate_set)
+          ~init:(S.empty, S.empty) partitions
+      in
+      (* We now extract only the failed pvars *)
+      let failed_pvars = S.filter (fun astate -> not @@ S.mem astate process_succeeded) pvars in
+      L.progress "failed_pvars: %a@." S.pp failed_pvars ;
+      process_succeeded |> S.union rest |> S.union leftovers |> S.union failed_pvars
   in
   (* one_pass_S end *)
-  Hashtbl.iter (fun proc astate_set -> Hashtbl.replace table proc (one_pass_S astate_set)) table ;
+  Hashtbl.iter
+    (fun proc astate_set ->
+      L.progress "proc: %a ==========@." Procname.pp proc ;
+      Hashtbl.replace table proc (one_pass_S astate_set))
+    table ;
   table
 
 

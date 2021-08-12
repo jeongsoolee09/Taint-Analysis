@@ -591,13 +591,6 @@ let find_matching_param_for_callv (ap_set : A.t) (callv_ap : A.elt) : A.elt =
         (fun msg -> raise @@ NoMatches msg)
         "find_matching_param_for_callv failed. ap_set: %a, callv_ap: %a@." A.pp ap_set
         MyAccessPath.pp callv_ap
-  (* | [ap] -> *)
-  (*     ap *)
-  (* | _ -> *)
-  (*     F.kasprintf *)
-  (*       (fun msg -> raise @@ TooManyMatches msg) *)
-  (*       "find_matching_param_for_callv failed. ap_set: %a, callv_ap: %a@." A.pp ap_set *)
-  (*       MyAccessPath.pp callv_ap *)
   | nonempty_list ->
       List.hd_exn nonempty_list
 

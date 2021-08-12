@@ -205,10 +205,14 @@ let callgraph_table = Hashtbl.create 777
 
 let callgraph = G.create ()
 
-let chains = Hashtbl.create 777
+let chains : (Procname.t * MyAccessPath.t * LocationSet.t, Chain.chain_slice list) Hashtbl.t =
+  Hashtbl.create 777
+
 
 (** Procname과 AP로부터 chain으로 가는 Hash table *)
-let add_chain (key : Procname.t * MyAccessPath.t) (value : Chain.t) = Hashtbl.add chains key value
+let add_chain (key : Procname.t * MyAccessPath.t * LocationSet.t) (value : Chain.t) =
+  Hashtbl.add chains key value
+
 
 (** Function for debugging by exporting Ocamlgraph to Graphviz Dot *)
 let graph_to_dot (graph : G.t) ?(filename = "callgraph_with_astate.dot") : unit =
@@ -848,7 +852,9 @@ let compute_chain (ap : MyAccessPath.t) : Chain.t =
 let collect_all_proc_and_ap () =
   let setofallstates = Hashtbl.fold (fun _ v acc -> S.union v acc) summary_table S.empty in
   let listofallstates = S.elements setofallstates in
-  let list_of_all_proc_and_ap = listofallstates >>| fun (x : T.t) -> (first_of x, second_of x) in
+  let list_of_all_proc_and_ap =
+    listofallstates >>| fun (x : T.t) -> (first_of x, second_of x, third_of x)
+  in
   list_of_all_proc_and_ap
 
 
@@ -908,10 +914,12 @@ let represent_status (current_method : Procname.t) (status : Status.t) : json =
 
 
 (** chain을 수식해서 ap에 관한 완전한 정보를 나타내는 Json object를 만든다. *)
-let wrap_chain_representation defining_method ap (chain_repr : json list) : json =
+let wrap_chain_representation (defining_method : Procname.t) (ap : MyAccessPath.t)
+    (ap_locset : LocationSet.t) (chain_repr : json list) : json =
   `Assoc
     [ ("defining_method", `String (Procname.to_string defining_method))
     ; ("access_path", `String (MyAccessPath.to_string ap))
+    ; ("location", `String (F.asprintf "%a" LocationSet.pp ap_locset))
     ; ("chain", `List chain_repr) ]
 
 
@@ -946,7 +954,7 @@ let main () =
   graph_to_dot callgraph ~filename:"callgraph_with_astate_refined.dot" ;
   (* ============ Computing Chains ============ *)
   stable_dedup @@ collect_all_proc_and_ap ()
-  |> filter ~f:(fun (_, (var, _)) ->
+  |> filter ~f:(fun (_, (var, _), _) ->
          let pv = extract_pvar_from_var var in
          (not @@ Var.is_this var)
          && (not @@ is_placeholder_vardef var)
@@ -955,12 +963,12 @@ let main () =
          && (not @@ Var.is_return var)
          && (not @@ is_param var)
          && (not @@ is_callv var))
-  |> iter ~f:(fun (proc, ap) -> add_chain (proc, ap) @@ compute_chain ap) ;
+  |> iter ~f:(fun (proc, ap, locset) -> add_chain (proc, ap, locset) @@ compute_chain ap) ;
   (* ============ Serialize ============ *)
   let wrapped_chains =
     Hashtbl.fold
-      (fun (current_meth, target_ap) chain acc ->
-        wrap_chain_representation current_meth target_ap
+      (fun (current_meth, target_ap, target_ap_locset) chain acc ->
+        wrap_chain_representation current_meth target_ap target_ap_locset
           (map ~f:(fun (proc, status) -> represent_status proc status) chain)
         :: acc)
       chains []

@@ -129,11 +129,15 @@
 
 (defclass ProbabiltyDistribution []
   "Represents a probability distribution of a node."
-  (defn --init-- [self]
+  (defn --init-- [self methname]
+    (setv (. self methname) methname)
     (setv (. self src-prob) 0.25)
     (setv (. self sin-prob) 0.25)
     (setv (. self san-prob) 0.25)
     (setv (. self non-prob) 0.25))
+
+  (defn --repr-- [self]
+    f"[dist of {self.name} = (src: {self.src-prob}, sin: {self.sin-prob}, san: {self.san-prob}, non: {self.non-prob})]")
 
   (defn check-sanity [self]
     (assert (sum [(. self src-prob)
@@ -177,34 +181,43 @@
                        [(= add-to "non") (. self non-prob)]))
     (setv decrement-amount (/ amount 3))
     ;; boost `add-to`
-    (setv add-to (+ add-to amount))
+    (+= add-to amount)
     ;; subtract all others
     (cond [(is add-to (. self src-prob))
            (do
-             (setv (. self sin-prob) (- (. self sin-prob) decrement-amount))
-             (setv (. self san-prob) (- (. self san-prob) decrement-amount))
-             (setv (. self non-prob) (- (. self non-prob) decrement-amount)))]
+             (-= (. self sin-prob) decrement-amount)
+             (-= (. self san-prob) decrement-amount)
+             (-= (. self non-prob) decrement-amount))]
           [(is add-to (. self sin-prob))
            (do
-             (setv (. self sin-prob) (- (. self src-prob) decrement-amount))
-             (setv (. self san-prob) (- (. self san-prob) decrement-amount))
-             (setv (. self non-prob) (- (. self non-prob) decrement-amount)))]
+             (-= (. self src-prob) decrement-amount)
+             (-= (. self san-prob) decrement-amount)
+             (-= (. self non-prob) decrement-amount))]
           [(is add-to (. self san-prob))
            (do
-             (setv (. self sin-prob) (- (. self src-prob) decrement-amount))
-             (setv (. self san-prob) (- (. self sin-prob) decrement-amount))
-             (setv (. self non-prob) (- (. self non-prob) decrement-amount)))]
+             (-= (. self src-prob) decrement-amount)
+             (-= (. self sin-prob) decrement-amount)
+             (-= (. self non-prob) decrement-amount))]
           [(is add-to (. self non-prob))
            (do
-             (setv (. self sin-prob) (- (. self src-prob) decrement-amount))
-             (setv (. self san-prob) (- (. self sin-prob) decrement-amount))
-             (setv (. self non-prob) (- (. self san-prob) decrement-amount)))])))
+             (-= (. self src-prob) decrement-amount)
+             (-= (. self sin-prob) decrement-amount)
+             (-= (. self san-prob) decrement-amount))])
+    (check-sanity)))
 
 
 (defclass InferenceEngine []
-  (defn --init-- [self]
+  (defn --init-- [self graph]
+    ;; need the network topology information!
+    (setv (. self graph) graph))
 
-    )
+  (defn --repr-- [self]
+    "concat all the textual representation of each graph node."
+    (setv acc "")
+    (setv nodes (. self graph nodes))
+    (for [node nodes]
+      (+= acc )
+      ))
 
   (defn infer-on [self]
 

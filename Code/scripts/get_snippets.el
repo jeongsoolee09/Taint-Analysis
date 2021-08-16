@@ -131,14 +131,14 @@
                                            (plist-get result :htmls))))
                        (if (null result)
                            (append htmls-acc htmls)
-                         (->> htmls-acc
-                              (append htmls)
-                              (append (reduce #'(lambda (acc folder)
-                                                  (let ((new-url (concat current-url folder)))
-                                                    (inner (parse-html new-url)
-                                                           new-url
-                                                           acc)))
-                                              folders :initial-value nil)))))))
+                           (->> htmls-acc
+                                (append htmls)
+                                (append (reduce #'(lambda (acc folder)
+                                                    (let ((new-url (concat current-url folder)))
+                                                      (inner (parse-html new-url)
+                                                             new-url
+                                                             acc)))
+                                                folders :initial-value nil)))))))
     (inner (parse-html root-url) root-url nil)))
 
 
@@ -174,6 +174,7 @@
 ;; class html page scraper ==========================
 ;; ==================================================
 
+
 (defun find-first-open-parens (lst)
   (dolist (elem lst)
     (when (and (stringp elem)
@@ -202,7 +203,7 @@
          (mapcar (lambda (str) (if (s-contains? ")" str)
                                    (let ((parens-index (s-index-of ")" str)))
                                      (substring str 0 (+ parens-index 1)))
-                                 str))))))
+                                   str))))))
 
 
 (defun anchor-content-organize (anchor-content-list)
@@ -232,33 +233,168 @@
 
 (defun collect-method-from-scrape-class-html (class-html-name)
   (cl-flet* ((scrape-anchors (pre-elem)
-                            (let ((anchors (find-by-tag pre-elem 'a)))
-                              (mapcar (lambda (a) (nth 2 a))
-                                      anchors)))
-            (scrape-strings (pre-elem)
-                            (let ((atoms (remove-if-not #'atom pre-elem)))
-                              (find-with-and-between-parens-strings atoms)))
-            (assemble-pre (pre-elem classname)
-                          (let* ((anchor-contents-plist (->> (reverse (scrape-anchors pre-elem))
-                                                             (anchor-content-organize)))
-                                 (non-anchor-contents-plist (->> (scrape-strings pre-elem)
-                                                                 (non-anchor-content-organize))))
-                            `(:annots ,(plist-get anchor-contents-plist :annots)
-                                      :rtntype ,(plist-get non-anchor-contents-plist :rtntype)
-                                      :classname ,classname
-                                      :methname ,(plist-get non-anchor-contents-plist :methname)
-                                      :params-and-types ,(-zip (plist-get anchor-contents-plist :paramtypes)
-                                                                (plist-get non-anchor-contents-plist :params))
-                                      :exceptions ,(plist-get anchor-contents-plist :exceptions)))))
+                             (let ((anchors (find-by-tag pre-elem 'a)))
+                               (reverse (mapcar (lambda (a) (nth 2 a))
+                                                anchors))))
+             (scrape-nonanchor (pre-elem)
+                               (let ((atoms (remove-if-not #'atom pre-elem)))
+                                 (find-with-and-between-parens-strings atoms)))
+             (concat-strings (anchor-contents non-anchor-contents)
+                             (let* ((annots (-take-while (lambda (str) (s-starts-with? "@" str))
+                                                         anchor-contents))
+                                    (exceptions (-filter (lambda (str) (s-ends-with? "Exception" str))
+                                                         anchor-contents))
+                                    (anchor-contents-without-annots-and-exceptions (remove-if (lambda (str)
+                                                                                                (or (-contains? annots str)
+                                                                                                    (-contains? exceptions str)))
+                                                                                              anchor-contents)))
+                               (if (= (length non-anchor-contents) 1)
+                                   ;; the parameter list is empty
+                                   (let* ((zipped (-zip anchor-contents-without-annots-and-exceptions non-anchor-contents)))
+                                     (apply #'concat (mapcar (lambda (pair) (concat (car pair) " " (cdr pair))) zipped)))
+                                   ;; the paramter list is nonempty
+                                   (let* ((zipped (-zip anchor-contents-without-annots-and-exceptions (cdr non-anchor-contents)))
+                                          (annot-concatted (apply #'concat (mapcar (lambda (x) (concat x " ")) annots)))
+                                          (contents-concatted (concat (car non-anchor-contents)
+                                                                      (apply #'concat
+                                                                             (mapcar (lambda (pair)
+                                                                                       (concat (car pair) " " (cdr pair) " "))
+                                                                                     zipped)))))
+                                     (concat annot-concatted contents-concatted "throws " (car exceptions)))))))
     (let* ((parsed (parse-html class-html-name))
            (pres (find-by-tag parsed 'pre))
-           (classname (car (s-split "\\." (get-only-filename class-html-name)))))
-      (mapcar (lambda (pre) (assemble-pre pre classname)) (cdr (reverse pres))))))
+           (classname (car (s-split "\\." (get-only-filename class-html-name))))
+           (scraped-anchor-contents (mapcar #'scrape-anchors (cdr (reverse pres))))
+           (scraped-nonanchor-contents (mapcar #'scrape-nonanchor (cdr (reverse pres))))
+           (zipped-contents (-zip scraped-anchor-contents scraped-nonanchor-contents)))
+      (cl-loop for zipped-content in zipped-contents
+               collect (concat-strings (car zipped-content) (cdr zipped-content))))))
+
+
+(defun parse-signature-string (signature-string)
+  ;; We need to deal with:
+  ;; 1. <T> T rtntypes
+  ;; 2. <T> paramtypes
+  ;; 3. no parameters
+  (cl-flet* (;; handling <T> in the given string list
+             (handle-before-parens (str-list)
+                                   (let ((out))
+                                     (reduce (lambda (detected? str)
+                                               (if detected?
+                                                   (progn
+                                                     (push (concat "<T> " str) out)
+                                                     nil)
+                                                   (if (string= str "<T>")
+                                                       t
+                                                       (progn
+                                                         (push str out)
+                                                         nil))))
+                                             str-list :initial-value nil)
+                                     (reverse out)))
+             (handle-after-parens (str-list)
+                                  (let ((out))
+                                    (reduce (lambda (detected? str)
+                                              (if detected?
+                                                  (progn
+                                                    (push (concat str " <T>") out)
+                                                    nil)
+                                                  (if (string= str "<T>")
+                                                      t
+                                                      (progn
+                                                        (push str out)
+                                                        nil))))
+                                            (reverse str-list) :initial-value nil)
+                                    out))
+             (handle-angled-T (chopped-string)
+                              (let* ((before-parens (-take-while (lambda (str)
+                                                                   (not (s-contains? "(" str)))
+                                                                 chopped-string))
+                                     (after-parens (remove-if (lambda (str)
+                                                                (-contains? before-parens str)))))
+                                (append (handle-before-parens before-parens)
+                                        (handle-after-parens after-parens))))
+             ;; predicates
+             (has-annot? (chopped-string)
+                         (-some (lambda (str) (s-starts-with? "@" str))
+                                chopped-string))
+             (has-exception? (chopped-string)
+                             (-some (lambda (str) (s-end-with? "Exception"))
+                                    chopped-string))
+             ('TODO))
+    (let* ((chopped-string (s-split " " signature-string)))
+      (cond (;; has both annotation and exception
+             (and (has-annot? chopped-string)
+                  (has-exception? chopped-string))
+             (:annot (first chopped-string)
+                     :rtntype (second chopped-string)
+                     :methname (first (s-split "(" (third chopped-string)))
+                     :params-and-types 'TODO
+                     :exceptions (-last-item chopped-string)))
+            ;; only has annotation
+            ((has-annot? chopped-string)
+             (:annot (first chopped-string)
+                     :rtntype (second chopped-string)
+                     :methname (first (s-split "(" (third chopped-string)))
+                     :params-and-types 'TODO
+                     :exceptions nil)
+             ;; only has exception
+            ((has-exception? chopped-string)
+             (:annot nil
+                     :rtntype (first chopped-string)
+                     :methname (first (s-split "(" (second chopped-string)))
+                     :params-and-types 'TODO
+                     :exceptions (-last-item chopped-string)))
+            ;; missing both annotation and exception
+            (:else (:annot nil
+                           :rtntype (first chopped-string)
+                           :methname (first (s-split "(" (second chopped-string)))
+                           :params-and-types 'TODO
+                           :exceptions nil)))))))
 
 
 (comment
  (progn
-   (collect-method-from-scrape-class-html sample-class-html)
+   (setq sample-class-html "https://docs.spring.io/spring-framework/docs/current/javadoc-api/org/springframework/jms/core/JmsOperations.html")
+   (parse-html sample-class-html)
+   (parse-html sample-class-html2)
+   (collect-method-from-scrape-class-html sample-class-html2)
+   (s-split " " "@Nullable <T> T execute(Destination destination, ProducerCallback <T> action) throws JmsException")))
+
+
+(comment
+ (progn
+   '("@Nullable" "<T>" "T" "execute(Destination" "destination," "ProducerCallback" "<T>" "action)" "throws" "JmsException")
+
+   (defun handle-before-parens (str-list)
+     (let ((out))
+       (reduce (lambda (detected? str)
+                 (if detected?
+                     (progn
+                       (push (concat "<T> " str) out)
+                       nil)
+                     (if (string= str "<T>")
+                         t
+                         (progn
+                           (push str out)
+                           nil))))
+               str-list :initial-value nil)
+       (reverse out)))
+
+   (defun handle-after-parens (str-list)
+     (let ((out))
+       (reduce (lambda (detected? str)
+                 (if detected?
+                     (progn
+                       (push (concat str " <T>") out)
+                       nil)
+                     (if (string= str "<T>")
+                         t
+                         (progn
+                           (push str out)
+                           nil))))
+               (reverse str-list) :initial-value nil)
+       out)
+     )
    ))
 
 
@@ -312,7 +448,9 @@
                            all-htmls))
          (class-htmls (collect-all-classes
                        all-htmls)))
-    (append (mapcar
-             #'collect-method-from-scrape-class-html
-             class-htmls))
+
+    (print class-htmls)
+    ;; (append (mapcar
+    ;;          #'collect-method-from-scrape-class-html
+    ;;          class-htmls))
     ))

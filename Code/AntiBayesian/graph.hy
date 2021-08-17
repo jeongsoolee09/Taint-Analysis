@@ -72,35 +72,38 @@
     (defn handle-spurious-dead [refined-json]
       (defn one-pass [refined-json-slice]
         (setv refined-json-chain (get refined-json-slice "chain"))
-        ;; three things to check
-        (if (< (len refined-json-chain) 3)
-            refined-json-chain      ; nothing to do
-            (do                     ; else, we check some things
-              (setv (, third-activity
-                       second-activity
-                       first-activity) (tuple (take 3 (reversed refined-json-chain))))
-              (setv first-activity-is-call?
-                    (= (get first-activity "status") "Call"))
-              (setv second-activity-is-define?
-                    (= (get second-activity "status") "Define"))
-              (setv second-activity-using-matches-first-callee?
-                    (do (setv first-activity-callee (get first-activity-using "callee"))
-                        (setv second-activity-using (get second-activity-callee "using"))
-                        (= first-activity-callee second-activity-using)))
-              (setv second-activity-defined-var-is-frontend?
-                    (or (in "$irvar" (get second-activity "access_path"))
-                        (in "$bcvar" (get second-activity "access_path"))))
-              (setv third-activity-is-dead?
-                    (= (get third-activity "status") "Dead"))
-              (if (and first-activity-is-call?
+        (when (>= (len refined-json-chain) 3)
+          (do
+            (setv (, third-activity
+                     second-activity
+                     first-activity) (tuple (take 3 (reversed refined-json-chain))))
+            (setv first-activity-is-call?
+                  (= (get first-activity "status") "Call"))
+            (setv second-activity-is-define?
+                  (= (get second-activity "status") "Define"))
+            (setv second-activity-using-matches-first-callee?
+                  (if second-activity-is-define?
+                      (do (setv first-activity-callee (get first-activity "callee"))
+                          (setv second-activity-using (get second-activity "using"))
+                          (= first-activity-callee second-activity-using))
+                      False))
+            (setv second-activity-defined-var-is-frontend?
+                  (if second-activity-is-define?
+                      (or (in "$irvar" (get second-activity "access_path"))
+                          (in "$bcvar" (get second-activity "access_path")))
+                      False))
+            (setv third-activity-is-dead?
+                  (= (get third-activity "status") "Dead"))
+            (when (and first-activity-is-call?
                        second-activity-is-define?
                        second-activity-using-matches-first-callee?
                        second-activity-defined-var-is-frontend?
                        third-activity-is-dead?)
-                  (do (setv (get third-activity "current_method") first-activity-callee)
-                      refined-json-chain)
-                  thread))))
-      (list (map one-pass refined-json))))
+              (setv (get refined-json-slice "chain" (- (len refined-json-chain) 1) "current_method")
+                    first-activity-callee)))))
+      (for [refined-json-slice refined-json]
+        (one-pass refined-json-slice))
+      refined-json))
 
 
   (defn make-thread [json-chain]

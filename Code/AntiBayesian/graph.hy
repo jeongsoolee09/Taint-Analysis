@@ -1,5 +1,3 @@
-(require [hy.contrib.walk [let]])
-
 (import json)
 (import [traceback-with-variables [activate-by-import]])
 (import [networkx :as nx])
@@ -11,6 +9,8 @@
   (defn --init-- [self msg]
     (setv self.msg msg)))
 
+
+(defclass TODO [Exception])
 
 
 (defclass JsonHandler []
@@ -68,10 +68,44 @@
        last-linum))
 
 
+  (with-decorator staticmethod
+    (defn handle-spurious-dead [refined-json]
+      (defn one-pass [refined-json-slice]
+        (setv refined-json-chain (get refined-json-slice "chain"))
+        ;; three things to check
+        (if (< (len refined-json-chain) 3)
+            refined-json-chain      ; nothing to do
+            (do                     ; else, we check some things
+              (setv (, third-activity
+                       second-activity
+                       first-activity) (tuple (take 3 (reversed refined-json-chain))))
+              (setv first-activity-is-call?
+                    (= (get first-activity "status") "Call"))
+              (setv second-activity-is-define?
+                    (= (get second-activity "status") "Define"))
+              (setv second-activity-using-matches-first-callee?
+                    (do (setv first-activity-callee (get first-activity-using "callee"))
+                        (setv second-activity-using (get second-activity-callee "using"))
+                        (= first-activity-callee second-activity-using)))
+              (setv second-activity-defined-var-is-frontend?
+                    (or (in "$irvar" (get second-activity "access_path"))
+                        (in "$bcvar" (get second-activity "access_path"))))
+              (setv third-activity-is-dead?
+                    (= (get third-activity "status") "Dead"))
+              (if (and first-activity-is-call?
+                       second-activity-is-define?
+                       second-activity-using-matches-first-callee?
+                       second-activity-defined-var-is-frontend?
+                       third-activity-is-dead?)
+                  (do (setv (get third-activity "current_method") first-activity-callee)
+                      refined-json-chain)
+                  thread))))
+      (list (map one-pass refined-json))))
+
+
   (defn make-thread [json-chain]
     (setv current-state (get json-chain "defining_method"))
     (setv current-chain [])
-
     (for [activity (get json-chain "chain")]
       (setv status (get activity "status"))
       (cond [(= status "Define") (.append current-chain
@@ -80,8 +114,9 @@
                                         (ThreadMaker.call-handler activity))]
             [(= status "Redefine") (.append current-chain
                                             (ThreadMaker.redefine-handler activity))]
-            [(= status "Dead") (let [last-activity (last current-chain)
-                                     last-linum (second last-activity)]
+            [(= status "Dead") (do
+                                 (setv last-activity (last current-chain))
+                                 (setv last-linum (second last-activity))
                                  (.append current-chain
                                           (ThreadMaker.dead-handler last-linum activity)))]
             [:else (raise (InvalidStatus status))]))
@@ -118,26 +153,28 @@
        (summarize-locset-string locset-string)))
 
 
-  (defn construct-graph [threads]
-    (setv g (nx.DiGraph))
-    (for [thread threads]
-      (setv previous-state None)
-      (for [current-state thread]
-        (.add-node g (GraphMaker.summarize-node current-state))
-        (when previous-state
-          (.add-edge g (GraphMaker.summarize-node previous-state)
-                     (GraphMaker.summarize-node current-state)))
-        (setv previous-state current-state)))
-    g)
+  (with-decorator staticmethod
+    (defn construct-graph [threads]
+      (setv g (nx.DiGraph))
+      (for [thread threads]
+        (setv previous-state None)
+        (for [current-state thread]
+          (.add-node g (GraphMaker.summarize-node current-state))
+          (when previous-state
+            (.add-edge g (GraphMaker.summarize-node previous-state)
+                       (GraphMaker.summarize-node current-state)))
+          (setv previous-state current-state)))
+      g))
 
 
-  (defn draw-graph [graph]
-    (plt.figure "sample graph" :dpi 1000)
-    (nx.draw
-      graph
-      :with-labels True
-      :pos (graphviz-layout graph :prog "dot"))
-    (plt.savefig "graph.svg" :format "svg")))
+  (with-decorator staticmethod
+    (defn draw-graph [graph]
+      (plt.figure "sample graph" :dpi 1000)
+      (nx.draw
+        graph
+        :with-labels True
+        :pos (graphviz-layout graph :prog "dot"))
+      (plt.savefig "graph.svg" :format "svg"))))
 
 
 
@@ -155,14 +192,13 @@
     f"[dist of {self.name} = (src: {self.src-prob}, sin: {self.sin-prob}, san: {self.san-prob}, non: {self.non-prob})]")
 
   (defn check-sanity [self]
+    "check if this distribution is a valid one."
     (assert (sum [(. self src-prob)
                   (. self sin-prob)
                   (. self san-prob)
                   (. self non-prob)]) 1))
 
   ;; ============ several probabability manipulators ============
-  ;; They are just effectful functions; they return nothing useful!
-
 
   (defn boost-and-decrease [self amount add-to subtract-from]
     ;; add-to: string
@@ -239,17 +275,22 @@
       (+= acc (+ ((. node --repr--)) "\n"))))
 
 
+  (defn uncharted? [node]
+    "do we have certainty on this node's distribution?")
+
+
   (defn find-node-to-ask [self]
     "find the uncharted nodes and pick one of them.")
 
 
-  (defn ask [self to-ask-node]
+  (defn ask [to-ask-node]
     (assert (= (type to-ask-node) ProbabilityDistribution))
     (setv response (input f"What is the label of {(. to-ask-node methname)}? ([src|sin|san|non]): "))
     (, to-ask-node response))
 
 
-  (defn trigger-inference [self node label])
+  (defn trigger-inference [self node label]
+    "start propagation")
 
   ;; ============ Inference Rules ============
 
@@ -276,11 +317,12 @@
 ;; For the REPL
 (comment
   (do
-    (setv parsed-json (parse-json))
-    (setv refined-json (refine-json parsed-json))
-    (setv threads (make-threads refined-json))
+    (setv parsed-json (JsonHandler.parse-json))
+    (setv refined-json (JsonHandler.refine-json parsed-json))
+    (setv spurious-dead-handled (ThreadMaker.handle-spurious-dead refined-json))
+    (setv threads (ThreadMaker.make-threads refined-json))
     (setv sample-thread (get threads 0))
-    (setv g (construct-graph threads))
+    (setv g (GraphMaker.construct-graph threads))
 
     (defn main []
       "main function for the REPL."

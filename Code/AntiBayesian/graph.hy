@@ -214,6 +214,7 @@
   (defn --repr-- [self]
     f"[dist of {self.name} = (src: {self.src-prob}, sin: {self.sin-prob}, san: {self.san-prob}, non: {self.non-prob})]")
 
+
   (defn check-sanity [self]
     "check if this distribution is a valid one."
     (assert (sum [(. self src-prob)
@@ -315,13 +316,26 @@
   (defn trigger-inference [self node label]
     "start propagation")
 
+
+  (defn find-root [self]
+    (list (filter (fn [node] (= (len (.out-edges (. self graph) node)) 0))
+                  (. self graph nodes))))
+
+
+  (defn find-leaves [self]
+    (list (filter (fn [node] (= (len (.in-edges (. self graph) node)) 0))
+                  (. self graph nodes))))
+
+
   ;; ============ Inference Rules ============
 
-  (defn f [])
+  (defn f []
+    )
 
   ;; ============ Asking Rules ============
 
-  (defn g []))
+  (defn g []
+    ))
 
 
 (defmain []

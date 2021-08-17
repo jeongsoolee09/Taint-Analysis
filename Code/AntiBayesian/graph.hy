@@ -99,8 +99,9 @@
                        second-activity-using-matches-first-callee?
                        second-activity-defined-var-is-frontend?
                        third-activity-is-dead?)
-              (setv (get refined-json-slice "chain" (- (len refined-json-chain) 1) "current_method")
-                    first-activity-callee)))))
+              (do (setv (get refined-json-slice "chain" (- (len refined-json-chain) 1) "current_method")
+                        first-activity-callee)
+                  (.remove (get refined-json-slice "chain") second-activity))))))
       (for [refined-json-slice refined-json]
         (one-pass refined-json-slice))
       refined-json))
@@ -312,7 +313,8 @@
   "main function for running this as a script."
   (->> (JsonHandler.parse-json)             ; raw parsed json
        (JsonHandler.refine-json)            ; refined json, removed subchains
-       (ThreadMaker.make-threads)           ; threads made from the refined json
+       (ThreadMaker.handle-spurious-dead)   ; modify spurious dead ends of jsons
+       (ThreadMaker.make-threads)           ; threads made from the refined, modified json
        (GraphMaker.construct-graph)         ; graph constructed with the threads
        (GraphMaker.draw-graph)))            ; visualize it
 

@@ -42,32 +42,6 @@
 
 (defclass ThreadMaker []
 
-  (defn define-handler [activity]
-    (setv new-state (, (get activity "current_method")
-                       (get activity "location")))
-    (setv current-state new-state)
-    new-state)
-
-
-  (defn call-handler [activity]
-    (setv new-state (, (get activity "callee")
-                       (get activity "location")))
-    (setv current-state new-state)
-    new-state)
-
-
-  (defn redefine-handler [activity]
-    (setv new-state (, (get activity "current_method")
-                       (get activity "location")))
-    (setv current-state new-state)
-    new-state)
-
-
-  (defn dead-handler [last-linum activity]
-    (, (get activity "current_method")
-       last-linum))
-
-
   (with-decorator staticmethod
     (defn handle-spurious-dead [refined-json]
       (defn one-pass [refined-json-slice]
@@ -108,21 +82,52 @@
 
 
   (defn make-thread [json-chain]
+    (defn define-handler [activity]
+      (setv new-state (, (get activity "current_method")
+                         (get activity "location")))
+      (setv current-state new-state)
+      new-state)
+
+    (defn call-handler [activity]
+      (setv new-state (, (get activity "callee")
+                         (get activity "location")))
+      (setv current-state new-state)
+      new-state)
+
+    (defn redefine-handler [activity]
+      (setv new-state (, (get activity "current_method")
+                         (get activity "location")))
+      (setv current-state new-state)
+      new-state)
+
+    (defn dead-handler [last-linum activity]
+      (, (get activity "current_method")
+         last-linum))
+
     (setv current-state (get json-chain "defining_method"))
     (setv current-chain [])
     (for [activity (get json-chain "chain")]
       (setv status (get activity "status"))
-      (cond [(= status "Define") (.append current-chain
-                                          (ThreadMaker.define-handler activity))]
+      (cond [(= status "Define") (do
+                                   (setv current-method (get activity "current_method"))
+                                   (setv using-method (get activity "using"))
+                                   (if (= current-method using-method)
+                                       (.append current-chain
+                                                (define-handler activity))
+                                       (do (.append current-chain
+                                                    (, (get activity "using")
+                                                       (get activity "location")))
+                                           (.append current-chain
+                                                    (define-handler activity)))))]
             [(= status "Call") (.append current-chain
-                                        (ThreadMaker.call-handler activity))]
+                                        (call-handler activity))]
             [(= status "Redefine") (.append current-chain
-                                            (ThreadMaker.redefine-handler activity))]
+                                            (redefine-handler activity))]
             [(= status "Dead") (do
                                  (setv last-activity (last current-chain))
                                  (setv last-linum (second last-activity))
                                  (.append current-chain
-                                          (ThreadMaker.dead-handler last-linum activity)))]
+                                          (dead-handler last-linum activity)))]
             [:else (raise (InvalidStatus status))]))
     current-chain)
 
@@ -137,9 +142,11 @@
   (defn summarize-node [node]
     "return the summarized version of the node, which is a tuple of strings."
     (defn summarize-methname [full-signature]
-      (->> full-signature
-           ((fn [string] (get (.split string ".") 1)))
-           ((fn [string] (get (.split string "(") 0)))))
+      (if (in "." full-signature)
+          (->> full-signature
+               ((fn [string] (get (.split string ".") 1)))
+               ((fn [string] (get (.split string "(") 0))))
+          full-signature))
     (defn summarize-locset-string [locset-string]
       (setv is-singleton? (= (.count locset-string "line") 1))
       (if is-singleton?
@@ -333,6 +340,7 @@
       "main function for the REPL."
       (->> (JsonHandler.parse-json)             ; raw parsed json
            (JsonHandler.refine-json)            ; refined json, removed subchains
+           (ThreadMaker.handle-spurious-dead)   ; modify spurious dead ends of jsons
            (ThreadMaker.make-threads)           ; threads made from the refined json
            (GraphMaker.construct-graph)         ; graph constructed with the threads
            (GraphMaker.draw-graph)))            ; visualize it

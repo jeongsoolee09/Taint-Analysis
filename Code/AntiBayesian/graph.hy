@@ -41,6 +41,18 @@
 
 
 (defclass ThreadMaker []
+  (with-decorator staticmethod
+    (defn handle-new-keyword-at-root [refined-json]
+      (defn one-pass [refined-json-slice]
+        (setv refined-json-chain (get refined-json-slice "chain"))
+        (setv first-activity (first refined-json-chain))
+        (assert (= (get first-activity "status") "Define")) ; If it's not a Define, it's invalid!
+        (when (= (get first-activity "using") "__new")
+            (.remove refined-json-chain first-activity)))
+      (for [refined-json-slice refined-json]
+        (one-pass refined-json-slice))
+      refined-json))
+
 
   (with-decorator staticmethod
     (defn handle-spurious-dead [refined-json]
@@ -223,9 +235,9 @@
                               [(= add-to "san") (. self san-prob)]
                               [(= add-to "non") (. self non-prob)]))
     ;; boost `add-to`
-    (setv add-to (+ add-to amount))
+    (+= add-to amount)
     ;; subtract from `subtract-from`
-    (setv subtract-from (- subtract-from amount))
+    (-= subtract-from amount)
     (check-sanity))
 
 
@@ -305,25 +317,22 @@
 
   ;; ============ Inference Rules ============
 
-
   (defn f [])
 
   ;; ============ Asking Rules ============
 
-
-  (defn g [])
-
-  )
+  (defn g []))
 
 
 (defmain []
   "main function for running this as a script."
-  (->> (JsonHandler.parse-json)             ; raw parsed json
-       (JsonHandler.refine-json)            ; refined json, removed subchains
-       (ThreadMaker.handle-spurious-dead)   ; modify spurious dead ends of jsons
-       (ThreadMaker.make-threads)           ; threads made from the refined, modified json
-       (GraphMaker.construct-graph)         ; graph constructed with the threads
-       (GraphMaker.draw-graph)))            ; visualize it
+  (->> (JsonHandler.parse-json)
+       (JsonHandler.refine-json)
+       (ThreadMaker.handle-new-keyword-at-root)
+       (ThreadMaker.handle-spurious-dead)
+       (ThreadMaker.make-threads)
+       (GraphMaker.construct-graph)
+       (GraphMaker.draw-graph)))
 
 
 ;; For the REPL
@@ -338,10 +347,11 @@
 
     (defn main []
       "main function for the REPL."
-      (->> (JsonHandler.parse-json)             ; raw parsed json
-           (JsonHandler.refine-json)            ; refined json, removed subchains
-           (ThreadMaker.handle-spurious-dead)   ; modify spurious dead ends of jsons
-           (ThreadMaker.make-threads)           ; threads made from the refined json
-           (GraphMaker.construct-graph)         ; graph constructed with the threads
-           (GraphMaker.draw-graph)))            ; visualize it
+      (->> (JsonHandler.parse-json)
+           (JsonHandler.refine-json)
+           (ThreadMaker.handle-new-keyword-at-root)
+           (ThreadMaker.handle-spurious-dead)
+           (ThreadMaker.make-threads)
+           (GraphMaker.construct-graph)
+           (GraphMaker.draw-graph)))
     ))

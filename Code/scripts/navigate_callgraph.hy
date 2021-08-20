@@ -121,15 +121,27 @@
 
   (with-decorator staticmethod
     (defn find-context [graph target]
-      (setv from-root-to-targets (PathFinder.from-root-to-target graph target))
-      (setv from-target-to-leaf (PathFinder.from-target-to-leaf graph target))
-      (setv carpro [])
-      (for [p1 from-root-to-targets]
-        (for [p2 from-target-to-leaf]
-          (when (not (in "__" (last p2)))
-            (setv concatted (+ p1 (list (rest p2))))
-            (.append carpro (Path concatted)))))
-       carpro)))
+      (setv out [])
+      (cond
+        [(GraphHandler.root? graph target)
+         (do (setv from-target-to-leaf (PathFinder.from-target-to-leaf graph target))
+             (for [p from-target-to-leaf]
+               (.append out (Path p)))
+             out)]
+        [(GraphHandler.internal? graph target)
+         (do (setv from-roots-to-target (PathFinder.from-root-to-target graph target))
+             (setv from-target-to-leaf (PathFinder.from-target-to-leaf graph target))
+             (for [p1 from-roots-to-target]
+               (for [p2 from-target-to-leaf]
+                 (when (not (in "__" (last p2)))
+                   (setv concatted (+ p1 (list (rest p2))))
+                   (.append out (Path concatted)))))
+             out)]
+        [(GraphHandler.leaf? graph target)
+         (do (setv from-roots-to-target (PathFinder.from-root-to-target graph target))
+             (for [p from-roots-to-target]
+               (.append out (Path p)))
+             out)]))))
 
 
 
@@ -162,6 +174,7 @@
     (setv leaves (GraphHandler.find-leaves graph))
     (setv target "void BlogPostContentRendererTests.rendersMultipleCallouts()")
     (setv target2 "byte[] GithubClient.downloadRepositoryAsZipball(String,String)")
+    (setv target3 "Object RestTemplate.getForObject(String,Class,Object[])")
     (PathFinder.from-target-to-leaf graph target)
     (PathFinder.from-root-to-target graph target)
     (GraphHandler.root? graph target)
@@ -171,4 +184,14 @@
     (in target2 nodes)
     (PathFinder.from-target-to-leaf graph target2)
     (PathFinder.from-root-to-target graph target2)
-    (PathFinder.find-context graph target2)))
+    (PathFinder.find-context graph target2)
+
+    (PathFinder.find-context graph target3)
+    (in target3 nodes)
+    (PathFinder.from-target-to-leaf graph target3)
+    (PathFinder.from-root-to-target graph target3)
+    (GraphHandler.leaf? graph target3)
+
+    (setv sample-root "void PostTests.isLiveIfPublishedInThePast()")
+    (setv sample-leaf "Enum.<init>(String,int)")
+    ))

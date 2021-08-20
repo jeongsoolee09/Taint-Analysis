@@ -3,11 +3,13 @@
 (import argparse)
 (import glob)
 (import [rich [print]])
+(import [traceback-with-variables [activate-by-import]])
 
 
 (defclass NoMatches [Exception]
   (defn --init-- [self cwd]
     (setv (. self cwd) cwd)))
+
 
 
 (defclass TooManyMatches [Exception]
@@ -48,14 +50,30 @@
       g))
 
 
-  (defn find-roots [graph]
-    (filter (fn [node] (= (len (.in-edges graph node)) 0))
-            (. graph nodes)))
+  (with-decorator staticmethod
+    (defn root? [graph node]
+      (= (len (.in-edges graph node)) 0)))
 
 
-  (defn find-leaves [graph]
-    (filter (fn [node] (= (len (.out-edges graph node)) 0))
-            (. graph nodes))))
+  (with-decorator staticmethod
+    (defn leaf? [graph node]
+      (= (len (.out-edges graph node)) 0)))
+
+
+  (with-decorator staticmethod
+    (defn find-roots [graph]
+      (filter (fn [node] (GraphHandler.root? graph node)) (. graph nodes))))
+
+
+  (with-decorator staticmethod
+    (defn find-leaves [graph]
+      (filter (fn [node] (GraphHandler.leaf? graph node)) (. graph nodes))))
+
+
+  (with-decorator staticmethod
+    (defn internal? [graph node]
+      (not (or (GraphHandler.root? graph node)
+               (GraphHandler.leaf? graph node))))))
 
 
 
@@ -74,35 +92,45 @@
     (setv str-list (butlast (interleave (. self node-list)
                                         (* [" --> "] (len (. self node-list))))))
     (for [string str-list]
-      (if (in nodestr string)
+      (if (= nodestr string)
           (print f"[bold red]{string}[/bold red]")
           (print string)))))
 
 
 
 (defclass PathFinder []
-  (defn root-to-leaf-paths [graph]
-    (setv roots (GraphHandler.find-roots graph))
-    (setv leaves (GraphHandler.find-leaves graph))
+  (defn from-root-to-target [graph target]
     (setv all-paths [])
+    (setv roots (GraphHandler.find-roots graph))
     (for [root roots]
-      (for [leaf leaves]
-        (setv paths (list ((. nxalg simple-paths all-simple-paths)
-                            graph root leaf)))
-        (when (not (empty? paths))
-          (for [path paths]
-            (.append all-paths
-                     (Path path))))))
+      (setv paths (list ((. nxalg simple-paths all-simple-paths)
+                          graph root target)))
+      (+= all-paths paths))
     all-paths)
 
 
-  (defn find-member-paths [node graph]
-    (setv all-paths (PathFinder.root-to-leaf-paths graph))
-    (setv member-paths [])
-    (for [path all-paths]
-      (when (in node path.node-list)
-        (.append member-paths path)))
-    member-paths))
+  (defn from-target-to-leaf [graph target]
+    (setv all-paths [])
+    (setv leaves (GraphHandler.find-leaves graph))
+    (for [leaf leaves]
+      (setv paths (list ((. nxalg simple-paths all-simple-paths)
+                          graph target leaf)))
+      (+= all-paths paths))
+    all-paths)
+
+
+  (with-decorator staticmethod
+    (defn find-context [graph target]
+      (setv from-root-to-targets (PathFinder.from-root-to-target graph target))
+      (setv from-target-to-leaf (PathFinder.from-target-to-leaf graph target))
+      (setv carpro [])
+      (for [p1 from-root-to-targets]
+        (for [p2 from-target-to-leaf]
+          (when (not (in "__" (last p2)))
+            (setv concatted (+ p1 (list (rest p2))))
+            (.append carpro (Path concatted)))))
+       carpro)))
+
 
 
 (defmain []
@@ -115,9 +143,32 @@
                    (FileReadParse.parse-file)
                    (GraphHandler.construct-graph)))
   (setv res
-        (PathFinder.find-member-paths args.method-sig graph))
+        (PathFinder.find-context graph args.method-sig))
   (if (empty? res)
       (print "No matches!")
       (for [path res]
         (print (* "=" 40))
         (.highlight-node path args.method-sig))))
+
+
+(comment
+  ;; for the REPL
+  (do
+    (setv graph (->> (DirectoryHandler.find-callgraph-txt)
+                     (FileReadParse.parse-file)
+                     (GraphHandler.construct-graph)))
+    (setv nodes graph.nodes)
+    (setv roots (GraphHandler.find-roots graph))
+    (setv leaves (GraphHandler.find-leaves graph))
+    (setv target "void BlogPostContentRendererTests.rendersMultipleCallouts()")
+    (setv target2 "byte[] GithubClient.downloadRepositoryAsZipball(String,String)")
+    (PathFinder.from-target-to-leaf graph target)
+    (PathFinder.from-root-to-target graph target)
+    (GraphHandler.root? graph target)
+    (GraphHandler.root? graph target2)
+    (GraphHandler.leaf? graph target2)
+    (GraphHandler.internal? graph target2)
+    (in target2 nodes)
+    (PathFinder.from-target-to-leaf graph target2)
+    (PathFinder.from-root-to-target graph target2)
+    (PathFinder.find-context graph target2)))

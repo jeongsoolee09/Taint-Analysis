@@ -74,7 +74,7 @@
     (setv str-list (butlast (interleave (. self node-list)
                                         (* [" --> "] (len (. self node-list))))))
     (for [string str-list]
-      (if (= string nodestr)
+      (if (in nodestr string)
           (print f"[bold red]{string}[/bold red]")
           (print string)))))
 

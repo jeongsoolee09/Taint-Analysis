@@ -1,9 +1,8 @@
 (import [networkx :as nx])
 (import [networkx.algorithms :as nxalg])
-(import argparse)
 (import glob)
 (import [rich [print]])
-(import [traceback-with-variables [activate-by-import]])
+;; (import [traceback-with-variables [activate-by-import]])
 
 
 (defclass NoMatches [Exception]
@@ -73,7 +72,13 @@
   (with-decorator staticmethod
     (defn internal? [graph node]
       (not (or (GraphHandler.root? graph node)
-               (GraphHandler.leaf? graph node))))))
+               (GraphHandler.leaf? graph node)))))
+
+
+  (with-decorator staticmethod
+    (defn lookup [graph methname]
+      (list (filter (fn [node] (in (+ (.lower methname) "(") (.lower node)))
+                    (. graph nodes))))))
 
 
 
@@ -119,79 +124,102 @@
     all-paths)
 
 
+  (defn filter-Tests [paths]
+    (filter (fn [path] (not (some (fn [node] (in "Test" node)) path)))
+            paths))
+
+
+  (defn filter-frontend [paths]
+    (filter (fn [path] (not (some (fn [node] (in "__" node)) path)))
+            paths))
+
+
   (with-decorator staticmethod
     (defn find-context [graph target]
       (setv out [])
       (cond
         [(GraphHandler.root? graph target)
-         (do (setv from-target-to-leaf (PathFinder.from-target-to-leaf graph target))
+         (do (setv from-target-to-leaf (->> (PathFinder.from-target-to-leaf graph target)
+                                            (PathFinder.filter-Tests)
+                                            (PathFinder.filter-frontend)))
              (for [p from-target-to-leaf]
                (.append out (Path p)))
              out)]
         [(GraphHandler.internal? graph target)
-         (do (setv from-roots-to-target (PathFinder.from-root-to-target graph target))
-             (setv from-target-to-leaf (PathFinder.from-target-to-leaf graph target))
+         (do (setv from-roots-to-target (->> (PathFinder.from-root-to-target graph target)
+                                             (PathFinder.filter-Tests)
+                                             (PathFinder.filter-frontend)))
+             (setv from-target-to-leaf (->> (PathFinder.from-target-to-leaf graph target)
+                                            (PathFinder.filter-Tests)
+                                            (PathFinder.filter-frontend)))
              (for [p1 from-roots-to-target]
                (for [p2 from-target-to-leaf]
-                 (when (not (in "__" (last p2)))
-                   (setv concatted (+ p1 (list (rest p2))))
-                   (.append out (Path concatted)))))
+                 (setv concatted (+ p1 (list (rest p2))))
+                 (.append out (Path concatted))))
              out)]
         [(GraphHandler.leaf? graph target)
-         (do (setv from-roots-to-target (PathFinder.from-root-to-target graph target))
+         (do (setv from-roots-to-target (->> (PathFinder.from-root-to-target graph target)
+                                             (PathFinder.filter-Tests)
+                                             (PathFinder.filter-frontend)))
              (for [p from-roots-to-target]
                (.append out (Path p)))
-             out)]))))
+             out)])))
+
+
+  (with-decorator staticmethod
+    (defn print-paths [pathlist]
+      (for [path pathlist]
+        (print (* "=" 50))
+        (print path)))))
 
 
 
 (defmain []
-  (setv parser (argparse.ArgumentParser))
-  (.add_argument parser "method_sig"
-                 :help "method signature to look up."
+  (import argparse)
+  (setv parser (argparse.ArgumentParser :description "Callgraph navigation wizard."))
+  (.add_argument parser "--lookup"
+                 :help "Lookup the given methname's signature."
+                 :required False
+                 :type str)
+  (.add_argument parser "--find-context"
+                 :help "Find the contexts the given method is in."
+                 :required False
+                 :type str)
+  (.add_argument parser "--check-root"
+                 :help "Check if a given method is a root."
+                 :required False
+                 :type str)
+  (.add_argument parser "--check-leaf"
+                 :help "Check if a given method is a leaf."
+                 :required False
                  :type str)
   (setv args (parser.parse_args))
   (setv graph (->> (DirectoryHandler.find-callgraph-txt)
                    (FileReadParse.parse-file)
                    (GraphHandler.construct-graph)))
-  (setv res
-        (PathFinder.find-context graph args.method-sig))
-  (if (empty? res)
-      (print "No matches!")
-      (for [path res]
-        (print (* "=" 40))
-        (.highlight-node path args.method-sig))))
 
-
-(comment
-  ;; for the REPL
-  (do
-    (setv graph (->> (DirectoryHandler.find-callgraph-txt)
-                     (FileReadParse.parse-file)
-                     (GraphHandler.construct-graph)))
-    (setv nodes graph.nodes)
-    (setv roots (GraphHandler.find-roots graph))
-    (setv leaves (GraphHandler.find-leaves graph))
-    (setv target "void BlogPostContentRendererTests.rendersMultipleCallouts()")
-    (setv target2 "byte[] GithubClient.downloadRepositoryAsZipball(String,String)")
-    (setv target3 "Object RestTemplate.getForObject(String,Class,Object[])")
-    (PathFinder.from-target-to-leaf graph target)
-    (PathFinder.from-root-to-target graph target)
-    (GraphHandler.root? graph target)
-    (GraphHandler.root? graph target2)
-    (GraphHandler.leaf? graph target2)
-    (GraphHandler.internal? graph target2)
-    (in target2 nodes)
-    (PathFinder.from-target-to-leaf graph target2)
-    (PathFinder.from-root-to-target graph target2)
-    (PathFinder.find-context graph target2)
-
-    (PathFinder.find-context graph target3)
-    (in target3 nodes)
-    (PathFinder.from-target-to-leaf graph target3)
-    (PathFinder.from-root-to-target graph target3)
-    (GraphHandler.leaf? graph target3)
-
-    (setv sample-root "void PostTests.isLiveIfPublishedInThePast()")
-    (setv sample-leaf "Enum.<init>(String,int)")
-    ))
+  ;; dispatch on command-line args
+  (cond [args.lookup (do (setv res (GraphHandler.lookup graph args.lookup))
+                         (if (empty? res)
+                             (print "No matches!")
+                             (for [sig res]
+                               (print sig))))]
+        [args.find-context (do (setv res (PathFinder.find-context graph args.find-context))
+                               (if (empty? res)
+                                   (print "No matches!")
+                                   (for [path res]
+                                     (print (* "=" 40))
+                                     (.highlight-node path args.find-context)))
+                               (print (* "=" 50))
+                               (cond [(GraphHandler.root? graph args.find-context)
+                                      (print f"{args.find-context} is a root!!")]
+                                     [(GraphHandler.leaf? graph args.find-context)
+                                      (print f"{args.find-context} is a leaf")]
+                                     [:else
+                                      (print f"{args.find-context} is an internal node")]))]
+        [args.check-root (if (GraphHandler.root? graph args.check-root)
+                             (print f"{args.check-root} is a root!")
+                             (print f"{args.check-root} is not a root!"))]
+        [args.check-leaf (if (GraphHandler.leaf? graph args.check-leaf)
+                             (print f"{args.check-leaf} is a leaf!")
+                             (print f"{args.check-leaf} is not a leaf!"))]))

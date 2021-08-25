@@ -63,7 +63,45 @@
     (switch-to-buffer "check-leaf-output")))
 
 
+(defun tidy-sig (raw-signature)
+  (let* ((signature (->> raw-signature
+                         (s-replace-regexp "@[a-zA-Z]+([a-zA-Z0-9=,\" ]+)" "")
+                         (s-replace-regexp "@[a-zA-Z]+" "")))
+         (split-on-space (s-split " " signature))
+         (rtntype (car split-on-space))
+         (split-on-open-parens (s-split "(" signature))
+         (qualified-methname (cadr (s-split " " (car split-on-open-parens))))
+         (unqualified-methname-parts (reverse (-take 2 (reverse (s-split "\\." qualified-methname)))))
+         (unqualified-methname (concat (car unqualified-methname-parts)
+                                       "." (cadr unqualified-methname-parts)))
+         (param-and-types (s-split "," (cadr split-on-open-parens)))
+         (params (mapcar (lambda (param-and-type)
+                           (car (s-split " " (s-trim-left param-and-type))))
+                         param-and-types))
+         (param-string (apply #'concat
+                              (butlast
+                               (-interleave params
+                                            (-repeat (length params) ",")))))
+         (out (concat rtntype " " unqualified-methname "(" param-string ")")))
+    (if (s-contains? "()" out)
+        (->> out
+             (s-replace "))" ")")
+             (s-replace-regexp "<[a-zA-Z0-9]+>" ""))
+      (s-replace-regexp "<[a-zA-Z0-9]+>" "" out))))
+
+
+(defun copy-sig ()
+  (interactive)
+  (progn (spacemacs/evil-smart-doc-lookup)
+         (switch-to-buffer "*lsp-help*")
+         (let ((raw-sig (car (s-split "\n" (buffer-string)))))
+           (kill-new (tidy-sig raw-sig)))
+         (kill-buffer "*lsp-help*")
+         (message "Signature copied.")))
+
+
 (spacemacs/set-leader-keys-for-major-mode 'org-mode "ll" 'lookup)
 (spacemacs/set-leader-keys-for-major-mode 'org-mode "lc" 'find-context)
 (spacemacs/set-leader-keys-for-major-mode 'org-mode "lr" 'check-root)
 (spacemacs/set-leader-keys-for-major-mode 'org-mode "lf" 'check-leaf)
+(spacemacs/set-leader-keys-for-major-mode 'java-mode "ls" 'copy-sig)

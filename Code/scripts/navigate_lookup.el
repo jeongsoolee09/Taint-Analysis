@@ -31,9 +31,10 @@
     (progn (switch-to-buffer "lookup-output")
            (let ((output (buffer-string)))
              (when (not (has-multiple-lines?))
-                 (progn
-                   (previous-buffer)
-                   (insert (concat " " output))))))))
+               (progn
+                 (kill-new output)
+                 (previous-buffer)
+                 (spacemacs/evil-mc-paste-after)))))))
 
 
 (defun find-context ()
@@ -96,6 +97,16 @@
          (switch-to-buffer "*lsp-help*")
          (let ((raw-sig (car (s-split "\n" (buffer-string)))))
            (kill-new (tidy-sig raw-sig)))
+         (kill-buffer "*lsp-help*")
+         (message "Signature copied.")))
+
+
+(defun copy-sig-full ()
+  (interactive)
+  (progn (spacemacs/evil-smart-doc-lookup)
+         (switch-to-buffer "*lsp-help*")
+         (let ((raw-sig (car (s-split "\n" (buffer-string)))))
+           (kill-new raw-sig))
          (kill-buffer "*lsp-help*")
          (message "Signature copied.")))
 

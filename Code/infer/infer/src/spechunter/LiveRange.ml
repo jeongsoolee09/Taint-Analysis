@@ -243,9 +243,56 @@ let filter_callgraph_table hashtbl : unit =
     hashtbl
 
 
+let partition_statetups_modulo_123 (statetups : S.t) : S.t list =
+  let procnames : Procname.t list =
+    List.stable_dedup
+    @@ S.fold
+         (fun astate acc ->
+           let vardef = first_of astate in
+           vardef :: acc)
+         statetups []
+  in
+  let vardefs : MyAccessPath.t list =
+    List.stable_dedup
+    @@ S.fold
+         (fun astate acc ->
+           let vardef = second_of astate in
+           vardef :: acc)
+         statetups []
+  in
+  let locsets : LocationSet.t list =
+    List.stable_dedup
+    @@ S.fold
+         (fun astate acc ->
+           let locset = third_of astate in
+           locset :: acc)
+         statetups []
+  in
+  let triples =
+    let open List in
+    procnames
+    >>= fun procname ->
+    vardefs >>= fun vardef -> locsets >>= fun locset -> return (procname, vardef, locset)
+  in
+  List.fold
+    ~f:(fun acc (procname, vardef, locset) ->
+      let matches =
+        S.fold
+          (fun ((procname', vardef', locset', _) as statetup) acc' ->
+            if
+              Procname.equal procname procname' && MyAccessPath.equal vardef vardef'
+              && LocationSet.equal locset locset'
+            then S.add statetup acc'
+            else acc')
+          statetups S.empty
+      in
+      if S.is_empty matches then acc else matches :: acc)
+    ~init:[] triples
+
+
 (** 중복 튜플을 제거함 *)
 let remove_duplicates_from (astate_set : S.t) : S.t =
-  let partitioned_by_duplicates = P.partition_tuples_modulo_123 astate_set in
+  let partitioned_by_duplicates = partition_statetups_modulo_123 astate_set >>| S.elements in
   (* 위의 리스트 안의 각 리스트들 안에 들어 있는 튜플들 중 가장 alias set이 큰 놈을 남김 *)
   let leave_tuple_with_biggest_aliasset lst =
     if length lst > 1 then
@@ -716,9 +763,12 @@ let rec compute_chain_inner (current_methname : Procname.t) (current_astate_set 
           find_matching_param_for_callv (A.of_list var_aps) this_turn_callv_ap
         in
         let callee_methname = extract_callee_from param_ap_matching_callv in
-        let callee_summary = get_summary callee_methname in
         let param_ap_locset =
-          find_most_recent_locset_of_ap param_ap_matching_callv callee_summary
+          let callv_linum = extract_linum_from_param param_ap_matching_callv in
+          let location_term : Location.t =
+            {Location.line= callv_linum; Location.col= -1; Location.file= SourceFile.invalid ""}
+          in
+          LocationSet.singleton location_term
         in
         let new_chain_slice =
           (current_methname, Status.Call (callee_methname, param_ap_matching_callv, param_ap_locset))
@@ -768,7 +818,7 @@ let rec compute_chain_inner (current_methname : Procname.t) (current_astate_set 
       let callees_and_astates = find_direct_callees current_methname in
       if not @@ Procname.equal declaring_function current_methname then
         (* ============ CALL ============ *)
-        (* TODO: 여기 보강 *)
+        (* TODO: 여기 보강..할 필요가 있나? *)
         let collected =
           fold
             ~f:(fun acc (callee, callee_astate_set) ->

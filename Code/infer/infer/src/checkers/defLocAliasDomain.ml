@@ -252,49 +252,50 @@ module AbstractPair = struct
     enum_nodup elements []
 
 
-  (** 실행이 끝난 astate_set에서 중복된 튜플들 (proc, vardef, loc가 같음)끼리
-      묶여 있는 list of list를 만든다. *)
-  let partition_tuples_modulo_123 (astate_set : S.t) : T.t list list =
-    let keys = get_keys astate_set in
-    let rec get_tuple_by_key tuplelist key =
-      match tuplelist with
-      | [] ->
-          []
-      | ((proc, name, loc, _) as targetTuple) :: t ->
-          if triple_equal key (proc, name, loc) then targetTuple :: get_tuple_by_key t key
-          else get_tuple_by_key t key
+  let partition_statetups_by_vardef (statetups : S.t) : S.t list =
+    let vardefs =
+      List.stable_dedup
+      @@ S.fold
+           (fun astate acc ->
+             let vardef = second_of astate in
+             vardef :: acc)
+           statetups []
     in
-    let get_tuples_by_keys tuplelist keys = List.map ~f:(get_tuple_by_key tuplelist) keys in
-    let elements = S.elements astate_set in
-    get_tuples_by_keys elements keys
-
-
-  let rec reduce_partitioned_tuples (lstlst : T.t list list) : T.t list =
-    match lstlst with
-    | [] ->
-        []
-    | lst :: t ->
-        let reduced_tuple =
-          List.fold_left
-            ~f:(fun (_, _, loc1, aliasset1) (proc, vardef, loc2, aliasset2) ->
-              (proc, vardef, LocationSet.union loc1 loc2, A.union aliasset1 aliasset2))
-            ~init:bottuple lst
+    List.fold
+      ~f:(fun acc vardef ->
+        let matches =
+          S.fold
+            (fun statetup acc' ->
+              if MyAccessPath.equal vardef (second_of statetup) then S.add statetup acc' else acc')
+            statetups S.empty
         in
-        reduced_tuple :: reduce_partitioned_tuples t
+        matches :: acc)
+      ~init:[] vardefs
+
+
+  let reduce_partitioned_tuples (partitions : S.t list) : S.t =
+    S.of_list
+    @@ List.map
+         ~f:(fun partition ->
+           S.fold
+             (fun (proc, vardef, loc1, aliasset1) (_, _, loc2, aliasset2) ->
+               L.progress "proc: %a@." Procname.pp proc ;
+               (proc, vardef, LocationSet.union loc1 loc2, A.union aliasset1 aliasset2))
+             partition bottuple)
+         partitions
 
 
   let join_those_tuples (dups : S.t) : S.t =
     (* is there an efficient way of doing this? *)
-    let partitioned_tuples = partition_tuples_modulo_123 dups in
-    S.of_list @@ reduce_partitioned_tuples partitioned_tuples
-
-
-  let triple_equal ((p1, v1, l1, _) : T.t) ((p2, v2, l2, _) : T.t) : bool =
-    Procname.equal p1 p2 && MyAccessPath.equal v1 v2 && LocationSet.equal l1 l2
+    let partitioned_tuples = partition_statetups_by_vardef dups in
+    reduce_partitioned_tuples partitioned_tuples
 
 
   (** S.diff의 커스텀 버전: (Procname.t * MyAccessPath.t * LocationSet.t) 이 같으면 제거 *)
   let my_diff (s1 : S.t) (s2 : S.t) : S.t =
+    let triple_equal ((p1, v1, l1, _) : T.t) ((p2, v2, l2, _) : T.t) : bool =
+      Procname.equal p1 p2 && MyAccessPath.equal v1 v2 && LocationSet.equal l1 l2
+    in
     let s1_elements = S.elements s1 in
     let s2_elements = S.elements s2 in
     let s1_minus_s2_modulo_123 =
@@ -312,8 +313,10 @@ module AbstractPair = struct
     let rhs_minus_lhs = my_diff rhs lhs in
     let tuples_with_dup_keys = find_duplicate_keys lhs_minus_rhs rhs_minus_lhs in
     let there_are_duplicate_keys = not @@ S.is_empty tuples_with_dup_keys in
-    if there_are_duplicate_keys then
+    L.progress "there_are_duplicate_keys: %a@." Bool.pp there_are_duplicate_keys ;
+    if there_are_duplicate_keys then (
       let joined_tuples = join_those_tuples tuples_with_dup_keys in
+      L.progress "joined_tuples: %a@." S.pp joined_tuples ;
       let duplicate_keys_in_lhs_minus_rhs = S.inter tuples_with_dup_keys lhs_minus_rhs in
       let duplicate_keys_in_rhs_minus_lhs = S.inter tuples_with_dup_keys rhs_minus_lhs in
       let lhs_minus_duplicate_keys = S.diff lhs duplicate_keys_in_lhs_minus_rhs in
@@ -329,7 +332,7 @@ module AbstractPair = struct
       let newmap =
         HistoryMap.batch_add_to_history2 keys_and_loc (HistoryMap.join lhs_map rhs_map)
       in
-      (newset, newmap)
+      (newset, newmap) )
     else
       let newset = S.union lhs rhs in
       (newset, HistoryMap.join lhs_map rhs_map)

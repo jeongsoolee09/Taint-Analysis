@@ -292,7 +292,7 @@ let batch_search_target_tuples_by_vardef (varlist : Var.t list) (current_methnam
     ~init:(false, []) varlist
 
 
-(** Given a alias set, finds the tuple with a Pvar in it. *)
+(** Given an alias set, finds the tuple with a Pvar in it. *)
 let find_another_pvar_vardef (varset : A.t) : A.elt =
   let varlist = A.elements varset in
   let rec inner (varlist : A.elt list) =
@@ -301,8 +301,15 @@ let find_another_pvar_vardef (varset : A.t) : A.elt =
         F.kasprintf
           (fun msg -> raise @@ FindAnotherPvarVardefFailed msg)
           "find_another_pvar_vardef failed, varset: %a@." A.pp varset
-    | ((var, _) as target) :: t ->
-        if is_program_var var then target else inner t
+    | ((var, _) as ap) :: t ->
+        if is_program_var var &&
+        not @@ is_callv_ap ap &&
+        not @@ is_returnv_ap ap &&
+        not @@ is_return_ap ap &&
+        not @@ is_bcvar_ap ap &&
+        not @@ is_irvar_ap ap &&
+        not @@ is_param_ap ap
+      then ap else inner t
   in
   inner varlist
 

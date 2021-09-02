@@ -327,6 +327,7 @@ module TransferFunctions (CFG : ProcCfg.S) = struct
         begin try  (* normal cases where x = new(); then x.f = ... . *)
             let (proc1, var1, loc1, aliasset) as vartuple = search_target_tuple_by_id id1 methname (fst apair) in
             let pvar_tuple : A.elt = begin try
+              L.progress "find_another_pvar_vardef aliasset: %a@." MyAccessPath.pp @@ find_another_pvar_vardef aliasset;
                 find_another_pvar_vardef aliasset
               with _ -> (* oops, long access path *)
                 let intermed_tuple = search_target_tuple_by_id id1 methname (fst apair) in
@@ -339,6 +340,7 @@ module TransferFunctions (CFG : ProcCfg.S) = struct
                       (pvar, aplist)
                   | ProgramVar _ ->
                       L.die InternalError "Not a logical var! var: %a@." Var.pp var end end in
+            L.progress "pvar_tuple: %a, methname: %a@." MyAccessPath.pp pvar_tuple Procname.pp methname;
             let pvar_tuple_updated = put_fieldname fld pvar_tuple in
             let new_aliasset = A.add pvar_tuple_updated @@ A.remove pvar_tuple aliasset in
             let newtuple = (proc1, var1, loc1, new_aliasset) in

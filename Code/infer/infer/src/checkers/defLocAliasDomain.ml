@@ -279,7 +279,6 @@ module AbstractPair = struct
          ~f:(fun partition ->
            S.fold
              (fun (proc, vardef, loc1, aliasset1) (_, _, loc2, aliasset2) ->
-               L.progress "proc: %a@." Procname.pp proc ;
                (proc, vardef, LocationSet.union loc1 loc2, A.union aliasset1 aliasset2))
              partition bottuple)
          partitions
@@ -313,10 +312,8 @@ module AbstractPair = struct
     let rhs_minus_lhs = my_diff rhs lhs in
     let tuples_with_dup_keys = find_duplicate_keys lhs_minus_rhs rhs_minus_lhs in
     let there_are_duplicate_keys = not @@ S.is_empty tuples_with_dup_keys in
-    L.progress "there_are_duplicate_keys: %a@." Bool.pp there_are_duplicate_keys ;
-    if there_are_duplicate_keys then (
+    if there_are_duplicate_keys then
       let joined_tuples = join_those_tuples tuples_with_dup_keys in
-      L.progress "joined_tuples: %a@." S.pp joined_tuples ;
       let duplicate_keys_in_lhs_minus_rhs = S.inter tuples_with_dup_keys lhs_minus_rhs in
       let duplicate_keys_in_rhs_minus_lhs = S.inter tuples_with_dup_keys rhs_minus_lhs in
       let lhs_minus_duplicate_keys = S.diff lhs duplicate_keys_in_lhs_minus_rhs in
@@ -332,7 +329,7 @@ module AbstractPair = struct
       let newmap =
         HistoryMap.batch_add_to_history2 keys_and_loc (HistoryMap.join lhs_map rhs_map)
       in
-      (newset, newmap) )
+      (newset, newmap)
     else
       let newset = S.union lhs rhs in
       (newset, HistoryMap.join lhs_map rhs_map)

@@ -472,14 +472,16 @@ let main : (Procname.t, S.t) Hashtbl.t -> unit =
  fun table ->
   table
   |> summary_table_to_file_and_return "1_raw_astate_set.txt"
+  |> remove_ternary_frontend
+  |> summary_table_to_file_and_return "2_remove_ternary_frontend.txt"
   |> consolidate_dup_pvars
-  |> summary_table_to_file_and_return "2_consolidate_dup_pvars.txt"
+  |> summary_table_to_file_and_return "3_consolidate_dup_pvars.txt"
   |> consolidate_by_locset
-  |> summary_table_to_file_and_return "3_consolidate_by_locset.txt"
+  |> summary_table_to_file_and_return "4_consolidate_by_locset.txt"
   |> delete_initializer_callv_param
-  |> summary_table_to_file_and_return "4_delete_initizalizer_callv_param.txt"
+  |> summary_table_to_file_and_return "5_delete_initizalizer_callv_param.txt"
   |> remove_unimportant_elems
-  |> summary_table_to_file_and_return "5_remove_unimportant_elems.txt"
+  |> summary_table_to_file_and_return "6_remove_unimportant_elems.txt"
   |> remove_java_constants
-  |> summary_table_to_file_and_return "6_remove_java_constants.txt"
+  |> summary_table_to_file_and_return "7_remove_java_constants.txt"
   |> return

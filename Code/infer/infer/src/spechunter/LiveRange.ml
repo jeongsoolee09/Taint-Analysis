@@ -143,7 +143,7 @@ let print_summary_table () =
   Hashtbl.iter
     (fun proc summary ->
       L.progress "procname: %a, " Procname.pp proc ;
-      L.progress "summary: %a@." S.pp summary)
+      L.progress "summary: %a@." S.pp summary )
     summary_table
 
 
@@ -166,7 +166,6 @@ let batch_add_formal_args () =
   in
   iter ~f:(fun (pname, params) -> Hashtbl.add formal_args pname params) pname_and_params
 
-
 let get_formal_args (key : Procname.t) : MyAccessPath.t list =
   match Hashtbl.find_opt formal_args key with None -> [] | Some ap_list -> ap_list
 
@@ -177,7 +176,7 @@ let batch_print_formal_args () =
       L.progress "procname: %a, " Procname.pp k ;
       L.progress "vars: " ;
       iter v ~f:(L.progress "%a, " MyAccessPath.pp) ;
-      L.progress "\n")
+      L.progress "\n" )
     formal_args
 
 
@@ -228,37 +227,83 @@ let callg_hash2og () : unit =
     (fun key value ->
       let key_astate_set = get_summary key in
       let value_astate_set = get_summary value in
-      G.add_edge callgraph (key, key_astate_set) (value, value_astate_set))
+      G.add_edge callgraph (key, key_astate_set) (value, value_astate_set) )
     callgraph_table
 
 
-(** 주어진 hashtbl의 엔트리 중에서 (callgraph_table이 쓰일 것) summary_table에 있지
-    않은 엔트리를 날린다. *)
+(** 주어진 hashtbl의 엔트리 중에서 (callgraph_table이 쓰일 것) summary_table에 있지 않은 엔트리를 날린다. *)
 let filter_callgraph_table hashtbl : unit =
   let procs = Hashtbl.fold (fun k _ acc -> k :: acc) summary_table [] in
   Hashtbl.iter
     (fun k v ->
       if (not @@ mem procs k ~equal:Procname.equal) && (not @@ mem procs v ~equal:Procname.equal)
-      then Hashtbl.remove hashtbl k)
+      then Hashtbl.remove hashtbl k )
     hashtbl
+
+
+let partition_statetups_modulo_123 (statetups : S.t) : S.t list =
+  let procnames : Procname.t list =
+    List.stable_dedup
+    @@ S.fold
+         (fun astate acc ->
+           let vardef = first_of astate in
+           vardef :: acc )
+         statetups []
+  in
+  let vardefs : MyAccessPath.t list =
+    List.stable_dedup
+    @@ S.fold
+         (fun astate acc ->
+           let vardef = second_of astate in
+           vardef :: acc )
+         statetups []
+  in
+  let locsets : LocationSet.t list =
+    List.stable_dedup
+    @@ S.fold
+         (fun astate acc ->
+           let locset = third_of astate in
+           locset :: acc )
+         statetups []
+  in
+  let triples =
+    let open List in
+    procnames
+    >>= fun procname ->
+    vardefs >>= fun vardef -> locsets >>= fun locset -> return (procname, vardef, locset)
+  in
+  List.fold
+    ~f:(fun acc (procname, vardef, locset) ->
+      let matches =
+        S.fold
+          (fun ((procname', vardef', locset', _) as statetup) acc' ->
+            if
+              Procname.equal procname procname' && MyAccessPath.equal vardef vardef'
+              && LocationSet.equal locset locset'
+            then S.add statetup acc'
+            else acc' )
+          statetups S.empty
+      in
+      if S.is_empty matches then acc else matches :: acc )
+    ~init:[] triples
 
 
 (** 중복 튜플을 제거함 *)
 let remove_duplicates_from (astate_set : S.t) : S.t =
-  let partitioned_by_duplicates = P.partition_tuples_modulo_123 astate_set in
+  let partitioned_by_duplicates = partition_statetups_modulo_123 astate_set >>| S.elements in
   (* 위의 리스트 안의 각 리스트들 안에 들어 있는 튜플들 중 가장 alias set이 큰 놈을 남김 *)
   let leave_tuple_with_biggest_aliasset lst =
     if length lst > 1 then
       fold_left lst ~init:bottuple ~f:(fun (acc : T.t) (elem : T.t) ->
           if Int.( < ) (A.cardinal @@ fourth_of acc) (A.cardinal @@ fourth_of elem) then elem
-          else acc)
+          else acc )
     else nth_exn lst 0
   in
   let result = partitioned_by_duplicates >>| leave_tuple_with_biggest_aliasset |> S.of_list in
   S.filter
     (fun tup ->
       let var, _ = second_of tup in
-      (not @@ is_placeholder_vardef var) && (not @@ Var.is_this var))
+      (not @@ is_placeholder_vardef var) && (not @@ Var.is_this var) )
     result
 
 
@@ -266,7 +311,7 @@ let remove_duplicates_from (astate_set : S.t) : S.t =
 let print_graph graph =
   BFS.iter
     (fun (proc, astate_set) ->
-      L.progress "proc: %a, astate_set: %a@." Procname.pp proc S.pp astate_set)
+      L.progress "proc: %a, astate_set: %a@." Procname.pp proc S.pp astate_set )
     graph
 
 
@@ -297,7 +342,7 @@ let find_most_recent_locset_of_ap (target_ap : MyAccessPath.t) (astates : S.t) =
     let res =
       S.fold
         (fun (_, vardef, locset, _) acc ->
-          if MyAccessPath.equal target_ap vardef then locset :: acc else acc)
+          if MyAccessPath.equal target_ap vardef then locset :: acc else acc )
         astates []
     in
     match res with
@@ -322,7 +367,7 @@ let find_first_occurrence_of (ap : MyAccessPath.t) : Procname.t * S.t * S.elt =
         | true ->
             astate
         | false ->
-            acc)
+            acc )
       S.empty callgraph
   in
   match S.elements astate_set with
@@ -337,8 +382,7 @@ let find_first_occurrence_of (ap : MyAccessPath.t) : Procname.t * S.t * S.elt =
       (methname, astate_set, earliest_state)
 
 
-(** alias set에서 자기 자신, ph, 직전 variable을 빼고 남은 program variable들을
-    리턴 *)
+(** alias set에서 자기 자신, ph, 직전 variable을 빼고 남은 program variable들을 리턴 *)
 let collect_program_var_aps_from (aliasset : A.t) ~(self : MyAccessPath.t)
     ~(just_before : MyAccessPath.t option) : MyAccessPath.t list =
   match just_before with
@@ -348,14 +392,14 @@ let collect_program_var_aps_from (aliasset : A.t) ~(self : MyAccessPath.t)
           && (not @@ MyAccessPath.equal self x)
           (* not @@ Var.is_this (fst x) && *)
           && (not @@ is_placeholder_vardef (fst x))
-          && (not @@ MyAccessPath.equal just_before x))
+          && (not @@ MyAccessPath.equal just_before x) )
       @@ A.elements aliasset
   | None ->
       filter ~f:(fun x ->
           is_program_var (fst x)
           && (not @@ MyAccessPath.equal self x)
           && (* not @@ Var.is_this (fst x) && *)
-          (not @@ is_placeholder_vardef (fst x)))
+          (not @@ is_placeholder_vardef (fst x)) )
       @@ A.elements aliasset
 
 
@@ -392,7 +436,7 @@ let save_skip_function () : unit =
         | false, true ->
             Procname.Set.add meth2 acc
         | false, false ->
-            acc)
+            acc )
       callgraph_table Procname.Set.empty
   in
   let out_chan = Out_channel.create "skip_func.txt" in
@@ -400,7 +444,7 @@ let save_skip_function () : unit =
   iter
     ~f:(fun procname ->
       let func_name = Procname.to_string procname in
-      Out_channel.output_string out_chan @@ func_name ^ "\n")
+      Out_channel.output_string out_chan @@ func_name ^ "\n" )
     procnames_list ;
   Out_channel.close out_chan
 
@@ -439,8 +483,7 @@ let find_index_in_chain (chain : Chain.t) (chain_slice : Chain.chain_slice) : in
   match have_been_before chain_slice chain with true -> elem_is_at chain chain_slice | false -> -1
 
 
-(** chain과 chain_slice를 받아, chain_slice가 있는 지점부터 시작되는 subchain을
-    꺼내 온다. 실패하면 empty list. *)
+(** chain과 chain_slice를 받아, chain_slice가 있는 지점부터 시작되는 subchain을 꺼내 온다. 실패하면 empty list. *)
 let extract_subchain_from (chain : Chain.t) (chain_slice : Chain.chain_slice) : Chain.t =
   let index = find_index_in_chain chain chain_slice in
   match index with
@@ -451,8 +494,7 @@ let extract_subchain_from (chain : Chain.t) (chain_slice : Chain.chain_slice) : 
       sub chain ~pos:index ~len:subchain_length
 
 
-(** Define에 들어 있는 Procname과 AP의 쌍을 받아서 그것이 들어 있는 chain을
-    리턴 *)
+(** Define에 들어 있는 Procname과 AP의 쌍을 받아서 그것이 들어 있는 chain을 리턴 *)
 let find_entry_containing_chainslice (methname : Procname.t) (status : Status.t) : Chain.t option =
   let all_chains = Hashtbl.fold (fun _ v acc -> v :: acc) chains [] in
   let result_chains =
@@ -496,7 +538,7 @@ let find_returnv_holding_callee_astateset (callee_name : Procname.t) (astate_set
         try
           let returnv = find_returnv_holding_callee_aliasset callee_name aliasset in
           returnv :: acc
-        with _ -> acc)
+        with _ -> acc )
       astate_set []
   in
   if Int.( > ) (length out) 1 then
@@ -536,7 +578,7 @@ let alias_with_returnv (statetup : S.elt) (callee_methname : Procname.t) : bool 
       is_returnv_ap ap
       &&
       let methname = extract_callee_from ap in
-      Procname.equal methname callee_methname)
+      Procname.equal methname callee_methname )
     (fourth_of statetup)
 
 
@@ -585,7 +627,7 @@ let find_matching_param_for_callv (ap_set : A.t) (callv_ap : A.elt) : A.elt =
       A.filter
         (fun ap ->
           let methname = extract_callee_from ap in
-          is_param_ap ap && Procname.equal methname callee_methname)
+          is_param_ap ap && Procname.equal methname callee_methname )
         ap_set
     else A.filter (fun ap -> List.mem callee_params ap ~equal:MyAccessPath.equal) ap_set
   in
@@ -616,7 +658,7 @@ let rec compute_chain_inner (current_methname : Procname.t) (current_astate_set 
   let statetup_with_returnv_or_carriedovers =
     fold
       ~f:(fun acc (_, callee_astate_set) ->
-        acc @ find_returnv_or_carriedover_ap current_astate_set callee_astate_set)
+        acc @ find_returnv_or_carriedover_ap current_astate_set callee_astate_set )
       ~init:[] callees
   in
   let something_else =
@@ -701,7 +743,7 @@ let rec compute_chain_inner (current_methname : Procname.t) (current_astate_set 
                 :: acc
               in
               (* recurse *)
-              compute_chain_inner caller caller_astate_set statetup_with_returnv chain_updated)
+              compute_chain_inner caller caller_astate_set statetup_with_returnv chain_updated )
             ~init:[] callers_and_astates
         in
         collected @ current_chain
@@ -716,9 +758,12 @@ let rec compute_chain_inner (current_methname : Procname.t) (current_astate_set 
           find_matching_param_for_callv (A.of_list var_aps) this_turn_callv_ap
         in
         let callee_methname = extract_callee_from param_ap_matching_callv in
-        let callee_summary = get_summary callee_methname in
         let param_ap_locset =
-          find_most_recent_locset_of_ap param_ap_matching_callv callee_summary
+          let callv_linum = extract_linum_from_param param_ap_matching_callv in
+          let location_term : Location.t =
+            {Location.line= callv_linum; Location.col= -1; Location.file= SourceFile.invalid ""}
+          in
+          LocationSet.singleton location_term
         in
         let new_chain_slice =
           (current_methname, Status.Call (callee_methname, param_ap_matching_callv, param_ap_locset))
@@ -744,7 +789,7 @@ let rec compute_chain_inner (current_methname : Procname.t) (current_astate_set 
         let all_states_with_current_ap =
           sort ~compare:compare_astate
           @@ filter ~f:(fun astate ->
-                 MyAccessPath.equal (second_of current_astate) (second_of astate))
+                 MyAccessPath.equal (second_of current_astate) (second_of astate) )
           @@ S.elements current_astate_set
         in
         let least_recently_redefined =
@@ -768,7 +813,7 @@ let rec compute_chain_inner (current_methname : Procname.t) (current_astate_set 
       let callees_and_astates = find_direct_callees current_methname in
       if not @@ Procname.equal declaring_function current_methname then
         (* ============ CALL ============ *)
-        (* TODO: 여기 보강 *)
+        (* TODO: 여기 보강..할 필요가 있나? *)
         let collected =
           fold
             ~f:(fun acc (callee, callee_astate_set) ->
@@ -784,7 +829,7 @@ let rec compute_chain_inner (current_methname : Procname.t) (current_astate_set 
                   :: acc
                 in
                 compute_chain_inner callee callee_astate_set landing_pad chain_updated
-              with SearchAstateByPVarFailed _ -> acc)
+              with SearchAstateByPVarFailed _ -> acc )
             ~init:[] callees_and_astates
         in
         collected @ current_chain
@@ -863,7 +908,7 @@ let save_callgraph () =
   let ch = Out_channel.create "Callgraph.txt" in
   Hashtbl.iter
     (fun k v ->
-      Out_channel.output_string ch @@ Procname.to_string k ^ " -> " ^ Procname.to_string v ^ "\n")
+      Out_channel.output_string ch @@ Procname.to_string k ^ " -> " ^ Procname.to_string v ^ "\n" )
     callgraph_table ;
   Out_channel.flush ch ;
   Out_channel.close ch
@@ -942,7 +987,7 @@ let main () =
   MyCallGraph.load_callgraph_from_disk_to callgraph_table ;
   save_callgraph () ;
   (* Initialize the summary_table *)
-  SummaryLoader.load_summary_from_disk_to summary_table ;
+  SummaryLoader.load_summary_from_disk_to summary_table ~exclude_test:true ;
   RefineSummaries.main summary_table ;
   (* Initialize the formal_args table *)
   batch_add_formal_args () ;
@@ -962,7 +1007,7 @@ let main () =
          && (not @@ is_returnv var)
          && (not @@ Var.is_return var)
          && (not @@ is_param var)
-         && (not @@ is_callv var))
+         && (not @@ is_callv var) )
   |> iter ~f:(fun (proc, ap, locset) -> add_chain (proc, ap, locset) @@ compute_chain ap) ;
   (* ============ Serialize ============ *)
   let wrapped_chains =
@@ -970,7 +1015,7 @@ let main () =
       (fun (current_meth, target_ap, target_ap_locset) chain acc ->
         wrap_chain_representation current_meth target_ap target_ap_locset
           (map ~f:(fun (proc, status) -> represent_status proc status) chain)
-        :: acc)
+        :: acc )
       chains []
   in
   let complete_json_representation = make_complete_representation wrapped_chains in

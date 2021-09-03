@@ -308,8 +308,8 @@ module AbstractPair = struct
   let join (lhs_pair : t) (rhs_pair : t) : t =
     let lhs, lhs_map = lhs_pair in
     let rhs, rhs_map = rhs_pair in
-    let lhs_minus_rhs = my_diff lhs rhs in
-    let rhs_minus_lhs = my_diff rhs lhs in
+    let lhs_minus_rhs = S.diff lhs rhs in
+    let rhs_minus_lhs = S.diff rhs lhs in
     let tuples_with_dup_keys = find_duplicate_keys lhs_minus_rhs rhs_minus_lhs in
     let there_are_duplicate_keys = not @@ S.is_empty tuples_with_dup_keys in
     if there_are_duplicate_keys then

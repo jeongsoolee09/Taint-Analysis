@@ -155,6 +155,21 @@ let rec assoc (alist : ('a * 'b) list) (key : 'a) ~equal : 'b =
   | (key', value) :: t ->
       if equal key key' then value else assoc t key ~equal
 
+(* Remove Ternary frontend vars ===================== *)
+(* ================================================== *)
+
+let remove_ternary_frontend (table : (Procname.t, S.t) Hashtbl.t) : (Procname.t, S.t) Hashtbl.t =
+  let one_pass_S (astate_set : S.t) : S.t = 
+    S.fold (fun (proc, vardef, locset, aliasset) acc ->
+      match is_ternary_frontend_ap vardef with
+      | true  -> acc
+      | false ->
+          S.add (proc, vardef, locset, A.filter (fun ap ->
+            not @@ is_ternary_frontend_ap ap) aliasset) acc
+    ) astate_set S.empty
+  in
+  Hashtbl.iter (fun proc astate_set -> Hashtbl.replace table proc (one_pass_S astate_set)) table;
+  table
 
 (* Consolidate duplicated Pvar tuples =============== *)
 (* ================================================== *)
@@ -251,7 +266,7 @@ let delete_compensating_param_returnv (table : (Procname.t, S.t) Hashtbl.t) :
       let open List in
       returnvs >>= fun returnv -> params >>= fun param -> return (returnv, param)
     in
-    let compensating_pairs =
+let compensating_pairs =
       List.filter
         ~f:(fun (returnv, param) ->
           let returnv_meth_simple = Procname.get_method @@ extract_callee_from returnv in
@@ -304,7 +319,7 @@ let delete_initializer_callv_param (table : (Procname.t, S.t) Hashtbl.t) :
 let consolidate_by_locset (table : (Procname.t, S.t) Hashtbl.t) : (Procname.t, S.t) Hashtbl.t =
   let one_pass_S (astate_set : S.t) : S.t =
     let irvars = S.filter (fun astate -> is_irvar_ap @@ second_of astate) astate_set in
-    L.progress "irvars: %a@." S.pp irvars ;
+    L.progress "irvars: %a@." S.pp irvars;
     let pvars =
       S.filter
         (fun astate ->
@@ -319,8 +334,10 @@ let consolidate_by_locset (table : (Procname.t, S.t) Hashtbl.t) : (Procname.t, S
           && (not @@ is_callv_ap ap))
         astate_set
     in
+    L.progress "pvars: %a@." S.pp pvars;
     (* save this for merging later *)
     let rest = S.diff (S.diff astate_set irvars) pvars in
+    L.progress "rest: %a@." S.pp rest;
     let partitions = partition_statetups_by_locset irvars in
     try
       (* al iz wel *)
@@ -328,7 +345,6 @@ let consolidate_by_locset (table : (Procname.t, S.t) Hashtbl.t) : (Procname.t, S
         S.of_list
         @@ List.map
              ~f:(fun (partition : S.t) ->
-               L.progress "partition: %a@." S.pp partition ;
                let this_partition_locset = third_of @@ List.hd_exn @@ S.elements partition in
                let pvar_astate = search_astate_by_loc this_partition_locset (S.elements pvars) in
                S.fold
@@ -346,7 +362,6 @@ let consolidate_by_locset (table : (Procname.t, S.t) Hashtbl.t) : (Procname.t, S
       let process_succeeded, leftovers =
         List.fold
           ~f:(fun (succeeded_irvars, failed_irvars) partition ->
-            L.progress "partition: %a@." S.pp partition ;
             let this_partition_locset = third_of @@ List.hd_exn @@ S.elements partition in
             let pvar_astates = search_tuples_by_loc this_partition_locset (S.elements pvars) in
             match pvar_astates with
@@ -370,16 +385,14 @@ let consolidate_by_locset (table : (Procname.t, S.t) Hashtbl.t) : (Procname.t, S
       in
       (* We now extract only the failed pvars *)
       let failed_pvars = S.filter (fun astate -> not @@ S.mem astate process_succeeded) pvars in
-      L.progress "failed_pvars: %a@." S.pp failed_pvars ;
       process_succeeded |> S.union rest |> S.union leftovers |> S.union failed_pvars
   in
   (* one_pass_S end *)
-  Hashtbl.iter
-    (fun proc astate_set ->
-      L.progress "proc: %a ==========@." Procname.pp proc ;
-      Hashtbl.replace table proc (one_pass_S astate_set))
-    table ;
-  table
+  Hashtbl.iter (fun proc astate_set ->
+    L.progress "==================================================";
+    L.progress "consolidate_by_locset proc: %a@." Procname.pp proc;
+    Hashtbl.replace table proc (one_pass_S astate_set)) table ;
+    table
 
 
 (* Remove unnecessary Java constants ================ *)

@@ -210,10 +210,10 @@ module TransferFunctions (CFG : ProcCfg.S) = struct
     (var, lst @ [AccessPath.ArrayAccess (Typ.void_star, [])])
 
 
-  let merge_ph_tuples (tup1:T.t) (tup2:T.t) (lset:LocationSet.t) : T.t =
+  let merge_ph_tuples (tup2:T.t) (tup1:T.t) (lset:LocationSet.t) : T.t =
     let proc1, _, _, alias1 = tup1 in
-    let proc2, _, _, alias2 = tup2 in
-    let pvar_vardef = find_another_pvar_vardef alias2 in
+    let proc2, var2, _, alias2 = tup2 in
+    let pvar_vardef = var2 in
     if not @@ Procname.equal proc1 proc2
     then L.die InternalError
         "merge_ph_tuples failed, tup1: %a, tup2: %a, location: %a"
@@ -326,28 +326,14 @@ module TransferFunctions (CFG : ProcCfg.S) = struct
         (* finding the pvar tuple (lhs) getting stored *)
         begin try  (* normal cases where x = new(); then x.f = ... . *)
             let (proc1, var1, loc1, aliasset) as vartuple = search_target_tuple_by_id id1 methname (fst apair) in
-            let pvar_tuple : A.elt = begin try
-              L.progress "find_another_pvar_vardef aliasset: %a@." MyAccessPath.pp @@ find_another_pvar_vardef aliasset;
-                find_another_pvar_vardef aliasset
-              with _ -> (* oops, long access path *)
-                let intermed_tuple = search_target_tuple_by_id id1 methname (fst apair) in
-                let intermed_aliasset = fourth_of intermed_tuple in
-                let (var, aplist) = find_ap_with_field intermed_aliasset in
-                begin match var with
-                  | LogicalVar lv ->
-                      let var_tuple = search_target_tuple_by_id lv methname (fst apair) in
-                      let (pvar, _) = find_pvar_ap_in @@ fourth_of var_tuple in
-                      (pvar, aplist)
-                  | ProgramVar _ ->
-                      L.die InternalError "Not a logical var! var: %a@." Var.pp var end end in
-            L.progress "pvar_tuple: %a, methname: %a@." MyAccessPath.pp pvar_tuple Procname.pp methname;
+            let pvar_tuple : A.elt = var1 in
             let pvar_tuple_updated = put_fieldname fld pvar_tuple in
             let new_aliasset = A.add pvar_tuple_updated @@ A.remove pvar_tuple aliasset in
-            let newtuple = (proc1, var1, loc1, new_aliasset) in
+            let newtuple = (proc1, pvar_tuple_updated, loc1, new_aliasset) in
             (* finding the var tuple holding the value being stored *)
             let another_tuple = search_target_tuple_by_id id2 methname (fst apair) in
             let loc = LocationSet.singleton @@ CFG.Node.loc node in
-            let merged_tuple = merge_ph_tuples another_tuple newtuple loc in
+            let merged_tuple = merge_ph_tuples newtuple another_tuple loc in
             let astate_set_rmvd = S.remove another_tuple @@ S.remove vartuple (fst apair) in
             let old_location = third_of newtuple in
             let new_history = H.add_to_history (methname, pvar_tuple_updated) loc (snd apair) in
@@ -398,19 +384,14 @@ module TransferFunctions (CFG : ProcCfg.S) = struct
         (* finding the pvar tuple getting stored *)
         let (proc1, var1, loc1, aliasset) as vartuple =
           search_target_tuple_by_id id1 methname (fst apair) in
-        let pvar_tuple : A.elt = begin try
-            find_another_pvar_vardef aliasset (* ph를 찾으라고 할 수는 없으니까 *)
-          with _ -> (* oops, long access path *)
-            let varstate2 = search_target_tuple_by_id id2 methname (fst apair) in
-            let aliasset = fourth_of varstate2 in
-            find_another_pvar_vardef aliasset end in
+        let pvar_tuple : A.elt = var1 in
         let pvar_tuple_updated = put_arrayaccess pvar_tuple in
         let new_aliasset = A.add pvar_tuple_updated @@ A.remove pvar_tuple aliasset in
         let newtuple = (proc1, var1, loc1, new_aliasset) in
         (* finding the var tuple holding the value being stored *)
         let another_tuple = search_target_tuple_by_id id2 methname (fst apair) in
         let loc = LocationSet.singleton @@ CFG.Node.loc node in
-        let merged_tuple = merge_ph_tuples another_tuple newtuple loc in
+        let merged_tuple = merge_ph_tuples newtuple another_tuple loc in
         (* let astate_set_rmvd = S.remove another_tuple @@ S.remove vartuple (fst apair) in *)
         let old_location = third_of newtuple in
         let new_history = H.add_to_history (methname, pvar_tuple_updated) loc (snd apair) in
@@ -677,7 +658,7 @@ module TransferFunctions (CFG : ProcCfg.S) = struct
               let newset = S.add newstate astate_rmvd in
               (newset, snd apair)
           | false ->
-              begin match search_target_tuples_by_vardef (Var.of_pvar pvar) methname (fst apair) with
+              begin match search_target_tuples_by_vardef_ap ((Var.of_pvar pvar), []) methname (fst apair) with
                 | [] -> (* 한 번도 def된 적 없음 *)
                     let double = doubleton (Var.of_id id, []) (Var.of_pvar pvar, []) in
                     let ph = placeholder_vardef methname in

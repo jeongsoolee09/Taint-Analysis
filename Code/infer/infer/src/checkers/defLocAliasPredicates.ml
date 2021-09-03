@@ -249,3 +249,17 @@ let ( ==> ) (x : LocationSet.t) (y : LocationSet.t) : bool =
   let y_min = LocationSet.min_elt y in
   let loc_cond = x_min.line < y_min.line in
   SourceFile.equal x_min.file y_min.file && loc_cond
+
+
+let is_test_method (proc: Procname.t) : bool =
+  let procname_str = Procname.to_string proc in
+  String.is_substring procname_str ~substring:"Test"
+
+
+let is_ternary_frontend_ap ((var, _) : MyAccessPath.t) : bool =
+  if not @@ is_frontend_tmp_var var then false else
+    match var with
+    | LogicalVar _ -> false
+    | ProgramVar pvar ->
+     let var_string = Pvar.to_string pvar in
+     Char.equal (String.get var_string 0) 'T'

@@ -306,8 +306,6 @@ let find_another_pvar_vardef (varset : A.t) : A.elt =
         not @@ is_callv_ap ap &&
         not @@ is_returnv_ap ap &&
         not @@ is_return_ap ap &&
-        not @@ is_bcvar_ap ap &&
-        not @@ is_irvar_ap ap &&
         not @@ is_param_ap ap
       then ap else inner t
   in
@@ -321,8 +319,13 @@ let find_pvar_ap_in (aliasset : A.t) : A.elt =
     match elements with
     | [] ->
         acc
-    | ((var, _) as target) :: t ->
-        if is_program_var var then target :: acc else inner t acc
+    | ((var, _) as ap) :: t ->
+        if is_program_var var &&
+        not @@ is_callv_ap ap &&
+        not @@ is_returnv_ap ap &&
+        not @@ is_return_ap ap &&
+        not @@ is_param_ap ap
+        then ap :: acc else inner t acc
   in
   let result = inner elements [] in
   match result with

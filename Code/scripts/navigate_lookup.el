@@ -1,4 +1,6 @@
-(require 'cl)
+;; -*- lexical-binding: t -*-
+
+(require 'cl-lib)
 (require 's)
 
 
@@ -111,8 +113,19 @@
          (message "Signature copied.")))
 
 
-(spacemacs/set-leader-keys-for-major-mode 'org-mode "ll" 'lookup)
-(spacemacs/set-leader-keys-for-major-mode 'org-mode "lc" 'find-context)
-(spacemacs/set-leader-keys-for-major-mode 'org-mode "lr" 'check-root)
-(spacemacs/set-leader-keys-for-major-mode 'org-mode "lf" 'check-leaf)
-(spacemacs/set-leader-keys-for-major-mode 'java-mode "ls" 'copy-sig)
+(setq f (let ((x 132))
+            (lambda ()
+              (insert (concat " (" (int-to-string (incf x)) ", [])")))))
+
+(defun fresh-ap ()
+  (interactive)
+  (funcall f))
+
+
+(evil-define-key 'normal 'org-mode-map (kbd "<localleader>ll") 'lookup)
+(evil-define-key 'normal 'org-mode-map (kbd "<localleader>lc") 'find-context)
+(evil-define-key 'normal 'org-mode-map (kbd "<localleader>lr") 'check-root)
+(evil-define-key 'normal 'org-mode-map (kbd "<localleader>lf") 'check-leaf)
+(evil-define-key 'normal 'org-mode-map (kbd "<localleader>la") 'fresh-ap)
+(evil-define-key 'normal 'java-mode-map (kbd "<localleader>ls") 'copy-sig)
+(evil-define-key 'normal 'java-mode-map (kbd "<localleader>lf") 'copy-sig-full)

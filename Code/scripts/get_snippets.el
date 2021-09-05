@@ -131,14 +131,14 @@
                                            (plist-get result :htmls))))
                        (if (null result)
                            (append htmls-acc htmls)
-                           (->> htmls-acc
-                                (append htmls)
-                                (append (reduce #'(lambda (acc folder)
-                                                    (let ((new-url (concat current-url folder)))
-                                                      (inner (parse-html new-url)
-                                                             new-url
-                                                             acc)))
-                                                folders :initial-value nil)))))))
+                         (->> htmls-acc
+                              (append htmls)
+                              (append (reduce #'(lambda (acc folder)
+                                                  (let ((new-url (concat current-url folder)))
+                                                    (inner (parse-html new-url)
+                                                           new-url
+                                                           acc)))
+                                              folders :initial-value nil)))))))
     (inner (parse-html root-url) root-url nil)))
 
 
@@ -203,7 +203,7 @@
          (mapcar (lambda (str) (if (s-contains? ")" str)
                                    (let ((parens-index (s-index-of ")" str)))
                                      (substring str 0 (+ parens-index 1)))
-                                   str))))))
+                                 str))))))
 
 
 (defun anchor-content-organize (anchor-content-list)
@@ -252,15 +252,15 @@
                                    ;; the parameter list is empty
                                    (let* ((zipped (-zip anchor-contents-without-annots-and-exceptions non-anchor-contents)))
                                      (apply #'concat (mapcar (lambda (pair) (concat (car pair) " " (cdr pair))) zipped)))
-                                   ;; the paramter list is nonempty
-                                   (let* ((zipped (-zip anchor-contents-without-annots-and-exceptions (cdr non-anchor-contents)))
-                                          (annot-concatted (apply #'concat (mapcar (lambda (x) (concat x " ")) annots)))
-                                          (contents-concatted (concat (car non-anchor-contents)
-                                                                      (apply #'concat
-                                                                             (mapcar (lambda (pair)
-                                                                                       (concat (car pair) " " (cdr pair) " "))
-                                                                                     zipped)))))
-                                     (concat annot-concatted contents-concatted "throws " (car exceptions)))))))
+                                 ;; the paramter list is nonempty
+                                 (let* ((zipped (-zip anchor-contents-without-annots-and-exceptions (cdr non-anchor-contents)))
+                                        (annot-concatted (apply #'concat (mapcar (lambda (x) (concat x " ")) annots)))
+                                        (contents-concatted (concat (car non-anchor-contents)
+                                                                    (apply #'concat
+                                                                           (mapcar (lambda (pair)
+                                                                                     (concat (car pair) " " (cdr pair) " "))
+                                                                                   zipped)))))
+                                   (concat annot-concatted contents-concatted "throws " (car exceptions)))))))
     (let* ((parsed (parse-html class-html-name))
            (pres (find-by-tag parsed 'pre))
            (classname (car (s-split "\\." (get-only-filename class-html-name))))
@@ -284,11 +284,11 @@
                                                    (progn
                                                      (push (concat "<T> " str) out)
                                                      nil)
-                                                   (if (string= str "<T>")
-                                                       t
-                                                       (progn
-                                                         (push str out)
-                                                         nil))))
+                                                 (if (string= str "<T>")
+                                                     t
+                                                   (progn
+                                                     (push str out)
+                                                     nil))))
                                              str-list :initial-value nil)
                                      (reverse out)))
              (handle-after-parens (str-list)
@@ -298,11 +298,11 @@
                                                   (progn
                                                     (push (concat str " <T>") out)
                                                     nil)
-                                                  (if (string= str "<T>")
-                                                      t
-                                                      (progn
-                                                        (push str out)
-                                                        nil))))
+                                                (if (string= str "<T>")
+                                                    t
+                                                  (progn
+                                                    (push str out)
+                                                    nil))))
                                             (reverse str-list) :initial-value nil)
                                     out))
              (handle-angled-T (chopped-string)
@@ -338,18 +338,18 @@
                      :params-and-types 'TODO
                      :exceptions nil)
              ;; only has exception
-            ((has-exception? chopped-string)
-             (:annot nil
-                     :rtntype (first chopped-string)
-                     :methname (first (s-split "(" (second chopped-string)))
-                     :params-and-types 'TODO
-                     :exceptions (-last-item chopped-string)))
-            ;; missing both annotation and exception
-            (:else (:annot nil
-                           :rtntype (first chopped-string)
-                           :methname (first (s-split "(" (second chopped-string)))
-                           :params-and-types 'TODO
-                           :exceptions nil)))))))
+             ((has-exception? chopped-string)
+              (:annot nil
+                      :rtntype (first chopped-string)
+                      :methname (first (s-split "(" (second chopped-string)))
+                      :params-and-types 'TODO
+                      :exceptions (-last-item chopped-string)))
+             ;; missing both annotation and exception
+             (:else (:annot nil
+                            :rtntype (first chopped-string)
+                            :methname (first (s-split "(" (second chopped-string)))
+                            :params-and-types 'TODO
+                            :exceptions nil)))))))
 
 
 (comment
@@ -372,11 +372,11 @@
                      (progn
                        (push (concat "<T> " str) out)
                        nil)
-                     (if (string= str "<T>")
-                         t
-                         (progn
-                           (push str out)
-                           nil))))
+                   (if (string= str "<T>")
+                       t
+                     (progn
+                       (push str out)
+                       nil))))
                str-list :initial-value nil)
        (reverse out)))
 
@@ -387,11 +387,11 @@
                      (progn
                        (push (concat str " <T>") out)
                        nil)
-                     (if (string= str "<T>")
-                         t
-                         (progn
-                           (push str out)
-                           nil))))
+                   (if (string= str "<T>")
+                       t
+                     (progn
+                       (push str out)
+                       nil))))
                (reverse str-list) :initial-value nil)
        out)
      )

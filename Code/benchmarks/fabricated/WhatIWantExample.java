@@ -3,7 +3,8 @@ public class WhatIWantExample {
     WhatIWantExample() {}
 
     public int m1() {
-        return 1;
+        int out = 1;
+        return out;
     }
 
     public int m2(int u1) {

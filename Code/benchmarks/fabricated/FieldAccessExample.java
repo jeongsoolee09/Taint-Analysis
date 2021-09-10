@@ -1,11 +1,17 @@
 public class FieldAccessExample {
 
-    public int intField;
-    public FieldAccessExample fld;
+    private int intField;
+    private FieldAccessExample fld;
+    private boolean yeeyee;
+    private Integer yee;
+    private double yoyo;
 
     FieldAccessExample () {
         this.intField = 1;
         this.fld = null;
+        this.yeeyee = true;
+        this.yee = new Integer(1);
+        this.yoyo = 3.14;
     }
 
     public static void main() {

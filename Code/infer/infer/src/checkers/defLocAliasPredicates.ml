@@ -262,4 +262,12 @@ let is_ternary_frontend_ap ((var, _) : MyAccessPath.t) : bool =
     | LogicalVar _ -> false
     | ProgramVar pvar ->
      let var_string = Pvar.to_string pvar in
-     Char.equal (String.get var_string 0) 'T'
+     Char.equal (String.get var_string 1) 'T'
+
+
+let is_clinit (proc: Procname.t) : bool =
+  String.is_substring (Procname.to_string proc) ~substring:"<clinit>"
+
+
+let is_cast (proc: Procname.t) : bool =
+  String.is_substring (Procname.to_string proc) ~substring:"__cast"

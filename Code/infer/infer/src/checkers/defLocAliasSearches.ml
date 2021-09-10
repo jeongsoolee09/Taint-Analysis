@@ -18,6 +18,8 @@ exception SearchAstateByIdFailed of string
 
 exception SearchAstateByLocFailed of string
 
+exception WeakSearchAstatesByLocFailed
+
 exception FindEarliestAstateFailed of string
 
 exception FindReturningVarFailed of string
@@ -30,7 +32,7 @@ exception FindAPWithFieldFailed of string
 
 exception GetDeclaringFunctionFailed of string
 
-exception ExtractLinumFromParamFailed of string
+exception ExtractLinumFromParamFailed
 
 exception ExtractNumberFromCallvFailed of string
 
@@ -69,6 +71,21 @@ let search_target_tuples_by_pvar (pvar : Var.t) (methname : Procname.t) (tuplese
         else inner pvar methname t
   in
   inner pvar methname elements
+
+
+let search_target_tuples_by_pvar_ap (pvar_ap : MyAccessPath.t) (methname : Procname.t) (tupleset : S.t) : T.t list
+    =
+  let elements = S.elements tupleset in
+  let rec inner pvar (methname : Procname.t) elements =
+    match elements with
+    | [] ->
+        []
+    | ((procname, _, _, aliasset) as target) :: t ->
+        if Procname.equal procname methname && A.mem pvar_ap aliasset then
+          target :: inner pvar methname t
+        else inner pvar methname t
+  in
+  inner pvar_ap methname elements
 
 
 let search_target_tuple_by_id (id : Ident.t) (methname : Procname.t) (astate_set : S.t) : T.t =
@@ -173,6 +190,13 @@ let search_target_tuples_by_vardef_ap (pv_ap : MyAccessPath.t) (methname : Procn
   inner pv_ap methname elements []
 
 
+let weak_search_target_tuples_by_vardef_ap (pv_ap : MyAccessPath.t) (tupleset: S.t) : T.t list =
+  List.filter ~f:(fun astate -> 
+    let target_ap_string = MyAccessPath.to_string pv_ap
+    and this_astate_ap_string = MyAccessPath.to_string (second_of astate) in
+    String.equal target_ap_string this_astate_ap_string) (S.elements tupleset) 
+
+
 let rec search_tuple_by_loc (loc_set : LocationSet.t) (tuplelist : T.t list) : T.t =
   match tuplelist with
   | [] ->
@@ -211,7 +235,6 @@ let rec search_tuples_by_loc (loc_set : LocationSet.t) (tuplelist : S.elt list) 
 
 let find_least_linenumber (statelist : T.t list) : T.t =
   let rec inner (statelist : T.t list) (current_least : T.t) : T.t =
-    L.d_printfln "statelist: %a@." pp_tuplelist statelist ;
     match statelist with
     | [] ->
         current_least
@@ -225,7 +248,6 @@ let find_least_linenumber (statelist : T.t list) : T.t =
 
 let find_most_linenumber (statelist : T.t list) : T.t =
   let rec inner (statelist : T.t list) (current_least : T.t) : T.t =
-    L.d_printfln "statelist: %a@." pp_tuplelist statelist ;
     match statelist with
     | [] ->
         current_least
@@ -251,18 +273,18 @@ let find_earliest_tuple_within (astatelist : S.elt list) : T.t =
 
 
 (** pick the earliest ASTATE within a list of astates *)
-let find_earliest_astate_within (astatelist : S.elt list) (methname : Procname.t) : T.t =
+let find_earliest_astate_within (astatelist : S.elt list) : T.t =
   let locations = List.sort ~compare:LocationSet.compare (List.map ~f:third_of astatelist) in
-  match List.nth locations 0 with
+  match List.hd locations with
   | Some earliest_location ->
       search_astate_by_loc earliest_location astatelist
   | None ->
       raise IDontKnow
 
 
-let find_earliest_astate_of_var_within (tuplelist : S.elt list) (methname : Procname.t) : T.t =
+let find_earliest_astate_of_var_within (tuplelist : S.elt list) : T.t =
   let vartuples = tuplelist in
-  find_earliest_astate_within vartuples methname
+  find_earliest_astate_within vartuples
 
 
 let find_var_being_returned (aliasset : A.t) : Var.t =
@@ -402,22 +424,51 @@ let find_returnv_or_carriedover_ap (caller_astate_set : S.t) (callee_astate_set 
   carried_over_vars @ returnvs
 
 
-let extract_linum_from_param (ap : MyAccessPath.t) : int =
+let get_declaring_function_ap_exn (ap : A.elt) : Procname.t =
+    let var, _ = ap in
+    match var with
+    | LogicalVar _ ->
+        L.die InternalError "get_declaring_function_ap_exn failed: %a@." MyAccessPath.pp ap
+    | ProgramVar pvar -> (
+      match Pvar.get_declaring_function pvar with
+      | None ->
+          L.die InternalError "get_declaring_function_ap_exn failed: %a@." MyAccessPath.pp ap
+      | Some procname ->
+          procname 
+    )
+
+
+let extract_linum_from_param (ap : MyAccessPath.t) (callee_summary: S.t) : int =
   match fst ap with
   | LogicalVar _ ->
-      F.kasprintf
-        (fun msg -> raise @@ ExtractLinumFromParamFailed msg)
-        "extract_linum_from_param failed: ap: %a@." MyAccessPath.pp ap
+      L.progress "extract_linum_from_param failed: ap: %a@." MyAccessPath.pp ap;
+        raise ExtractLinumFromParamFailed
+  | ProgramVar pv -> (
+    match is_param_ap ap with
+    | true ->
+        L.progress "extract_linum_from_param failed: ap: %a@." MyAccessPath.pp ap;
+        raise ExtractLinumFromParamFailed 
+    | false ->
+        let param_vardef_aps = weak_search_target_tuples_by_vardef_ap ap callee_summary in
+        let earliest_param_vardef =
+          find_earliest_astate_within param_vardef_aps in
+        let earliest_param_locset = third_of earliest_param_vardef in
+        LocationSet.elements earliest_param_locset |> List.hd_exn |> (fun (loc: Location.t) -> loc.line) )
+
+
+let extract_linum_from_param_ap (ap : MyAccessPath.t) : int =
+  match fst ap with
+  | LogicalVar _ ->
+      L.progress "extract_linum_from_param failed: ap: %a@." MyAccessPath.pp ap;
+        raise ExtractLinumFromParamFailed
   | ProgramVar pv -> (
     match is_param_ap ap with
     | true ->
         Pvar.to_string pv |> String.split ~on:'_'
         |> fun str_list -> List.nth_exn str_list 2 |> int_of_string
     | false ->
-        F.kasprintf
-          (fun msg -> raise @@ ExtractLinumFromParamFailed msg)
-          "extract_linum_from_param failed: ap: %a@." MyAccessPath.pp ap )
-
+        L.progress "extract_linum_from_param failed: ap: %a@." MyAccessPath.pp ap;
+        raise ExtractLinumFromParamFailed )
 
 let search_target_tuples_holding_param (location : int) (tuplelist : T.t list) : T.t list =
   List.fold
@@ -427,7 +478,7 @@ let search_target_tuples_holding_param (location : int) (tuplelist : T.t list) :
         A.fold
           (fun ap acc' ->
             if is_param_ap ap then
-              (is_param_ap ap && Int.equal (extract_linum_from_param ap) location) || acc'
+              (is_param_ap ap && Int.equal (extract_linum_from_param_ap ap) location) || acc'
             else acc')
           astateset false
       in
@@ -452,7 +503,7 @@ let extract_number_from_callv (callv_ap : A.elt) : int =
 let find_callv_greater_than_number (ap_set : A.t) (number : int) : A.elt =
   let callvs = A.elements @@ A.filter is_callv_ap ap_set in
   let greater_callvs =
-    List.filter ~f:(fun callv -> Int.( > ) (extract_number_from_callv callv) number) callvs
+    List.filter ~f:(fun callv -> Int.( >= ) (extract_number_from_callv callv) number) callvs
   in
   let callvs_and_numbers =
     List.map greater_callvs ~f:(fun callv -> (callv, extract_number_from_callv callv))

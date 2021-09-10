@@ -31,6 +31,12 @@ let pp_explist fmt (explist : Exp.t list) =
   F.fprintf fmt "]"
 
 
+let pp_idlist fmt (idlist : Ident.t list) =
+  F.fprintf fmt "[" ;
+  List.iter idlist ~f:(fun id -> F.fprintf fmt "%a, " Ident.pp id) ;
+  F.fprintf fmt "]"
+
+
 let pp_varlist fmt (varlist : Var.t list) =
   F.fprintf fmt "[" ;
   List.iter varlist ~f:(fun var -> F.fprintf fmt "%a, " Var.pp var) ;
@@ -55,6 +61,12 @@ let pp_ap_list fmt aplist =
   F.fprintf fmt "]"
 
 
+let pp_proc_list fmt proclist =
+  F.fprintf fmt "[" ;
+  List.iter ~f:(fun proc -> F.fprintf fmt "%a, " Procname.pp proc) proclist ;
+  F.fprintf fmt "]"
+
+
 let pp_tuplelist fmt (lst : T.t list) =
   F.fprintf fmt "[" ;
   List.iter ~f:(fun tup -> F.fprintf fmt "%a, " T.pp tup) lst ;
@@ -76,4 +88,23 @@ let pp_tuplesetlist fmt (lst : S.t list) =
 let pp_locationsetlist fmt (lst : LocationSet.t list) =
   F.fprintf fmt "[" ;
   List.iter ~f:(fun locset -> F.fprintf fmt "%a, " LocationSet.pp locset) lst ;
+  F.fprintf fmt "]"
+
+
+let get_declaring_function_ap_exn (ap : A.elt) : Procname.t =
+  let var, _ = ap in
+  match var with
+  | LogicalVar _ ->
+     L.die InternalError "get_declaring_function_ap_exn failed: %a@." MyAccessPath.pp ap
+  | ProgramVar pvar -> (
+    match Pvar.get_declaring_function pvar with
+    | None ->
+       L.die InternalError "get_declaring_function_ap_exn failed: %a@." MyAccessPath.pp ap
+    | Some procname ->
+       procname )
+
+
+let pp_aliasset_with_procname fmt (aliasset: A.t) = 
+  F.fprintf fmt "[" ;
+  A.iter (fun ap -> F.fprintf fmt "%a from %a, " MyAccessPath.pp ap Procname.pp @@ get_declaring_function_ap_exn ap) aliasset ;
   F.fprintf fmt "]"

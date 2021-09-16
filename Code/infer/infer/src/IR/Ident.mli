@@ -16,8 +16,24 @@ type t [@@deriving compare]
 val equal : t -> t -> bool
 (** Equality for identifiers. *)
 
+module Name : sig
+  type t = Primed | Normal | Footprint | Spec | FromString of string [@@deriving compare]
+
+  val primed : string
+
+  val normal : string
+
+  val footprint : string
+
+  val spec : string
+
+  val from_string : string -> t
+
+  val to_string : t -> string
+end
+
 (** Names used to replace strings. *)
-type name [@@deriving compare]
+type name = Name.t [@@deriving compare]
 
 val equal_name : name -> name -> bool
 (** Equality for names. *)

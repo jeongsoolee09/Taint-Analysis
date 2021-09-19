@@ -212,17 +212,6 @@ module TransferFunctions (CFG : ProcCfg.S) = struct
     (var, lst @ [AccessPath.ArrayAccess (Typ.void_star, [])])
 
 
-  let merge_ph_tuples (lhs: T.t) (rhs: T.t) (lset: LocationSet.t) : T.t =
-    let proc_lhs, pvar_lhs, _, alias_lhs = lhs in
-    let proc_rhs, _, _, alias_rhs = rhs in
-    (* Sanity check *)
-    if not @@ Procname.equal proc_lhs proc_rhs
-    then L.die InternalError
-        "merge_ph_tuples failed, lhs: %a, rhs: %a, location: %a"
-        T.pp lhs T.pp rhs LocationSet.pp lset;
-    (proc_lhs, pvar_lhs, lset, A.add pvar_lhs @@ A.union alias_lhs alias_rhs)
-
-
   let alias_propagation ((previous_proc, previous_vardef, previous_locset, previous_aliasset) as previous_tuple: T.t)
              (astate_set: S.t) (to_put_pvar: Pvar.t) (id: Ident.t) (methname: Procname.t) : S.t = 
     let open List in

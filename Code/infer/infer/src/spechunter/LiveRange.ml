@@ -93,6 +93,18 @@ let pp_pair fmt (proc, v) = F.fprintf fmt "(%a, %a) ->" Procname.pp proc Status.
 
 let pp_chain fmt x = Pp.seq pp_pair fmt x
 
+let pp_chain_list fmt x = Pp.seq pp_chain fmt x
+
+let pp_chain_list fmt (lst : Chain.t list) =
+  F.fprintf fmt "[" ;
+    List.iter ~f:(fun chain -> F.fprintf fmt "%a, " pp_chain chain) lst ;
+  F.fprintf fmt "]"
+
+let pp_chain_listlist fmt (lst : Chain.t list list) =
+  F.fprintf fmt "[" ;
+    List.iter ~f:(fun chainlist -> F.fprintf fmt "%a, " pp_chain_list chainlist) lst ;
+  F.fprintf fmt "]"
+
 let pp_MyAccessChain fmt (var, aplist) = F.fprintf fmt "(%a, %a)" Var.pp var pp_ap_list aplist
 
 let string_of_vertex (proc, astateset) = F.asprintf "\"(%a, %a)\"" Procname.pp proc S.pp astateset
@@ -800,81 +812,96 @@ let rec compute_chain_inner (current_methname : Procname.t) (current_astate_set 
         (* remove the current_astate from current_astate_set *)
         let chain_updated =
           (current_methname, Status.Redefine (current_ap, current_locset)) :: current_chain
+        and debug_chain_updated =
+          (current_methname, Status.Redefine (current_ap, current_locset)) :: debug_chain
         in
+        (* no need to update the call stack! *)
         (* recurse *)
         compute_chain_inner current_methname current_astate_set_updated least_recently_redefined
-          chain_updated
-      else
+          chain_updated current_call_stack debug_chain_updated current_chain_acc )
+      else (
         (* ============ DEAD ============ *)
         (* no more recursion; return *)
-        (current_methname, Dead) :: current_chain
-  | [real_aliastup] ->
-      let declaring_function = option_get @@ get_declaring_function_ap real_aliastup in
+        L.progress "DEAD at %a@." T.pp current_astate;
+        let completed_chain = (current_methname, Status.Dead) :: current_chain in
+        L.progress "completed_chain: %a@." pp_chain completed_chain;
+        completed_chain :: current_chain_acc ) )
+  | nonempty_aplist ->
+     L.progress "nonempty_aplist: %a@." pp_ap_list nonempty_aplist;
+      concat @@ map ~f:(fun ap ->
+      let declaring_function = get_declaring_function_ap_exn ap in
       let callees_and_astates = find_direct_callees current_methname in
-      if not @@ Procname.equal declaring_function current_methname then
+      if not @@ Procname.equal declaring_function current_methname then (
         (* ============ CALL ============ *)
-        (* TODO: 여기 보강..할 필요가 있나? *)
-        let collected =
+        (* let collected_subchains = *)
           fold
             ~f:(fun acc (callee, callee_astate_set) ->
+              L.progress "working for callee, current_chain: %a: %a@." pp_chain current_chain Procname.pp callee ;
               try
                 let landing_pad =
-                  search_target_tuple_by_vardef_ap real_aliastup callee callee_astate_set
+                  search_target_tuple_by_vardef_ap ap callee callee_astate_set
                 in
                 let real_aliastup_locset =
-                  find_most_recent_locset_of_ap real_aliastup callee_astate_set
+                  find_most_recent_locset_of_ap ap callee_astate_set
                 in
                 let chain_updated =
-                  (current_methname, Status.Call (callee, real_aliastup, real_aliastup_locset))
-                  :: acc
-                in
-                compute_chain_inner callee callee_astate_set landing_pad chain_updated
-              with SearchAstateByPVarFailed _ -> acc )
+                  (current_methname, Status.Call (callee, ap, real_aliastup_locset))
+                  :: []
+                and debug_chain_updated =
+                  (current_methname, Status.Call (callee, ap, real_aliastup_locset))
+                  :: debug_chain
+                and call_stack_updated = callee :: current_call_stack in
+                let computed = compute_chain_inner callee callee_astate_set landing_pad
+                  chain_updated call_stack_updated debug_chain_updated [] in
+                reset_counter_recursively callee ;
+                computed
+              with SearchAstateByPVarFailed -> acc (* this callee does not hold the landing pad *) )
             ~init:[] callees_and_astates
-        in
-        collected @ current_chain
-      else
+        (* in *)
+        (* List.map ~f:(fun subchain -> subchain @ current_chain) collected_subchains *) )
+      else (
         (* ============ SIMPLE DEFINITION ============ *)
+        L.progress "SIMPLE DEFINITION.@.";
         let other_statetup =
-          search_target_tuple_by_pvar_ap real_aliastup current_methname current_astate_set
+          search_target_tuple_by_vardef_ap ap current_methname current_astate_set
         in
-        let real_aliastup_locset = find_most_recent_locset_of_ap real_aliastup current_astate_set in
+        L.progress "other_statetup: %a@." T.pp other_statetup ;
+        let real_aliastup_locset = find_most_recent_locset_of_ap ap current_astate_set in
+        L.progress "real_aliastup_locset: %a@." LocationSet.pp real_aliastup_locset ;
         let chain_updated =
-          (current_methname, Status.Define (current_methname, real_aliastup, real_aliastup_locset))
+          (current_methname, Status.Define (current_methname, ap, real_aliastup_locset))
           :: current_chain
         in
+        L.progress "chain_updated: %a@." pp_chain (rev chain_updated);
+        let debug_updated =
+          (current_methname, Status.Define (current_methname, ap, real_aliastup_locset))
+          :: debug_chain
+        in
+        L.progress "debug_updated: %a@." pp_chain (rev debug_chain);
+        L.progress "current_chain_acc: %a@." pp_chain_list current_chain_acc;
         (* recurse *)
-        compute_chain_inner current_methname current_astate_set other_statetup chain_updated
-  | otherwise ->
-      F.kasprintf
-        (fun msg -> raise @@ ChainComputeFailed msg)
-        {|compute_chain_inner failed:
-          otherwise: %a,
-          current_methname: %a,
-          current_astate_set: %a,
-          current_astate: %a,
-          current_chain: %a|}
-        pp_ap_list otherwise Procname.pp current_methname S.pp current_astate_set T.pp
-        current_astate pp_chain current_chain
+        compute_chain_inner current_methname current_astate_set other_statetup
+          chain_updated current_call_stack debug_updated current_chain_acc ) ) nonempty_aplist
 
 
 (** 콜 그래프와 분석 결과를 토대로 체인 (Define -> ... -> Dead)을 계산해 낸다 *)
-let compute_chain_ (ap : MyAccessPath.t) : Chain.t =
+let compute_chain_ (ap : MyAccessPath.t) : Chain.t list =
   let first_methname, first_astate_set, first_astate = find_first_occurrence_of ap in
   let first_aliasset, first_locset = (fourth_of first_astate, third_of first_astate) in
   let returnv_opt = A.find_first_opt is_returnv_ap first_aliasset in
   let source_meth =
     match returnv_opt with Some returnv -> extract_callee_from returnv | None -> first_methname
   in
-  rev
-  @@ compute_chain_inner first_methname first_astate_set first_astate
-       [(first_methname, Define (source_meth, ap, first_locset))]
+  compute_chain_inner first_methname first_astate_set first_astate
+    [(first_methname, Define (source_meth, ap, first_locset))] [first_methname]
+    [(first_methname, Define (source_meth, ap, first_locset))] [] >>| rev
 
 
 (** 본체인 compute_chain_을 포장하는 함수 *)
-let compute_chain (ap : MyAccessPath.t) : Chain.t =
+let compute_chain (ap : MyAccessPath.t) : Chain.t list =
   initialize_callv_counter () ;
   let first_methname, first_astate_set, first_astate = find_first_occurrence_of ap in
+  L.progress "============ Computing Chain for %a at %a ============@." MyAccessPath.pp ap Procname.pp first_methname;
   if Procname.equal first_methname Procname.empty_block then []
   else
     let first_aliasset = fourth_of first_astate in

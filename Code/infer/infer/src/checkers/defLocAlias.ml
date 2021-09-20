@@ -288,17 +288,22 @@ module TransferFunctions (CFG : ProcCfg.S) = struct
                   S.add newtuple astate_rmvd ) target_tuples ~init:(fst apair) in
               (processed, snd apair) )
           | false -> (* An ordinary variable assignment. *)
-              let pvar_ap = (Var.of_pvar pv, []) in
-              (* making a new tuple for this operation *)
-              let this_operation_locset = LocationSet.singleton @@ CFG.Node.loc node in
-              let newtuple = (methname, pvar_ap, this_operation_locset, A.singleton pvar_ap) in
-              let newtuple_added = S.add newtuple (fst apair) in
-              (* updating previous tuples *)
-              let previous_tuple = weak_search_target_tuple_by_id id (fst apair) in
-              let alias_propagated: S.t = alias_propagation previous_tuple newtuple_added pv id methname in
-              let newmap = H.add_to_history (methname, pvar_ap) this_operation_locset (snd apair) in
-              let newset = S.add newtuple alias_propagated in
-              (newset, newmap) )
+             let (rhs_proc, rhs_vardef, rhs_loc, rhs_aliasset) as rhs_pvar_tuple =
+                try weak_search_target_tuple_by_id id (fst apair)
+                with _ -> bottuple in
+              let pvar_var = Var.of_pvar pv in
+              let loc = LocationSet.singleton @@ CFG.Node.loc node in
+              let rhs_pvar_tuple_updated = (rhs_proc, rhs_vardef, rhs_loc, A.add (Var.of_pvar pv, []) rhs_aliasset) in
+              let newtuple = (methname, (pvar_var, []), loc, A.singleton (Var.of_pvar pv, [])) in
+              let astate_set_rmvd = S.remove rhs_pvar_tuple (fst apair) in
+              let newmap = H.add_to_history (methname, (pvar_var, [])) loc (snd apair) in
+              if is_placeholder_vardef_ap (second_of rhs_pvar_tuple)
+              then
+                let newset = S.add newtuple astate_set_rmvd in
+                (newset, newmap)
+              else
+                let newset = astate_set_rmvd |> S.add newtuple |> S.add rhs_pvar_tuple_updated in
+                (newset, newmap) )
     | Lvar pv, Const _ ->
        if (Var.is_return (Var.of_pvar pv)) then apair else
         let pvar_var = Var.of_pvar pv in
@@ -389,7 +394,7 @@ module TransferFunctions (CFG : ProcCfg.S) = struct
           (newset, newmap)
     | Lfield (Var id, fld, _), BinOp (_, exp2_1, exp2_2) ->
         let lhs_pvar_ap =
-          search_target_tuple_by_id id methname (fst apair) |> second_of  |> put_fieldname fld in
+          search_target_tuple_by_id id methname (fst apair) |> second_of |> put_fieldname fld in
         let loc = LocationSet.singleton @@ CFG.Node.loc node in
         let all_atomic_operands = List.stable_dedup @@ (collect_atomic_exps exp1) @ (collect_atomic_exps exp2) in
         if has_unowned_var all_atomic_operands lhs_pvar_ap (fst apair) then
@@ -742,13 +747,6 @@ module TransferFunctions (CFG : ProcCfg.S) = struct
         let newset = S.union (fst apair) tupleset in
         (newset, newmap)
     | _ -> apair
-
-
-  let rec catMaybes_tuplist (optlist:('a*'b option) list) : ('a*'b) list =
-    match optlist with
-    | [] -> []
-    | (sth1, Some sth2) :: t -> (sth1, sth2)::catMaybes_tuplist t
-    | (_, None)::_ -> L.die InternalError "catMaybes_tuplist failed"
 
 
   let exec_instr (prev':P.t) ({InterproceduralAnalysis.proc_desc=_;

@@ -84,16 +84,21 @@
   (setv (, classname methnames) class-partition)
   (setv acc "")
   (+= acc f"let {(legalize-classname classname)} = [\n")
-  (+= acc f"    { (first methnames) }\n")
+  (+= acc f"    \"{ (first methnames) }\"\n")
   (for [methname (rest methnames)]
-    (+= acc f"  ; {methname}\n"))
+    (+= acc f"  ; \"{methname}\"\n"))
   (+= acc f"]\n\n")
   acc)
 
 
+(defn write-ocaml [ocaml-list-decl]
+  (with [ml (open "defLocAliasModels.ml" "w+")]
+    (for [decl ocaml-list-decl]
+      (.write ml decl))))
+
+
 (defmain []
-  (setv signatures (collect-signatures))
-  (setv partitioned-by-class (partition-by-class signatures))
-  (setv converted-to-ocaml-list (map to-ocaml-list partitioned-by-class))
-  (for [ocaml-list converted-to-ocaml-list]
-    (print ocaml-list)))
+  (->> (collect-signatures)
+       (partition-by-class)
+       (map to-ocaml-list)
+       (write-ocaml)))

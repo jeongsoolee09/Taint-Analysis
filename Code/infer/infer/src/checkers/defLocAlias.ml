@@ -294,7 +294,11 @@ module TransferFunctions (CFG : ProcCfg.S) = struct
               let pvar_var = Var.of_pvar pv in
               let loc = LocationSet.singleton @@ CFG.Node.loc node in
               let rhs_pvar_tuple_updated = (rhs_proc, rhs_vardef, rhs_loc, A.add (Var.of_pvar pv, []) rhs_aliasset) in
-              let newtuple = (methname, (pvar_var, []), loc, A.singleton (Var.of_pvar pv, [])) in
+              let newtuple =
+                if is_placeholder_vardef_ap (second_of rhs_pvar_tuple)
+                then (methname, (pvar_var, []), loc, A.add (Var.of_pvar pv, []) rhs_aliasset)
+                else (methname, (pvar_var, []), loc, A.singleton (Var.of_pvar pv, []))
+              in
               let astate_set_rmvd = S.remove rhs_pvar_tuple (fst apair) in
               let newmap = H.add_to_history (methname, (pvar_var, [])) loc (snd apair) in
               if is_placeholder_vardef_ap (second_of rhs_pvar_tuple)
@@ -415,6 +419,13 @@ module TransferFunctions (CFG : ProcCfg.S) = struct
               let newmap = H.add_to_history (methname, lhs_pvar_ap) loc (snd apair) in
               let newset = S.add newtuple (fst apair) in
               (newset, newmap)
+    | Lfield (Lvar pvar, fld, _), Var id ->
+        let pvar_ap = (Var.of_pvar pvar, [AccessPath.FieldAccess fld]) in
+        let loc = LocationSet.singleton @@ CFG.Node.loc node in
+        let newtuple = (methname, pvar_ap, loc, A.singleton pvar_ap) in
+        let newmap = H.add_to_history (methname, pvar_ap) loc (snd apair) in
+        let newset = S.add newtuple (fst apair) in
+        (newset, newmap)
     (* ============ LHS is Lindex ============ *)
     | Lindex (Var id, _), Const _ -> (* covers both cases where offset is either const or id *)
         let (proc, _, _, aliasset) as targetTuple = search_target_tuple_by_id id methname (fst apair) in

@@ -340,7 +340,9 @@ module TransferFunctions (CFG : ProcCfg.S) = struct
                  acc |> S.remove target_tuple |> S.add target_tuple_updated
                else if exp_is_const exp then acc else
                  raise InvalidExp ) all_atomic_operands ~init:(fst apair) in
-         (S.add newtuple all_unowned_vars_updated, snd apair) 
+         let newset = S.add newtuple all_unowned_vars_updated in
+         let newmap = H.add_to_history (methname, pvar_ap) loc (snd apair) in
+         (newset, newmap) 
        else
          (* Make a new tuple and end *)
          let loc = LocationSet.singleton @@ CFG.Node.loc node in
@@ -365,13 +367,13 @@ module TransferFunctions (CFG : ProcCfg.S) = struct
               search_target_tuple_by_id rhs_id methname (fst apair) in
             let rhs_tuple_updated = (rhs_proc, rhs_var, rhs_loc, A.add lhs_var_updated rhs_aliasset) in
             (* update the historymap. *)
-            let new_history = H.add_to_history (methname, lhs_var_updated) loc (snd apair) in
             let newset =
               (fst apair)
               |> S.remove rhs_tuple
               |> S.add rhs_tuple_updated
               |> S.add new_tuple in
-            (newset, new_history)
+            let newmap = H.add_to_history (methname, lhs_var_updated) loc (snd apair) in
+            (newset, newmap)
           with _ -> (* abnormal cases where n$2 = new() and n$2 is not owned by any pvars *)
             (* create a new ph tuple! *)
             let ph = placeholder_vardef methname in
@@ -475,8 +477,8 @@ module TransferFunctions (CFG : ProcCfg.S) = struct
                 else acc) all_atomic_operands ~init:(fst apair) in 
             let newtuple = (methname, lhs_pvar_ap, loc, A.singleton lhs_pvar_ap) in
             let newset = S.add newtuple all_unowned_vars_updated in
-            let new_history = H.add_to_history (methname, lhs_pvar_ap) loc (snd apair) in
-            (newset, new_history)
+            let newmap = H.add_to_history (methname, lhs_pvar_ap) loc (snd apair) in
+            (newset, newmap)
             else 
               let newtuple = (methname, lhs_pvar_ap, loc, A.singleton lhs_pvar_ap) in
               let newmap = H.add_to_history (methname, lhs_pvar_ap) loc (snd apair) in
@@ -661,7 +663,7 @@ module TransferFunctions (CFG : ProcCfg.S) = struct
                 | [] -> (* 한 번도 def된 적 없음 *)
                     let double = doubleton (Var.of_id id, []) (Var.of_pvar pvar, []) in
                     let ph = placeholder_vardef methname in
-                    let newtuple = (methname, (ph, []), LocationSet.singleton @@ Location.dummy, double) in
+                    let newtuple = (methname, (ph, []), LocationSet.singleton Location.dummy, double) in
                     let newstate = newtuple in
                     let newset = S.add newstate (fst apair) in
                     (newset, snd apair)

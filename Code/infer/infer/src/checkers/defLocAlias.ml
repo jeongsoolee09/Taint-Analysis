@@ -45,30 +45,33 @@ module TransferFunctions (CFG : ProcCfg.S) = struct
              LocationSet.pp locset1 LocationSet.pp locset2
 
 
-  (** specially mangled variable to mark a value as returned from callee *)
-  let mk_returnv procname =
-    Var.of_pvar
-    @@ Pvar.mk (Mangled.from_string @@ F.asprintf "returnv: %a" Procname.pp procname) procname
-
-
   (** Ref variable to number all callv special variables *)
-  let callv_number = ref (-1)
+  let callv_number = ref 0
 
+  
   (** specially mangled variable to mark an AP as passed to a callee *)
-  let mk_callv procname ret_id =
-    callv_number := !callv_number + 1 ;
-    Var.of_pvar
+  let mk_callv procname linum =
+    let out = Var.of_pvar
     @@ Pvar.mk
-      (Mangled.from_string @@ F.asprintf "callv_%d_%a: %a" !callv_number Ident.pp ret_id Procname.pp procname)
-      procname
+      (Mangled.from_string @@ F.asprintf "callv_%d_%d: %a" !callv_number linum Procname.pp procname)
+      procname in
+    callv_number := !callv_number + 1 ;
+    out
 
 
   (** specially mangled variable to mark an AP as passed to a callee *)
-  let mk_callv_pvar procname =
+  let mk_callv_pvar procname linum =
+    let out = Pvar.mk
+      (Mangled.from_string @@ F.asprintf "callv_%d_%d: %a" !callv_number linum Procname.pp procname)
+      procname in
     callv_number := !callv_number + 1 ;
-    Pvar.mk
-      (Mangled.from_string @@ F.asprintf "callv_%d: %a" !callv_number Procname.pp procname)
-      procname
+    out
+
+
+  (** specially mangled variable to mark a value as returned from callee *)
+  let mk_returnv procname linum =
+    Var.of_pvar
+    @@ Pvar.mk (Mangled.from_string @@ F.asprintf "returnv_%d_%d: %a" !callv_number linum Procname.pp procname) procname
 
 
   let rec extract_nonthisvar_from_args methname (arg_ts:(Exp.t*Typ.t) list)
@@ -159,26 +162,27 @@ module TransferFunctions (CFG : ProcCfg.S) = struct
 
 
   (** callee가 return c;꼴로 끝날 경우 새로 튜플을 만들고 alias set에 c를 추가 *)
-  let variable_carryover astate_set callee_methname ret_id methname summ_read =
+  let variable_carryover (astate_set: S.t) (callee_methname: Procname.t) (ret_id: Ident.t)
+        (caller_methname: Procname.t) (summ_read: S.t) (linum: Location.t) =
     let calleeTuples = find_tuples_with_ret summ_read in
     (** 콜리 튜플 하나에 대해, 튜플 하나를 새로 만들어 alias set에 추가 *)
     let carryfunc (tup:T.t) =
-      let ph = placeholder_vardef methname in
+      let ph = placeholder_vardef caller_methname in
       let callee_vardef, _ = second_of tup in
       let aliasset =
         if Var.is_return callee_vardef
         then (* 'return' itself should not be considered a pvar that is carrried over *)
-          A.add (mk_returnv callee_methname, []) @@ A.singleton (Var.of_id ret_id, [])
+          A.add (mk_returnv callee_methname linum.line, []) @@ A.singleton (Var.of_id ret_id, [])
         else
-          A.add (mk_returnv callee_methname, []) @@ doubleton (callee_vardef, []) (Var.of_id ret_id, []) in
-      (methname, (ph, []), LocationSet.singleton Location.dummy, aliasset) in
+          A.add (mk_returnv callee_methname linum.line, []) @@ doubleton (callee_vardef, []) (Var.of_id ret_id, []) in
+      (caller_methname, (ph, []), LocationSet.singleton Location.dummy, aliasset) in
     let carriedover = S.of_list @@ List.map calleeTuples ~f:carryfunc in
     S.union astate_set carriedover
 
 
   (** 변수가 리턴된다면 그걸 alias set에 넣는다 (variable carryover) *)
-  let apply_summary astate_set callee_summary callee_methname ret_id caller_methname : S.t =
-    variable_carryover astate_set callee_methname ret_id caller_methname (fst callee_summary)
+  let apply_summary astate_set callee_summary callee_methname ret_id caller_methname linum : S.t =
+    variable_carryover astate_set callee_methname ret_id caller_methname (fst callee_summary) linum
 
 
   let rec my_zip (l1:Var.t list) (l2:Var.t list) =
@@ -262,7 +266,8 @@ module TransferFunctions (CFG : ProcCfg.S) = struct
     List.exists ~f:(fun exp -> exp_is_var exp && not @@ is_mine (exp_as_var exp) pvar_ap astate_set) operands
 
 
-  let rec exec_store (exp1:Exp.t) (exp2:Exp.t) (methname:Procname.t) (apair:P.t) (node:CFG.Node.t) : P.t =
+  let rec exec_store (exp1:Exp.t) (exp2:Exp.t) (methname:Procname.t)
+            (apair:P.t) (node_loc: Location.t) : P.t =
     match exp1, exp2 with
     (* ============ LHS is Lvar ============ *)
     | Lvar pv, Var id ->
@@ -297,7 +302,7 @@ module TransferFunctions (CFG : ProcCfg.S) = struct
                 try weak_search_target_tuple_by_id id (fst apair)
                 with _ -> bottuple in
               let pvar_var = Var.of_pvar pv in
-              let loc = LocationSet.singleton @@ CFG.Node.loc node in
+              let loc = LocationSet.singleton node_loc in
               let rhs_pvar_tuple_updated =
                 (rhs_proc, rhs_vardef, rhs_loc, A.add (Var.of_pvar pv, []) rhs_aliasset) in
               let newtuple =
@@ -317,7 +322,7 @@ module TransferFunctions (CFG : ProcCfg.S) = struct
     | Lvar pv, Const _ ->
        if (Var.is_return (Var.of_pvar pv)) then apair else
         let pvar_var = Var.of_pvar pv in
-        let loc = LocationSet.singleton @@ CFG.Node.loc node in
+        let loc = LocationSet.singleton node_loc in
         let aliasset_new = A.singleton (pvar_var, []) in
         let newtuple = (methname, (pvar_var, []), loc, aliasset_new) in
         let newmap = H.add_to_history (methname, (pvar_var, [])) loc (snd apair) in
@@ -331,7 +336,7 @@ module TransferFunctions (CFG : ProcCfg.S) = struct
        if has_unowned_var all_atomic_operands pvar_ap (fst apair) then
          (* Make a new tuple and update all most recent astates of the unowned vars *)
          (* 1. making a new tuple. *)
-         let loc = LocationSet.singleton @@ CFG.Node.loc node in
+         let loc = LocationSet.singleton node_loc in
          let aliasset_new = A.singleton pvar_ap in
          let newtuple = (methname, pvar_ap, loc, aliasset_new) in
          (* 2. updating all most recent astates. *)
@@ -351,7 +356,7 @@ module TransferFunctions (CFG : ProcCfg.S) = struct
          (newset, newmap) 
        else
          (* Make a new tuple and end *)
-         let loc = LocationSet.singleton @@ CFG.Node.loc node in
+         let loc = LocationSet.singleton node_loc in
          let aliasset_new = A.singleton pvar_ap in
          let newtuple = (methname, pvar_ap, loc, aliasset_new) in
          let newmap = H.add_to_history (methname, pvar_ap) loc (snd apair) in
@@ -361,7 +366,7 @@ module TransferFunctions (CFG : ProcCfg.S) = struct
     | Lfield (Var lhs_id, fld, _), Var rhs_id ->
         (* finding the pvar tuple (lhs) getting stored *)
         begin try  (* normal cases where x = new(); then x.f = ... . *)
-            let loc = LocationSet.singleton @@ CFG.Node.loc node in
+            let loc = LocationSet.singleton node_loc in
             let (lhs_proc, lhs_var, lhs_loc, lhs_aliasset) as lhs_tuple =
               search_target_tuple_by_id lhs_id methname (fst apair) in
             (* update the lhs vartuple. *)
@@ -393,7 +398,7 @@ module TransferFunctions (CFG : ProcCfg.S) = struct
         let ap_containing_pvar_updated = put_fieldname fld ap_containing_pvar in
         let aliasset_rmvd = A.remove ap_containing_pvar aliasset in
         let new_aliasset = A.add ap_containing_pvar_updated aliasset_rmvd in
-        let loc = LocationSet.singleton @@ CFG.Node.loc node in
+        let loc = LocationSet.singleton node_loc in
         let newtuple = (proc, ap_containing_pvar_updated, loc, new_aliasset) in
         let astate_set_rmvd = S.remove targetState (fst apair) in
         let newmap = H.add_to_history (methname, ap_containing_pvar_updated) loc (snd apair) in
@@ -407,7 +412,7 @@ module TransferFunctions (CFG : ProcCfg.S) = struct
     | Lfield (Var id, fld, _), BinOp (_, exp2_1, exp2_2) ->
         let lhs_pvar_ap =
           search_target_tuple_by_id id methname (fst apair) |> second_of |> put_fieldname fld in
-        let loc = LocationSet.singleton @@ CFG.Node.loc node in
+        let loc = LocationSet.singleton node_loc in
         let all_atomic_operands = List.stable_dedup @@ (collect_atomic_exps exp1) @ (collect_atomic_exps exp2) in
         if has_unowned_var all_atomic_operands lhs_pvar_ap (fst apair) then
           let all_unowned_vars_updated =
@@ -429,7 +434,7 @@ module TransferFunctions (CFG : ProcCfg.S) = struct
               (newset, newmap)
     | Lfield (Lvar lhs_pvar, fld, _), Var id ->
         let lhs_pvar_ap = (Var.of_pvar lhs_pvar, [AccessPath.FieldAccess fld]) in
-        let loc = LocationSet.singleton @@ CFG.Node.loc node in
+        let loc = LocationSet.singleton node_loc in
         let rhs_pvar_tuple = search_target_tuple_by_id id methname (fst apair) in
         let newtuple = (methname, lhs_pvar_ap, loc, doubleton lhs_pvar_ap (second_of rhs_pvar_tuple)) in
         let newmap = H.add_to_history (methname, lhs_pvar_ap) loc (snd apair) in
@@ -438,7 +443,7 @@ module TransferFunctions (CFG : ProcCfg.S) = struct
     | Lfield (Lvar lhs_pvar, fld, _), Lvar rhs_pvar ->
         let lhs_pvar_ap = (Var.of_pvar lhs_pvar, [AccessPath.FieldAccess fld]) in
         let rhs_pvar_ap = (Var.of_pvar rhs_pvar, []) in
-        let loc = LocationSet.singleton @@ CFG.Node.loc node in
+        let loc = LocationSet.singleton node_loc in
         let newtuple = (methname, lhs_pvar_ap, loc, doubleton lhs_pvar_ap rhs_pvar_ap) in
         let newmap = H.add_to_history (methname, lhs_pvar_ap) loc (snd apair) in
         let newset = S.add newtuple (fst apair) in
@@ -446,7 +451,7 @@ module TransferFunctions (CFG : ProcCfg.S) = struct
     | Lfield (Lvar lhs_pvar, lhs_fld, _), Lfield (Lvar rhs_pvar, rhs_fld, _) ->
         let lhs_pvar_ap = (Var.of_pvar lhs_pvar, [AccessPath.FieldAccess lhs_fld]) in
         let rhs_pvar_ap = (Var.of_pvar rhs_pvar, [AccessPath.FieldAccess rhs_fld]) in
-        let loc = LocationSet.singleton @@ CFG.Node.loc node in
+        let loc = LocationSet.singleton node_loc in
         let newtuple = (methname, lhs_pvar_ap, loc, doubleton lhs_pvar_ap rhs_pvar_ap) in
         let newmap = H.add_to_history (methname, lhs_pvar_ap) loc (snd apair) in
         let newset = S.add newtuple (fst apair) in
@@ -458,14 +463,14 @@ module TransferFunctions (CFG : ProcCfg.S) = struct
         let ap_containing_pvar_updated = (var, aplist @ [AccessPath.ArrayAccess (Typ.void_star, [])]) in
         let aliasset_rmvd = A.remove ap_containing_pvar aliasset in
         let new_aliasset = A.add ap_containing_pvar_updated aliasset_rmvd in
-        let loc = LocationSet.singleton @@ CFG.Node.loc node in
+        let loc = LocationSet.singleton node_loc in
         let newtuple = (proc, ap_containing_pvar_updated, loc, new_aliasset) in
         let astate_rmvd = S.remove targetTuple (fst apair) in
         let newmap = H.add_to_history (methname, ap_containing_pvar_updated) loc (snd apair) in
         let newset = S.add newtuple astate_rmvd in
         (newset, newmap)
     | Lindex (Var lhs_id, _), Var rhs_id ->
-       let loc = LocationSet.singleton @@ CFG.Node.loc node in
+       let loc = LocationSet.singleton node_loc in
        let (lhs_proc, lhs_var, lhs_loc, lhs_aliasset) as lhs_tuple =
          search_target_tuple_by_id lhs_id methname (fst apair) in
        (* update the lhs vartuple. *)
@@ -487,7 +492,7 @@ module TransferFunctions (CFG : ProcCfg.S) = struct
     | Lindex (Var id, _), BinOp (_, exp2_1, exp2_2) ->
         let lhs_pvar_ap =
           search_target_tuple_by_id id methname (fst apair) |> second_of |> put_arrayaccess in
-        let loc = LocationSet.singleton @@ CFG.Node.loc node in
+        let loc = LocationSet.singleton node_loc in
         let all_atomic_operands = List.stable_dedup @@ (collect_atomic_exps exp1) @ (collect_atomic_exps exp2) in
         if has_unowned_var all_atomic_operands lhs_pvar_ap (fst apair) then
           let all_unowned_vars_updated =
@@ -509,7 +514,7 @@ module TransferFunctions (CFG : ProcCfg.S) = struct
               (newset, newmap)
     (* ============ Misc ============ *)
     | lhs, Cast (_, exp) -> (* we ignore the cast *)
-        exec_store lhs exp methname apair node
+        exec_store lhs exp methname apair node_loc
     | _, _ ->
         L.progress "Unsupported Store instruction %a := %a at %a@."
           Exp.pp exp1 Exp.pp exp2 Procname.pp methname; apair
@@ -531,44 +536,48 @@ module TransferFunctions (CFG : ProcCfg.S) = struct
 
 
   let exec_call (ret_id:Ident.t) (callee_methname:Procname.t) (arg_ts:(Exp.t*Typ.t) list)
-      analyze_dependency (apair:P.t) (methname:Procname.t) : P.t =
+      analyze_dependency (apair:P.t) (methname:Procname.t) (node_loc: Location.t) : P.t =
     let open List in
     match analyze_dependency callee_methname with
     | Some (_, callee_summary) ->
         ( match input_is_void_type arg_ts (fst apair) with
           | true -> (* All Arguments are Just Constants: just apply the summary, make a new tuple and end *)
             let astate_set_summary_applied =
-              apply_summary (fst apair) callee_summary callee_methname ret_id methname in
-              let aliasset = A.add (mk_returnv callee_methname, []) @@ A.singleton (Var.of_id ret_id, []) in
+              apply_summary (fst apair) callee_summary callee_methname ret_id methname node_loc in
+              let aliasset = A.add (mk_returnv callee_methname node_loc.line, [])
+                               (A.singleton (Var.of_id ret_id, [])) in
               let loc = LocationSet.singleton Location.dummy in
               let newtuple = (methname, (placeholder_vardef methname, []), loc, aliasset) in
               let newset = S.add newtuple astate_set_summary_applied in
               (newset, (snd apair))
           | false -> (* There is at least one argument which is a non-thisvar variable *)
              (let astate_set_summary_applied =
-                apply_summary (fst apair) callee_summary callee_methname ret_id methname in
+                apply_summary (fst apair) callee_summary callee_methname ret_id methname node_loc in
               let formals = get_formal_args analyze_dependency callee_methname in
               let actuals_logical_id = arg_ts >>| (fst >> convert_exp_to_logical) |> filter ~f:(not << Ident.is_none) in
               let actual_interid_param_triples = foldi ~f:(fun index acc inter_id -> 
                                                      try
                                                        let actual_pvar =
-                                                         fst @@ second_of @@ find_actual_pvar_for_inter_id inter_id methname astate_set_summary_applied in
+                                                         find_actual_pvar_for_inter_id inter_id
+                                                           methname astate_set_summary_applied
+                                                         |> second_of
+                                                         |> fst in
                                                        let corresponding_formal = nth_exn formals index in
                                                        (actual_pvar, inter_id, corresponding_formal)::acc
-                                                     with FindActualPvarFailed ->
-                                                       acc) actuals_logical_id ~init:[] in
+                                                     with FindActualPvarFailed -> acc)
+                                                   actuals_logical_id ~init:[] in
               let astate_set_updated = fold ~f:(fun acc (actual, inter_id, formal) ->
                                            let actual_vardef_astates =
                                              search_target_tuples_by_vardef actual methname acc in
                                            let (proc, vardef, locset, aliasset) as most_recent_vardef_astate =
                                              find_most_linenumber actual_vardef_astates in
                                            let acc_rmvd = S.remove most_recent_vardef_astate acc in
-                                           let mangled_callv = (mk_callv callee_methname ret_id, []) in
+                                           let mangled_callv = (mk_callv callee_methname node_loc.line, []) in
                                            let actual_vardef_astate_updated = (proc, vardef, locset,
                                                                                aliasset
                                                                                |> A.add (formal, [])
                                                                                |> A.add mangled_callv) in
-                                           let returnv = mk_returnv callee_methname in
+                                           let returnv = mk_returnv callee_methname node_loc.line in
                                            let ph_tuple = (methname, (placeholder_vardef methname, []), 
                                                            LocationSet.singleton Location.dummy, SetofAliases.empty
                                                                                                  |> A.add (Var.of_id ret_id, [])
@@ -582,7 +591,7 @@ module TransferFunctions (CFG : ProcCfg.S) = struct
         (* Nothing to carry over! -> just make a ph tuple and end *)
         let astate_set, historymap = apair in
         let ph = (placeholder_vardef methname, []) in
-        let returnv = mk_returnv callee_methname in
+        let returnv = mk_returnv callee_methname node_loc.line in
         let loc = LocationSet.singleton Location.dummy in
         let aliasset = doubleton (Var.of_id ret_id, []) (returnv, []) in
         let newtuple = (methname, ph, loc, aliasset) in
@@ -607,7 +616,7 @@ module TransferFunctions (CFG : ProcCfg.S) = struct
 
   (** Handles calls to library APIs, whose Procdesc.t is empty *)
   let exec_lib_call (ret_id:Ident.t) (callee_methname:Procname.t) (arg_ts:(Exp.t*Typ.t) list)
-      analyze_dependency ((astate_set, histmap): P.t) (caller_methname:Procname.t) (node:CFG.Node.t) : P.t =
+      analyze_dependency ((astate_set, histmap): P.t) (caller_methname:Procname.t) (node_loc: Location.t) : P.t =
     let (>>|) = List.(>>|) in
     match is_cast callee_methname with
     | true ->
@@ -622,23 +631,22 @@ module TransferFunctions (CFG : ProcCfg.S) = struct
         formal parameter naming schema:
                 param_{callee_name_simple}_{line}_{param_index} *)
        let callee_name_simple = Procname.get_method callee_methname in
-       let loc = Int.to_string @@ (CFG.Node.loc node).line in
        let param_indices = List.init (List.length arg_ts) ~f:Int.to_string in
        let mangles : Mangled.t list =
          param_indices >>| (fun param_index ->
-           Mangled.from_string @@ "param_" ^ callee_name_simple ^ "_" ^ loc ^ "_" ^ param_index) in
+           Mangled.from_string @@ F.asprintf "param_%s_%d_%s" callee_name_simple node_loc.line param_index) in
        let mangled_params : Pvar.t list =
          List.map ~f:(fun mangle ->
              Pvar.mk mangle callee_methname) mangles in
        (* Associate mangled parameters and their resp. actual arguments as aliases. *)
        let actuals_logical = arg_ts >>| (fst >> convert_exp_to_logical) in
        let callvs = List.init (List.length actuals_logical)
-                      ~f:(fun _ -> mk_callv_pvar callee_methname) in
+                      ~f:(fun _ -> mk_callv_pvar callee_methname node_loc.line) in
         let astate_set' = batch_alias_assoc astate_set actuals_logical mangled_params
                         |> (fun astate_set ->
                             batch_alias_assoc astate_set actuals_logical callvs) in
        (* We need to create a new astate (ph tuple) here *)
-       let returnv = mk_returnv callee_methname in
+       let returnv = mk_returnv callee_methname node_loc.line in
        let newtuple =
          (caller_methname, (placeholder_vardef caller_methname, []),
           LocationSet.singleton Location.dummy, doubleton (Var.of_id ret_id, []) (returnv, [])) in
@@ -654,7 +662,7 @@ module TransferFunctions (CFG : ProcCfg.S) = struct
              Procname.pp methname
 
 
-  let exec_load (id:Ident.t) (exp:Exp.t) (apair:P.t) (methname:Procname.t) : P.t =
+  let exec_load (id:Ident.t) (exp:Exp.t) (apair:P.t) (methname:Procname.t) (node_loc: Location.t) : P.t =
     let java_procname = extract_java_procname methname in
     match exp with
     | Lvar pvar ->
@@ -663,8 +671,7 @@ module TransferFunctions (CFG : ProcCfg.S) = struct
               (* 그냥 ph 튜플 하나 만들고 말자 *)
               let ph = (placeholder_vardef methname, []) in
               let aliasset = doubleton (Var.of_id id, []) (Var.of_pvar pvar, []) in
-              let loc = LocationSet.singleton Location.dummy in
-              let newtuple = (methname, ph, loc, aliasset) in
+              let newtuple = (methname, ph, LocationSet.singleton node_loc, aliasset) in
               let newset = S.add newtuple (fst apair) in
               (newset, snd apair)
           | true ->
@@ -680,7 +687,7 @@ module TransferFunctions (CFG : ProcCfg.S) = struct
                 | [] -> (* 한 번도 def된 적 없음 *)
                     let double = doubleton (Var.of_id id, []) (Var.of_pvar pvar, []) in
                     let ph = placeholder_vardef methname in
-                    let newtuple = (methname, (ph, []), LocationSet.singleton Location.dummy, double) in
+                    let newtuple = (methname, (ph, []), LocationSet.singleton node_loc, double) in
                     let newstate = newtuple in
                     let newset = S.add newstate (fst apair) in
                     (newset, snd apair)
@@ -790,11 +797,9 @@ module TransferFunctions (CFG : ProcCfg.S) = struct
     let all_call_instrs = collect_call_instrs pdesc in
     L.progress "all_call_instrs: %a@." pp_instr_list all_call_instrs;
     let newset = List.fold ~f:(fun astate_set_acc instr ->
-                     L.progress "processing call instr: %a@." (Sil.pp_instr Pp.text ~print_types:false) instr;
                      (match instr with
                       | Sil.Call ((ret_id, _), _, arg_ts, _, _) ->
                          let ret_id_astate = weak_search_target_tuple_by_id ret_id astate_set in
-                         L.progress "ret_id_astate: %a@." T.pp ret_id_astate;
                          if is_irvar_ap @@ second_of ret_id_astate then
                            (let (>>|) = List.(>>|) in
                            let actual_logical_ids = arg_ts >>| (fst >> convert_exp_to_logical) |> List.filter ~f:(not << Ident.is_none) in
@@ -828,31 +833,31 @@ module TransferFunctions (CFG : ProcCfg.S) = struct
     let methname = node
                    |> CFG.Node.underlying_node
                    |> Procdesc.Node.get_proc_name in
+    let node_loc = CFG.Node.loc node in
     let prev = register_formals prev' node methname in
     let (astate_set, historymap) as transferred_apair =
       match instr with
       | Load {id=id; e=exp} ->
-         exec_load id exp prev methname
+         exec_load id exp prev methname node_loc
       | Store {e1=exp1; e2=exp2} ->
-         exec_store exp1 exp2 methname prev node
+         exec_store exp1 exp2 methname prev node_loc
       | Prune _ -> prev
       | Call ((ret_id, _), e_fun, arg_ts, _, _) ->
          (match e_fun with
           | Const (Cfun callee_methname) ->
              if Option.is_some @@ Procdesc.load callee_methname
-             then exec_call ret_id callee_methname arg_ts analyze_dependency prev methname
+             then exec_call ret_id callee_methname arg_ts analyze_dependency prev methname node_loc
              else (try (exec_lib_call ret_id callee_methname arg_ts
-                          analyze_dependency prev methname node)
+                          analyze_dependency prev methname node_loc)
                    with _ ->
-                     exec_call ret_id callee_methname arg_ts analyze_dependency prev methname )
+                     exec_call ret_id callee_methname arg_ts analyze_dependency prev methname node_loc )
           | _ -> L.die InternalError
                    "exec_call failed, ret_id: %a, e_fun: %a astate_set: %a, methname: %a"
                    Ident.pp ret_id Exp.pp e_fun S.pp (fst prev) Procname.pp methname)
       | Metadata _ -> prev in
     if Procdesc.Node.equal_nodekind
          (Procdesc.Node.get_kind @@ CFG.Node.underlying_node node) Procdesc.Node.Exit_node then
-      (L.progress "I'm at the start of %a!@." Procname.pp methname;
-      check_callv_for_void_calls transferred_apair proc_desc)
+      check_callv_for_void_calls transferred_apair proc_desc
     else
       transferred_apair
   

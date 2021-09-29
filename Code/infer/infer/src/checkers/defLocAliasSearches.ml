@@ -12,7 +12,9 @@ module T = DefLocAliasDomain.AbstractState
 (* Exceptions ======================================= *)
 (* ================================================== *)
 
-exception SearchAstateByPVarFailed of string
+exception CouldNotExtractCallee of string
+
+exception SearchAstateByPVarFailed
 
 exception SearchAstateByIdFailed of string
 
@@ -38,6 +40,14 @@ exception ExtractNumberFromCallvFailed of string
 
 exception FindCallvGreaterThanFailed of string
 
+exception UnexpectedSubExpression
+
+exception InvalidArgument
+
+exception TooManyMatches of string
+
+exception NoMatches of string
+
 (* Searching Functions ============================== *)
 (* ================================================== *)
 
@@ -46,10 +56,9 @@ let search_target_tuple_by_pvar (pvar : Var.t) (methname : Procname.t) (astate_s
   let rec inner pvar (methname : Procname.t) elements =
     match elements with
     | [] ->
-        F.kasprintf
-          (fun msg -> raise @@ SearchAstateByPVarFailed msg)
-          "search_target_tuple_by_pvar failed, pvar: %a, methname:%a, astate_set:%a@." Var.pp pvar
-          Procname.pp methname S.pp astate_set
+       L.progress "search_target_tuple_by_pvar failed, pvar: %a, methname:%a, astate_set:%a@." Var.pp pvar
+         Procname.pp methname S.pp astate_set;
+       raise SearchAstateByPVarFailed
     | ((procname, _, _, aliasset) as target) :: t ->
         if Procname.equal procname methname && A.mem (pvar, []) aliasset then target
         else inner pvar methname t
@@ -89,7 +98,6 @@ let search_target_tuples_by_pvar_ap (pvar_ap : MyAccessPath.t) (methname : Procn
 
 
 let search_target_tuple_by_id (id : Ident.t) (methname : Procname.t) (astate_set : S.t) : T.t =
-  (* L.d_printfln "id: %a, methname: %a, tupleset: %a@." Ident.pp id Procname.pp methname S.pp tupleset; *)
   let elements = S.elements astate_set in
   let rec inner id (methname : Procname.t) elements =
     match elements with
@@ -111,10 +119,9 @@ let search_target_tuple_by_pvar_ap (ap : MyAccessPath.t) (methname : Procname.t)
   let rec inner pvar (methname : Procname.t) elements =
     match elements with
     | [] ->
-        F.kasprintf
-          (fun msg -> raise @@ SearchAstateByPVarFailed msg)
-          "search_target_tuple_by_pvar_ap failed, ap: %a, methname:%a, astate_set:%a@."
-          MyAccessPath.pp pvar Procname.pp methname S.pp astate_set
+       L.progress "search_target_tuple_by_pvar_ap failed, ap: %a, methname:%a, astate_set:%a@."
+         MyAccessPath.pp pvar Procname.pp methname S.pp astate_set;
+       raise SearchAstateByPVarFailed
     | ((procname, _, _, aliasset) as target) :: t ->
         if Procname.equal procname methname && A.mem ap aliasset then target
         else inner pvar methname t
@@ -151,6 +158,20 @@ let weak_search_target_tuple_by_id (id : Ident.t) (astate_set : S.t) : T.t =
         if A.mem (Var.of_id id, []) aliasset then target else inner id t
   in
   inner id elements
+
+
+let weak_search_target_tuples_by_id (id : Ident.t) (astate_set : S.t) : T.t list =
+  let elements = S.elements astate_set in
+  let rec inner (elements : S.elt list) acc =
+    match elements with
+    | [] -> acc
+    | target :: t ->
+        let aliasset = fourth_of target in
+        if A.mem (Var.of_id id, []) aliasset
+        then inner t (target::acc)
+        else inner t acc
+  in
+  inner elements []
 
 
 let find_tuples_with_ret (tupleset : S.t) : T.t list =
@@ -385,9 +406,9 @@ let search_target_tuple_by_vardef_ap (ap : MyAccessPath.t) (methname : Procname.
     match elements with
     | [] ->
         F.kasprintf
-          (fun msg -> raise @@ SearchAstateByPVarFailed msg)
-          "search_target_tuple_by_vardef_ap failed, ap:%a, methname: %a, elements: %a"
-          MyAccessPath.pp ap Procname.pp methname pp_tuplelist elements
+          (fun msg -> raise @@ SearchAstateByPVarFailed)
+"search_target_tuple_by_vardef_ap failed, ap:%a, methname: %a, elements: %a@."
+         MyAccessPath.pp ap Procname.pp methname pp_tuplelist elements
     | ((procname, vardef, _, _) as target) :: t ->
         if Procname.equal procname methname && MyAccessPath.equal ap vardef then target
         else inner ap methname t
@@ -464,11 +485,15 @@ let extract_linum_from_param_ap (ap : MyAccessPath.t) : int =
   | ProgramVar pv -> (
     match is_param_ap ap with
     | true ->
-        Pvar.to_string pv |> String.split ~on:'_'
-        |> fun str_list -> List.nth_exn str_list 2 |> int_of_string
+        let varstring = F.asprintf "%a" Var.pp (fst ap) in
+        (try
+          int_of_string @@ List.nth_exn (List.rev @@ String.split varstring ~on:'_') 1
+        with _ ->
+          L.progress "extract_linum_from_param failed: ap: %a@." MyAccessPath.pp ap; raise InvalidArgument)
     | false ->
         L.progress "extract_linum_from_param failed: ap: %a@." MyAccessPath.pp ap;
         raise ExtractLinumFromParamFailed )
+
 
 let search_target_tuples_holding_param (location : int) (tuplelist : T.t list) : T.t list =
   List.fold
@@ -486,7 +511,7 @@ let search_target_tuples_holding_param (location : int) (tuplelist : T.t list) :
     ~init:[] tuplelist
 
 
-let extract_number_from_callv (callv_ap : A.elt) : int =
+let extract_counter_from_callv (callv_ap : A.elt) : int =
   (* assert (is_callv_ap callv_ap) ; *)
   if not @@ is_callv_ap callv_ap then
     F.kasprintf
@@ -494,19 +519,17 @@ let extract_number_from_callv (callv_ap : A.elt) : int =
       "This is not a callv!: %a@." MyAccessPath.pp callv_ap ;
   let varname = F.asprintf "%a" Var.pp (fst callv_ap) in
   (* the callv naming scheme is callv_{number}: {callee_methname} *)
-  let splitted = String.split varname ~on:':' in
-  let callv_string = List.nth_exn splitted 0 in
-  let int_string = String.slice callv_string 6 (String.length callv_string) in
-  int_of_string int_string
+  let splitted_on_underscore = String.split varname ~on:'_' in
+  int_of_string @@ (List.last_exn splitted_on_underscore)
 
 
 let find_callv_greater_than_number (ap_set : A.t) (number : int) : A.elt =
   let callvs = A.elements @@ A.filter is_callv_ap ap_set in
   let greater_callvs =
-    List.filter ~f:(fun callv -> Int.( >= ) (extract_number_from_callv callv) number) callvs
+    List.filter ~f:(fun callv -> Int.( > ) (extract_counter_from_callv callv) number) callvs
   in
   let callvs_and_numbers =
-    List.map greater_callvs ~f:(fun callv -> (callv, extract_number_from_callv callv))
+    List.map greater_callvs ~f:(fun callv -> (callv, extract_counter_from_callv callv))
   in
   let min_callv_opt =
     List.min_elt callvs_and_numbers ~compare:(fun (_, number1) (_, number2) ->
@@ -519,3 +542,108 @@ let find_callv_greater_than_number (ap_set : A.t) (number : int) : A.elt =
         "find_callv_greater_than_number failed: ap_set: %a, number: %d@." A.pp ap_set number
   | Some (callv, _) ->
       callv
+
+
+let find_earliest_callv (callvs: MyAccessPath.t list) ~(greater_than: int) : MyAccessPath.t =
+  callvs
+  |> List.map ~f:(fun callv -> (callv, extract_counter_from_callv callv))
+  |> List.filter ~f:(fun (_, number) -> greater_than < number)
+  |> List.sort ~compare:(fun (_, a) (_, b) -> Int.compare a b) 
+  |> List.hd_exn
+  |> fst
+
+
+let extract_ident_from_callv (callv: MyAccessPath.t) : Ident.t = 
+  let varname = F.asprintf "%a" Var.pp (fst callv) in
+  let splitted_on_colon = String.split varname ~on:':' in
+  let splitted_on_underscore = String.split (List.hd_exn splitted_on_colon) ~on:'_' in
+  let stamp = List.last_exn splitted_on_underscore
+              |> (fun s -> String.slice s 2 0)
+              |> int_of_string in
+  Ident.create_normal Ident.Name.Normal stamp
+
+
+let collect_atomic_exps (exp: Exp.t) =
+  let rec inner (current_exp: Exp.t) acc =
+    match current_exp with
+    | Var id -> current_exp::acc
+    | UnOp (_, subexp, _) -> inner subexp acc
+    | BinOp (_, subexp1, subexp2) -> (inner subexp1 acc) @ (inner subexp2 acc)
+    | Const const -> current_exp::acc
+    | Cast (_, subexp) -> inner subexp acc
+    | Lfield _ -> current_exp::acc
+    | Lindex _ -> current_exp::acc
+    | _ ->
+       L.progress "collect_atomic_exps failed: %a@." Exp.pp current_exp;
+       raise UnexpectedSubExpression in
+  List.stable_dedup @@ inner exp []
+
+
+(** Extract the callee's method name embedded in returnv, callv, or param. *)
+let extract_callee_from (ap : MyAccessPath.t) =
+  let special, _ = ap in
+  match special with
+  | LogicalVar _ ->
+      F.kasprintf
+        (fun msg -> raise @@ CouldNotExtractCallee msg)
+        "extract_callee_from failed. ap: %a@." MyAccessPath.pp ap
+  | ProgramVar pv -> (
+    match Pvar.get_declaring_function pv with
+    | Some procname ->
+        procname
+    | None ->
+        F.kasprintf
+          (fun msg -> raise @@ CouldNotExtractCallee msg)
+          "extract_callee_from failed. ap: %a@." MyAccessPath.pp ap )
+
+
+let extract_procname_str_from_callv (callv: MyAccessPath.t) =
+  F.asprintf "%a" Var.pp (fst callv)
+  |> String.split ~on:':'
+  |> List.last_exn
+  |> String.lstrip
+
+
+let extract_linum_from_callv (callv: MyAccessPath.t) : int =
+  F.asprintf "%a" Var.pp (fst callv)
+  |> String.split ~on:':'
+  |> List.hd_exn
+  |> String.split ~on:'_'
+  |> List.last_exn
+  |> int_of_string
+
+
+let extract_counter_from_returnv (returnv: MyAccessPath.t) : int = 
+  if not @@ is_returnv_ap returnv then
+    F.kasprintf
+      (fun msg -> raise @@ ExtractNumberFromCallvFailed msg)
+      "This is not a callv!: %a@." MyAccessPath.pp returnv ;
+  let varname = F.asprintf "%a" Var.pp (fst returnv) in
+  (* the callv naming scheme is callv_{number}: {callee_methname} *)
+  let splitted_on_underscore = String.split varname ~on:'_' in
+  int_of_string @@ (List.last_exn splitted_on_underscore)
+  
+
+
+(** find the astate holding the returnv with the callee_methname in its aliasset. *)
+let find_astate_holding_returnv (astate_set: S.t) (target_callee: Procname.t) (target_counter: int) : T.t =
+  let matching_astates = S.fold (fun astate acc ->
+      let aliasset = fourth_of astate in
+      if A.exists (fun ap -> is_returnv_ap ap &&
+                               (let extracted_callee = extract_callee_from ap in
+                                Procname.equal extracted_callee target_callee) &&
+           (let counter = extract_counter_from_returnv ap in
+            Int.(=) target_counter counter)) aliasset then
+             astate :: acc else acc) astate_set [] in
+  match matching_astates with
+  | [] ->
+     F.kasprintf
+       (fun msg -> raise @@ NoMatches msg)
+       "find_astate_holding_returnv failed, astate_set: %a, target_callee: %a"
+       S.pp astate_set Procname.pp target_callee
+  | [matching_astate] -> matching_astate
+  | _ -> 
+     F.kasprintf
+       (fun msg -> raise @@ TooManyMatches msg)
+       "find_astate_holding_returnv failed, astate_set: %a, target_callee: %a"
+       S.pp astate_set Procname.pp target_callee

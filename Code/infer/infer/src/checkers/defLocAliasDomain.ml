@@ -168,13 +168,33 @@ module AbstractPair = struct
       | ProgramVar pv ->
           String.is_substring (Pvar.to_string pv) ~substring:"callv"
     in
+    let is_returnv_ap (ap : A.elt) : bool =
+      let var, _ = ap in
+      match var with
+      | LogicalVar _ ->
+          false
+      | ProgramVar pv ->
+          String.is_substring (Pvar.to_string pv) ~substring:"returnv"
+    in
     let if_callv_then_remove_number (ap : MyAccessPath.t) : MyAccessPath.t =
       if is_callv_ap ap then
         let callee_name = get_declaring_function_ap_exn ap in
         let var =
           Var.of_pvar
           @@ Pvar.mk
-               (Mangled.from_string @@ F.asprintf "ap: %a" Procname.pp callee_name)
+               (Mangled.from_string @@ F.asprintf "callv: %a" Procname.pp callee_name)
+               callee_name
+        in
+        (var, [])
+      else ap
+    in
+    let if_returnv_then_remove_number (ap : MyAccessPath.t) : MyAccessPath.t =
+      if is_returnv_ap ap then
+        let callee_name = get_declaring_function_ap_exn ap in
+        let var =
+          Var.of_pvar
+          @@ Pvar.mk
+               (Mangled.from_string @@ F.asprintf "returnv: %a" Procname.pp callee_name)
                callee_name
         in
         (var, [])
@@ -183,9 +203,9 @@ module AbstractPair = struct
     let preprocess_astate_set (astate_set : S.t) : S.t =
       S.map
         (fun (proc, vardef, locset, aliasset) ->
-          let new_vardef = if_callv_then_remove_number vardef in
-          let new_aliasset = A.map if_callv_then_remove_number aliasset in
-          (proc, new_vardef, locset, new_aliasset))
+          (proc, vardef, locset, A.map (fun ap ->
+                                         if_returnv_then_remove_number @@
+                                           if_callv_then_remove_number ap) aliasset))
         astate_set
     in
     let new_a, new_b = (preprocess_astate_set a, preprocess_astate_set b) in
@@ -207,7 +227,7 @@ module AbstractPair = struct
 
 
   (** finds state tuples with same methname and AP in s1 and s2 *)
-  let find_duplicate_keys (s1 : S.t) (s2 : S.t) =
+  let find_duplicate_keys (s1: S.t) (s2: S.t) : S.t =
     let s1_elements = S.elements s1 in
     let s2_elements = S.elements s2 in
     let list_intersection_modulo_firstsecond l1 l2 =
@@ -273,7 +293,9 @@ module AbstractPair = struct
       ~init:[] vardefs
 
 
-  let reduce_partitioned_tuples (partitions : S.t list) : S.t =
+  let join_those_tuples (dups : S.t) : S.t =
+    (* is there an efficient way of doing this? *)
+    let partitioned_tuples = partition_statetups_by_vardef dups in
     S.of_list
     @@ List.map
          ~f:(fun partition ->
@@ -281,13 +303,7 @@ module AbstractPair = struct
              (fun (proc, vardef, loc1, aliasset1) (_, _, loc2, aliasset2) ->
                (proc, vardef, LocationSet.union loc1 loc2, A.union aliasset1 aliasset2))
              partition bottuple)
-         partitions
-
-
-  let join_those_tuples (dups : S.t) : S.t =
-    (* is there an efficient way of doing this? *)
-    let partitioned_tuples = partition_statetups_by_vardef dups in
-    reduce_partitioned_tuples partitioned_tuples
+         partitioned_tuples
 
 
   (** S.diff의 커스텀 버전: (Procname.t * MyAccessPath.t * LocationSet.t) 이 같으면 제거 *)
@@ -305,7 +321,7 @@ module AbstractPair = struct
     S.of_list s1_minus_s2_modulo_123
 
 
-  let join (lhs_pair : t) (rhs_pair : t) : t =
+  let join (lhs_pair: t) (rhs_pair: t) : t =
     let lhs, lhs_map = lhs_pair in
     let rhs, rhs_map = rhs_pair in
     let lhs_minus_rhs = S.diff lhs rhs in
@@ -319,16 +335,13 @@ module AbstractPair = struct
       let lhs_minus_duplicate_keys = S.diff lhs duplicate_keys_in_lhs_minus_rhs in
       let rhs_minus_duplicate_keys = S.diff rhs duplicate_keys_in_rhs_minus_lhs in
       let newset =
-        S.union joined_tuples @@ S.union lhs_minus_duplicate_keys rhs_minus_duplicate_keys
-      in
+        S.union joined_tuples @@ S.union lhs_minus_duplicate_keys rhs_minus_duplicate_keys in
       let keys_and_loc =
         List.map
           ~f:(fun tup -> ((first_of tup, second_of tup), third_of tup))
-          (S.elements joined_tuples)
-      in
+          (S.elements joined_tuples) in
       let newmap =
-        HistoryMap.batch_add_to_history2 keys_and_loc (HistoryMap.join lhs_map rhs_map)
-      in
+        HistoryMap.batch_add_to_history2 keys_and_loc (HistoryMap.join lhs_map rhs_map) in
       (newset, newmap)
     else
       let newset = S.union lhs rhs in
@@ -369,3 +382,5 @@ let third_of (_, _, c, _) = c
 let fourth_of (_, _, _, d) = d
 
 let ( >> ) f g x = g (f x)
+
+let ( << ) f g x = f (g x)

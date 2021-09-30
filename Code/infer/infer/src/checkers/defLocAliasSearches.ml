@@ -605,6 +605,7 @@ let extract_procname_str_from_callv (callv: MyAccessPath.t) =
 
 
 let extract_linum_from_callv (callv: MyAccessPath.t) : int =
+  assert (is_returnv_ap callv);
   F.asprintf "%a" Var.pp (fst callv)
   |> String.split ~on:':'
   |> List.hd_exn
@@ -624,6 +625,15 @@ let extract_counter_from_returnv (returnv: MyAccessPath.t) : int =
   int_of_string @@ (List.last_exn splitted_on_underscore)
   
 
+let extract_linum_from_returnv (returnv: MyAccessPath.t) : int =
+  assert (is_returnv_ap returnv);
+  F.asprintf "%a" Var.pp (fst returnv)
+  |> String.split ~on:':'
+  |> List.hd_exn
+  |> String.split ~on:'_'
+  |> List.last_exn
+  |> int_of_string
+  
 
 (** find the astate holding the returnv with the callee_methname in its aliasset. *)
 let find_astate_holding_returnv (astate_set: S.t) (target_callee: Procname.t) (target_counter: int) : T.t =
@@ -647,3 +657,25 @@ let find_astate_holding_returnv (astate_set: S.t) (target_callee: Procname.t) (t
        (fun msg -> raise @@ TooManyMatches msg)
        "find_astate_holding_returnv failed, astate_set: %a, target_callee: %a"
        S.pp astate_set Procname.pp target_callee
+
+
+let find_matching_returnv_in_aliasset (aliasset: A.t) (target_callee: Procname.t)
+      (target_counter: int) (target_linum: int) : MyAccessPath.t =
+  let out = A.fold (fun ap acc ->
+                if (is_returnv_ap ap &&
+                      (Procname.equal target_callee (extract_callee_from ap)) &&
+                        (Int.(=) target_counter (extract_counter_from_returnv ap)) &&
+                          (Int.(=) target_linum (extract_linum_from_returnv ap)))
+                then ap::acc else acc) aliasset [] in
+  match out with
+  | [] ->
+     F.kasprintf
+       (fun msg -> raise @@ NoMatches msg)
+       "find_matching_returnv_in_aliasset failed, aliasset: %a, target_callee: %a, target_counter: %d, target_linum: %d"
+       A.pp aliasset Procname.pp target_callee target_counter target_linum
+  | [matching_returnv] -> matching_returnv
+  | _ -> 
+     F.kasprintf
+       (fun msg -> raise @@ TooManyMatches msg)
+       "find_matching_returnv_in_aliasset failed, aliasset: %a, target_callee: %a, target_counter: %d, target_linum: %d"
+       A.pp aliasset Procname.pp target_callee target_counter target_linum

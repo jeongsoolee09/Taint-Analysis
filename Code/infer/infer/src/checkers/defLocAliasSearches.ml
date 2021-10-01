@@ -2,6 +2,7 @@ open! IStd
 open DefLocAliasDomain
 open DefLocAliasPredicates
 open DefLocAliasPP
+
 module L = Logging
 module F = Format
 module P = DefLocAliasDomain.AbstractPair
@@ -452,31 +453,38 @@ let get_declaring_function_ap_exn (ap : A.elt) : Procname.t =
     match var with
     | LogicalVar _ ->
         L.die InternalError "get_declaring_function_ap_exn failed: %a@." MyAccessPath.pp ap
-    | ProgramVar pvar -> (
-      match Pvar.get_declaring_function pvar with
-      | None ->
-          L.die InternalError "get_declaring_function_ap_exn failed: %a@." MyAccessPath.pp ap
-      | Some procname ->
-          procname 
-    )
+    | ProgramVar pvar -> 
+       (match Pvar.get_declaring_function pvar with
+        | None ->
+           L.die InternalError "get_declaring_function_ap_exn failed: %a@." MyAccessPath.pp ap
+        | Some procname ->
+           procname)
 
 
-let extract_linum_from_param (ap : MyAccessPath.t) (callee_summary: S.t) : int =
+let extract_linum_from_param (ap: MyAccessPath.t) (callee_summary: S.t) : int =
   match fst ap with
   | LogicalVar _ ->
-      L.progress "extract_linum_from_param failed: ap: %a@." MyAccessPath.pp ap;
-        raise ExtractLinumFromParamFailed
-  | ProgramVar pv -> (
-    match is_param_ap ap with
-    | true ->
-        L.progress "extract_linum_from_param failed: ap: %a@." MyAccessPath.pp ap;
-        raise ExtractLinumFromParamFailed 
-    | false ->
-        let param_vardef_aps = weak_search_target_tuples_by_vardef_ap ap callee_summary in
-        let earliest_param_vardef =
-          find_earliest_astate_within param_vardef_aps in
-        let earliest_param_locset = third_of earliest_param_vardef in
-        LocationSet.elements earliest_param_locset |> List.hd_exn |> (fun (loc: Location.t) -> loc.line) )
+     F.kasprintf
+       (fun msg ->
+         L.progress "%s" msg;
+         raise ExtractLinumFromParamFailed)
+       "extract_linum_from_param failed: ap: %a@." MyAccessPath.pp ap
+  | ProgramVar pv ->
+     (match is_param_ap ap with
+      | true ->
+         F.kasprintf
+           (fun msg ->
+             L.progress "%s" msg;
+             raise ExtractLinumFromParamFailed)
+           "extract_linum_from_param failed: ap: %a@." MyAccessPath.pp ap
+      | false ->
+         let param_vardef_aps = weak_search_target_tuples_by_vardef_ap ap callee_summary in
+         let earliest_param_vardef =
+           find_earliest_astate_within param_vardef_aps in
+         let earliest_param_locset = third_of earliest_param_vardef in
+         LocationSet.elements earliest_param_locset
+         |> List.hd_exn
+         |> (fun (loc: Location.t) -> loc.line))
 
 
 let extract_linum_from_param_ap (ap : MyAccessPath.t) : int =
@@ -484,17 +492,17 @@ let extract_linum_from_param_ap (ap : MyAccessPath.t) : int =
   | LogicalVar _ ->
       L.progress "extract_linum_from_param failed: ap: %a@." MyAccessPath.pp ap;
         raise ExtractLinumFromParamFailed
-  | ProgramVar pv -> (
-    match is_param_ap ap with
-    | true ->
-        let varstring = F.asprintf "%a" Var.pp (fst ap) in
-        (try
-          int_of_string @@ List.nth_exn (List.rev @@ String.split varstring ~on:'_') 1
-        with _ ->
-          L.progress "extract_linum_from_param failed: ap: %a@." MyAccessPath.pp ap; raise InvalidArgument)
-    | false ->
-        L.progress "extract_linum_from_param failed: ap: %a@." MyAccessPath.pp ap;
-        raise ExtractLinumFromParamFailed )
+  | ProgramVar pv ->
+     (match is_param_ap ap with
+      | true ->
+         let varstring = F.asprintf "%a" Var.pp (fst ap) in
+         (try
+            int_of_string @@ List.nth_exn (List.rev @@ String.split varstring ~on:'_') 1
+          with _ ->
+            L.progress "extract_linum_from_param failed: ap: %a@." MyAccessPath.pp ap; raise InvalidArgument)
+      | false ->
+         L.progress "extract_linum_from_param failed: ap: %a@." MyAccessPath.pp ap;
+         raise ExtractLinumFromParamFailed)
 
 
 let search_target_tuples_holding_param (location : int) (tuplelist : T.t list) : T.t list =
@@ -523,7 +531,7 @@ let extract_counter_from_callv (callv_ap : A.elt) : int =
   (* the callv naming scheme is callv_{number}: {callee_methname} *)
   let splitted_on_colon = String.split varname ~on:':' in
   let splitted_on_underscore = String.split (List.hd_exn splitted_on_colon) ~on:'_' in
-  int_of_string @@ (List.last_exn splitted_on_underscore)
+  int_of_string @@ (List.nth_exn splitted_on_underscore 1)
 
 
 let find_callv_greater_than_number (ap_set : A.t) (number : int) : A.elt =
@@ -548,9 +556,11 @@ let find_callv_greater_than_number (ap_set : A.t) (number : int) : A.elt =
 
 
 let find_earliest_callv (callvs: MyAccessPath.t list) ~(greater_than: int) : MyAccessPath.t =
+  L.progress "find_earliest_callv, callvs: %a@." pp_ap_list callvs;
+  if List.is_empty callvs then raise InvalidArgument;
   callvs
   |> List.map ~f:(fun callv -> (callv, extract_counter_from_callv callv))
-  |> List.filter ~f:(fun (_, number) -> greater_than < number)
+  |> List.filter ~f:(fun (_, number) -> Int.(<=) greater_than number)
   |> List.sort ~compare:(fun (_, a) (_, b) -> Int.compare a b) 
   |> List.hd_exn
   |> fst
@@ -613,7 +623,7 @@ let extract_linum_from_callv (callv: MyAccessPath.t) : int =
   |> String.split ~on:':'
   |> List.hd_exn
   |> String.split ~on:'_'
-  |> List.last_exn
+  |> (fun stringlist -> List.nth_exn stringlist 2)
   |> int_of_string
 
 
@@ -635,7 +645,7 @@ let extract_linum_from_returnv (returnv: MyAccessPath.t) : int =
   |> String.split ~on:':'
   |> List.hd_exn
   |> String.split ~on:'_'
-  |> List.last_exn
+  |> (fun stringlist -> List.nth_exn stringlist 2)
   |> int_of_string
   
 
@@ -647,23 +657,24 @@ let find_astate_holding_returnv (astate_set: S.t) (target_callee: Procname.t)
                              if A.exists (fun ap -> is_returnv_ap ap &&
                                                       (let extracted_callee = extract_callee_from ap in
                                                        Procname.equal extracted_callee target_callee) &&
-                                                        (let counter = extract_counter_from_returnv ap in
-                                                         Int.(=) target_counter counter) &&
+                                                        (* (let counter = extract_counter_from_returnv ap in *)
+                                                        (*  Int.(=) target_counter counter) && *)
                                                           (let linum = extract_linum_from_returnv ap in
+                                                           L.progress "extracted linum: %d@." linum;
                                                            Int.(=) linum target_linum)) aliasset
                              then astate :: acc else acc) astate_set [] in
   match matching_astates with
   | [] ->
      F.kasprintf
        (fun msg -> raise @@ NoMatches msg)
-       "find_astate_holding_returnv failed, astate_set: %a, target_callee: %a"
-       S.pp astate_set Procname.pp target_callee
+       "find_astate_holding_returnv failed, astate_set: %a, target_callee: %a, target_counter: %d, target_linum: %d@."
+       S.pp astate_set Procname.pp target_callee target_counter target_linum
   | [matching_astate] -> matching_astate
   | _ -> 
      F.kasprintf
        (fun msg -> raise @@ TooManyMatches msg)
-       "find_astate_holding_returnv failed, astate_set: %a, target_callee: %a"
-       S.pp astate_set Procname.pp target_callee
+       "find_astate_holding_returnv failed, astate_set: %a, target_callee: %a target_counter: %d, target_linum: %d@."
+       S.pp astate_set Procname.pp target_callee target_counter target_linum
 
 
 let find_matching_returnv_in_aliasset (aliasset: A.t) (target_callee: Procname.t)

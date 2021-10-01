@@ -48,6 +48,8 @@ exception TooManyMatches of string
 
 exception NoMatches of string
 
+exception NotASingleton of string
+
 (* Searching Functions ============================== *)
 (* ================================================== *)
 
@@ -519,7 +521,8 @@ let extract_counter_from_callv (callv_ap : A.elt) : int =
       "This is not a callv!: %a@." MyAccessPath.pp callv_ap ;
   let varname = F.asprintf "%a" Var.pp (fst callv_ap) in
   (* the callv naming scheme is callv_{number}: {callee_methname} *)
-  let splitted_on_underscore = String.split varname ~on:'_' in
+  let splitted_on_colon = String.split varname ~on:':' in
+  let splitted_on_underscore = String.split (List.hd_exn splitted_on_colon) ~on:'_' in
   int_of_string @@ (List.last_exn splitted_on_underscore)
 
 
@@ -605,7 +608,7 @@ let extract_procname_str_from_callv (callv: MyAccessPath.t) =
 
 
 let extract_linum_from_callv (callv: MyAccessPath.t) : int =
-  assert (is_returnv_ap callv);
+  assert (is_callv_ap callv);
   F.asprintf "%a" Var.pp (fst callv)
   |> String.split ~on:':'
   |> List.hd_exn
@@ -621,7 +624,8 @@ let extract_counter_from_returnv (returnv: MyAccessPath.t) : int =
       "This is not a callv!: %a@." MyAccessPath.pp returnv ;
   let varname = F.asprintf "%a" Var.pp (fst returnv) in
   (* the callv naming scheme is callv_{number}: {callee_methname} *)
-  let splitted_on_underscore = String.split varname ~on:'_' in
+  let splitted_on_colon = String.split varname ~on:':' in
+  let splitted_on_underscore = String.split (List.hd_exn splitted_on_colon) ~on:'_' in
   int_of_string @@ (List.last_exn splitted_on_underscore)
   
 
@@ -636,15 +640,18 @@ let extract_linum_from_returnv (returnv: MyAccessPath.t) : int =
   
 
 (** find the astate holding the returnv with the callee_methname in its aliasset. *)
-let find_astate_holding_returnv (astate_set: S.t) (target_callee: Procname.t) (target_counter: int) : T.t =
+let find_astate_holding_returnv (astate_set: S.t) (target_callee: Procname.t)
+      (target_counter: int) (target_linum: int) : T.t =
   let matching_astates = S.fold (fun astate acc ->
-      let aliasset = fourth_of astate in
-      if A.exists (fun ap -> is_returnv_ap ap &&
-                               (let extracted_callee = extract_callee_from ap in
-                                Procname.equal extracted_callee target_callee) &&
-           (let counter = extract_counter_from_returnv ap in
-            Int.(=) target_counter counter)) aliasset then
-             astate :: acc else acc) astate_set [] in
+                             let aliasset = fourth_of astate in
+                             if A.exists (fun ap -> is_returnv_ap ap &&
+                                                      (let extracted_callee = extract_callee_from ap in
+                                                       Procname.equal extracted_callee target_callee) &&
+                                                        (let counter = extract_counter_from_returnv ap in
+                                                         Int.(=) target_counter counter) &&
+                                                          (let linum = extract_linum_from_returnv ap in
+                                                           Int.(=) linum target_linum)) aliasset
+                             then astate :: acc else acc) astate_set [] in
   match matching_astates with
   | [] ->
      F.kasprintf
@@ -679,3 +686,14 @@ let find_matching_returnv_in_aliasset (aliasset: A.t) (target_callee: Procname.t
        (fun msg -> raise @@ TooManyMatches msg)
        "find_matching_returnv_in_aliasset failed, aliasset: %a, target_callee: %a, target_counter: %d, target_linum: %d"
        A.pp aliasset Procname.pp target_callee target_counter target_linum
+ 
+
+let locset_as_linum (locset: LocationSet.t) : int =
+  match LocationSet.elements locset with
+  | [] -> F.kasprintf
+            (fun msg -> raise @@ NotASingleton msg)
+            "locset_as_linum, locset: %a@." LocationSet.pp locset
+  | [loc] -> loc.line
+  | _ -> F.kasprintf
+           (fun msg -> raise @@ NotASingleton msg)
+           "locset_as_linum, locset: %a@." LocationSet.pp locset

@@ -17,13 +17,11 @@ module F = Format
 (* Exceptions ======================================= *)
 (* ================================================== *)
 
-exception CouldNotExtractCallee of string
-
 exception ReturnvFindFailed of string
 
 exception TooManyMatches of string
 
-exception NoMatches of string
+exception NoMatches
 
 exception NoStateTupHoldingAliasTup of string
 
@@ -31,9 +29,15 @@ exception NoSuchElem of string
 
 exception NoWitness of string
 
-exception ChainComputeFailed of string
+exception ChainComputeFailed
 
 exception NotAPVar of string
+
+exception NotADefine
+
+exception NotACall
+
+exception NotARedefine
 
 (* Types ============================================ *)
 (* ================================================== *)
@@ -43,7 +47,7 @@ module Status = struct
     (* Here, the Procname.t is the callee used to define the variable. *)
     | Define of (Procname.t * MyAccessPath.t * LocationSet.t)
     (* Here, the Procname.t is the callee. *)
-    | Call of (Procname.t * MyAccessPath.t * LocationSet.t)
+    | Call of (Procname.t * MyAccessPath.t * LocationSet.t * int) (* here, int is the callv's counter value *)
     | Redefine of (MyAccessPath.t * LocationSet.t)
     | Dead
   [@@deriving equal]
@@ -53,13 +57,60 @@ module Status = struct
     | Define (proc, ap, locset) ->
         F.fprintf fmt "Define (%a using %a): %a" MyAccessPath.pp ap Procname.pp proc LocationSet.pp
           locset
-    | Call (proc, ap, locset) ->
+    | Call (proc, ap, locset, _) -> (* ignore the counter value. *)
         F.fprintf fmt "Call (%a with %a): %a" Procname.pp proc MyAccessPath.pp ap LocationSet.pp
           locset
     | Redefine (ap, locset) ->
         F.fprintf fmt "Redefine (%a) :%a" MyAccessPath.pp ap LocationSet.pp locset
     | Dead ->
         F.fprintf fmt "Dead"
+
+  let is_define (status: t) : bool =
+    match status with
+    | Define _ -> true
+    | _ -> false
+
+  let is_call (status: t) : bool =
+    match status with
+    | Call _ -> true
+    | _ -> false
+
+  let is_redefine (status: t) : bool =
+    match status with
+    | Redefine _ -> true
+    | _ -> false
+
+  let is_dead (status: t) : bool =
+    match status with
+    | Dead -> true
+    | _ -> false
+
+  let extract_info_from_define (status: t) =
+    match status with
+    | Define (callee, ap, locset) -> (callee, ap, locset)
+    | _ -> F.kasprintf
+             (fun msg ->
+               L.progress "%s" msg;
+               raise NotADefine)
+             "extract_info_from_call failed, status: %a@." pp status
+
+  let extract_info_from_call (status: t) =
+    match status with
+    | Call (callee, ap, locset, counter) -> (callee, ap, locset, counter)
+    | _ -> F.kasprintf
+             (fun msg ->
+               L.progress "%s" msg;
+               raise NotACall)
+             "extract_info_from_call failed, status: %a@." pp status
+
+  let extract_info_from_redefine (status: t) =
+    match status with
+    | Redefine (ap, locset) -> (ap, locset)
+    | _ -> F.kasprintf
+             (fun msg ->
+               L.progress "%s" msg;
+               raise NotARedefine)
+             "extract_info_from_call failed, status: %a@." pp status
 end
 
 type json = Yojson.Basic.t

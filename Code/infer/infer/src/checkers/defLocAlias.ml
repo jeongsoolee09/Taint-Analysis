@@ -7,12 +7,12 @@ open DefLocAliasPP
 (** Interprocedural Liveness Checker with alias relations
     and redefinitions in mind. *)
 
-exception NotImplemented
-exception IDontKnow
 exception TODO
 exception FindActualPvarFailed
 exception InvalidExp
 exception NotACallInstr of string
+exception NoMatchingCallv of string
+exception TooManyMatchingCallv of string
 
 module L = Logging
 module F = Format
@@ -69,9 +69,11 @@ module TransferFunctions (CFG : ProcCfg.S) = struct
 
 
   (** specially mangled variable to mark a value as returned from callee *)
-  let mk_returnv procname linum =
-    Var.of_pvar
-    @@ Pvar.mk (Mangled.from_string @@ F.asprintf "returnv_%d_%d: %a" !callv_number linum Procname.pp procname) procname
+  let mk_returnv (procname: Procname.t) (counter: int) (linum: int) =
+    (* find the matching callv from the astate_set by first scraping all the callvs. *)
+    Var.of_pvar @@
+      Pvar.mk (Mangled.from_string @@
+                 F.asprintf "returnv_%d_%d: %a" counter linum Procname.pp procname) procname
 
 
   let rec extract_nonthisvar_from_args methname (arg_ts:(Exp.t*Typ.t) list)
@@ -79,7 +81,7 @@ module TransferFunctions (CFG : ProcCfg.S) = struct
     match arg_ts with
     | [] -> []
     | (Var var as v, _)::t ->
-        let (_, _, _, aliasset) = search_target_tuple_by_id var methname astate_set in
+        let aliasset = fourth_of @@ search_target_tuple_by_id var methname astate_set in
         if not (A.exists is_this_ap aliasset)
         then v::extract_nonthisvar_from_args methname t astate_set
         else extract_nonthisvar_from_args methname t astate_set
@@ -162,9 +164,11 @@ module TransferFunctions (CFG : ProcCfg.S) = struct
 
 
   (** callee가 return c;꼴로 끝날 경우 새로 튜플을 만들고 alias set에 c를 추가 *)
-  let variable_carryover (astate_set: S.t) (callee_methname: Procname.t) (ret_id: Ident.t)
+  let variable_carryover (caller_astate_set: S.t) (callee_methname: Procname.t) (ret_id: Ident.t)
         (caller_methname: Procname.t) (summ_read: S.t) (linum: Location.t) =
-    let calleeTuples = find_tuples_with_ret summ_read in
+    let callee_tuples = find_tuples_with_ret summ_read in
+    L.progress "caller_methname: %a, callee_methname: %a, callee_tuples: %a@."
+      Procname.pp caller_methname Procname.pp callee_methname pp_tuplelist callee_tuples;
     (** 콜리 튜플 하나에 대해, 튜플 하나를 새로 만들어 alias set에 추가 *)
     let carryfunc (tup:T.t) =
       let ph = placeholder_vardef caller_methname in
@@ -172,12 +176,14 @@ module TransferFunctions (CFG : ProcCfg.S) = struct
       let aliasset =
         if Var.is_return callee_vardef
         then (* 'return' itself should not be considered a pvar that is carrried over *)
-          A.add (mk_returnv callee_methname linum.line, []) @@ A.singleton (Var.of_id ret_id, [])
+          A.add (mk_returnv callee_methname !callv_number linum.line, []) @@ A.singleton (Var.of_id ret_id, [])
         else
-          A.add (mk_returnv callee_methname linum.line, []) @@ doubleton (callee_vardef, []) (Var.of_id ret_id, []) in
+          A.add (mk_returnv callee_methname !callv_number linum.line, []) @@ doubleton (callee_vardef, []) (Var.of_id ret_id, []) in
       (caller_methname, (ph, []), LocationSet.singleton Location.dummy, aliasset) in
-    let carriedover = S.of_list @@ List.map calleeTuples ~f:carryfunc in
-    S.union astate_set carriedover
+    let carriedover = S.of_list @@ List.map callee_tuples ~f:carryfunc in
+    L.progress "caller_methname: %a, callee_methname: %a, carried_over: %a@."
+      Procname.pp caller_methname Procname.pp callee_methname S.pp carriedover;
+    S.union caller_astate_set carriedover
 
 
   (** 변수가 리턴된다면 그걸 alias set에 넣는다 (variable carryover) *)
@@ -537,36 +543,37 @@ module TransferFunctions (CFG : ProcCfg.S) = struct
 
   let exec_call (ret_id:Ident.t) (callee_methname:Procname.t) (arg_ts:(Exp.t*Typ.t) list)
       analyze_dependency (apair:P.t) (methname:Procname.t) (node_loc: Location.t) : P.t =
-    let open List in
+    let (>>|) = List.(>>|) in
     match analyze_dependency callee_methname with
     | Some (_, callee_summary) ->
         ( match input_is_void_type arg_ts (fst apair) with
           | true -> (* All Arguments are Just Constants: just apply the summary, make a new tuple and end *)
-            let astate_set_summary_applied =
-              apply_summary (fst apair) callee_summary callee_methname ret_id methname node_loc in
-              let aliasset = A.add (mk_returnv callee_methname node_loc.line, [])
-                               (A.singleton (Var.of_id ret_id, [])) in
-              let loc = LocationSet.singleton Location.dummy in
-              let newtuple = (methname, (placeholder_vardef methname, []), loc, aliasset) in
-              let newset = S.add newtuple astate_set_summary_applied in
-              (newset, (snd apair))
+             let astate_set_summary_applied =
+               apply_summary (fst apair) callee_summary callee_methname ret_id methname node_loc in
+             let aliasset = A.add (mk_returnv callee_methname (-1) node_loc.line, [])
+                              (A.singleton (Var.of_id ret_id, [])) in
+             let loc = LocationSet.singleton Location.dummy in
+             let newtuple = (methname, (placeholder_vardef methname, []), loc, aliasset) in
+             let newset = S.add newtuple astate_set_summary_applied in
+             (newset, (snd apair))
           | false -> (* There is at least one argument which is a non-thisvar variable *)
              (let astate_set_summary_applied =
                 apply_summary (fst apair) callee_summary callee_methname ret_id methname node_loc in
+              L.progress "exec_call, methname: %a, callee_methname: %a, astate_set_summary_applied: %a@." Procname.pp methname Procname.pp callee_methname S.pp astate_set_summary_applied;
               let formals = get_formal_args analyze_dependency callee_methname in
-              let actuals_logical_id = arg_ts >>| (fst >> convert_exp_to_logical) |> filter ~f:(not << Ident.is_none) in
-              let actual_interid_param_triples = foldi ~f:(fun index acc inter_id -> 
+              let actuals_logical_id = arg_ts >>| (fst >> convert_exp_to_logical) |> List.filter ~f:(not << Ident.is_none) in
+              let actual_interid_param_triples = List.foldi ~f:(fun index acc inter_id -> 
                                                      try
                                                        let actual_pvar =
                                                          find_actual_pvar_for_inter_id inter_id
                                                            methname astate_set_summary_applied
                                                          |> second_of
                                                          |> fst in
-                                                       let corresponding_formal = nth_exn formals index in
+                                                       let corresponding_formal = List.nth_exn formals index in
                                                        (actual_pvar, inter_id, corresponding_formal)::acc
                                                      with FindActualPvarFailed -> acc)
                                                    actuals_logical_id ~init:[] in
-              let astate_set_updated = fold ~f:(fun acc (actual, inter_id, formal) ->
+              let astate_set_updated = List.fold ~f:(fun acc (actual, inter_id, formal) ->
                                            let actual_vardef_astates =
                                              search_target_tuples_by_vardef actual methname acc in
                                            let (proc, vardef, locset, aliasset) as most_recent_vardef_astate =
@@ -577,7 +584,7 @@ module TransferFunctions (CFG : ProcCfg.S) = struct
                                                                                aliasset
                                                                                |> A.add (formal, [])
                                                                                |> A.add mangled_callv) in
-                                           let returnv = mk_returnv callee_methname node_loc.line in
+                                           let returnv = mk_returnv callee_methname (!callv_number - 1) node_loc.line in
                                            let ph_tuple = (methname, (placeholder_vardef methname, []), 
                                                            LocationSet.singleton Location.dummy, SetofAliases.empty
                                                                                                  |> A.add (Var.of_id ret_id, [])
@@ -591,7 +598,7 @@ module TransferFunctions (CFG : ProcCfg.S) = struct
         (* Nothing to carry over! -> just make a ph tuple and end *)
         let astate_set, historymap = apair in
         let ph = (placeholder_vardef methname, []) in
-        let returnv = mk_returnv callee_methname node_loc.line in
+        let returnv = mk_returnv callee_methname (-1) node_loc.line in
         let loc = LocationSet.singleton Location.dummy in
         let aliasset = doubleton (Var.of_id ret_id, []) (returnv, []) in
         let newtuple = (methname, ph, loc, aliasset) in
@@ -646,7 +653,7 @@ module TransferFunctions (CFG : ProcCfg.S) = struct
                         |> (fun astate_set ->
                             batch_alias_assoc astate_set actuals_logical callvs) in
        (* We need to create a new astate (ph tuple) here *)
-       let returnv = mk_returnv callee_methname node_loc.line in
+       let returnv = mk_returnv callee_methname (!callv_number-1) node_loc.line in
        let newtuple =
          (caller_methname, (placeholder_vardef caller_methname, []),
           LocationSet.singleton Location.dummy, doubleton (Var.of_id ret_id, []) (returnv, [])) in
@@ -795,30 +802,37 @@ module TransferFunctions (CFG : ProcCfg.S) = struct
   let check_callv_for_void_calls ((astate_set, historymap): P.t) (pdesc: Procdesc.t) : P.t =
     (* first, collect all callvs from each aliasset. *)
     let all_call_instrs = collect_call_instrs pdesc in
-    L.progress "all_call_instrs: %a@." pp_instr_list all_call_instrs;
     let newset = List.fold ~f:(fun astate_set_acc instr ->
                      (match instr with
-                      | Sil.Call ((ret_id, _), _, arg_ts, _, _) ->
-                         let ret_id_astate = weak_search_target_tuple_by_id ret_id astate_set in
-                         if is_irvar_ap @@ second_of ret_id_astate then
-                           (let (>>|) = List.(>>|) in
-                           let actual_logical_ids = arg_ts >>| (fst >> convert_exp_to_logical) |> List.filter ~f:(not << Ident.is_none) in
-                           let this_actual_id = List.hd_exn actual_logical_ids in
-                           let this_actual_astate = weak_search_target_tuple_by_id this_actual_id astate_set_acc in
-                           let non_this_actual_ids = List.tl_exn actual_logical_ids in
-                           let non_this_actual_astates = List.map ~f:(fun ap ->
-                                                             weak_search_target_tuple_by_id ap astate_set_acc) non_this_actual_ids in
-                           let non_this_actual_astates_updated = List.map ~f:(fun non_this_actual_astate ->
-                                                                     let (proc, vardef, locset, aliasset) = non_this_actual_astate in
-                                                                     (proc, vardef, locset, A.add (second_of this_actual_astate) aliasset))
-                                                                   non_this_actual_astates in
-                           L.progress "yay!!@.";
-                           astate_set_acc
-                           |> (fun set -> S.diff set (S.of_list non_this_actual_astates))
-                           |> S.union (S.of_list non_this_actual_astates_updated))
-                         else
-                           (L.progress "nah..@.";
-                           astate_set_acc)
+                      | Sil.Call ((ret_id, _), e_fun, arg_ts, _, _) ->
+                         (try
+                            let ret_id_astate = weak_search_target_tuple_by_id ret_id astate_set in
+                            if is_irvar_ap @@ second_of ret_id_astate then
+                              (let (>>|) = List.(>>|) in
+                               let actual_logical_ids = arg_ts
+                                                        >>| (fst >> convert_exp_to_logical)
+                                                        |> List.filter ~f:(not << Ident.is_none) in
+                               match actual_logical_ids with
+                               | [] -> astate_set_acc
+                               | actual_logical_ids -> 
+                                  let this_actual_id = List.hd_exn actual_logical_ids in
+                                  let this_actual_astate = weak_search_target_tuple_by_id this_actual_id astate_set_acc in
+                                  let non_this_actual_ids = List.tl_exn actual_logical_ids in
+                                  let non_this_actual_astates = List.map ~f:(fun ap ->
+                                                                    weak_search_target_tuple_by_id ap astate_set_acc)
+                                                                  non_this_actual_ids in
+                                  let non_this_actual_astates_updated = List.map ~f:(fun non_this_actual_astate ->
+                                                                            let (proc, vardef, locset, aliasset) =
+                                                                              non_this_actual_astate in
+                                                                            (proc, vardef, locset,
+                                                                             A.add (second_of this_actual_astate) aliasset))
+                                                                          non_this_actual_astates in
+                                  astate_set_acc
+                                  |> (fun set -> S.diff set (S.of_list non_this_actual_astates))
+                                  |> S.union (S.of_list non_this_actual_astates_updated))
+                            else
+                              astate_set_acc
+                          with WeakSearchTargetTupleByIdFailed _ -> astate_set_acc)
                       | _ ->
                          F.kasprintf
                            (fun msg -> raise @@ NotACallInstr msg)

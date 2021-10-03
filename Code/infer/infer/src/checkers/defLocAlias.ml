@@ -167,8 +167,6 @@ module TransferFunctions (CFG : ProcCfg.S) = struct
   let variable_carryover (caller_astate_set: S.t) (callee_methname: Procname.t) (ret_id: Ident.t)
         (caller_methname: Procname.t) (summ_read: S.t) (linum: Location.t) =
     let callee_tuples = find_tuples_with_ret summ_read in
-    L.progress "caller_methname: %a, callee_methname: %a, callee_tuples: %a@."
-      Procname.pp caller_methname Procname.pp callee_methname pp_tuplelist callee_tuples;
     (** 콜리 튜플 하나에 대해, 튜플 하나를 새로 만들어 alias set에 추가 *)
     let carryfunc (tup:T.t) =
       let ph = placeholder_vardef caller_methname in
@@ -181,21 +179,12 @@ module TransferFunctions (CFG : ProcCfg.S) = struct
           A.add (mk_returnv callee_methname !callv_number linum.line, []) @@ doubleton (callee_vardef, []) (Var.of_id ret_id, []) in
       (caller_methname, (ph, []), LocationSet.singleton Location.dummy, aliasset) in
     let carriedover = S.of_list @@ List.map callee_tuples ~f:carryfunc in
-    L.progress "caller_methname: %a, callee_methname: %a, carried_over: %a@."
-      Procname.pp caller_methname Procname.pp callee_methname S.pp carriedover;
     S.union caller_astate_set carriedover
 
 
   (** 변수가 리턴된다면 그걸 alias set에 넣는다 (variable carryover) *)
   let apply_summary astate_set callee_summary callee_methname ret_id caller_methname linum : S.t =
     variable_carryover astate_set callee_methname ret_id caller_methname (fst callee_summary) linum
-
-
-  let rec my_zip (l1:Var.t list) (l2:Var.t list) =
-    match l1, l2 with
-    | [], [] -> []
-    | h1::t1, h2::t2 -> (h1, h2)::my_zip t1 t2
-    | _, _ -> L.die InternalError "my_zip failed, l1: %a, l2: %a" pp_varlist l1 pp_varlist l2
 
 
   (** (Var.t * Var.t) list에서 var이 들어 있는 튜플만을 삭제 *)
@@ -550,7 +539,7 @@ module TransferFunctions (CFG : ProcCfg.S) = struct
           | true -> (* All Arguments are Just Constants: just apply the summary, make a new tuple and end *)
              let astate_set_summary_applied =
                apply_summary (fst apair) callee_summary callee_methname ret_id methname node_loc in
-             let aliasset = A.add (mk_returnv callee_methname (-1) node_loc.line, [])
+             let aliasset = A.add (mk_returnv callee_methname (!callv_number-1) node_loc.line, [])
                               (A.singleton (Var.of_id ret_id, [])) in
              let loc = LocationSet.singleton Location.dummy in
              let newtuple = (methname, (placeholder_vardef methname, []), loc, aliasset) in
@@ -559,7 +548,6 @@ module TransferFunctions (CFG : ProcCfg.S) = struct
           | false -> (* There is at least one argument which is a non-thisvar variable *)
              (let astate_set_summary_applied =
                 apply_summary (fst apair) callee_summary callee_methname ret_id methname node_loc in
-              L.progress "exec_call, methname: %a, callee_methname: %a, astate_set_summary_applied: %a@." Procname.pp methname Procname.pp callee_methname S.pp astate_set_summary_applied;
               let formals = get_formal_args analyze_dependency callee_methname in
               let actuals_logical_id = arg_ts >>| (fst >> convert_exp_to_logical) |> List.filter ~f:(not << Ident.is_none) in
               let actual_interid_param_triples = List.foldi ~f:(fun index acc inter_id -> 
@@ -584,7 +572,7 @@ module TransferFunctions (CFG : ProcCfg.S) = struct
                                                                                aliasset
                                                                                |> A.add (formal, [])
                                                                                |> A.add mangled_callv) in
-                                           let returnv = mk_returnv callee_methname (!callv_number - 1) node_loc.line in
+                                           let returnv = mk_returnv callee_methname (!callv_number-1) node_loc.line in
                                            let ph_tuple = (methname, (placeholder_vardef methname, []), 
                                                            LocationSet.singleton Location.dummy, SetofAliases.empty
                                                                                                  |> A.add (Var.of_id ret_id, [])
@@ -595,10 +583,10 @@ module TransferFunctions (CFG : ProcCfg.S) = struct
                                          actual_interid_param_triples ~init:astate_set_summary_applied in
               (astate_set_updated, snd apair) ) )
     | None ->
-        (* Nothing to carry over! -> just make a ph tuple and end *)
+        (* Nothing to carry over! -> just make a ph tuple, make callvs and end *)
         let astate_set, historymap = apair in
         let ph = (placeholder_vardef methname, []) in
-        let returnv = mk_returnv callee_methname (-1) node_loc.line in
+        let returnv = mk_returnv callee_methname (!callv_number-1) node_loc.line in
         let loc = LocationSet.singleton Location.dummy in
         let aliasset = doubleton (Var.of_id ret_id, []) (returnv, []) in
         let newtuple = (methname, ph, loc, aliasset) in
@@ -607,9 +595,17 @@ module TransferFunctions (CFG : ProcCfg.S) = struct
 
 
   let batch_alias_assoc (astate_set:S.t) (logicals:Ident.t list) (pvars:Pvar.t list) : S.t =
+    let rec my_zip (l1:Ident.t list) (l2:Pvar.t list) =
+      match l1, l2 with
+      | [], [] -> []
+      | h1::t1, h2::t2 -> (h1, h2)::my_zip t1 t2
+      | _, _ -> L.die InternalError "my_zip failed, l1: %a, l2: %a" pp_idlist l1 pp_pvarlist l2 in
     let (>>|) = List.(>>|) in
-    let logicals_and_pvars = my_zip (logicals >>| Var.of_id) (pvars >>| Var.of_pvar) in
-    let id_and_astates = logicals >>| (fun id -> (id, weak_search_target_tuple_by_id id astate_set)) in
+    let logicals_and_pvars = my_zip logicals pvars
+                             |> List.filter ~f:(fun (logical, pvar) -> not @@ Ident.is_none logical)
+                             |> List.map ~f:(fun (logical, pvar) -> (Var.of_id logical, Var.of_pvar pvar)) in
+    let id_and_astates = List.filter ~f:(not << Ident.is_none) logicals
+                         >>| (fun id -> (id, weak_search_target_tuple_by_id id astate_set)) in
     let astate_tuples_to_remove = S.of_list (id_and_astates >>| snd) in
     let astate_set_rmvd = S.diff astate_set astate_tuples_to_remove in
     let update_astate (id, astate) =
@@ -860,11 +856,10 @@ module TransferFunctions (CFG : ProcCfg.S) = struct
          (match e_fun with
           | Const (Cfun callee_methname) ->
              if Option.is_some @@ Procdesc.load callee_methname
-             then exec_call ret_id callee_methname arg_ts analyze_dependency prev methname node_loc
-             else (try (exec_lib_call ret_id callee_methname arg_ts
-                          analyze_dependency prev methname node_loc)
-                   with _ ->
-                     exec_call ret_id callee_methname arg_ts analyze_dependency prev methname node_loc )
+             then exec_call ret_id callee_methname arg_ts
+                    analyze_dependency prev methname node_loc
+             else exec_lib_call ret_id callee_methname arg_ts
+                    analyze_dependency prev methname node_loc
           | _ -> L.die InternalError
                    "exec_call failed, ret_id: %a, e_fun: %a astate_set: %a, methname: %a"
                    Ident.pp ret_id Exp.pp e_fun S.pp (fst prev) Procname.pp methname)

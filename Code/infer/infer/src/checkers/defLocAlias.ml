@@ -166,28 +166,6 @@ module TransferFunctions (CFG : ProcCfg.S) = struct
                                   Procname.pp methname pp_bindinglist bindinglist pp_astatelist actual_astates end
 
 
-  (** callee가 return c;꼴로 끝날 경우 새로 튜플을 만들고 alias set에 c를 추가 *)
-  let variable_carryover (caller_astate_set: S.t) (callee_methname: Procname.t) (ret_id: Ident.t)
-        (caller_methname: Procname.t) (summ_read: S.t) (linum: Location.t) : S.t =
-    let callee_tuples = find_tuples_with_ret summ_read in
-    (** 콜리 튜플 하나에 대해, 튜플 하나를 새로 만들어 alias set에 추가 *)
-    let carryfunc (tup:T.t) =
-      let ph = placeholder_vardef caller_methname in
-      let callee_vardef, _ = second_of tup in
-      let aliasset =
-        if Var.is_return callee_vardef
-        then A.singleton (Var.of_id ret_id, []) (* 'return' itself should not be considered a pvar that is carrried over *)
-        else doubleton (callee_vardef, []) (Var.of_id ret_id, []) in
-      (caller_methname, (ph, []), LocationSet.singleton Location.dummy, aliasset) in
-    let carriedover = S.of_list @@ List.map callee_tuples ~f:carryfunc in
-    S.union caller_astate_set carriedover
-
-
-  (** 변수가 리턴된다면 그걸 alias set에 넣는다 (variable carryover) *)
-  let apply_summary astate_set callee_summary callee_methname ret_id caller_methname linum : S.t =
-    variable_carryover astate_set callee_methname ret_id caller_methname (fst callee_summary) linum
-
-
   let get_formal_args analyze_dependency (callee_methname:Procname.t) : Var.t list =
     match analyze_dependency callee_methname with
     | Some (procdesc, _) -> Procdesc.get_formals procdesc
@@ -528,16 +506,25 @@ module TransferFunctions (CFG : ProcCfg.S) = struct
     let (>>|) = List.(>>|) in
     match analyze_dependency callee_methname with
     | Some (_, callee_summary) ->
-        ( match input_is_void_type arg_ts (fst apair) with
-          | true -> (* All Arguments are Just Constants: just apply the summary, make a new tuple and end *)
-             let astate_set_summary_applied =
-               apply_summary (fst apair) callee_summary callee_methname ret_id methname node_loc in
-             let aliasset = A.add (mk_returnv callee_methname [!callv_number-1] node_loc.line, [])
-                              (A.singleton (Var.of_id ret_id, [])) in
-             let loc = LocationSet.singleton Location.dummy in
-             let newtuple = (methname, (placeholder_vardef methname, []), loc, aliasset) in
-             let newset = S.add newtuple astate_set_summary_applied in
-             (newset, (snd apair))
+       ( match input_is_void_type arg_ts (fst apair) with
+         | true -> (* All Arguments are Just Constants: just apply the summary, make a new tuple and end *)
+            (* HERE *)
+            let callee_ret_tuples = find_tuples_with_ret (fst callee_summary) in
+            let carriedover_aps = List.fold ~f:(fun acc astate ->
+                                      let callee_vardef, _ = second_of astate in
+                                      if Var.is_return callee_vardef
+                                      then A.singleton (Var.of_id ret_id, [])
+                                      else doubleton (callee_vardef, []) (Var.of_id ret_id, []))
+                                    callee_ret_tuples ~init:A.empty in
+            let returnv = mk_returnv callee_methname [!callv_number-1] node_loc.line in
+            let loc = LocationSet.singleton Location.dummy in
+            let newtuple = (methname, (placeholder_vardef methname, []), loc,
+                            carriedover_aps
+                            |> A.add (returnv, [])
+                            |> A.add (Var.of_id ret_id, [])) in
+            let newset = S.add newtuple (fst apair) in
+            (newset, (snd apair))
+
           | false -> (* There is at least one argument which is a non-thisvar variable *)
              (let formals = get_formal_args analyze_dependency callee_methname in
               let actuals_logical_id = arg_ts >>| (fst >> convert_exp_to_logical) |> List.filter ~f:(not << Ident.is_none) in
@@ -594,8 +581,7 @@ module TransferFunctions (CFG : ProcCfg.S) = struct
         let returnv = mk_returnv callee_methname [!callv_number-1] node_loc.line in
         let loc = LocationSet.singleton Location.dummy in
         let aliasset = doubleton (Var.of_id ret_id, []) (returnv, []) in
-        let newtuple = (methname, ph, loc, aliasset) in
-        let newstate = newtuple in
+        let newstate = (methname, ph, loc, aliasset) in
         (S.add newstate astate_set, historymap)
 
 

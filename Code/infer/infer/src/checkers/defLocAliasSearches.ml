@@ -13,6 +13,8 @@ module T = DefLocAliasDomain.AbstractState
 (* Exceptions ======================================= *)
 (* ================================================== *)
 
+exception ParseFailed
+
 exception CouldNotExtractCallee of string
 
 exception SearchAstateByPVarFailed
@@ -534,11 +536,18 @@ let extract_counter_from_callv (callv_ap : A.elt) : int =
 let extract_counter_from_returnv (returnv: MyAccessPath.t) : int list = 
   assert (is_returnv_ap returnv);
   let parse_intlist (string: string) : int list =
-    let (>>|) = List.(>>|) in
-    String.strip ~drop:(fun char -> Char.(=) '[' char || Char.(=) ']' char) string
-    |> String.split ~on:' '
-    >>| String.strip
-    >>| int_of_string in
+    try let (>>|) = List.(>>|) in
+        String.strip ~drop:(fun char -> Char.(=) '[' char || Char.(=) ']' char) string
+        |> String.split ~on:' '
+        >>| String.strip
+        |> List.filter ~f:(not << String.is_empty)
+        >>| int_of_string
+    with _ ->
+      F.kasprintf
+        (fun msg ->
+          L.progress "%s" msg;
+          raise ParseFailed)
+        "parse_intlist failed, string: %s@." string in
   F.asprintf "%a" Var.pp (fst returnv)
   |> String.split ~on:':'
   |> List.hd_exn

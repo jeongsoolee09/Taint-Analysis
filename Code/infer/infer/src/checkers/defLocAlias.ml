@@ -69,11 +69,15 @@ module TransferFunctions (CFG : ProcCfg.S) = struct
 
 
   (** specially mangled variable to mark a value as returned from callee *)
-  let mk_returnv (procname: Procname.t) (counter: int) (linum: int) =
+  let mk_returnv (procname: Procname.t) (counters: int list) (linum: int) =
     (* find the matching callv from the astate_set by first scraping all the callvs. *)
+    let pp_int_list fmt  intlist =
+      F.fprintf fmt "[";
+      List.iter ~f:(F.fprintf fmt "%d ") counters;
+      F.fprintf fmt "]" in
     Var.of_pvar @@
       Pvar.mk (Mangled.from_string @@
-                 F.asprintf "returnv_%d_%d: %a" counter linum Procname.pp procname) procname
+                 F.asprintf "returnv_%a_%d: %a" pp_int_list counters linum Procname.pp procname) procname
 
 
   let rec extract_nonthisvar_from_args methname (arg_ts:(Exp.t*Typ.t) list)
@@ -619,7 +623,7 @@ module TransferFunctions (CFG : ProcCfg.S) = struct
 
   (** Handles calls to library APIs, whose Procdesc.t is empty *)
   let exec_lib_call (ret_id:Ident.t) (callee_methname:Procname.t) (arg_ts:(Exp.t*Typ.t) list)
-      analyze_dependency ((astate_set, histmap): P.t) (caller_methname:Procname.t) (node_loc: Location.t) : P.t =
+      ((astate_set, histmap): P.t) (caller_methname:Procname.t) (node_loc: Location.t) : P.t =
     let (>>|) = List.(>>|) in
     match is_cast callee_methname with
     | true ->
@@ -645,9 +649,8 @@ module TransferFunctions (CFG : ProcCfg.S) = struct
        let actuals_logical = arg_ts >>| (fst >> convert_exp_to_logical) in
        let callvs = List.init (List.length actuals_logical)
                       ~f:(fun _ -> mk_callv_pvar callee_methname node_loc.line) in
-        let astate_set' = batch_alias_assoc astate_set actuals_logical mangled_params
-                        |> (fun astate_set ->
-                            batch_alias_assoc astate_set actuals_logical callvs) in
+       let astate_set' = batch_alias_assoc astate_set actuals_logical mangled_params
+                         |> (fun astate_set -> batch_alias_assoc astate_set actuals_logical callvs) in
        (* We need to create a new astate (ph tuple) here *)
        let returnv = mk_returnv callee_methname (!callv_number-1) node_loc.line in
        let newtuple =
@@ -859,7 +862,7 @@ module TransferFunctions (CFG : ProcCfg.S) = struct
              then exec_call ret_id callee_methname arg_ts
                     analyze_dependency prev methname node_loc
              else exec_lib_call ret_id callee_methname arg_ts
-                    analyze_dependency prev methname node_loc
+                    prev methname node_loc
           | _ -> L.die InternalError
                    "exec_call failed, ret_id: %a, e_fun: %a astate_set: %a, methname: %a"
                    Ident.pp ret_id Exp.pp e_fun S.pp (fst prev) Procname.pp methname)

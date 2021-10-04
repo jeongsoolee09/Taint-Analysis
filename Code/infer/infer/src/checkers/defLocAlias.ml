@@ -168,7 +168,7 @@ module TransferFunctions (CFG : ProcCfg.S) = struct
 
   (** callee가 return c;꼴로 끝날 경우 새로 튜플을 만들고 alias set에 c를 추가 *)
   let variable_carryover (caller_astate_set: S.t) (callee_methname: Procname.t) (ret_id: Ident.t)
-        (caller_methname: Procname.t) (summ_read: S.t) (linum: Location.t) =
+        (caller_methname: Procname.t) (summ_read: S.t) (linum: Location.t) : S.t =
     let callee_tuples = find_tuples_with_ret summ_read in
     (** 콜리 튜플 하나에 대해, 튜플 하나를 새로 만들어 alias set에 추가 *)
     let carryfunc (tup:T.t) =
@@ -186,14 +186,6 @@ module TransferFunctions (CFG : ProcCfg.S) = struct
   (** 변수가 리턴된다면 그걸 alias set에 넣는다 (variable carryover) *)
   let apply_summary astate_set callee_summary callee_methname ret_id caller_methname linum : S.t =
     variable_carryover astate_set callee_methname ret_id caller_methname (fst callee_summary) linum
-
-
-  (** (Var.t * Var.t) list에서 var이 들어 있는 튜플만을 삭제 *)
-  let delete_vartuples (ziplist:(Var.t * Var.t) list) =
-    List.fold ~f:(fun acc (v1, v2) ->
-        if Var.is_this v1 || Var.is_this v2
-        then acc
-        else (v1, v2)::acc) ~init:[] ziplist
 
 
   let get_formal_args analyze_dependency (callee_methname:Procname.t) : Var.t list =
@@ -576,13 +568,23 @@ module TransferFunctions (CFG : ProcCfg.S) = struct
                                                                                    |> A.add corresponding_callv) in
                                                S.add actual_vardef_astate_updated acc_rmvd)
                                              actual_interid_param_triples ~init:(fst apair) in
-              (* 3. create a returnv and add it to a newly made ph tuple *)
+              (* 3. apply the summary *)
+              let callee_ret_tuples = find_tuples_with_ret (fst callee_summary) in
+              let carriedover_aps = List.fold ~f:(fun acc astate ->
+                                        let callee_vardef, _ = second_of astate in
+                                        if Var.is_return callee_vardef
+                                        then A.add (Var.of_id ret_id, []) acc (* 'return' itself should not be considered a pvar that is carrried over *)
+                                        else A.union acc @@ doubleton (callee_vardef, []) (Var.of_id ret_id, []))
+                                      callee_ret_tuples ~init:A.empty in
+              (* 4. create a returnv and add it to a newly made ph tuple *)
               let callv_counters = callvs >>| extract_counter_from_callv in
               let returnv = mk_returnv callee_methname callv_counters node_loc.line in
               let ph_tuple = (methname, (placeholder_vardef methname, []), 
                               LocationSet.singleton Location.dummy,
-                              doubleton (Var.of_id ret_id, []) (returnv, [])) in
-              (* 4. add the ph tuple to the above astate_set *)
+                              carriedover_aps
+                              |> A.add (Var.of_id ret_id, [])
+                              |> A.add (returnv, [])) in
+              (* 5. add the ph tuple to the above astate_set *)
               let newset = S.add ph_tuple astate_set_callv_added in
               (newset, snd apair)))
     | None ->

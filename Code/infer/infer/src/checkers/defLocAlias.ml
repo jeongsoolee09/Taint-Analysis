@@ -51,10 +51,12 @@ module TransferFunctions (CFG : ProcCfg.S) = struct
   
   (** specially mangled variable to mark an AP as passed to a callee *)
   let mk_callv procname linum =
-    let out = Var.of_pvar
-    @@ Pvar.mk
-      (Mangled.from_string @@ F.asprintf "callv_%d_%d: %a" !callv_number linum Procname.pp procname)
-      procname in
+    L.progress "mk_callv, procname: %a@." Procname.pp procname;
+    let out = Var.of_pvar @@ Pvar.mk
+                               (Mangled.from_string @@ F.asprintf "callv_%d_%d: %s"
+                                                         !callv_number linum (Procname.get_method procname))
+                               procname in
+    L.progress "mk_callv, out: %a@." Var.pp out;
     callv_number := !callv_number + 1 ;
     out
 
@@ -62,8 +64,9 @@ module TransferFunctions (CFG : ProcCfg.S) = struct
   (** specially mangled variable to mark an AP as passed to a callee *)
   let mk_callv_pvar procname linum =
     let out = Pvar.mk
-      (Mangled.from_string @@ F.asprintf "callv_%d_%d: %a" !callv_number linum Procname.pp procname)
-      procname in
+                (Mangled.from_string @@ F.asprintf "callv_%d_%d: %s"
+                                          !callv_number linum (Procname.get_method procname))
+                procname in
     callv_number := !callv_number + 1 ;
     out
 
@@ -564,6 +567,7 @@ module TransferFunctions (CFG : ProcCfg.S) = struct
                                         else A.union acc @@ doubleton (callee_vardef, []) (Var.of_id ret_id, []))
                                       callee_ret_tuples ~init:A.empty in
               (* 4. create a returnv and add it to a newly made ph tuple *)
+              L.progress "callvs: %a@." pp_ap_list callvs ;
               let callv_counters = callvs >>| extract_counter_from_callv in
               let returnv = mk_returnv callee_methname callv_counters node_loc.line in
               let ph_tuple = (methname, (placeholder_vardef methname, []), 

@@ -490,18 +490,18 @@ let extract_linum_from_param (ap: MyAccessPath.t) (callee_summary: S.t) : int =
 let extract_linum_from_param_ap (ap : MyAccessPath.t) : int =
   match fst ap with
   | LogicalVar _ ->
-      L.progress "extract_linum_from_param failed: ap: %a@." MyAccessPath.pp ap;
+      L.progress "extract_linum_from_param failed, ap: %a@." MyAccessPath.pp ap;
         raise ExtractLinumFromParamFailed
   | ProgramVar pv ->
      (match is_param_ap ap with
       | true ->
          let varstring = F.asprintf "%a" Var.pp (fst ap) in
          (try
-            int_of_string @@ List.nth_exn (List.rev @@ String.split varstring ~on:'_') 1
+            int_of_string @@ List.nth_exn (String.split varstring ~on:'_') 2
           with _ ->
-            L.progress "extract_linum_from_param failed: ap: %a@." MyAccessPath.pp ap; raise InvalidArgument)
+            L.progress "extract_linum_from_param failed, ap: %a@." MyAccessPath.pp ap; raise InvalidArgument)
       | false ->
-         L.progress "extract_linum_from_param failed: ap: %a@." MyAccessPath.pp ap;
+         L.progress "extract_linum_from_param failed, ap: %a@." MyAccessPath.pp ap;
          raise ExtractLinumFromParamFailed)
 
 
@@ -522,16 +522,49 @@ let search_target_tuples_holding_param (location : int) (tuplelist : T.t list) :
 
 
 let extract_counter_from_callv (callv_ap : A.elt) : int =
-  (* assert (is_callv_ap callv_ap) ; *)
-  if not @@ is_callv_ap callv_ap then
-    F.kasprintf
-      (fun msg -> raise @@ ExtractNumberFromCallvFailed msg)
-      "This is not a callv!: %a@." MyAccessPath.pp callv_ap ;
-  let varname = F.asprintf "%a" Var.pp (fst callv_ap) in
-  (* the callv naming scheme is callv_{number}: {callee_methname} *)
-  let splitted_on_colon = String.split varname ~on:':' in
-  let splitted_on_underscore = String.split (List.hd_exn splitted_on_colon) ~on:'_' in
-  int_of_string @@ (List.nth_exn splitted_on_underscore 1)
+  assert (is_callv_ap callv_ap) ;
+  F.asprintf "%a" Var.pp (fst callv_ap)
+  |> String.split ~on:':'
+  |> List.hd_exn
+  |> String.split ~on:'_'
+  |> (fun stringlist -> List.nth_exn stringlist 1)
+  |> int_of_string
+
+
+let extract_counter_from_returnv (returnv: MyAccessPath.t) : int list = 
+  assert (is_returnv_ap returnv);
+  let parse_intlist (string: string) : int list =
+    let (>>|) = List.(>>|) in
+    String.strip ~drop:(fun char -> Char.(=) '[' char || Char.(=) ']' char) string
+    |> String.split ~on:' '
+    >>| String.strip
+    >>| int_of_string in
+  F.asprintf "%a" Var.pp (fst returnv)
+  |> String.split ~on:':'
+  |> List.hd_exn
+  |> String.split ~on:'_'
+  |> (fun stringlist -> List.nth_exn stringlist 1)
+  |> parse_intlist
+  
+
+let extract_linum_from_callv (callv: MyAccessPath.t) : int =
+  assert (is_callv_ap callv);
+  F.asprintf "%a" Var.pp (fst callv)
+  |> String.split ~on:':'
+  |> List.hd_exn
+  |> String.split ~on:'_'
+  |> (fun stringlist -> List.nth_exn stringlist 2)
+  |> int_of_string
+
+
+let extract_linum_from_returnv (returnv: MyAccessPath.t) : int =
+  assert (is_returnv_ap returnv);
+  F.asprintf "%a" Var.pp (fst returnv)
+  |> String.split ~on:':'
+  |> List.hd_exn
+  |> String.split ~on:'_'
+  |> (fun stringlist -> List.nth_exn stringlist 2)
+  |> int_of_string
 
 
 let find_callv_greater_than_number (ap_set : A.t) (number : int) : A.elt =
@@ -556,7 +589,6 @@ let find_callv_greater_than_number (ap_set : A.t) (number : int) : A.elt =
 
 
 let find_earliest_callv (callvs: MyAccessPath.t list) ~(greater_than: int) : MyAccessPath.t =
-  L.progress "find_earliest_callv, callvs: %a@." pp_ap_list callvs;
   if List.is_empty callvs then raise InvalidArgument;
   callvs
   |> List.map ~f:(fun callv -> (callv, extract_counter_from_callv callv))
@@ -617,51 +649,20 @@ let extract_procname_str_from_callv (callv: MyAccessPath.t) =
   |> String.lstrip
 
 
-let extract_linum_from_callv (callv: MyAccessPath.t) : int =
-  assert (is_callv_ap callv);
-  F.asprintf "%a" Var.pp (fst callv)
-  |> String.split ~on:':'
-  |> List.hd_exn
-  |> String.split ~on:'_'
-  |> (fun stringlist -> List.nth_exn stringlist 2)
-  |> int_of_string
-
-
-let extract_counter_from_returnv (returnv: MyAccessPath.t) : int = 
-  if not @@ is_returnv_ap returnv then
-    F.kasprintf
-      (fun msg -> raise @@ ExtractNumberFromCallvFailed msg)
-      "This is not a callv!: %a@." MyAccessPath.pp returnv ;
-  let varname = F.asprintf "%a" Var.pp (fst returnv) in
-  (* the callv naming scheme is callv_{number}: {callee_methname} *)
-  let splitted_on_colon = String.split varname ~on:':' in
-  let splitted_on_underscore = String.split (List.hd_exn splitted_on_colon) ~on:'_' in
-  int_of_string @@ (List.last_exn splitted_on_underscore)
-  
-
-let extract_linum_from_returnv (returnv: MyAccessPath.t) : int =
-  assert (is_returnv_ap returnv);
-  F.asprintf "%a" Var.pp (fst returnv)
-  |> String.split ~on:':'
-  |> List.hd_exn
-  |> String.split ~on:'_'
-  |> (fun stringlist -> List.nth_exn stringlist 2)
-  |> int_of_string
-  
-
 (** find the astate holding the returnv with the callee_methname in its aliasset. *)
 let find_astate_holding_returnv (astate_set: S.t) (target_callee: Procname.t)
       (target_counter: int) (target_linum: int) : T.t =
+  L.progress "==============================@.";
   let matching_astates = S.fold (fun astate acc ->
+                             L.progress "astate: %a@." T.pp astate;
                              let aliasset = fourth_of astate in
                              if A.exists (fun ap -> is_returnv_ap ap &&
                                                       (let extracted_callee = extract_callee_from ap in
                                                        Procname.equal extracted_callee target_callee) &&
-                                                        (* (let counter = extract_counter_from_returnv ap in *)
-                                                        (*  Int.(=) target_counter counter) && *)
-                                                          (let linum = extract_linum_from_returnv ap in
-                                                           L.progress "extracted linum: %d@." linum;
-                                                           Int.(=) linum target_linum)) aliasset
+                                                        (let extracted_counter_list = extract_counter_from_returnv ap in
+                                                         List.mem ~equal:Int.(=) extracted_counter_list target_counter) &&
+                                                          (let extracted_linum = extract_linum_from_returnv ap in
+                                                           Int.(=) extracted_linum target_linum)) aliasset
                              then astate :: acc else acc) astate_set [] in
   match matching_astates with
   | [] ->
@@ -682,7 +683,7 @@ let find_matching_returnv_in_aliasset (aliasset: A.t) (target_callee: Procname.t
   let out = A.fold (fun ap acc ->
                 if (is_returnv_ap ap &&
                       (Procname.equal target_callee (extract_callee_from ap)) &&
-                        (Int.(=) target_counter (extract_counter_from_returnv ap)) &&
+                        (List.mem ~equal:Int.(=) (extract_counter_from_returnv ap) target_counter) &&
                           (Int.(=) target_linum (extract_linum_from_returnv ap)))
                 then ap::acc else acc) aliasset [] in
   match out with

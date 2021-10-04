@@ -13,6 +13,7 @@ exception InvalidExp
 exception NotACallInstr of string
 exception NoMatchingCallv of string
 exception TooManyMatchingCallv of string
+exception MatchFailed
 
 module L = Logging
 module F = Format
@@ -48,31 +49,41 @@ module TransferFunctions (CFG : ProcCfg.S) = struct
   (** Ref variable to number all callv special variables *)
   let callv_number = ref 0
 
-  
+
+  (** truncate the textual representation if necessary, to avoid weird formatting issues.. *)
+  let truncate_procname (procname: Procname.t) : string =
+    let target = Procname.get_method procname in
+    let antipattern = Str.regexp "\\(.*_[0-9]+_[0-9]+\\)" in
+    let _ = Str.string_match antipattern (Procname.get_method procname) 0 in
+    let to_truncate = Str.matched_group 1 target in
+    List.hd_exn @@ String.split ~on:'_' to_truncate
+
+
   (** specially mangled variable to mark an AP as passed to a callee *)
-  let mk_callv procname linum =
-    L.progress "mk_callv, procname: %a@." Procname.pp procname;
-    let out = Var.of_pvar @@ Pvar.mk
-                               (Mangled.from_string @@ F.asprintf "callv_%d_%d: %s"
-                                                         !callv_number linum (Procname.get_method procname))
-                               procname in
-    L.progress "mk_callv, out: %a@." Var.pp out;
-    callv_number := !callv_number + 1 ;
-    out
 
 
   (** specially mangled variable to mark an AP as passed to a callee *)
   let mk_callv_pvar procname linum =
-    let out = Pvar.mk
-                (Mangled.from_string @@ F.asprintf "callv_%d_%d: %s"
-                                          !callv_number linum (Procname.get_method procname))
-                procname in
+    let antipattern = Str.regexp "\\(.*_[0-9]+_[0-9]+\\)" in
+    let out = if Str.string_match antipattern (Procname.get_method procname) 0
+              then let truncated = truncate_procname procname in
+                   Pvar.mk
+                     (Mangled.from_string @@ F.asprintf "callv_%d_%d: %s"
+                                               !callv_number linum truncated)
+                     procname
+              else Pvar.mk (Mangled.from_string @@ F.asprintf "callv_%d_%d: %a"
+                                                     !callv_number linum Procname.pp procname)
+                     procname in
     callv_number := !callv_number + 1 ;
     out
 
 
+  let mk_callv procname linum =
+    Var.of_pvar @@ mk_callv_pvar procname linum
+
+
   (** specially mangled variable to mark a value as returned from callee *)
-  let mk_returnv (procname: Procname.t) (counters: int list) (linum: int) =   (* find the matching callv from the astate_set by first scraping all the callvs. *)
+  let mk_returnv (procname: Procname.t) (counters: int list) (linum: int) =
     let pp_int_list fmt  intlist =
       F.fprintf fmt "[";
       List.iter ~f:(F.fprintf fmt "%d ") counters;
@@ -567,7 +578,6 @@ module TransferFunctions (CFG : ProcCfg.S) = struct
                                         else A.union acc @@ doubleton (callee_vardef, []) (Var.of_id ret_id, []))
                                       callee_ret_tuples ~init:A.empty in
               (* 4. create a returnv and add it to a newly made ph tuple *)
-              L.progress "callvs: %a@." pp_ap_list callvs ;
               let callv_counters = callvs >>| extract_counter_from_callv in
               let returnv = mk_returnv callee_methname callv_counters node_loc.line in
               let ph_tuple = (methname, (placeholder_vardef methname, []), 

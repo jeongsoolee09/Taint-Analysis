@@ -497,11 +497,13 @@ let extract_linum_from_param_ap (ap : MyAccessPath.t) : int =
   | ProgramVar pv ->
      (match is_param_ap ap with
       | true ->
-         let varstring = F.asprintf "%a" Var.pp (fst ap) in
-         (try
-            int_of_string @@ List.nth_exn (String.split varstring ~on:'_') 2
-          with _ ->
-            L.progress "extract_linum_from_param failed, ap: %a@." MyAccessPath.pp ap; raise InvalidArgument)
+         (try let varstring = F.asprintf "%a" Var.pp (fst ap) in
+              let regex = Str.regexp "param_\\([_a-zA-Z<>]+\\)_\\([0-9]+\\)_\\([0-9]+\\)" in
+              ignore @@ Str.string_match regex varstring 0 ;
+              int_of_string @@ Str.matched_group 2 varstring
+          with Invalid_argument _ ->
+            L.progress "extract_linum_from_param failed, ap: %a@." MyAccessPath.pp ap;
+            raise ExtractLinumFromParamFailed)
       | false ->
          L.progress "extract_linum_from_param failed, ap: %a@." MyAccessPath.pp ap;
          raise ExtractLinumFromParamFailed)
@@ -524,6 +526,12 @@ let search_target_tuples_holding_param (location : int) (tuplelist : T.t list) :
 
 
 let extract_counter_from_callv (callv_ap : A.elt) : int =
+  if not @@ is_callv_ap callv_ap then
+    F.kasprintf
+      (fun msg ->
+        L.progress "%s" msg;
+        raise ParseFailed)
+      "extract_counter_from_returnv failed, callv_ap: %a@." MyAccessPath.pp callv_ap ;
   assert (is_callv_ap callv_ap) ;
   F.asprintf "%a" Var.pp (fst callv_ap)
   |> String.split ~on:':'
@@ -663,7 +671,6 @@ let find_astate_holding_returnv (astate_set: S.t) (target_callee: Procname.t)
       (target_counter: int) (target_linum: int) : T.t =
   L.progress "==============================@.";
   let matching_astates = S.fold (fun astate acc ->
-                             L.progress "astate: %a@." T.pp astate;
                              let aliasset = fourth_of astate in
                              if A.exists (fun ap -> is_returnv_ap ap &&
                                                       (let extracted_callee = extract_callee_from ap in

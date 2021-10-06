@@ -438,14 +438,14 @@ module TransferFunctions (CFG : ProcCfg.S) = struct
         (newset, newmap)
     (* ============ LHS is Lindex ============ *)
     | Lindex (Var id, _), Const _ -> (* covers both cases where offset is either const or id *)
-        let (proc, _, _, aliasset) as targetTuple = search_target_tuple_by_id id methname (fst apair) in
+        let (proc, _, _, aliasset) as target_tuple = search_target_tuple_by_id id methname (fst apair) in
         let (var, aplist) as ap_containing_pvar = find_pvar_ap_in aliasset in
         let ap_containing_pvar_updated = (var, aplist @ [AccessPath.ArrayAccess (Typ.void_star, [])]) in
         let aliasset_rmvd = A.remove ap_containing_pvar aliasset in
         let new_aliasset = A.add ap_containing_pvar_updated aliasset_rmvd in
         let loc = LocationSet.singleton node_loc in
         let newtuple = (proc, ap_containing_pvar_updated, loc, new_aliasset) in
-        let astate_rmvd = S.remove targetTuple (fst apair) in
+        let astate_rmvd = S.remove target_tuple (fst apair) in
         let newmap = H.add_to_history (methname, ap_containing_pvar_updated) loc (snd apair) in
         let newset = S.add newtuple astate_rmvd in
         (newset, newmap)
@@ -453,22 +453,35 @@ module TransferFunctions (CFG : ProcCfg.S) = struct
        let loc = LocationSet.singleton node_loc in
        let (lhs_proc, lhs_var, lhs_loc, lhs_aliasset) as lhs_tuple =
          search_target_tuple_by_id lhs_id methname (fst apair) in
-       (* update the lhs vartuple. *)
-       let lhs_var_updated = put_arrayaccess lhs_var in
-       let new_lhs_aliasset = A.singleton lhs_var_updated in
-       let new_tuple = (lhs_proc, lhs_var_updated, lhs_loc, new_lhs_aliasset) in
-       (* find the rhs vartuple and update it. *)
-       let (rhs_proc, rhs_var, rhs_loc, rhs_aliasset) as rhs_tuple =
-         search_target_tuple_by_id rhs_id methname (fst apair) in
-       let rhs_tuple_updated = (rhs_proc, rhs_var, rhs_loc, A.add lhs_var_updated rhs_aliasset) in
-       (* update the historymap. *)
-       let new_history = H.add_to_history (methname, lhs_var_updated) loc (snd apair) in
-       let newset =
-         (fst apair)
-         |> S.remove rhs_tuple
-         |> S.add rhs_tuple_updated
-         |> S.add new_tuple in
-       (newset, new_history)
+       (match is_irvar_ap lhs_var with
+        | true ->
+           let (rhs_proc, rhs_vardef, rhs_loc, rhs_aliasset) as rhs_tuple =
+             search_target_tuple_by_id rhs_id methname (fst apair) in
+           let new_rhs_tuple = (rhs_proc, rhs_vardef, rhs_loc,
+                                rhs_aliasset
+                                |> A.remove (put_arrayaccess lhs_var)
+                                |> A.add lhs_var) in
+           let newset = (fst apair)
+                        |> S.remove rhs_tuple
+                        |> S.add new_rhs_tuple in
+           (newset, (snd apair))
+        | false -> 
+           (* update the lhs vartuple. *)
+           let lhs_var_updated = put_arrayaccess lhs_var in
+           let new_lhs_aliasset = A.singleton lhs_var_updated in
+           let new_tuple = (lhs_proc, lhs_var_updated, lhs_loc, new_lhs_aliasset) in
+           (* find the rhs vartuple and update it. *)
+           let (rhs_proc, rhs_var, rhs_loc, rhs_aliasset) as rhs_tuple =
+             search_target_tuple_by_id rhs_id methname (fst apair) in
+           let rhs_tuple_updated = (rhs_proc, rhs_var, rhs_loc, A.add lhs_var_updated rhs_aliasset) in
+           (* update the historymap. *)
+           let new_history = H.add_to_history (methname, lhs_var_updated) loc (snd apair) in
+           let newset =
+             (fst apair)
+             |> S.remove rhs_tuple
+             |> S.add rhs_tuple_updated
+             |> S.add new_tuple in
+           (newset, new_history))
     | Lindex (Var id, _), BinOp (_, exp2_1, exp2_2) ->
         let lhs_pvar_ap =
           search_target_tuple_by_id id methname (fst apair) |> second_of |> put_arrayaccess in
@@ -888,6 +901,3 @@ module Analyzer = AbstractInterpreter.MakeRPO (TransferFunctions (CFG))
 (** Postcondition computing function *)
 let checker ({InterproceduralAnalysis.proc_desc} as analysis_data) =
   Analyzer.compute_post analysis_data ~initial:DefLocAliasDomain.initial proc_desc
-
-(*  LocalWords:  mk
- *)

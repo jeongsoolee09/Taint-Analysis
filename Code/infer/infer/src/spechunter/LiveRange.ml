@@ -680,6 +680,7 @@ let is_caller ~(caller: Procname.t) ~(callee: Procname.t) =
 
 let reset_counter_recursively (current_procname: Procname.t): unit =
   (* L.progress "recursively resetting for %a ...@." Procname.pp current_procname ; *)
+  reset_counter current_procname;
   G.iter_succ (fun (proc, _) ->
       (* L.progress "%a's counter reset to 0@." Procname.pp proc ; *)
       reset_counter proc) callgraph (current_procname, get_summary current_procname)
@@ -758,8 +759,8 @@ let rec compute_chain_inner (current_methname: Procname.t) (current_astate_set: 
            && (not @@ mem statetup_with_returnv_or_carriedovers ~equal:MyAccessPath.equal ap) )
       var_aps
   in
-  L.progress "============ inner loop. current_methname: %a, current_astate: %a,@.call stack: %a@.@."
-    Procname.pp current_methname T.pp current_astate pp_proc_list current_call_stack ;
+  L.progress "============ inner loop. current_methname: %a, current_astate: %a,@.call stack: %a@.current_chain: %a@.current_chain_acc: %a@."
+    Procname.pp current_methname T.pp current_astate pp_proc_list current_call_stack pp_chain (rev current_chain) pp_chain_list current_chain_acc ;
   match something_else with
   | [] -> 
      (if S.is_empty current_astate_set then
@@ -789,7 +790,7 @@ let rec compute_chain_inner (current_methname: Procname.t) (current_astate_set: 
              :: debug_chain
            and new_call_stack = List.tl_exn current_call_stack in
            reset_counter current_methname ;
-           (* L.progress "%a's callv reset to 0@." Procname.pp current_methname; *)
+           L.progress "%a's callv reset to 0@." Procname.pp current_methname;
            compute_chain_inner just_before_procname just_before_astate_set aliased_with_returnv
              chain_updated new_call_stack debug_chain_updated current_chain_acc)
         else
@@ -801,6 +802,7 @@ let rec compute_chain_inner (current_methname: Procname.t) (current_astate_set: 
               (current_methname, Status.Dead) :: current_chain
             else
               current_chain in
+          reset_counter_recursively current_methname ;
           completed_chain :: current_chain_acc
       (* the following if-then-else sequences encodes
            the level of preferences among different A.elt's. *)
@@ -867,22 +869,22 @@ let rec compute_chain_inner (current_methname: Procname.t) (current_astate_set: 
         (* ============ CALL ============ *)
         (* Retrieve and update the callv counter. *)
         (let callv_counter = get_counter current_methname in
-         (* L.progress "current_methname: %a, callv_counter: %a@." Procname.pp current_methname Int.pp callv_counter;  *)
+         L.progress "current_methname: %a, callv_counter: %a@." Procname.pp current_methname Int.pp callv_counter;
          let callvs_partitioned_by_procname = filter ~f:is_callv_ap var_aps |> partition_callvs_by_procname in
-         (* L.progress "callvs_parititioned_by_procname: %a, callv_counter: %d@." pp_aplist_list callvs_partitioned_by_procname callv_counter; *)
+         L.progress "callvs_parititioned_by_procname: %a, callv_counter: %d@." pp_aplist_list callvs_partitioned_by_procname callv_counter;
          let earliest_callvs = [callvs_partitioned_by_procname |> List.concat |> find_earliest_callv ~greater_than:callv_counter] in
-         (* L.progress "earliest_callvs: %a@." pp_ap_list earliest_callvs ; *)
+         L.progress "earliest_callvs: %a@." pp_ap_list earliest_callvs ;
          let mapfunc = fun callv ->
            (assert (callv_counter <= (extract_counter_from_callv callv)) ;
             let callv_counter = extract_counter_from_callv callv in
             update_counter current_methname (extract_counter_from_callv callv) ;
-            (* L.progress "%a's counter updated to %a@." Procname.pp current_methname Int.pp (extract_counter_from_callv callv) ; *)
+            L.progress "%a's counter updated to %a@." Procname.pp current_methname Int.pp (extract_counter_from_callv callv) ;
             (* now, find the matching param_ap. *)
             let param_ap_matching_callv =
               find_matching_param_for_callv (A.of_list var_aps) callv
             in
             let callee_methname = extract_callee_from callv in
-            (* L.progress "callee_methname: %a@." Procname.pp callee_methname; *)
+            L.progress "callee_methname: %a@." Procname.pp callee_methname;
             let callee_astate_set = get_summary callee_methname in
             let param_ap_locset =
               if is_param_ap param_ap_matching_callv then
@@ -953,6 +955,7 @@ let rec compute_chain_inner (current_methname: Procname.t) (current_astate_set: 
         (* ============ DEAD ============ *)
         (* no more recursion; return *)
         let completed_chain = (current_methname, Status.Dead) :: current_chain in
+        reset_counter_recursively current_methname;
         completed_chain :: current_chain_acc ) )
   | nonempty_aplist ->
      (* L.progress "nonempty_aplist: %a@." pp_ap_list nonempty_aplist; *)
@@ -1168,8 +1171,8 @@ let main () =
          && (not @@ is_callv var) )
   |> iter ~f:(fun (proc, ap, locset) ->
          (* if *)
-         (*   String.equal (Procname.to_string proc) "byte[] GithubClient.downloadRepositoryAsZipball(String,String)" *)
-         (*   && String.equal (F.asprintf "%a" MyAccessPath.pp ap) "(organization, [])" *)
+         (*   String.equal (Procname.to_string proc) "List GithubClient.fetchOrgRepositories(String)" *)
+         (*   && String.equal (F.asprintf "%a" MyAccessPath.pp ap) "(repositories, [])" *)
          (* then add_chain (proc, ap, locset) @@ List.hd_exn @@ compute_chain ap) ; *)
          let computed_chains = compute_chain ap in
          iter ~f:(fun chain ->

@@ -709,9 +709,9 @@ let scan_chain_for_most_recent_call (target_caller: Procname.t) (target_callee: 
 let rec compute_chain_inner (current_methname: Procname.t) (current_astate_set: S.t)
     (current_astate : S.elt) (current_chain : Chain.t) (current_call_stack: Procname.t list)
     (debug_chain: Chain.t) (current_chain_acc: Chain.t list) : Chain.t list =
-  let ap_filter tup = (not @@ is_logical_var @@ fst tup)
-                      && (not @@ is_irvar_ap tup)
-                      && (not @@ MyAccessPath.equal (second_of current_astate) tup) in
+  let ap_filter ap = (not @@ is_logical_var @@ fst ap)
+                      (* && (not @@ is_irvar_ap ap) *)
+                      && (not @@ MyAccessPath.equal (second_of current_astate) ap) in
   let current_aliasset = fourth_of current_astate in
   let current_aliasset_cleanedup = A.filter ap_filter current_aliasset in
   let current_vardef = second_of current_astate in
@@ -736,7 +736,8 @@ let rec compute_chain_inner (current_methname: Procname.t) (current_astate_set: 
            let var = fst ap in
            (not @@ is_logical_var var)
            && (not @@ is_this_ap ap)
-           && (not @@ is_irvar_ap ap)
+           && (not @@ MyAccessPath.equal ap (second_of current_astate))
+           (* && (not @@ is_irvar_ap ap) *)
            && (not @@ is_returnv var)
            && (not @@ Var.is_return var)
            && (not @@ is_callv var)
@@ -747,7 +748,8 @@ let rec compute_chain_inner (current_methname: Procname.t) (current_astate_set: 
            let var = fst ap in
            (not @@ is_logical_var var)
            && (not @@ is_this_ap ap)
-           && (not @@ is_irvar_ap ap)
+           && (not @@ MyAccessPath.equal ap (second_of current_astate))
+           (* && (not @@ is_irvar_ap ap) *)
            && (not @@ is_returnv var)
            && (not @@ Var.is_return var)
            && (not @@ is_callv var)
@@ -756,8 +758,8 @@ let rec compute_chain_inner (current_methname: Procname.t) (current_astate_set: 
            && (not @@ mem statetup_with_returnv_or_carriedovers ~equal:MyAccessPath.equal ap) )
       var_aps
   in
-  (* L.progress "============ inner loop. current_methname: %a, current_astate: %a,@.call stack: %a@.@." *)
-  (*   Procname.pp current_methname T.pp current_astate pp_proc_list current_call_stack ; *)
+  L.progress "============ inner loop. current_methname: %a, current_astate: %a,@.call stack: %a@.@."
+    Procname.pp current_methname T.pp current_astate pp_proc_list current_call_stack ;
   match something_else with
   | [] -> 
      (if S.is_empty current_astate_set then
@@ -1165,6 +1167,10 @@ let main () =
          && (not @@ is_param var)
          && (not @@ is_callv var) )
   |> iter ~f:(fun (proc, ap, locset) ->
+         (* if *)
+         (*   String.equal (Procname.to_string proc) "byte[] GithubClient.downloadRepositoryAsZipball(String,String)" *)
+         (*   && String.equal (F.asprintf "%a" MyAccessPath.pp ap) "(organization, [])" *)
+         (* then add_chain (proc, ap, locset) @@ List.hd_exn @@ compute_chain ap) ; *)
          let computed_chains = compute_chain ap in
          iter ~f:(fun chain ->
              add_chain (proc, ap, locset) chain) computed_chains) ;

@@ -20,25 +20,15 @@ module F = Format
 (* ================================================== *)
 
 exception ReturnvFindFailed of string
-
 exception TooManyMatches of string
-
 exception NoMatches
-
 exception NoStateTupHoldingAliasTup of string
-
 exception NoSuchElem of string
-
 exception NoWitness of string
-
 exception ChainComputeFailed
-
 exception NotAPVar of string
-
 exception NotADefine
-
 exception NotACall
-
 exception NotARedefine
 
 (* Types ============================================ *)
@@ -164,8 +154,6 @@ let pp_MyAccessChain fmt (var, aplist) = F.fprintf fmt "(%a, %a)" Var.pp var pp_
 let string_of_vertex (proc, astateset) = F.asprintf "\"(%a, %a)\"" Procname.pp proc S.pp astateset
 
 
-
-
 (* Ocamlgraph Definitions =========================== *)
 (* ================================================== *)
 
@@ -247,11 +235,12 @@ let batch_print_formal_args () =
 (* Procname and their callv counters ================ *)
 (* ================================================== *)
 
+
 let procname_callv_counter : (Procname.t, int) Hashtbl.t = Hashtbl.create 777
 
 let initialize_callv_counter () =
   let procnames = Hashtbl.fold (fun k v acc -> k :: acc) summary_table [] in
-  iter ~f:(fun procname -> Hashtbl.add procname_callv_counter procname 1) procnames
+  iter ~f:(fun procname -> Hashtbl.add procname_callv_counter procname (-1)) procnames
 
 let get_counter (procname : Procname.t) = Hashtbl.find procname_callv_counter procname
 
@@ -259,11 +248,12 @@ let update_counter (procname : Procname.t) (new_counter : int) =
   Hashtbl.replace procname_callv_counter procname new_counter
 
 let reset_counter (procname : Procname.t) =
-  Hashtbl.replace procname_callv_counter procname 1
+  Hashtbl.replace procname_callv_counter procname (-1)
 
 
 (* CallGraph ======================================== *)
 (* ================================================== *)
+
 
 (** a tabular representation of the call graph. *)
 let callgraph_table = Hashtbl.create 777
@@ -388,6 +378,7 @@ let print_graph graph =
 
 (* Computing Chains ================================= *)
 (* ================================================== *)
+
 
 let find_most_recent_locset_of_ap (target_ap : MyAccessPath.t) (astates : S.t) =
   if is_param_ap target_ap then LocationSet.bottom
@@ -564,23 +555,22 @@ let count_vardefs_in_astateset ~(find_this : MyAccessPath.t) (astate_set : S.t) 
 (** Find returnv tuples in a given aliasset *)
 let find_returnv_holding_callee_aliasset (callee_name : Procname.t) (aliasset : A.t) : A.elt =
   let returnvs =
-    A.fold (fun elem acc -> if is_returnv_ap elem then elem :: acc else acc) aliasset []
-  in
+    A.fold (fun elem acc -> if is_returnv_ap elem then elem :: acc else acc) aliasset [] in
   let rec inner (aliases : A.elt list) : A.elt =
     match aliases with
     | [] ->
         F.kasprintf
           (fun msg -> raise @@ ReturnvFindFailed msg)
-          "find_returnv_holding_callee failed. callee_name: %a, aliasset: %a@." Procname.pp
-          callee_name A.pp aliasset
+          "find_returnv_holding_callee failed. callee_name: %a, aliasset: %a@."
+          Procname.pp callee_name A.pp aliasset
     | ((returnv, _) as elt) :: t ->
         let returnv_content = extract_callee_from elt in
-        if Procname.equal callee_name returnv_content then elt else inner t
-  in
+        if Procname.equal callee_name returnv_content then elt else inner t in
   inner returnvs
 
 
 let find_returnv_holding_callee_astateset (callee_name : Procname.t) (astate_set : S.t) : A.elt =
+  L.progress "find_returnv_holding_callee_astateset callee_name: %a@." Procname.pp callee_name;
   let out =
     S.fold
       (fun statetup acc ->
@@ -588,13 +578,13 @@ let find_returnv_holding_callee_astateset (callee_name : Procname.t) (astate_set
         try
           let returnv = find_returnv_holding_callee_aliasset callee_name aliasset in
           returnv :: acc
-        with _ -> acc )
+        with ReturnvFindFailed _ -> acc)
       astate_set []
   in
   match out with
   | [] ->
-     L.progress "find_returnv_holding_callee_astateset failed. callee_name: %a, astate_set: %a@." Procname.pp
-       callee_name S.pp astate_set;
+     L.progress "find_returnv_holding_callee_astateset failed. callee_name: %a, astate_set: %a@."
+      Procname.pp callee_name S.pp astate_set;
      raise NoMatches 
   | [x] -> x
   | _ -> 
@@ -655,15 +645,6 @@ let find_witness_exn (lst : 'a list) ~(pred : 'a -> bool) : 'a =
       F.kasprintf (fun msg -> raise @@ NoWitness msg) "find_witness_exn failed.@."
   | Some elem ->
       elem
-
-
-let get_declaring_function_ap (ap : A.elt) : Procname.t option =
-  let var, _ = ap in
-  match var with
-  | LogicalVar _ ->
-      None
-  | ProgramVar pvar ->
-    ( match Pvar.get_declaring_function pvar with None -> None | Some procname -> Some procname )
 
 
 let find_matching_param_for_callv (ap_set: A.t) (callv_ap: A.elt) : A.elt =
@@ -830,7 +811,8 @@ let rec compute_chain_inner (current_methname: Procname.t) (current_astate_set: 
             | Some meth -> not @@ is_caller ~caller:meth ~callee:current_methname in
           match not_enough_call_stack || popped_meth_is_not_a_caller with
           | true ->
-             (let callers_and_astates = find_direct_callers current_methname in
+             (let callers_and_astates = find_direct_callers current_methname
+                                        |> List.filter ~f:(not << is_lambda << fst) in
               let mapfunc (caller, caller_astate_set) =
                 let returnv_aliastup =
                   find_returnv_holding_callee_astateset current_methname caller_astate_set in
@@ -885,8 +867,9 @@ let rec compute_chain_inner (current_methname: Procname.t) (current_astate_set: 
         (let callv_counter = get_counter current_methname in
          (* L.progress "current_methname: %a, callv_counter: %a@." Procname.pp current_methname Int.pp callv_counter;  *)
          let callvs_partitioned_by_procname = filter ~f:is_callv_ap var_aps |> partition_callvs_by_procname in
-         let earliest_callvs = callvs_partitioned_by_procname >>| find_earliest_callv ~greater_than:callv_counter in
-         (* L.progress "earliest_callvs: %a@." pp_ap_list earliest_callvs ;  *)
+         (* L.progress "callvs_parititioned_by_procname: %a, callv_counter: %d@." pp_aplist_list callvs_partitioned_by_procname callv_counter; *)
+         let earliest_callvs = [callvs_partitioned_by_procname |> List.concat |> find_earliest_callv ~greater_than:callv_counter] in
+         (* L.progress "earliest_callvs: %a@." pp_ap_list earliest_callvs ; *)
          let mapfunc = fun callv ->
            (assert (callv_counter <= (extract_counter_from_callv callv)) ;
             let callv_counter = extract_counter_from_callv callv in
@@ -896,7 +879,8 @@ let rec compute_chain_inner (current_methname: Procname.t) (current_astate_set: 
             let param_ap_matching_callv =
               find_matching_param_for_callv (A.of_list var_aps) callv
             in
-            let callee_methname = extract_callee_from param_ap_matching_callv in
+            let callee_methname = extract_callee_from callv in
+            (* L.progress "callee_methname: %a@." Procname.pp callee_methname; *)
             let callee_astate_set = get_summary callee_methname in
             let param_ap_locset =
               if is_param_ap param_ap_matching_callv then
@@ -971,9 +955,8 @@ let rec compute_chain_inner (current_methname: Procname.t) (current_astate_set: 
   | nonempty_aplist ->
      (* L.progress "nonempty_aplist: %a@." pp_ap_list nonempty_aplist; *)
       concat @@ map ~f:(fun ap ->
-      let declaring_function = get_declaring_function_ap_exn ap in
       let callees_and_astates = find_direct_callees current_methname in
-      if not @@ Procname.equal declaring_function current_methname then (
+      if is_foreign_ap ap current_methname then (
         (* ============ CALL ============ *)
         let collected_subchains =
           fold

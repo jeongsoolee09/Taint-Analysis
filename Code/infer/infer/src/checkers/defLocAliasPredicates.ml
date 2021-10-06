@@ -8,14 +8,11 @@ module T = DefLocAliasDomain.AbstractState
 module String = Core_kernel.String
 
 exception TODO
-
 exception IDontKnow
-
 exception NotAJavaProcname of string
-
 exception CannotGetPackage of string
-
 exception WeakSearchTargetTupleByIdFailed of string
+exception IsForeignAPFailed
 
 let weak_search_target_tuple_by_id (id : Ident.t) (astate_set : S.t) : T.t =
   let elements = S.elements astate_set in
@@ -163,7 +160,6 @@ let is_callv (var : Var.t) : bool =
 
 let is_callv_ap (ap : A.elt) : bool =
   let ap_string = F.asprintf "%a" MyAccessPath.pp ap in
-  L.progress "ap_string: %s@." ap_string;
   String.is_substring ap_string ~substring:"callv"
 
 
@@ -184,14 +180,37 @@ let is_param_ap (ap : A.elt) : bool =
       String.is_substring (Pvar.to_string pv) ~substring:"param"
 
 
+let maybe_static (ap: MyAccessPath.t) =
+  let field_not_empty = not @@ List.is_empty @@ snd ap in
+  let dot_in_base_string =
+    let base_string = F.asprintf "%a" Var.pp (fst ap) in
+    String.contains base_string '.' in
+  field_not_empty && dot_in_base_string
+
+
 let is_foreign_ap (ap : A.elt) (current_methname : Procname.t) : bool =
   let var = fst ap in
   match Var.get_declaring_function var with
   | None ->
-      L.die InternalError "is_foreign_ap failed, ap: %a, current_methname: %a" MyAccessPath.pp ap
-        Procname.pp current_methname
+     if maybe_static ap
+     then let ap_string = F.asprintf "%a" MyAccessPath.pp ap in
+          let current_classname_str =
+            match Procname.get_class_name current_methname with
+            | Some s -> s
+            | None -> F.kasprintf
+                        (fun msg -> L.progress "%s" msg;
+                                    raise IsForeignAPFailed)
+                        "is_foreign_ap failed, ap: %a, current_methname: %a"
+                        MyAccessPath.pp ap Procname.pp current_methname in
+          let target_classname_str = List.last_exn @@ String.split ~on:'.' ap_string in
+          not @@ String.(=) current_classname_str target_classname_str
+     else F.kasprintf
+            (fun msg -> L.progress "%s" msg;
+                        raise IsForeignAPFailed)
+            "is_foreign_ap failed, ap: %a, current_methname: %a"
+            MyAccessPath.pp ap Procname.pp current_methname
   | Some declaring_proc ->
-      not @@ Procname.equal current_methname declaring_proc
+     not @@ Procname.equal current_methname declaring_proc
 
 
 (** Pvar.is_frontend_tmp를 Var로 일반화하는 wrapping function *)
@@ -344,7 +363,6 @@ let is_modeled (procname: Procname.t) =
               "is_modeled failed, procname: %a@." 
               Procname.pp procname
   | Some package_string ->
-     L.progress "package_string: %s@." package_string;
      let package_methname_tuple = (package_string, Procname.get_method procname) in
      let double_equal = fun (package_string1, method_string1) (package_string2, method_string2) ->
        String.equal package_string1 package_string2 && String.equal method_string1 method_string2 in
@@ -359,3 +377,9 @@ let is_call (instr: Sil.instr) =
 
 let locset_is_singleton (locset: LocationSet.t) =
   Int.(=) (LocationSet.cardinal locset) 1
+
+
+let is_lambda (proc: Procname.t) =
+  let simple_string = Procname.get_method proc in
+  String.is_substring ~substring:"lambda" simple_string ||
+  String.is_substring ~substring:"Lambda" simple_string

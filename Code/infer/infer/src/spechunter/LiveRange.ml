@@ -954,7 +954,7 @@ let rec compute_chain_inner (current_methname : Procname.t) (current_astate_set 
               compute_chain_inner callee_methname callee_astate_set bottuple chain_updated
                 call_stack_updated debug_chain_updated []
             in
-            reset_counter_recursively callee_methname ;
+            reset_counter_recursively current_methname ;
             computed )
           else
             (* UDF call *)
@@ -966,7 +966,7 @@ let rec compute_chain_inner (current_methname : Procname.t) (current_astate_set 
               compute_chain_inner callee_methname callee_astate_set param_statetup chain_updated
                 call_stack_updated debug_chain_updated []
             in
-            reset_counter_recursively callee_methname ;
+            reset_counter_recursively current_methname ;
             computed
         in
         let collected_subchains = concat @@ map ~f:mapfunc earliest_callvs in
@@ -1042,7 +1042,7 @@ let rec compute_chain_inner (current_methname : Procname.t) (current_astate_set 
                          compute_chain_inner callee callee_astate_set landing_pad chain_updated
                            call_stack_updated debug_chain_updated []
                        in
-                       reset_counter_recursively callee ;
+                       reset_counter_recursively current_methname ;
                        computed
                      with SearchAstateByPVarFailed -> acc
                      (* this callee does not hold the landing pad *) )

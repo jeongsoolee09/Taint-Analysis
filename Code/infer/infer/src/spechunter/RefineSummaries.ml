@@ -4,6 +4,7 @@ open! IStd
 open DefLocAliasSearches
 open DefLocAliasPredicates
 open DefLocAliasDomain
+open Partitioners
 
 (* open DefLocAliasPP *)
 module Hashtbl = Caml.Hashtbl
@@ -33,21 +34,34 @@ let rec assoc (alist : ('a * 'b) list) (key : 'a) ~equal : 'b =
   | (key', value) :: t ->
       if equal key key' then value else assoc t key ~equal
 
+
+(* Remove Class Initializers ======================== *)
+(* ================================================== *)
+
+let remove_clinit (table : (Procname.t, S.t) Hashtbl.t) : (Procname.t, S.t) Hashtbl.t =
+  Hashtbl.iter (fun proc _ -> if is_clinit proc then Hashtbl.remove table proc) table ;
+  table
+
+
 (* Remove Ternary frontend vars ===================== *)
 (* ================================================== *)
 
 let remove_ternary_frontend (table : (Procname.t, S.t) Hashtbl.t) : (Procname.t, S.t) Hashtbl.t =
-  let one_pass_S (astate_set : S.t) : S.t = 
-    S.fold (fun (proc, vardef, locset, aliasset) acc ->
-      match is_ternary_frontend_ap vardef with
-      | true  -> acc
-      | false ->
-          S.add (proc, vardef, locset, A.filter (fun ap ->
-            not @@ is_ternary_frontend_ap ap) aliasset) acc
-    ) astate_set S.empty
+  let one_pass_S (astate_set : S.t) : S.t =
+    S.fold
+      (fun (proc, vardef, locset, aliasset) acc ->
+        match is_ternary_frontend_ap vardef with
+        | true ->
+            acc
+        | false ->
+            S.add
+              (proc, vardef, locset, A.filter (fun ap -> not @@ is_ternary_frontend_ap ap) aliasset)
+              acc )
+      astate_set S.empty
   in
-  Hashtbl.iter (fun proc astate_set -> Hashtbl.replace table proc (one_pass_S astate_set)) table;
+  Hashtbl.iter (fun proc astate_set -> Hashtbl.replace table proc (one_pass_S astate_set)) table ;
   table
+
 
 (* Consolidate duplicated Pvar tuples =============== *)
 (* ================================================== *)
@@ -63,7 +77,7 @@ let consolidate_dup_pvars (table : (Procname.t, S.t) Hashtbl.t) : (Procname.t, S
           && (not @@ is_returnv_ap ap)
           && (not @@ is_return_ap ap)
           && (not @@ is_param_ap ap)
-          && (not @@ is_callv_ap ap))
+          && (not @@ is_callv_ap ap) )
         astate_set
     in
     let non_pvar_astates = S.filter (fun astate -> not @@ S.mem astate pvar_astates) astate_set in
@@ -75,7 +89,7 @@ let consolidate_dup_pvars (table : (Procname.t, S.t) Hashtbl.t) : (Procname.t, S
         S.fold
           (fun (proc', vardef', locset', _) acc ->
             Procname.equal proc proc' && MyAccessPath.equal vardef vardef'
-            && LocationSet.equal locset locset' && acc)
+            && LocationSet.equal locset locset' && acc )
           partition true
       in
       assert other_threes_are_all_equal ;
@@ -95,25 +109,23 @@ let consolidate_dup_pvars (table : (Procname.t, S.t) Hashtbl.t) : (Procname.t, S
 (* ================================================== *)
 
 let remove_unimportant_elems (table : (Procname.t, S.t) Hashtbl.t) : (Procname.t, S.t) Hashtbl.t =
-  let filter_garbage_astate tup =
+  let filter_garbage_astate (tup : T.t) =
     let var, _ = second_of tup in
     (not @@ is_placeholder_vardef var) && (not @@ is_logical_var var)
-    (*&& (not @@ is_irvar var)*)
   in
-  let filter_garbage_aliastup ap =
+  let filter_garbage_aliastup (ap : MyAccessPath.t) =
     let var = fst ap in
     (not @@ is_placeholder_vardef var) && (not @@ is_logical_var var)
-    (*&& (not @@ is_irvar var)*)
   in
   Hashtbl.iter
     (fun key summary ->
-      let filtered_garbage_astates =
+      let filtered_astates =
         S.filter filter_garbage_astate summary
         |> S.map (fun (proc, vardef, locset, aliasset) ->
                let filtered_aliastup = A.filter filter_garbage_aliastup aliasset in
-               (proc, vardef, locset, filtered_aliastup))
+               (proc, vardef, locset, filtered_aliastup) )
       in
-      Hashtbl.replace table key filtered_garbage_astates)
+      Hashtbl.replace table key filtered_astates )
     table ;
   table
 
@@ -144,12 +156,12 @@ let delete_compensating_param_returnv (table : (Procname.t, S.t) Hashtbl.t) :
       let open List in
       returnvs >>= fun returnv -> params >>= fun param -> return (returnv, param)
     in
-let compensating_pairs =
+    let compensating_pairs =
       List.filter
         ~f:(fun (returnv, param) ->
           let returnv_meth_simple = Procname.get_method @@ extract_callee_from returnv in
           let param_meth_simple = Procname.get_method @@ extract_callee_from param in
-          String.equal returnv_meth_simple param_meth_simple)
+          String.equal returnv_meth_simple param_meth_simple )
         carpro
     in
     let to_delete =
@@ -179,7 +191,7 @@ let delete_initializer_callv_param (table : (Procname.t, S.t) Hashtbl.t) :
           ( (is_callv_ap ap || is_param_ap ap)
           &&
           let procname = extract_callee_from ap in
-          is_initializer procname ))
+          is_initializer procname ) )
       aliasset
   in
   let one_pass_S (astate_set : S.t) : S.t =
@@ -197,7 +209,6 @@ let delete_initializer_callv_param (table : (Procname.t, S.t) Hashtbl.t) :
 let consolidate_by_locset (table : (Procname.t, S.t) Hashtbl.t) : (Procname.t, S.t) Hashtbl.t =
   let one_pass_S (astate_set : S.t) : S.t =
     let irvars = S.filter (fun astate -> is_irvar_ap @@ second_of astate) astate_set in
-    L.progress "irvars: %a@." S.pp irvars;
     let pvars =
       S.filter
         (fun astate ->
@@ -209,13 +220,11 @@ let consolidate_by_locset (table : (Procname.t, S.t) Hashtbl.t) : (Procname.t, S
           && (not @@ is_returnv_ap ap)
           && (not @@ is_return_ap ap)
           && (not @@ is_param_ap ap)
-          && (not @@ is_callv_ap ap))
+          && (not @@ is_callv_ap ap) )
         astate_set
     in
-    L.progress "pvars: %a@." S.pp pvars;
     (* save this for merging later *)
     let rest = S.diff (S.diff astate_set irvars) pvars in
-    L.progress "rest: %a@." S.pp rest;
     let partitions = partition_statetups_by_locset irvars in
     try
       (* al iz wel *)
@@ -229,8 +238,8 @@ let consolidate_by_locset (table : (Procname.t, S.t) Hashtbl.t) : (Procname.t, S
                  (fun astate (proc, vardef, locset, aliasset) ->
                    let aliasset' = fourth_of astate in
                    let aliasset_updated = A.remove vardef (A.union aliasset aliasset') in
-                   (proc, vardef, locset, aliasset_updated))
-                 partition pvar_astate)
+                   (proc, vardef, locset, aliasset_updated) )
+                 partition pvar_astate )
              partitions
       in
       let failed_pvars = S.filter (fun astate -> not @@ S.mem astate processed) pvars in
@@ -251,14 +260,14 @@ let consolidate_by_locset (table : (Procname.t, S.t) Hashtbl.t) : (Procname.t, S
                        (fun astate (proc, vardef, locset, aliasset) ->
                          let aliasset' = fourth_of astate in
                          let aliasset_updated = A.remove vardef (A.union aliasset aliasset') in
-                         (proc, vardef, locset, aliasset_updated))
-                       partition pvar_astate)
+                         (proc, vardef, locset, aliasset_updated) )
+                       partition pvar_astate )
                     succeeded_irvars
                 , failed_irvars )
             | _ ->
                 F.kasprintf
                   (fun msg -> raise @@ ConsolidateByLocsetFailed msg)
-                  "consolidate_by_locset failed. astate_set: %a@." S.pp astate_set)
+                  "consolidate_by_locset failed. astate_set: %a@." S.pp astate_set )
           ~init:(S.empty, S.empty) partitions
       in
       (* We now extract only the failed pvars *)
@@ -266,11 +275,8 @@ let consolidate_by_locset (table : (Procname.t, S.t) Hashtbl.t) : (Procname.t, S
       process_succeeded |> S.union rest |> S.union leftovers |> S.union failed_pvars
   in
   (* one_pass_S end *)
-  Hashtbl.iter (fun proc astate_set ->
-    L.progress "==================================================";
-    L.progress "consolidate_by_locset proc: %a@." Procname.pp proc;
-    Hashtbl.replace table proc (one_pass_S astate_set)) table ;
-    table
+  Hashtbl.iter (fun proc astate_set -> Hashtbl.replace table proc (one_pass_S astate_set)) table ;
+  table
 
 
 (* Remove unnecessary Java constants ================ *)
@@ -289,7 +295,7 @@ let remove_java_constants (table : (Procname.t, S.t) Hashtbl.t) : (Procname.t, S
           A.exists
             (fun ap ->
               let ap_string = F.asprintf "%a" Var.pp (fst ap) in
-              List.mem java_constant_var_string ap_string ~equal:String.equal)
+              List.mem java_constant_var_string ap_string ~equal:String.equal )
             aliasset
         in
         if vardef_is_java_constant then acc
@@ -298,11 +304,11 @@ let remove_java_constants (table : (Procname.t, S.t) Hashtbl.t) : (Procname.t, S
             A.filter
               (fun ap ->
                 let ap_string = F.asprintf "%a" Var.pp (fst ap) in
-                not @@ List.mem java_constant_var_string ap_string ~equal:String.equal)
+                not @@ List.mem java_constant_var_string ap_string ~equal:String.equal )
               aliasset
           in
           S.add (proc, vardef, locset, updated_aliasset) acc
-        else S.add astate acc)
+        else S.add astate acc )
       astate_set S.empty
   in
   Hashtbl.iter (fun proc astate_set -> Hashtbl.replace table proc (one_pass_S astate_set)) table ;
@@ -322,7 +328,7 @@ let print_summary_table table =
   Hashtbl.iter
     (fun proc summary ->
       L.progress "procname: %a, " Procname.pp proc ;
-      L.progress "summary: %a@." S.pp summary)
+      L.progress "summary: %a@." S.pp summary )
     table ;
   L.progress "========================================================================@."
 
@@ -337,7 +343,7 @@ let summary_table_to_file_and_return (filename : string) (table : (Procname.t, S
       let string_to_write =
         F.asprintf "Summary for %s: ========================@. %s@.@." proc_string astate_set_string
       in
-      Out_channel.output_string out_chan string_to_write)
+      Out_channel.output_string out_chan string_to_write )
     table ;
   Out_channel.close out_chan ;
   table
@@ -350,16 +356,18 @@ let main : (Procname.t, S.t) Hashtbl.t -> unit =
  fun table ->
   table
   |> summary_table_to_file_and_return "1_raw_astate_set.txt"
+  |> remove_clinit
+  |> summary_table_to_file_and_return "2_remove_clinit.txt"
   |> remove_ternary_frontend
-  |> summary_table_to_file_and_return "2_remove_ternary_frontend.txt"
+  |> summary_table_to_file_and_return "3_remove_ternary_frontend.txt"
   |> consolidate_dup_pvars
-  |> summary_table_to_file_and_return "3_consolidate_dup_pvars.txt"
-  |> consolidate_by_locset
-  |> summary_table_to_file_and_return "4_consolidate_by_locset.txt"
-  |> delete_initializer_callv_param
-  |> summary_table_to_file_and_return "5_delete_initizalizer_callv_param.txt"
+  |> summary_table_to_file_and_return "4_consolidate_dup_pvars.txt"
+  (* |> consolidate_by_locset *)
+  (* |> summary_table_to_file_and_return "5_consolidate_by_locset.txt" *)
+  (* |> delete_initializer_callv_param *)
+  (* |> summary_table_to_file_and_return "6_delete_initizalizer_callv_param.txt" *)
   |> remove_unimportant_elems
-  |> summary_table_to_file_and_return "6_remove_unimportant_elems.txt"
+  |> summary_table_to_file_and_return "7_remove_unimportant_elems.txt"
   |> remove_java_constants
-  |> summary_table_to_file_and_return "7_remove_java_constants.txt"
+  |> summary_table_to_file_and_return "8_remove_java_constants.txt"
   |> return

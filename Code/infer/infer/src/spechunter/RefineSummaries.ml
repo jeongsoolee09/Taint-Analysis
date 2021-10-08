@@ -63,6 +63,79 @@ let remove_ternary_frontend (table : (Procname.t, S.t) Hashtbl.t) : (Procname.t,
   table
 
 
+(* Subsitute all __new returnvs with <init> returnvs  *)
+(* ================================================== *)
+
+let substitute_frontend_new_returnv_with_init_returnv (table : (Procname.t, S.t) Hashtbl.t) :
+    (Procname.t, S.t) Hashtbl.t =
+  let one_pass_S (astate_set : S.t) : S.t =
+    (* key predicates on ap *)
+    let is_init_callv ap = is_callv_ap ap && (is_initializer @@ extract_callee_from ap)
+    and is_init_returnv ap = is_returnv_ap ap && (is_initializer @@ extract_callee_from ap)
+    and is_new_returnv ap = is_returnv_ap ap && (is_new @@ extract_callee_from ap) in
+    let target_astates =
+      S.filter
+        (fun astate ->
+          let aliasset = fourth_of astate in
+          A.exists is_init_callv aliasset )
+        astate_set
+    in
+    (* sanity check on target_astates *)
+    S.iter (fun astate -> assert (A.exists is_new_returnv (fourth_of astate))) astate_set ;
+    (* the <init> returnvs *)
+    let all_init_returnvs : MyAccessPath.t list =
+      S.fold
+        (fun astate big_acc ->
+          let aliasset = fourth_of astate in
+          let init_returnvs =
+            A.fold
+              (fun ap small_acc -> if is_init_returnv ap then ap :: small_acc else small_acc)
+              aliasset []
+          in
+          big_acc @ init_returnvs )
+        astate_set []
+    in
+    (* sanity check on the astates holding <init> returnvs *)
+    let astates_holding_init_returnv_aps =
+      S.filter
+        (fun astate ->
+          let aliasset = fourth_of astate in
+          A.exists is_init_returnv aliasset )
+        astate_set
+    in
+    S.iter
+      (fun astate -> assert (is_placeholder_vardef_ap (second_of astate)))
+      astates_holding_init_returnv_aps ;
+    (* now, update the target_astates *)
+    let target_astates_updated =
+      S.map
+        (fun (proc, vardef, loc, aliasset) ->
+          let aliasset_rmvd = A.filter (fun ap -> is_new_returnv ap) aliasset in
+          let init_callvs = A.filter is_init_callv aliasset in
+          let corresponding_returnvs =
+            A.map
+              (fun init_callv ->
+                let init_callv_counter = extract_counter_from_callv init_callv
+                and init_callv_linum = extract_linum_from_callv init_callv in
+                List.find_exn
+                  ~f:(fun init_returnv ->
+                    let init_returnv_counters = extract_counter_from_returnv init_returnv
+                    and init_returnv_linum = extract_linum_from_returnv init_returnv in
+                    List.mem init_returnv_counters init_callv_counter ~equal:Int.( = )
+                    && Int.( = ) init_callv_linum init_returnv_linum )
+                  all_init_returnvs )
+              init_callvs
+          in
+          let aliasset_updated = A.union aliasset_rmvd corresponding_returnvs in
+          (proc, vardef, loc, aliasset_updated) )
+        target_astates
+    in
+    S.diff astate_set target_astates |> S.union target_astates_updated
+  in
+  Hashtbl.iter (fun proc astate_set -> Hashtbl.replace table proc (one_pass_S astate_set)) table ;
+  table
+
+
 (* Consolidate duplicated Pvar tuples =============== *)
 (* ================================================== *)
 

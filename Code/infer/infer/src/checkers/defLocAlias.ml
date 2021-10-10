@@ -340,7 +340,10 @@ module TransferFunctions (CFG : ProcCfg.S) = struct
             in
             L.d_printfln "lhs_tuple: %a@." T.pp lhs_tuple ;
             let lhs_tuple_updated =
-              (lhs_proc, lhs_vardef, lhs_loc, A.union lhs_aliasset rhs_aliasset)
+              ( lhs_proc
+              , lhs_vardef
+              , lhs_loc
+              , A.union lhs_aliasset rhs_aliasset |> A.remove rhs_vardef )
             in
             let newset =
               fst apair |> S.remove lhs_tuple |> S.remove rhs_pvar_tuple |> S.add lhs_tuple_updated
@@ -622,12 +625,11 @@ module TransferFunctions (CFG : ProcCfg.S) = struct
     match exp with Var id -> id | _ -> Ident.create_none ()
 
 
-  (* create a dummy *)
-
   let find_actual_pvar_for_inter_id (id : Ident.t) (current_methname : Procname.t) (astate_set : S.t)
       =
     let statetups_alias_with_id = search_target_tuples_by_id id current_methname astate_set in
-    try find_most_linenumber statetups_alias_with_id with _ -> raise FindActualPvarFailed
+    (* try find_most_linenumber statetups_alias_with_id with _ -> raise FindActualPvarFailed *)
+    List.hd_exn statetups_alias_with_id
 
 
   let exec_call (ret_id : Ident.t) (callee_methname : Procname.t) (arg_ts : (Exp.t * Typ.t) list)
@@ -668,11 +670,11 @@ module TransferFunctions (CFG : ProcCfg.S) = struct
             List.foldi
               ~f:(fun index acc inter_id ->
                 try
-                  let actual_pvar =
-                    find_actual_pvar_for_inter_id inter_id methname (fst apair) |> second_of |> fst
+                  let actual_pvar_ap =
+                    find_actual_pvar_for_inter_id inter_id methname (fst apair) |> second_of
                   in
                   let corresponding_formal = List.nth_exn formals index in
-                  (actual_pvar, inter_id, corresponding_formal) :: acc
+                  (actual_pvar_ap, inter_id, corresponding_formal) :: acc
                 with FindActualPvarFailed -> acc )
               actuals_logical_id ~init:[]
           in
@@ -686,7 +688,7 @@ module TransferFunctions (CFG : ProcCfg.S) = struct
           let astate_set_callv_added =
             List.foldi
               ~f:(fun index acc (actual, inter_id, formal) ->
-                let actual_vardef_astates = search_target_tuples_by_vardef actual methname acc in
+                let actual_vardef_astates = search_target_tuples_by_vardef_ap actual methname acc in
                 let ((proc, vardef, locset, aliasset) as most_recent_vardef_astate) =
                   find_most_linenumber actual_vardef_astates
                 in

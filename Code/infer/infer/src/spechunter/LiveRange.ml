@@ -909,8 +909,7 @@ let rec compute_chain_inner (current_methname : Procname.t) (current_astate_set 
         L.progress "callvs_parititioned_by_procname: %a, callv_counter: %d@." pp_aplist_list
           callvs_partitioned_by_procname callv_counter ;
         let earliest_callvs =
-          [ callvs_partitioned_by_procname |> List.concat
-            |> find_earliest_callv ~greater_than:callv_counter ]
+          callvs_partitioned_by_procname >>| find_earliest_callv ~greater_than:callv_counter
         in
         L.progress "earliest_callvs: %a@." pp_ap_list earliest_callvs ;
         let mapfunc callv =
@@ -1006,7 +1005,7 @@ let rec compute_chain_inner (current_methname : Procname.t) (current_astate_set 
         reset_counter_recursively current_methname ;
         completed_chain :: current_chain_acc
   | nonempty_aplist ->
-      (* L.progress "nonempty_aplist: %a@." pp_ap_list nonempty_aplist; *)
+      L.progress "nonempty_aplist: %a@." pp_ap_list nonempty_aplist ;
       concat
       @@ map
            ~f:(fun ap ->
@@ -1231,9 +1230,10 @@ let main () =
          && (not @@ is_callv var) )
   |> iter ~f:(fun (proc, ap, locset) ->
          (* if *)
-         (*   String.equal (Procname.to_string proc) "List GithubClient.fetchOrgRepositories(String)" *)
-         (*   && String.equal (F.asprintf "%a" MyAccessPath.pp ap) "(repositories, [])" *)
-         (* then add_chain (proc, ap, locset) @@ List.hd_exn @@ compute_chain ap) ; *)
+         (*   String.equal (Procname.to_string proc) *)
+         (*     "void RelationalDataAccessApplication.printer(Map)" *)
+         (*   && String.equal (F.asprintf "%a" MyAccessPath.pp ap) "(results, [])" *)
+         (* then add_chain (proc, ap, locset) @@ List.hd_exn @@ compute_chain ap ) ; *)
          let computed_chains = compute_chain ap in
          iter ~f:(fun chain -> add_chain (proc, ap, locset) chain) computed_chains ) ;
   (* ============ Serialize ============ *)

@@ -67,8 +67,6 @@ module TransferFunctions (CFG : ProcCfg.S) = struct
 
 
   (** specially mangled variable to mark an AP as passed to a callee *)
-
-  (** specially mangled variable to mark an AP as passed to a callee *)
   let mk_callv_pvar procname linum =
     let antipattern = Str.regexp "\\(.*_[0-9]+_[0-9]+\\)" in
     let out =
@@ -100,6 +98,15 @@ module TransferFunctions (CFG : ProcCfg.S) = struct
     @@ Pvar.mk
          ( Mangled.from_string
          @@ F.asprintf "returnv_%a_%d: %a" pp_int_list counters linum Procname.pp procname )
+         procname
+
+
+  (** specially mangled variable to mark a value as a param of the callee *)
+  let mk_param (procname : Procname.t) (linum : int) (param_index : int) =
+    Var.of_pvar
+    @@ Pvar.mk
+         ( Mangled.from_string
+         @@ F.asprintf "param_%s_%d_%d" (Procname.get_method procname) linum param_index )
          procname
 
 
@@ -632,6 +639,138 @@ module TransferFunctions (CFG : ProcCfg.S) = struct
     List.hd_exn statetups_alias_with_id
 
 
+  let exec_user_init_call (ret_id : Ident.t) (callee_methname : Procname.t)
+      (arg_ts : (Exp.t * Typ.t) list) analyze_dependency (apair : P.t) (methname : Procname.t)
+      (node_loc : Location.t) =
+    let ( >>| ) = List.( >>| ) in
+    (* There is at least one argument which is a non-thisvar variable *)
+    let formals = get_formal_args analyze_dependency callee_methname in
+    let actuals_logical_id =
+      match is_inner_class_init callee_methname with
+      | true ->
+          arg_ts >>| (fst >> convert_exp_to_logical)
+          |> List.filter ~f:(not << Ident.is_none)
+          |> List.tl_exn |> List.tl_exn
+      | false ->
+          arg_ts >>| (fst >> convert_exp_to_logical)
+          |> List.filter ~f:(not << Ident.is_none)
+          |> List.tl_exn
+    in
+    let actual_interid_param_triples =
+      let collected_triples =
+        List.foldi
+          ~f:(fun index acc inter_id ->
+            try
+              let actual_pvar_ap =
+                find_actual_pvar_for_inter_id inter_id methname (fst apair) |> second_of
+              in
+              let corresponding_formal = List.nth_exn formals index in
+              (actual_pvar_ap, inter_id, corresponding_formal) :: acc
+            with FindActualPvarFailed -> acc )
+          actuals_logical_id ~init:[]
+      in
+      match is_inner_class_init callee_methname with
+      | true ->
+          collected_triples |> List.tl_exn |> List.tl_exn
+      | false ->
+          collected_triples |> List.tl_exn
+    in
+    (* 1. mangle callvs *)
+    let callvs =
+      List.init
+        ~f:(fun _ -> (mk_callv callee_methname node_loc.line, []))
+        (List.length actual_interid_param_triples)
+    in
+    (* 2. add callvs to the actual astates *)
+    let astate_set_callv_added =
+      List.foldi
+        ~f:(fun index acc (actual, inter_id, formal) ->
+          let actual_vardef_astates = search_target_tuples_by_vardef_ap actual methname acc in
+          let ((proc, vardef, locset, aliasset) as most_recent_vardef_astate) =
+            find_most_linenumber actual_vardef_astates
+          in
+          let acc_rmvd = S.remove most_recent_vardef_astate acc in
+          let corresponding_callv = List.nth_exn callvs index in
+          let actual_vardef_astate_updated =
+            (proc, vardef, locset, aliasset |> A.add (formal, []) |> A.add corresponding_callv)
+          in
+          S.add actual_vardef_astate_updated acc_rmvd )
+        actual_interid_param_triples ~init:(fst apair)
+    in
+    (* 4. create a returnv and add it to a newly made ph tuple *)
+    let callv_counters = callvs >>| extract_counter_from_callv in
+    let returnv = mk_returnv callee_methname callv_counters node_loc.line in
+    let ph_tuple =
+      ( methname
+      , (placeholder_vardef methname, [])
+      , LocationSet.singleton Location.dummy
+      , doubleton (Var.of_id ret_id, []) (returnv, []) )
+    in
+    (* 5. add the ph tuple to the above astate_set *)
+    let newset = S.add ph_tuple astate_set_callv_added in
+    (newset, snd apair)
+
+
+  let exec_lib_init_call (ret_id : Ident.t) (callee_methname : Procname.t)
+      (arg_ts : (Exp.t * Typ.t) list) (apair : P.t) (methname : Procname.t) (node_loc : Location.t)
+      =
+    let ( >>| ) = List.( >>| ) in
+    let linum = node_loc.line in
+    let init_params =
+      List.init ~f:(fun _ -> mk_param callee_methname linum (-1)) (List.length arg_ts)
+    in
+    let actuals_logical_id =
+      arg_ts >>| (fst >> convert_exp_to_logical) |> List.filter ~f:(not << Ident.is_none)
+    in
+    let actual_interid_param_triples =
+      List.tl_exn
+      @@ List.foldi
+           ~f:(fun index acc inter_id ->
+             try
+               let actual_pvar_ap =
+                 find_actual_pvar_for_inter_id inter_id methname (fst apair) |> second_of
+               in
+               let corresponding_formal = List.nth_exn init_params index in
+               (actual_pvar_ap, inter_id, corresponding_formal) :: acc
+             with FindActualPvarFailed -> acc )
+           actuals_logical_id ~init:[]
+    in
+    (* 1. mangle callvs *)
+    let callvs =
+      List.init
+        ~f:(fun _ -> (mk_callv callee_methname node_loc.line, []))
+        (List.length actual_interid_param_triples)
+    in
+    (* 2. add callvs to the actual astates *)
+    let astate_set_callv_added =
+      List.foldi
+        ~f:(fun index acc (actual, inter_id, formal) ->
+          let actual_vardef_astates = search_target_tuples_by_vardef_ap actual methname acc in
+          let ((proc, vardef, locset, aliasset) as most_recent_vardef_astate) =
+            find_most_linenumber actual_vardef_astates
+          in
+          let acc_rmvd = S.remove most_recent_vardef_astate acc in
+          let corresponding_callv = List.nth_exn callvs index in
+          let actual_vardef_astate_updated =
+            (proc, vardef, locset, aliasset |> A.add (formal, []) |> A.add corresponding_callv)
+          in
+          S.add actual_vardef_astate_updated acc_rmvd )
+        actual_interid_param_triples ~init:(fst apair)
+    in
+    (* 4. create a returnv and add it to a newly made ph tuple *)
+    let callv_counters = callvs >>| extract_counter_from_callv in
+    let returnv = mk_returnv callee_methname callv_counters node_loc.line in
+    let ph_tuple =
+      ( methname
+      , (placeholder_vardef methname, [])
+      , LocationSet.singleton Location.dummy
+      , doubleton (Var.of_id ret_id, []) (returnv, []) )
+    in
+    (* 5. add the ph tuple to the above astate_set *)
+    let newset = S.add ph_tuple astate_set_callv_added in
+    (newset, snd apair)
+
+
   let exec_call (ret_id : Ident.t) (callee_methname : Procname.t) (arg_ts : (Exp.t * Typ.t) list)
       analyze_dependency (apair : P.t) (methname : Procname.t) (node_loc : Location.t) : P.t =
     let ( >>| ) = List.( >>| ) in
@@ -1048,10 +1187,17 @@ module TransferFunctions (CFG : ProcCfg.S) = struct
           prev
       | Call ((ret_id, _), e_fun, arg_ts, _, _) -> (
         match e_fun with
-        | Const (Cfun callee_methname) ->
-            if Option.is_some @@ Procdesc.load callee_methname then
-              exec_call ret_id callee_methname arg_ts analyze_dependency prev methname node_loc
-            else exec_lib_call ret_id callee_methname arg_ts prev methname node_loc
+        | Const (Cfun callee_methname) -> (
+          match is_initializer callee_methname with
+          | true ->
+              if Option.is_some @@ Procdesc.load callee_methname then
+                exec_user_init_call ret_id callee_methname arg_ts analyze_dependency prev methname
+                  node_loc
+              else exec_lib_init_call ret_id callee_methname arg_ts prev methname node_loc
+          | false ->
+              if Option.is_some @@ Procdesc.load callee_methname then
+                exec_call ret_id callee_methname arg_ts analyze_dependency prev methname node_loc
+              else exec_lib_call ret_id callee_methname arg_ts prev methname node_loc )
         | _ ->
             L.die InternalError
               "exec_call failed, ret_id: %a, e_fun: %a astate_set: %a, methname: %a" Ident.pp ret_id

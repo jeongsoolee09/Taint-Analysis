@@ -7,6 +7,8 @@ module S = DefLocAliasDomain.AbstractStateSetFinite
 module A = DefLocAliasDomain.SetofAliases
 module T = DefLocAliasDomain.AbstractState
 
+exception GetDeclaringFunctionFailed
+
 let pp_aliasset_list fmt (varsetlist : A.t list) =
   F.fprintf fmt "[" ;
   List.iter varsetlist ~f:(fun (aliasset : A.t) -> F.fprintf fmt "%a, " A.pp aliasset) ;
@@ -37,6 +39,12 @@ let pp_idlist fmt (idlist : Ident.t list) =
   F.fprintf fmt "]"
 
 
+let pp_pvarlist fmt (pvarlist : Pvar.t list) =
+  F.fprintf fmt "[" ;
+  List.iter pvarlist ~f:(fun pvar -> F.fprintf fmt "%a, " (Pvar.pp Pp.text) pvar) ;
+  F.fprintf fmt "]"
+
+
 let pp_varlist fmt (varlist : Var.t list) =
   F.fprintf fmt "[" ;
   List.iter varlist ~f:(fun var -> F.fprintf fmt "%a, " Var.pp var) ;
@@ -58,6 +66,12 @@ let pp_pairofms_list fmt list =
 let pp_ap_list fmt aplist =
   F.fprintf fmt "[" ;
   List.iter ~f:(fun ap -> F.fprintf fmt "%a, " MyAccessPath.pp ap) aplist ;
+  F.fprintf fmt "]"
+
+
+let pp_aplist_list fmt aplistlist =
+  F.fprintf fmt "[" ;
+  List.iter ~f:(fun aplist -> F.fprintf fmt "%a, " pp_ap_list aplist) aplistlist ;
   F.fprintf fmt "]"
 
 
@@ -95,16 +109,29 @@ let get_declaring_function_ap_exn (ap : A.elt) : Procname.t =
   let var, _ = ap in
   match var with
   | LogicalVar _ ->
-     L.die InternalError "get_declaring_function_ap_exn failed: %a@." MyAccessPath.pp ap
-  | ProgramVar pvar -> (
-    match Pvar.get_declaring_function pvar with
-    | None ->
-       L.die InternalError "get_declaring_function_ap_exn failed: %a@." MyAccessPath.pp ap
-    | Some procname ->
-       procname )
+     F.kasprintf
+       (fun msg -> L.progress "%s" msg;
+                   raise GetDeclaringFunctionFailed)
+       "get_declaring_function_ap_exn failed: %a@." MyAccessPath.pp ap
+  | ProgramVar pvar ->
+     (match Pvar.get_declaring_function pvar with
+      | None ->
+         F.kasprintf
+           (fun msg -> L.progress "%s" msg;
+                       raise GetDeclaringFunctionFailed)
+           "get_declaring_function_ap_exn failed: %a@." MyAccessPath.pp ap
+      | Some procname ->
+         procname)
 
 
 let pp_aliasset_with_procname fmt (aliasset: A.t) = 
   F.fprintf fmt "[" ;
   A.iter (fun ap -> F.fprintf fmt "%a from %a, " MyAccessPath.pp ap Procname.pp @@ get_declaring_function_ap_exn ap) aliasset ;
+  F.fprintf fmt "]"
+
+
+let pp_instr_list fmt (instrlist: Sil.instr list) =
+  F.fprintf fmt "[" ;
+  List.iter ~f:(fun instr ->
+      F.fprintf fmt "%a; " (Sil.pp_instr Pp.text ~print_types:false) instr) instrlist ;
   F.fprintf fmt "]"

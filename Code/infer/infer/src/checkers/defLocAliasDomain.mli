@@ -109,3 +109,5 @@ val third_of : 'a * 'b * 'c * 'd -> 'c
 val fourth_of : 'a * 'b * 'c * 'd -> 'd
 
 val ( >> ) : ('a -> 'b) -> ('b -> 'c) -> 'a -> 'c
+
+val ( << ) : ('b -> 'c) -> ('a -> 'b) -> 'a -> 'c

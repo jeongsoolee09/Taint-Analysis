@@ -913,7 +913,7 @@ let rec compute_chain_inner (current_methname : Procname.t) (current_astate_set 
         in
         L.progress "earliest_callvs: %a@." pp_ap_list earliest_callvs ;
         let mapfunc callv =
-          assert (callv_counter <= extract_counter_from_callv callv) ;
+          assert (Int.( <= ) callv_counter (extract_counter_from_callv callv)) ;
           let callv_counter = extract_counter_from_callv callv in
           update_counter current_methname (extract_counter_from_callv callv) ;
           L.progress "%a's counter updated to %a@." Procname.pp current_methname Int.pp

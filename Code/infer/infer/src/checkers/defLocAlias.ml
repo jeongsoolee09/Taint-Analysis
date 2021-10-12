@@ -35,6 +35,8 @@ module TransferFunctions (CFG : ProcCfg.S) = struct
   module InvariantMap = CFG.Node.IdMap
   module Domain = P
 
+  let ( >>| ) = List.( >>| )
+
   type instr = Sil.instr
 
   type analysis_data = P.t InterproceduralAnalysis.t
@@ -209,7 +211,7 @@ module TransferFunctions (CFG : ProcCfg.S) = struct
   let get_formal_args analyze_dependency (callee_methname : Procname.t) : Var.t list =
     match analyze_dependency callee_methname with
     | Some (procdesc, _) ->
-        Procdesc.get_formals procdesc |> List.map ~f:(convert_from_mangled callee_methname)
+        Procdesc.get_formals procdesc >>| convert_from_mangled callee_methname
     | None ->
         (* Oops, it's a native code outside our focus *) []
 
@@ -333,7 +335,6 @@ module TransferFunctions (CFG : ProcCfg.S) = struct
           in
           let pvar_var = Var.of_pvar pv in
           let loc = LocationSet.singleton node_loc in
-          L.d_printfln "rhs_pvar_tuple: %a@." T.pp rhs_pvar_tuple ;
           let rhs_pvar_tuple_updated =
             (rhs_proc, rhs_vardef, rhs_loc, A.add (Var.of_pvar pv, []) rhs_aliasset)
           in
@@ -341,11 +342,10 @@ module TransferFunctions (CFG : ProcCfg.S) = struct
             S.exists
               (fun astate -> MyAccessPath.equal (second_of astate) (pvar_var, []))
               (fst apair)
-          then (
+          then
             let ((lhs_proc, lhs_vardef, lhs_loc, lhs_aliasset) as lhs_tuple) =
               search_target_tuple_by_vardef_ap (pvar_var, []) methname (fst apair)
             in
-            L.d_printfln "lhs_tuple: %a@." T.pp lhs_tuple ;
             let lhs_tuple_updated =
               ( lhs_proc
               , lhs_vardef
@@ -355,7 +355,7 @@ module TransferFunctions (CFG : ProcCfg.S) = struct
             let newset =
               fst apair |> S.remove lhs_tuple |> S.remove rhs_pvar_tuple |> S.add lhs_tuple_updated
             in
-            (newset, snd apair) )
+            (newset, snd apair)
           else
             let newtuple =
               if is_placeholder_vardef_ap (second_of rhs_pvar_tuple) then
@@ -642,7 +642,6 @@ module TransferFunctions (CFG : ProcCfg.S) = struct
   let exec_user_init_call (ret_id : Ident.t) (callee_methname : Procname.t)
       (arg_ts : (Exp.t * Typ.t) list) analyze_dependency (apair : P.t) (methname : Procname.t)
       (node_loc : Location.t) =
-    let ( >>| ) = List.( >>| ) in
     (* There is at least one argument which is a non-thisvar variable *)
     let formals = get_formal_args analyze_dependency callee_methname in
     let actuals_logical_id =
@@ -714,7 +713,6 @@ module TransferFunctions (CFG : ProcCfg.S) = struct
   let exec_lib_init_call (ret_id : Ident.t) (callee_methname : Procname.t)
       (arg_ts : (Exp.t * Typ.t) list) (apair : P.t) (methname : Procname.t) (node_loc : Location.t)
       =
-    let ( >>| ) = List.( >>| ) in
     let linum = node_loc.line in
     let init_params =
       List.init ~f:(fun _ -> mk_param callee_methname linum (-1)) (List.length arg_ts)
@@ -773,7 +771,6 @@ module TransferFunctions (CFG : ProcCfg.S) = struct
 
   let exec_call (ret_id : Ident.t) (callee_methname : Procname.t) (arg_ts : (Exp.t * Typ.t) list)
       analyze_dependency (apair : P.t) (methname : Procname.t) (node_loc : Location.t) : P.t =
-    let ( >>| ) = List.( >>| ) in
     match analyze_dependency callee_methname with
     | Some (_, callee_summary) -> (
       match input_is_void_type arg_ts (fst apair) with
@@ -883,7 +880,6 @@ module TransferFunctions (CFG : ProcCfg.S) = struct
       | _, _ ->
           L.die InternalError "my_zip failed, l1: %a, l2: %a" pp_idlist l1 pp_pvarlist l2
     in
-    let ( >>| ) = List.( >>| ) in
     let logicals_and_pvars =
       my_zip logicals pvars
       |> List.filter ~f:(fun (logical, pvar) -> not @@ Ident.is_none logical)
@@ -909,7 +905,6 @@ module TransferFunctions (CFG : ProcCfg.S) = struct
   let exec_lib_call (ret_id : Ident.t) (callee_methname : Procname.t)
       (arg_ts : (Exp.t * Typ.t) list) ((astate_set, histmap) : P.t) (caller_methname : Procname.t)
       (node_loc : Location.t) : P.t =
-    let ( >>| ) = List.( >>| ) in
     match is_cast callee_methname with
     | true ->
         let actuals_logical =
@@ -1130,7 +1125,6 @@ module TransferFunctions (CFG : ProcCfg.S) = struct
             try
               let ret_id_astate = weak_search_target_tuple_by_id ret_id astate_set in
               if is_irvar_ap @@ second_of ret_id_astate then
-                let ( >>| ) = List.( >>| ) in
                 let actual_logical_ids =
                   arg_ts >>| (fst >> convert_exp_to_logical) |> List.filter ~f:(not << Ident.is_none)
                 in

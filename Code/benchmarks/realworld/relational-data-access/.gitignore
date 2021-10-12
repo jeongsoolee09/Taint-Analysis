@@ -8,3 +8,5 @@ SwanFeatures.csv
 /build
 *.rtf
 target/
+*.png
+*.svg

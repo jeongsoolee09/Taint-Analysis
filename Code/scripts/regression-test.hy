@@ -1,8 +1,10 @@
 (import os)
+(import [rich [print]])
 
 (setv to-test {:fabricated ["~/Taint-Analysis/Code/benchmarks/fabricated/WhatIWantExample.java"
                             "~/Taint-Analysis/Code/benchmarks/fabricated/ObjectFlowing.java"
-                            "~/Taint-Analysis/Code/benchmarks/fabricated/ArrayExample.java"]
+                            "~/Taint-Analysis/Code/benchmarks/fabricated/ArrayExample.java"
+                            "~/Taint-Analysis/Code/benchmarks/fabricated/InnerInnerClassExample.java"]
                :realworld ["~/Taint-Analysis/Code/benchmarks/realworld/relational-data-access"]})
 
 
@@ -26,13 +28,13 @@
   (print "==================== INFER-RUN RESULT ======================")
   (for [(, java-file rtn-code) infer-run-rtn-codes]
     (print (if (= rtn-code 0)
-               f"Infer-Run Result for {java-file}: SUCCESS"
-               f"Infer-Run Result for {java-file}: FAIL")))
+               f"Infer-Run Result for {java-file}: [bold green]SUCCESS[/bold green]"
+               f"Infer-Run Result for {java-file}: [bold magenta]FAIL[/bold magenta]")))
   (print "==================== INFER-SPECHUNTER RESULT ======================")
   (for [(, java-file rtn-code) infer-spechunter-rtn-codes]
     (print (if (= rtn-code 0)
-               f"Infer-Spechunter Result for {java-file}: SUCCESS"
-               f"Infer-SpecHunter Result for {java-file}: FAIL"))))
+               f"Infer-Spechunter Result for {java-file}: [bold green]SUCCESS[/bold green]"
+               f"Infer-SpecHunter Result for {java-file}: [bold magenta]FAIL[/bold magenta]"))))
 
 
 (defmain []

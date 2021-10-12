@@ -80,13 +80,24 @@
   (list (map mapfunc class-acc)))
 
 
-(defn to-ocaml-list [class-partition]
+(defn to-ocaml-list-separated [class-partition]
   (setv (, classname methnames) class-partition)
   (setv acc "")
   (+= acc f"let {(legalize-classname classname)} = [\n")
-  (+= acc f"    \"{ (first methnames) }\"\n")
+  (+= acc f"    { (, classname (first methnames)) }\n")
   (for [methname (rest methnames)]
-    (+= acc f"  ; \"{methname}\"\n"))
+    (+= acc f"  ; { (, classname methname) }\n"))
+  (+= acc f"]\n\n")
+  acc)
+
+
+(defn to-ocaml-list-unseparated [signatures]
+  (setv acc "")
+  (setv head-sig (first signatures))
+  (+= acc f"let methods = [\n")
+  (+= acc f"    { (, (extract-classname head-sig) (extract-methname head-sig)) }\n")
+  (for [signature (rest signatures)]
+    (+= acc f"  ; { (, (extract_classname signature) (extract-methname signature)) }\n"))
   (+= acc f"]\n\n")
   acc)
 
@@ -99,6 +110,5 @@
 
 (defmain []
   (->> (collect-signatures)
-       (partition-by-class)
-       (map to-ocaml-list)
+       (to-ocaml-list-unseparated)
        (write-ocaml)))

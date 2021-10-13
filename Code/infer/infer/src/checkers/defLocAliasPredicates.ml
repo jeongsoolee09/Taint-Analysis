@@ -393,3 +393,25 @@ let is_lambda (proc : Procname.t) =
   let simple_string = Procname.get_method proc in
   String.is_substring ~substring:"lambda" simple_string
   || String.is_substring ~substring:"Lambda" simple_string
+
+
+let is_new (procname : Procname.t) =
+  let proc_string = Procname.to_string procname in
+  String.is_substring proc_string ~substring:"__new"
+  && (not @@ String.is_substring proc_string ~substring:"__new_array")
+
+
+let is_object_init (procname : Procname.t) =
+  let proc_string = Procname.to_string procname in
+  String.is_substring proc_string ~substring:"Object.<init>"
+
+
+let is_inner_class_init (procname : Procname.t) =
+  let pattern = Str.regexp "[a-zA-Z]+\\$[a-zA-Z]+\\.<init>(.*)" in
+  let proc_string = Procname.to_string procname in
+  Str.string_match pattern proc_string 0
+
+
+let is_frontend_procname (procname : Procname.t) =
+  let simple_name = Procname.get_method procname in
+  String.is_prefix simple_name ~prefix:"__"

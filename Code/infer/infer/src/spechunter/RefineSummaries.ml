@@ -238,7 +238,11 @@ let merge_cast_returnv_with_return (table : (Procname.t, S.t) Hashtbl.t) :
                   && Int.( = ) cast_returnv_linum cast_callv_linum )
                 (S.elements astates_holding_cast_callv)
             in
-            let callv_aliasset_updated = A.union callv_aliasset (fourth_of astate) in
+            let callv_aliasset_updated =
+              A.union callv_aliasset (fourth_of astate)
+              |> A.filter (not << is_cast_callv)
+              |> A.filter (not << is_cast_returnv)
+            in
             (callv_proc, callv_vardef, callv_loc, callv_aliasset_updated) )
           astates_holding_cast_returnv_and_return
       in

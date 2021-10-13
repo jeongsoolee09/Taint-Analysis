@@ -4,6 +4,7 @@ open DefLocAliasSearches
 open DefLocAliasPredicates
 open DefLocAliasDomain
 open Partitioners
+open SpecHunterUtils
 
 (* open DefLocAliasPP *)
 module Hashtbl = Caml.Hashtbl
@@ -215,32 +216,34 @@ let merge_cast_returnv_with_return (table : (Procname.t, S.t) Hashtbl.t) :
         S.map
           (fun astate ->
             let cast_returnv =
-              A.find_first
-                (fun ap -> is_returnv_ap ap && is_cast (extract_callee_from ap))
-                (fourth_of astate)
+              find_witness_exn
+                ~pred:(fun ap -> is_returnv_ap ap && is_cast (extract_callee_from ap))
+                (A.elements (fourth_of astate))
             in
             let cast_returnv_counter = extract_counter_from_returnv cast_returnv
             and cast_returnv_linum = extract_linum_from_returnv cast_returnv in
             let ( (callv_proc, callv_vardef, callv_loc, callv_aliasset) as
                 astate_holding_matching_cast_callv ) =
-              S.find_first
-                (fun other_astate ->
+              find_witness_exn
+                ~pred:(fun other_astate ->
                   let other_aliasset = fourth_of other_astate in
                   A.exists is_cast_callv other_aliasset
                   &&
-                  let cast_callv = A.find_first is_cast_callv other_aliasset in
+                  let cast_callv =
+                    find_witness_exn ~pred:is_cast_callv (A.elements other_aliasset)
+                  in
                   let cast_callv_counter = extract_counter_from_callv cast_callv
                   and cast_callv_linum = extract_linum_from_callv cast_callv in
                   List.mem cast_returnv_counter cast_callv_counter ~equal:Int.( = )
                   && Int.( = ) cast_returnv_linum cast_callv_linum )
-                astates_holding_cast_callv
+                (S.elements astates_holding_cast_callv)
             in
             let callv_aliasset_updated = A.union callv_aliasset (fourth_of astate) in
             (callv_proc, callv_vardef, callv_loc, callv_aliasset_updated) )
           astates_holding_cast_returnv_and_return
       in
       astate_set
-      |> S.diff astates_holding_cast_returnv_and_return
+      |> (fun astate_set -> S.diff astate_set astates_holding_cast_callv)
       |> S.union astates_holding_cast_returnv_and_return_updated
     else astate_set
   in
@@ -504,10 +507,8 @@ let main : (Procname.t, S.t) Hashtbl.t -> unit =
   |> summary_table_to_file_and_return "4_consolidate_dup_pvars.txt"
   |> substitute_frontend_new_returnv_with_init_returnv
   |> summary_table_to_file_and_return "5_substitute_frontend_new_returnv_with_init_returnv.txt"
-  (* |> consolidate_by_locset *)
-  (* |> summary_table_to_file_and_return "5_consolidate_by_locset.txt" *)
-  (* |> delete_initializer_callv_param *)
-  (* |> summary_table_to_file_and_return "6_delete_initizalizer_callv_param.txt" *)
+  |> merge_cast_returnv_with_return
+  |> summary_table_to_file_and_return "6_merge_cast_returnv_with_return.txt"
   |> remove_unimportant_elems
   |> summary_table_to_file_and_return "7_remove_unimportant_elems.txt"
   |> remove_java_constants

@@ -734,7 +734,6 @@ module TransferFunctions (CFG : ProcCfg.S) = struct
     let actuals_logical_id =
       arg_ts >>| (fst >> convert_exp_to_logical) |> List.filter ~f:(not << Ident.is_none)
     in
-    pp_idlist actuals_logical_id ;
     let actual_interid_param_triples =
       List.tl_exn @@ List.rev
       @@ List.foldi
@@ -748,7 +747,6 @@ module TransferFunctions (CFG : ProcCfg.S) = struct
              with FindActualPvarFailed -> acc )
            actuals_logical_id ~init:[]
     in
-    actual_interid_param_triples >>| fst3 ;
     (* 1. mangle callvs *)
     let callvs =
       List.init

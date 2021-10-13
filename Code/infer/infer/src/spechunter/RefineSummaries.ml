@@ -181,6 +181,73 @@ let consolidate_dup_pvars (table : (Procname.t, S.t) Hashtbl.t) : (Procname.t, S
   table
 
 
+(* merge cast's returnv with return ================= *)
+(* ================================================== *)
+
+let merge_cast_returnv_with_return (table : (Procname.t, S.t) Hashtbl.t) :
+    (Procname.t, S.t) Hashtbl.t =
+  let is_problematic (astate_set : S.t) : bool =
+    S.exists
+      (fun astate ->
+        let aliasset = fourth_of astate in
+        let there_is_return_in_aliasset = A.exists (fun ap -> is_return_ap ap) aliasset in
+        let there_is_cast_returnv =
+          A.exists (fun ap -> is_returnv_ap ap && is_cast (extract_callee_from ap)) aliasset
+        in
+        there_is_return_in_aliasset && there_is_cast_returnv )
+      astate_set
+  in
+  let is_cast_returnv ap = is_returnv_ap ap && is_cast (extract_callee_from ap) in
+  let is_cast_callv ap = is_callv_ap ap && is_cast (extract_callee_from ap) in
+  let one_pass_S (astate_set : S.t) : S.t =
+    if is_problematic astate_set then
+      let astates_holding_cast_returnv_and_return =
+        S.filter
+          (fun astate ->
+            A.exists is_cast_returnv (fourth_of astate) && A.exists is_return_ap (fourth_of astate)
+            )
+          astate_set
+      in
+      let astates_holding_cast_callv =
+        S.filter (fun astate -> A.exists is_cast_callv (fourth_of astate)) astate_set
+      in
+      let astates_holding_cast_returnv_and_return_updated =
+        S.map
+          (fun astate ->
+            let cast_returnv =
+              A.find_first
+                (fun ap -> is_returnv_ap ap && is_cast (extract_callee_from ap))
+                (fourth_of astate)
+            in
+            let cast_returnv_counter = extract_counter_from_returnv cast_returnv
+            and cast_returnv_linum = extract_linum_from_returnv cast_returnv in
+            let ( (callv_proc, callv_vardef, callv_loc, callv_aliasset) as
+                astate_holding_matching_cast_callv ) =
+              S.find_first
+                (fun other_astate ->
+                  let other_aliasset = fourth_of other_astate in
+                  A.exists is_cast_callv other_aliasset
+                  &&
+                  let cast_callv = A.find_first is_cast_callv other_aliasset in
+                  let cast_callv_counter = extract_counter_from_callv cast_callv
+                  and cast_callv_linum = extract_linum_from_callv cast_callv in
+                  List.mem cast_returnv_counter cast_callv_counter ~equal:Int.( = )
+                  && Int.( = ) cast_returnv_linum cast_callv_linum )
+                astates_holding_cast_callv
+            in
+            let callv_aliasset_updated = A.union callv_aliasset (fourth_of astate) in
+            (callv_proc, callv_vardef, callv_loc, callv_aliasset_updated) )
+          astates_holding_cast_returnv_and_return
+      in
+      astate_set
+      |> S.diff astates_holding_cast_returnv_and_return
+      |> S.union astates_holding_cast_returnv_and_return_updated
+    else astate_set
+  in
+  Hashtbl.iter (fun proc astate_set -> Hashtbl.replace table proc (one_pass_S astate_set)) table ;
+  table
+
+
 (* removing unimportant elements ==================== *)
 (* ================================================== *)
 

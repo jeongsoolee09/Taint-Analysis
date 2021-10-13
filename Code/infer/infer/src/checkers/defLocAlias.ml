@@ -1,4 +1,4 @@
-open! IStd
+(* open! IStd *)
 open DefLocAliasDomain
 open DefLocAliasSearches
 open DefLocAliasPredicates
@@ -36,6 +36,8 @@ module TransferFunctions (CFG : ProcCfg.S) = struct
   module Domain = P
 
   let ( >>| ) = List.( >>| )
+
+  let ( >>= ) = List.( >>= )
 
   type instr = Sil.instr
 
@@ -532,23 +534,26 @@ module TransferFunctions (CFG : ProcCfg.S) = struct
         let newset = S.add newtuple (fst apair) in
         (newset, newmap)
     (* ============ LHS is Lindex ============ *)
-    | Lindex (Var id, _), Const _ ->
+    | Lindex (Var lhs_id, _), Const _ -> (
         (* covers both cases where offset is either const or id *)
-        let ((proc, _, _, aliasset) as target_tuple) =
-          search_target_tuple_by_id id methname (fst apair)
+        let ((lhs_proc, lhs_var, lhs_loc, lhs_aliasset) as lhs_tuple) =
+          search_target_tuple_by_id lhs_id methname (fst apair)
         in
-        let ((var, aplist) as ap_containing_pvar) = find_pvar_ap_in aliasset in
-        let ap_containing_pvar_updated =
-          (var, aplist @ [AccessPath.ArrayAccess (Typ.void_star, [])])
-        in
-        let aliasset_rmvd = A.remove ap_containing_pvar aliasset in
-        let new_aliasset = A.add ap_containing_pvar_updated aliasset_rmvd in
         let loc = LocationSet.singleton node_loc in
-        let newtuple = (proc, ap_containing_pvar_updated, loc, new_aliasset) in
-        let astate_rmvd = S.remove target_tuple (fst apair) in
-        let newmap = H.add_to_history (methname, ap_containing_pvar_updated) loc (snd apair) in
-        let newset = S.add newtuple astate_rmvd in
-        (newset, newmap)
+        match is_irvar_ap lhs_var with
+        | true ->
+            apair
+        | false ->
+            let lhs_var_updated = put_arrayaccess lhs_var in
+            let newtuple =
+              ( lhs_proc
+              , lhs_var_updated
+              , loc
+              , lhs_aliasset |> A.remove lhs_var |> A.add lhs_var_updated )
+            in
+            let newmap = H.add_to_history (methname, lhs_var_updated) loc (snd apair) in
+            let newset = fst apair |> S.remove lhs_tuple |> S.add newtuple in
+            (newset, newmap) )
     | Lindex (Var lhs_id, _), Var rhs_id -> (
         let loc = LocationSet.singleton node_loc in
         let ((lhs_proc, lhs_var, lhs_loc, lhs_aliasset) as lhs_tuple) =
@@ -646,33 +651,42 @@ module TransferFunctions (CFG : ProcCfg.S) = struct
     let formals = get_formal_args analyze_dependency callee_methname in
     let actuals_logical_id =
       match is_inner_class_init callee_methname with
-      | true ->
+      | true -> (
+        try
           arg_ts >>| (fst >> convert_exp_to_logical)
           |> List.filter ~f:(not << Ident.is_none)
           |> List.tl_exn |> List.tl_exn
-      | false ->
+        with _ -> [] )
+      | false -> (
+        try
           arg_ts >>| (fst >> convert_exp_to_logical)
           |> List.filter ~f:(not << Ident.is_none)
           |> List.tl_exn
+        with _ -> [] )
     in
     let actual_interid_param_triples =
       let collected_triples =
-        List.foldi
-          ~f:(fun index acc inter_id ->
-            try
-              let actual_pvar_ap =
-                find_actual_pvar_for_inter_id inter_id methname (fst apair) |> second_of
-              in
-              let corresponding_formal = List.nth_exn formals index in
-              (actual_pvar_ap, inter_id, corresponding_formal) :: acc
-            with FindActualPvarFailed -> acc )
-          actuals_logical_id ~init:[]
+        List.rev
+        @@ List.foldi
+             ~f:(fun index acc inter_id ->
+               try
+                 let actual_pvar_ap =
+                   find_actual_pvar_for_inter_id inter_id methname (fst apair) |> second_of
+                 in
+                 let corresponding_formal = List.nth_exn formals index in
+                 (actual_pvar_ap, inter_id, corresponding_formal) :: acc
+               with FindActualPvarFailed -> acc )
+             actuals_logical_id ~init:[]
       in
       match is_inner_class_init callee_methname with
       | true ->
-          collected_triples |> List.tl_exn |> List.tl_exn
+          (* truncate as much as we can *)
+          if List.is_empty collected_triples then collected_triples
+          else if Int.( = ) (List.length collected_triples) 1 then collected_triples |> List.tl_exn
+          else collected_triples |> List.tl_exn |> List.tl_exn
       | false ->
-          collected_triples |> List.tl_exn
+          if List.is_empty collected_triples then collected_triples
+          else collected_triples |> List.tl_exn
     in
     (* 1. mangle callvs *)
     let callvs =
@@ -720,8 +734,9 @@ module TransferFunctions (CFG : ProcCfg.S) = struct
     let actuals_logical_id =
       arg_ts >>| (fst >> convert_exp_to_logical) |> List.filter ~f:(not << Ident.is_none)
     in
+    pp_idlist actuals_logical_id ;
     let actual_interid_param_triples =
-      List.tl_exn
+      List.tl_exn @@ List.rev
       @@ List.foldi
            ~f:(fun index acc inter_id ->
              try
@@ -733,6 +748,7 @@ module TransferFunctions (CFG : ProcCfg.S) = struct
              with FindActualPvarFailed -> acc )
            actuals_logical_id ~init:[]
     in
+    actual_interid_param_triples >>| fst3 ;
     (* 1. mangle callvs *)
     let callvs =
       List.init
@@ -905,54 +921,39 @@ module TransferFunctions (CFG : ProcCfg.S) = struct
   let exec_lib_call (ret_id : Ident.t) (callee_methname : Procname.t)
       (arg_ts : (Exp.t * Typ.t) list) ((astate_set, histmap) : P.t) (caller_methname : Procname.t)
       (node_loc : Location.t) : P.t =
-    match is_cast callee_methname with
-    | true ->
-        let actuals_logical =
-          arg_ts >>| (fst >> convert_exp_to_logical) |> List.filter ~f:(not << Ident.is_none)
-        in
-        let before_cast_tuple =
-          weak_search_target_tuple_by_id (List.hd_exn actuals_logical) astate_set
-        in
-        let proc, vardef, locset, aliasset = before_cast_tuple in
-        let after_cast_tuple = (proc, vardef, locset, (A.add (Var.of_id ret_id, [])) aliasset) in
-        (astate_set |> S.remove before_cast_tuple |> S.add after_cast_tuple, histmap)
-    | false ->
-        (* 1. Mangle some parameters.
-           formal parameter naming schema:
-                   param_{callee_name_simple}_{line}_{param_index} *)
-        let callee_name_simple = Procname.get_method callee_methname in
-        let param_indices = List.init (List.length arg_ts) ~f:Int.to_string in
-        let mangles : Mangled.t list =
-          param_indices
-          >>| fun param_index ->
-          Mangled.from_string
-          @@ F.asprintf "param_%s_%d_%s" callee_name_simple node_loc.line param_index
-        in
-        let mangled_params : Pvar.t list =
-          List.map ~f:(fun mangle -> Pvar.mk mangle callee_methname) mangles
-        in
-        (* Associate mangled parameters and their resp. actual arguments as aliases. *)
-        let actuals_logical = arg_ts >>| (fst >> convert_exp_to_logical) in
-        let callvs =
-          List.init (List.length actuals_logical) ~f:(fun _ ->
-              mk_callv_pvar callee_methname node_loc.line )
-        in
-        let astate_set' =
-          batch_alias_assoc astate_set actuals_logical mangled_params
-          |> fun astate_set -> batch_alias_assoc astate_set actuals_logical callvs
-        in
-        (* We need to create a new astate (ph tuple) here *)
-        let callv_counters =
-          callvs >>| (fun callv -> (Var.of_pvar callv, [])) >>| extract_counter_from_callv
-        in
-        let returnv = mk_returnv callee_methname callv_counters node_loc.line in
-        let newtuple =
-          ( caller_methname
-          , (placeholder_vardef caller_methname, [])
-          , LocationSet.singleton Location.dummy
-          , doubleton (Var.of_id ret_id, []) (returnv, []) )
-        in
-        (S.add newtuple astate_set', histmap)
+    let callee_name_simple = Procname.get_method callee_methname in
+    let param_indices = List.init (List.length arg_ts) ~f:Int.to_string in
+    let mangles : Mangled.t list =
+      param_indices
+      >>| fun param_index ->
+      Mangled.from_string
+      @@ F.asprintf "param_%s_%d_%s" callee_name_simple node_loc.line param_index
+    in
+    let mangled_params : Pvar.t list =
+      List.map ~f:(fun mangle -> Pvar.mk mangle callee_methname) mangles
+    in
+    (* Associate mangled parameters and their resp. actual arguments as aliases. *)
+    let actuals_logical = arg_ts >>| (fst >> convert_exp_to_logical) in
+    let callvs =
+      List.init (List.length actuals_logical) ~f:(fun _ ->
+          mk_callv_pvar callee_methname node_loc.line )
+    in
+    let astate_set' =
+      batch_alias_assoc astate_set actuals_logical mangled_params
+      |> fun astate_set -> batch_alias_assoc astate_set actuals_logical callvs
+    in
+    (* We need to create a new astate (ph tuple) here *)
+    let callv_counters =
+      callvs >>| (fun callv -> (Var.of_pvar callv, [])) >>| extract_counter_from_callv
+    in
+    let returnv = mk_returnv callee_methname callv_counters node_loc.line in
+    let newtuple =
+      ( caller_methname
+      , (placeholder_vardef caller_methname, [])
+      , LocationSet.singleton Location.dummy
+      , doubleton (Var.of_id ret_id, []) (returnv, []) )
+    in
+    (S.add newtuple astate_set', histmap)
 
 
   (** Procname.Java.t를 포장한 Procname.t에서 해당 Procname.Java.t를 추출한다. *)

@@ -20,7 +20,7 @@ module F = Format
 
 exception ReturnvFindFailed of string
 
-exception TooManyMatches of string
+exception TooManyMatches
 
 exception NoMatches
 
@@ -294,6 +294,53 @@ let callg_hash2og () : unit =
     callgraph_table
 
 
+let resolve_callee_superclass (caller : Procname.t) (callee : Procname.t) : Procname.t =
+  let succs = G.succ callgraph (caller, get_summary caller) >>| fst in
+  let callee_simple_string = Procname.get_method callee in
+  let callee_param_type = Procname.get_parameters callee in
+  let param_list_equal (plist1 : Procname.Parameter.t list) (plist2 : Procname.Parameter.t list) =
+    match
+      List.fold2
+        ~f:(fun acc p1 p2 -> Procname.Parameter.equal p1 p2 && acc)
+        plist1 plist2 ~init:true
+    with
+    | Ok result ->
+        result
+    | Unequal_lengths ->
+        false
+  in
+  let matches =
+    List.fold
+      ~f:(fun acc succ ->
+        let succ_simple_string = Procname.get_method succ in
+        let succ_param_type = Procname.get_parameters succ in
+        if
+          String.equal callee_simple_string succ_simple_string
+          && param_list_equal callee_param_type succ_param_type
+        then succ :: acc
+        else acc )
+      succs ~init:[]
+  in
+  match matches with
+  | [] ->
+      F.kasprintf
+        (fun msg ->
+          L.progress "%s" msg ;
+          raise NoMatches )
+        "resolve_callee_superclass failed, caller: %a, callee: %a, matches: %a" Procname.pp caller
+        Procname.pp callee pp_proc_list matches
+  | [proc] ->
+      L.progress "callee %a resolved to %a@." Procname.pp callee Procname.pp proc ;
+      proc
+  | _ ->
+      F.kasprintf
+        (fun msg ->
+          L.progress "%s" msg ;
+          raise TooManyMatches )
+        "resolve_callee_superclass failed, caller: %a, callee: %a, matches: %a" Procname.pp caller
+        Procname.pp callee pp_proc_list matches
+
+
 (** 주어진 hashtbl의 엔트리 중에서 (callgraph_table이 쓰일 것) summary_table에 있지 않은 엔트리를 날린다. *)
 let filter_callgraph_table hashtbl : unit =
   let procs = Hashtbl.fold (fun k _ acc -> k :: acc) summary_table [] in
@@ -302,53 +349,6 @@ let filter_callgraph_table hashtbl : unit =
       if (not @@ mem procs k ~equal:Procname.equal) && (not @@ mem procs v ~equal:Procname.equal)
       then Hashtbl.remove hashtbl k )
     hashtbl
-
-
-let partition_statetups_modulo_123 (statetups : S.t) : S.t list =
-  let procnames : Procname.t list =
-    List.stable_dedup
-    @@ S.fold
-         (fun astate acc ->
-           let vardef = first_of astate in
-           vardef :: acc )
-         statetups []
-  in
-  let vardefs : MyAccessPath.t list =
-    List.stable_dedup
-    @@ S.fold
-         (fun astate acc ->
-           let vardef = second_of astate in
-           vardef :: acc )
-         statetups []
-  in
-  let locsets : LocationSet.t list =
-    List.stable_dedup
-    @@ S.fold
-         (fun astate acc ->
-           let locset = third_of astate in
-           locset :: acc )
-         statetups []
-  in
-  let triples =
-    let open List in
-    procnames
-    >>= fun procname ->
-    vardefs >>= fun vardef -> locsets >>= fun locset -> return (procname, vardef, locset)
-  in
-  List.fold
-    ~f:(fun acc (procname, vardef, locset) ->
-      let matches =
-        S.fold
-          (fun ((procname', vardef', locset', _) as statetup) acc' ->
-            if
-              Procname.equal procname procname' && MyAccessPath.equal vardef vardef'
-              && LocationSet.equal locset locset'
-            then S.add statetup acc'
-            else acc' )
-          statetups S.empty
-      in
-      if S.is_empty matches then acc else matches :: acc )
-    ~init:[] triples
 
 
 (** 중복 튜플을 제거함 *)
@@ -451,14 +451,20 @@ let collect_program_var_aps_from (aliasset : A.t) ~(self : MyAccessPath.t)
 
 (** Find the immediate callers and their summaries of the given Procname.t. *)
 let find_direct_callers (target_meth : Procname.t) : (Procname.t * S.t) list =
-  let target_vertex = (target_meth, get_summary target_meth) in
-  G.pred callgraph target_vertex
+  let callee_vertex = (target_meth, get_summary target_meth) in
+  G.pred callgraph callee_vertex
 
+
+(* ============ TODO ============ *)
 
 (** Find the immediate callees and their summaries of the given Procname.t. *)
-let find_direct_callees (target_meth : Procname.t) : (Procname.t * S.t) list =
+let find_direct_callees (target_caller : Procname.t) (target_meth : Procname.t) :
+    (Procname.t * S.t) list =
   let target_vertex = (target_meth, get_summary target_meth) in
-  G.succ callgraph target_vertex
+  try G.succ callgraph target_vertex
+  with _ ->
+    let retry_targetname = resolve_callee_superclass target_caller target_meth in
+    G.succ callgraph (retry_targetname, get_summary retry_targetname)
 
 
 (** Is the Chain.chain_slice already in the given chain? *)
@@ -640,18 +646,6 @@ let rec next_elem_of_list (lst : S.elt list) ~(next_to : S.elt) : S.elt =
       if T.equal this next_to then hd_exn t else next_elem_of_list t ~next_to
 
 
-(** Find the *first* element to match the predicate *)
-let find_witness_exn (lst : 'a list) ~(pred : 'a -> bool) : 'a =
-  let opt =
-    fold_left ~f:(fun acc elem -> if pred elem then Some elem else acc) ~init:None @@ rev lst
-  in
-  match opt with
-  | None ->
-      F.kasprintf (fun msg -> raise @@ NoWitness msg) "find_witness_exn failed.@."
-  | Some elem ->
-      elem
-
-
 let find_matching_param_for_callv (ap_set : A.t) (callv_ap : A.elt) : A.elt =
   let callee_methname = extract_callee_from callv_ap in
   let callee_params = get_formal_args callee_methname in
@@ -704,7 +698,9 @@ let scan_chain_for_most_recent_call (target_caller : Procname.t) (target_callee 
     match current with
     | [] ->
         F.kasprintf
-          (fun msg -> raise @@ TooManyMatches msg)
+          (fun msg ->
+            L.progress "%s" msg ;
+            raise TooManyMatches )
           "scan_chain_for_most_recent_call failed, target_caller: %a, target_callee: %a, chain: \
            %a@."
           Procname.pp target_caller Procname.pp target_callee pp_chain chain
@@ -735,7 +731,8 @@ let rec compute_chain_inner (current_methname : Procname.t) (current_astate_set 
     collect_program_var_aps_from current_aliasset_cleanedup ~self:current_vardef
       ~just_before:just_before_ap_opt
   in
-  let callees = find_direct_callees current_methname in
+  (* is it correct to put just_before_procname here? dunno... *)
+  let callees = find_direct_callees just_before_procname current_methname in
   let statetup_with_returnv_or_carriedovers =
     fold
       ~f:(fun acc (_, callee_astate_set) ->
@@ -909,7 +906,10 @@ let rec compute_chain_inner (current_methname : Procname.t) (current_astate_set 
         L.progress "callvs_parititioned_by_procname: %a, callv_counter: %d@." pp_aplist_list
           callvs_partitioned_by_procname callv_counter ;
         let earliest_callvs =
-          callvs_partitioned_by_procname >>| find_earliest_callv ~greater_than:callv_counter
+          List.fold
+            ~f:(fun acc callvs ->
+              try find_earliest_callv callvs ~greater_than:callv_counter :: acc with _ -> acc )
+            callvs_partitioned_by_procname ~init:[]
         in
         L.progress "earliest_callvs: %a@." pp_ap_list earliest_callvs ;
         let mapfunc callv =
@@ -1009,7 +1009,8 @@ let rec compute_chain_inner (current_methname : Procname.t) (current_astate_set 
       concat
       @@ map
            ~f:(fun ap ->
-             let callees_and_astates = find_direct_callees current_methname in
+             (* is it correct to put just_before_procname here? dunno... *)
+             let callees_and_astates = find_direct_callees just_before_procname current_methname in
              if is_foreign_ap ap current_methname then
                (* ============ CALL ============ *)
                let collected_subchains =

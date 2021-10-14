@@ -271,31 +271,30 @@ let merge_cast_returnv_with_return (table : (Procname.t, S.t) Hashtbl.t) :
 
 let move_void_callee_returnv_and_remove_ph (table : (Procname.t, S.t) Hashtbl.t) :
     (Procname.t, S.t) Hashtbl.t =
+  let is_void_method_returnv (ap : MyAccessPath.t) : bool =
+    is_returnv_ap ap && return_type_is_void (extract_callee_from ap)
+  and is_void_method_callv (ap : MyAccessPath.t) : bool =
+    is_callv_ap ap && return_type_is_void (extract_callee_from ap)
+  in
   let one_pass_S (astate_set : S.t) : S.t =
     let ph_tuples_with_void_returnvs =
       S.filter
         (fun astate ->
           is_placeholder_vardef_ap (second_of astate)
-          && A.exists
-               (fun ap -> is_returnv_ap ap && return_type_is_void (extract_callee_from ap))
-               (fourth_of astate) )
+          && A.exists is_void_method_returnv (fourth_of astate) )
         astate_set
     in
     let void_returnvs =
       List.map
         ~f:(fun astate ->
-          find_witness_exn
-            ~pred:(fun ap -> is_returnv_ap ap && return_type_is_void (extract_callee_from ap))
-            (A.elements (fourth_of astate)) )
+          find_witness_exn ~pred:is_void_method_returnv (A.elements (fourth_of astate)) )
         (S.elements ph_tuples_with_void_returnvs)
     in
     let astates_holding_corresponding_callvs =
       List.map
         ~f:(fun returnv ->
           find_witness_exn (S.elements astate_set) ~pred:(fun astate ->
-              A.exists
-                (fun ap -> is_callv_ap ap && callv_and_returnv_matches ~callv:ap ~returnv)
-                (fourth_of astate) ) )
+              A.exists is_void_method_callv (fourth_of astate) ) )
         void_returnvs
     in
     let astates_holding_corresponding_callvs_updated =

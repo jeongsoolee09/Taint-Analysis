@@ -338,22 +338,26 @@ module TransferFunctions (CFG : ProcCfg.S) = struct
           let pvar_var = Var.of_pvar pv in
           let loc = LocationSet.singleton node_loc in
           let rhs_pvar_tuple_updated =
-            (rhs_proc, rhs_vardef, rhs_loc, A.add (Var.of_pvar pv, []) rhs_aliasset)
+            (rhs_proc, rhs_vardef, rhs_loc, A.add (pvar_var, []) rhs_aliasset)
           in
           if
-            S.exists
-              (fun astate -> MyAccessPath.equal (second_of astate) (pvar_var, []))
+            (* handling difficult loops: there already exists a tuple made in the previous fixpoint iteration, but a same vardef also exists in the different line! *)
+            S.exists (* there already exists a tuple made in the previous fixpoint iteration *)
+              (fun astate ->
+                MyAccessPath.equal (second_of astate) (pvar_var, [])
+                && LocationSet.mem node_loc (third_of astate) )
               (fst apair)
+            && S.exists (* but a same vardef also exists in the different line *)
+                 (fun astate ->
+                   MyAccessPath.equal (second_of astate) (pvar_var, [])
+                   && (not @@ LocationSet.mem node_loc (third_of astate)) )
+                 (fst apair)
           then
             let ((lhs_proc, lhs_vardef, lhs_loc, lhs_aliasset) as lhs_tuple) =
-              search_target_tuple_by_vardef_ap (pvar_var, []) methname (fst apair)
+              search_target_tuples_by_vardef_ap (pvar_var, []) methname (fst apair)
+              |> find_most_linenumber
             in
-            let lhs_tuple_updated =
-              ( lhs_proc
-              , lhs_vardef
-              , lhs_loc
-              , A.union lhs_aliasset rhs_aliasset |> A.remove rhs_vardef )
-            in
+            let lhs_tuple_updated = (lhs_proc, lhs_vardef, lhs_loc, lhs_aliasset) in
             let newset =
               fst apair |> S.remove lhs_tuple |> S.remove rhs_pvar_tuple |> S.add lhs_tuple_updated
             in

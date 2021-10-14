@@ -20,10 +20,6 @@ module F = Format
 
 exception TODO
 
-exception NotASingleton of string
-
-exception TooManyMatches of string
-
 exception ConsolidateByLocsetFailed of string
 
 let ( >>| ) = List.( >>| )

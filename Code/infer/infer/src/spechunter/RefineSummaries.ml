@@ -35,6 +35,21 @@ let rec assoc (alist : ('a * 'b) list) (key : 'a) ~equal : 'b =
       if equal key key' then value else assoc t key ~equal
 
 
+(* Utils ============================================ *)
+(* ================================================== *)
+
+let callv_and_returnv_matches ~(callv : MyAccessPath.t) ~(returnv : MyAccessPath.t) =
+  let callv_counter = extract_counter_from_callv callv
+  and callv_linum = extract_linum_from_callv callv
+  and callv_callee = extract_callee_from callv in
+  let returnv_counters = extract_counter_from_returnv returnv
+  and returnv_linum = extract_linum_from_returnv returnv
+  and returnv_callee = extract_callee_from returnv in
+  List.mem returnv_counters callv_counter ~equal:Int.( = )
+  && Int.( = ) returnv_linum callv_linum
+  && Procname.equal returnv_callee callv_callee
+
+
 (* Remove Class Initializers ======================== *)
 (* ================================================== *)
 
@@ -246,6 +261,64 @@ let merge_cast_returnv_with_return (table : (Procname.t, S.t) Hashtbl.t) :
       |> (fun astate_set -> S.diff astate_set astates_holding_cast_callv)
       |> S.union astates_holding_cast_returnv_and_return_updated
     else astate_set
+  in
+  Hashtbl.iter (fun proc astate_set -> Hashtbl.replace table proc (one_pass_S astate_set)) table ;
+  table
+
+
+(* handling void calls ============================== *)
+(* ================================================== *)
+
+let move_void_callee_returnv_and_remove_ph (table : (Procname.t, S.t) Hashtbl.t) :
+    (Procname.t, S.t) Hashtbl.t =
+  let one_pass_S (astate_set : S.t) : S.t =
+    let ph_tuples_with_void_returnvs =
+      S.filter
+        (fun astate ->
+          is_placeholder_vardef_ap (second_of astate)
+          && A.exists
+               (fun ap -> is_returnv_ap ap && return_type_is_void (extract_callee_from ap))
+               (fourth_of astate) )
+        astate_set
+    in
+    let void_returnvs =
+      List.map
+        ~f:(fun astate ->
+          find_witness_exn
+            ~pred:(fun ap -> is_returnv_ap ap && return_type_is_void (extract_callee_from ap))
+            (A.elements (fourth_of astate)) )
+        (S.elements ph_tuples_with_void_returnvs)
+    in
+    let astates_holding_corresponding_callvs =
+      List.map
+        ~f:(fun returnv ->
+          find_witness_exn (S.elements astate_set) ~pred:(fun astate ->
+              A.exists
+                (fun ap -> is_callv_ap ap && callv_and_returnv_matches ~callv:ap ~returnv)
+                (fourth_of astate) ) )
+        void_returnvs
+    in
+    let astates_holding_corresponding_callvs_updated =
+      List.map
+        ~f:(fun (proc, vardef, loc, aliasset) ->
+          let void_callv =
+            find_witness_exn
+              ~pred:(fun ap -> is_callv_ap ap && return_type_is_void (extract_callee_from ap))
+              (A.elements aliasset)
+          in
+          let corresponding_returnv =
+            find_witness_exn
+              ~pred:(fun void_returnv ->
+                callv_and_returnv_matches ~callv:void_callv ~returnv:void_returnv )
+              void_returnvs
+          in
+          (proc, vardef, loc, A.add corresponding_returnv aliasset) )
+        astates_holding_corresponding_callvs
+    in
+    astate_set
+    |> (fun astate_set -> S.diff astate_set ph_tuples_with_void_returnvs)
+    |> (fun astate_set -> S.diff astate_set (S.of_list astates_holding_corresponding_callvs))
+    |> S.union (S.of_list astates_holding_corresponding_callvs_updated)
   in
   Hashtbl.iter (fun proc astate_set -> Hashtbl.replace table proc (one_pass_S astate_set)) table ;
   table
@@ -509,8 +582,10 @@ let main : (Procname.t, S.t) Hashtbl.t -> unit =
   |> summary_table_to_file_and_return "5_substitute_frontend_new_returnv_with_init_returnv.txt"
   |> merge_cast_returnv_with_return
   |> summary_table_to_file_and_return "6_merge_cast_returnv_with_return.txt"
+  |> move_void_callee_returnv_and_remove_ph
+  |> summary_table_to_file_and_return "7_move_void_callee_returnv_and_remove_ph.txt"
   |> remove_unimportant_elems
-  |> summary_table_to_file_and_return "7_remove_unimportant_elems.txt"
+  |> summary_table_to_file_and_return "8_remove_unimportant_elems.txt"
   |> remove_java_constants
-  |> summary_table_to_file_and_return "8_remove_java_constants.txt"
+  |> summary_table_to_file_and_return "9_remove_java_constants.txt"
   |> return

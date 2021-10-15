@@ -6,8 +6,6 @@ open DefLocAliasPP
 
 (** Interprocedural Liveness Checker with alias relations and redefinitions in mind. *)
 
-exception TODO
-
 exception FindActualPvarFailed
 
 exception InvalidExp
@@ -98,11 +96,20 @@ module TransferFunctions (CFG : ProcCfg.S) = struct
       List.iter ~f:(F.fprintf fmt "%d ") counters ;
       F.fprintf fmt "]"
     in
-    Var.of_pvar
-    @@ Pvar.mk
-         ( Mangled.from_string
-         @@ F.asprintf "returnv_%a_%d: %a" pp_int_list counters linum Procname.pp procname )
-         procname
+    let antipattern = Str.regexp "\\(.*_[0-9]+_[0-9]+\\)" in
+    if Str.string_match antipattern (Procname.get_method procname) 0 then
+      let truncated = truncate_procname procname in
+      Var.of_pvar
+      @@ Pvar.mk
+           ( Mangled.from_string
+           @@ F.asprintf "returnv_%a_%d: %s" pp_int_list counters linum truncated )
+           procname
+    else
+      Var.of_pvar
+      @@ Pvar.mk
+           ( Mangled.from_string
+           @@ F.asprintf "returnv_%a_%d: %a" pp_int_list counters linum Procname.pp procname )
+           procname
 
 
   (** specially mangled variable to mark a value as a param of the callee *)
@@ -864,17 +871,8 @@ module TransferFunctions (CFG : ProcCfg.S) = struct
 
 
   let batch_alias_assoc (astate_set : S.t) (logicals : Ident.t list) (pvars : Pvar.t list) : S.t =
-    let rec my_zip (l1 : Ident.t list) (l2 : Pvar.t list) =
-      match (l1, l2) with
-      | [], [] ->
-          []
-      | h1 :: t1, h2 :: t2 ->
-          (h1, h2) :: my_zip t1 t2
-      | _, _ ->
-          L.die InternalError "my_zip failed, l1: %a, l2: %a" pp_idlist l1 pp_pvarlist l2
-    in
     let logicals_and_pvars =
-      my_zip logicals pvars
+      List.zip_exn logicals pvars
       |> List.filter ~f:(fun (logical, pvar) -> not @@ Ident.is_none logical)
       |> List.map ~f:(fun (logical, pvar) -> (Var.of_id logical, Var.of_pvar pvar))
     in

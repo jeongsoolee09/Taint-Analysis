@@ -28,10 +28,6 @@ exception NoStateTupHoldingAliasTup of string
 
 exception NoSuchElem of string
 
-exception NoWitness of string
-
-exception ChainComputeFailed
-
 exception NotAPVar of string
 
 exception NotADefine
@@ -49,6 +45,7 @@ module Status = struct
     | Define of (Procname.t * MyAccessPath.t * LocationSet.t)
     (* Here, the Procname.t is the callee. *)
     | Call of (Procname.t * MyAccessPath.t * LocationSet.t * int) (* here, int is the callv's counter value *)
+    | VoidCall of (Procname.t * MyAccessPath.t * LocationSet.t * int) (* here, int is the callv's counter value *)
     | Redefine of (MyAccessPath.t * LocationSet.t)
     | Dead
   [@@deriving equal]
@@ -61,6 +58,10 @@ module Status = struct
     | Call (proc, ap, locset, _) ->
         (* ignore the counter value. *)
         F.fprintf fmt "Call (%a with %a): %a" Procname.pp proc MyAccessPath.pp ap LocationSet.pp
+          locset
+    | VoidCall (proc, ap, locset, _) ->
+        (* ignore the counter value. *)
+        F.fprintf fmt "VoidCall (%a with %a): %a" Procname.pp proc MyAccessPath.pp ap LocationSet.pp
           locset
     | Redefine (ap, locset) ->
         F.fprintf fmt "Redefine (%a) :%a" MyAccessPath.pp ap LocationSet.pp locset
@@ -455,8 +456,6 @@ let find_direct_callers (target_meth : Procname.t) : (Procname.t * S.t) list =
   G.pred callgraph callee_vertex
 
 
-(* ============ TODO ============ *)
-
 (** Find the immediate callees and their summaries of the given Procname.t. *)
 let find_direct_callees (target_caller : Procname.t) (target_meth : Procname.t) :
     (Procname.t * S.t) list =
@@ -507,7 +506,9 @@ let extract_ap_from_chain_slice (slice : (Procname.t * Status.t) option) : MyAcc
     match status with
     | Define (_, ap, _) ->
         Some ap
-    | Call (_, _, ap, _) ->
+    | Call _ ->
+        None
+    | VoidCall _ ->
         None
     | Redefine (ap, _) ->
         Some ap
@@ -1164,6 +1165,14 @@ let represent_status (current_method : Procname.t) (status : Status.t) : json =
       `Assoc
         [ ("current_method", `String (Procname.to_string current_method))
         ; ("status", `String "Call")
+        ; ("callee", `String (Procname.to_string callee))
+        ; ("location", `String locset_string)
+        ; ("with", `String (MyAccessPath.to_string ap)) ]
+  | VoidCall (callee, ap, locset, _) ->
+      let locset_string = F.asprintf "%a" LocationSet.pp locset in
+      `Assoc
+        [ ("current_method", `String (Procname.to_string current_method))
+        ; ("status", `String "VoidCall")
         ; ("callee", `String (Procname.to_string callee))
         ; ("location", `String locset_string)
         ; ("with", `String (MyAccessPath.to_string ap)) ]

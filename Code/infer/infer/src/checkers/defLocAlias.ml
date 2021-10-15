@@ -235,54 +235,6 @@ module TransferFunctions (CFG : ProcCfg.S) = struct
     (var, lst @ [AccessPath.ArrayAccess (Typ.void_star, [])])
 
 
-  let alias_propagation
-      ((previous_proc, previous_vardef, previous_locset, previous_aliasset) as previous_tuple : T.t)
-      (astate_set : S.t) (to_put_pvar : Pvar.t) (id : Ident.t) (methname : Procname.t) : S.t =
-    let open List in
-    let to_put_pvar_ap = (Var.of_pvar to_put_pvar, []) in
-    let previous_tuple_updated =
-      (previous_proc, previous_vardef, previous_locset, A.add to_put_pvar_ap previous_aliasset)
-    in
-    (* downward propagation: look at the aliasset *)
-    let pvar_vardefs_in_aliasset =
-      let pvar_aps =
-        A.filter is_pvar_ap previous_aliasset
-        |> A.elements
-        |> List.filter ~f:(fun ap ->
-               (not @@ is_returnv_ap ap)
-               && (not @@ is_callv_ap ap)
-               && (not @@ is_return_ap ap)
-               && (not @@ is_param_ap ap)
-               && (not @@ is_this_ap ap)
-               && (not @@ MyAccessPath.equal ap previous_vardef) )
-      in
-      fold
-        ~f:(fun acc pvar_ap ->
-          try search_target_tuple_by_vardef_ap pvar_ap methname astate_set :: acc with _ -> acc )
-        pvar_aps ~init:[]
-    in
-    let pvar_vardefs_in_aliasset_updated =
-      pvar_vardefs_in_aliasset
-      >>| (fun (p, v, l, a) -> (p, v, l, A.add to_put_pvar_ap a))
-      |> S.of_list
-    in
-    (* upward propagation: look at other vardefs aliassed with this previous_tuple *)
-    let alias_with_previous_tuple =
-      search_target_tuples_by_pvar_ap previous_vardef methname astate_set
-      |> List.filter ~f:(fun ap -> not @@ T.equal ap previous_tuple)
-    in
-    let alias_with_previous_tuple_updated =
-      alias_with_previous_tuple
-      >>| (fun (p, v, l, a) -> (p, v, l, A.add to_put_pvar_ap a))
-      |> S.of_list
-    in
-    astate_set |> S.remove previous_tuple |> S.add previous_tuple_updated
-    |> (fun set -> S.diff set @@ S.of_list pvar_vardefs_in_aliasset)
-    |> (fun set -> S.diff set @@ S.of_list alias_with_previous_tuple)
-    |> S.union pvar_vardefs_in_aliasset_updated
-    |> S.union alias_with_previous_tuple_updated
-
-
   let exp_as_var (exp : Exp.t) : Ident.t =
     match exp with Var id -> id | _ -> raise @@ Invalid_argument (Exp.to_string exp)
 

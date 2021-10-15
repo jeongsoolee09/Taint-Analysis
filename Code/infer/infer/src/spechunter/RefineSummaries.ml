@@ -284,7 +284,6 @@ let move_void_callee_returnv_and_remove_ph (table : (Procname.t, S.t) Hashtbl.t)
     is_callv_ap ap && return_type_is_void (extract_callee_from ap)
   in
   let one_pass_S (astate_set : S.t) : S.t =
-    L.progress "astate_set: %a@." S.pp astate_set ;
     let ph_tuples_with_void_returnvs =
       S.filter
         (fun astate ->
@@ -292,7 +291,6 @@ let move_void_callee_returnv_and_remove_ph (table : (Procname.t, S.t) Hashtbl.t)
           && A.exists is_void_method_returnv (fourth_of astate) )
         astate_set
     in
-    (* L.progress "ph_tuples_with_void_returnvs: %a@." S.pp ph_tuples_with_void_returnvs ; *)
     let void_returnvs =
       A.elements
       @@ ( S.fold
@@ -304,36 +302,29 @@ let move_void_callee_returnv_and_remove_ph (table : (Procname.t, S.t) Hashtbl.t)
                 let java_proc = extract_java_procname (extract_callee_from ap) in
                 not @@ Procname.Java.is_static java_proc ) )
     in
-    L.progress "void_returnvs: %a@." pp_ap_list void_returnvs ;
     let astates_holding_corresponding_callvs =
       List.map
         ~f:(fun returnv ->
-          L.progress "returnv: %a@." MyAccessPath.pp returnv ;
           find_witness_exn (S.elements astate_set) ~pred:(fun astate ->
               A.exists
                 (fun ap -> is_callv_ap ap && callv_and_returnv_matches ~callv:ap ~returnv)
                 (fourth_of astate) ) )
         void_returnvs
     in
-    L.progress "astates_holding_corresponding_callvs: %a@." pp_tuplelist
-      astates_holding_corresponding_callvs ;
+    astates_holding_corresponding_callvs ;
     let astates_holding_corresponding_callvs_updated =
       List.map
         ~f:(fun (proc, vardef, loc, aliasset) ->
           let void_callv = find_witness_exn ~pred:is_void_method_callv (A.elements aliasset) in
-          L.progress "void_callv: %a@." MyAccessPath.pp void_callv ;
           let corresponding_returnv =
             find_witness_exn
               ~pred:(fun void_returnv ->
-                L.progress "void_returnv: %a@." MyAccessPath.pp void_returnv ;
                 callv_and_returnv_matches ~callv:void_callv ~returnv:void_returnv )
               void_returnvs
           in
           (proc, vardef, loc, A.add corresponding_returnv aliasset) )
         astates_holding_corresponding_callvs
     in
-    (* L.progress "astates_holding_corresponding_callvs_updated: %a@." pp_tuplelist *)
-    (*   astates_holding_corresponding_callvs_updated ; *)
     astate_set
     |> (fun astate_set -> S.diff astate_set ph_tuples_with_void_returnvs)
     |> (fun astate_set -> S.diff astate_set (S.of_list astates_holding_corresponding_callvs))

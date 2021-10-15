@@ -746,82 +746,6 @@ module TransferFunctions (CFG : ProcCfg.S) = struct
     (newset, snd apair)
 
 
-  let exec_call (ret_id : Ident.t) (callee_methname : Procname.t) (arg_ts : (Exp.t * Typ.t) list)
-      analyze_dependency (apair : P.t) (methname : Procname.t) (node_loc : Location.t) : P.t =
-    L.d_printfln "It's a UDF call@." ;
-    let formals = get_formal_args analyze_dependency callee_methname in
-    L.d_printfln "arg_ts: %a@." pp_explist (arg_ts >>| fst) ;
-    let actuals_logical_id =
-      arg_ts >>| (fst >> convert_exp_to_logical) |> List.filter ~f:(not << Ident.is_none)
-    in
-    L.d_printfln "actuals_logial_id: %a@." pp_idlist actuals_logical_id ;
-    let actual_interid_param_triples =
-      if List.is_empty formals then []
-      else
-        List.foldi
-          ~f:(fun index acc inter_id ->
-            try
-              let actual_pvar_ap =
-                find_actual_pvar_for_inter_id inter_id methname (fst apair) |> second_of
-              in
-              let corresponding_formal = List.nth_exn formals index in
-              (actual_pvar_ap, inter_id, corresponding_formal) :: acc
-            with FindActualPvarFailed -> acc )
-          actuals_logical_id ~init:[]
-    in
-    (* 1. mangle callvs *)
-    let callvs =
-      List.init
-        ~f:(fun _ -> (mk_callv callee_methname node_loc.line, []))
-        (List.length actual_interid_param_triples)
-    in
-    (* 2. add callvs to the actual astates *)
-    let astate_set_callv_added =
-      List.foldi
-        ~f:(fun index acc (actual, inter_id, formal) ->
-          let actual_vardef_astates = search_target_tuples_by_vardef_ap actual methname acc in
-          let ((proc, vardef, locset, aliasset) as most_recent_vardef_astate) =
-            find_most_linenumber actual_vardef_astates
-          in
-          let acc_rmvd = S.remove most_recent_vardef_astate acc in
-          let corresponding_callv = List.nth_exn callvs index in
-          let actual_vardef_astate_updated =
-            (proc, vardef, locset, aliasset |> A.add (formal, []) |> A.add corresponding_callv)
-          in
-          S.add actual_vardef_astate_updated acc_rmvd )
-        actual_interid_param_triples ~init:(fst apair)
-    in
-    (* 4. create a returnv and add it to a newly made ph tuple *)
-    let callv_counters = callvs >>| extract_counter_from_callv in
-    let returnv = mk_returnv callee_methname callv_counters node_loc.line in
-    let ph_tuple =
-      match analyze_dependency callee_methname with
-      | Some (_, callee_summary) ->
-          let callee_ret_tuples = find_tuples_with_ret (fst callee_summary) in
-          let carriedover_aps =
-            List.fold
-              ~f:(fun acc astate ->
-                let callee_vardef, _ = second_of astate in
-                if Var.is_return callee_vardef then A.add (Var.of_id ret_id, []) acc
-                  (* 'return' itself should not be considered a pvar that is carrried over *)
-                else A.union acc @@ doubleton (callee_vardef, []) (Var.of_id ret_id, []) )
-              callee_ret_tuples ~init:A.empty
-          in
-          ( methname
-          , (placeholder_vardef methname, [])
-          , LocationSet.singleton Location.dummy
-          , carriedover_aps |> A.add (Var.of_id ret_id, []) |> A.add (returnv, []) )
-      | None ->
-          ( methname
-          , (placeholder_vardef methname, [])
-          , LocationSet.singleton Location.dummy
-          , doubleton (Var.of_id ret_id, []) (returnv, []) )
-    in
-    (* 5. add the ph tuple to the above astate_set *)
-    let newset = S.add ph_tuple astate_set_callv_added in
-    (newset, snd apair)
-
-
   let batch_alias_assoc (astate_set : S.t) (logicals : Ident.t list) (pvars : Pvar.t list) : S.t =
     let logicals_and_pvars =
       List.zip_exn logicals pvars
@@ -881,6 +805,83 @@ module TransferFunctions (CFG : ProcCfg.S) = struct
       , doubleton (Var.of_id ret_id, []) (returnv, []) )
     in
     (S.add newtuple astate_set', histmap)
+
+
+  let exec_call (ret_id : Ident.t) (callee_methname : Procname.t) (arg_ts : (Exp.t * Typ.t) list)
+      analyze_dependency (apair : P.t) (methname : Procname.t) (node_loc : Location.t) : P.t =
+    L.d_printfln "It's a UDF call@." ;
+    let formals = get_formal_args analyze_dependency callee_methname in
+    L.d_printfln "arg_ts: %a@." pp_explist (arg_ts >>| fst) ;
+    let actuals_logical_id =
+      arg_ts >>| (fst >> convert_exp_to_logical) |> List.filter ~f:(not << Ident.is_none)
+    in
+    L.d_printfln "actuals_logial_id: %a@." pp_idlist actuals_logical_id ;
+    let actual_interid_param_triples =
+      List.foldi
+        ~f:(fun index acc inter_id ->
+          try
+            let actual_pvar_ap =
+              find_actual_pvar_for_inter_id inter_id methname (fst apair) |> second_of
+            in
+            let corresponding_formal =
+              if List.is_empty formals then mk_param callee_methname node_loc.line index
+              else List.nth_exn formals index
+            in
+            (actual_pvar_ap, inter_id, corresponding_formal) :: acc
+          with FindActualPvarFailed -> acc )
+        actuals_logical_id ~init:[]
+    in
+    (* 1. mangle callvs *)
+    let callvs =
+      List.init
+        ~f:(fun _ -> (mk_callv callee_methname node_loc.line, []))
+        (List.length actual_interid_param_triples)
+    in
+    (* 2. add callvs to the actual astates *)
+    let astate_set_callv_added =
+      List.foldi
+        ~f:(fun index acc (actual, inter_id, formal) ->
+          let actual_vardef_astates = search_target_tuples_by_vardef_ap actual methname acc in
+          let ((proc, vardef, locset, aliasset) as most_recent_vardef_astate) =
+            find_most_linenumber actual_vardef_astates
+          in
+          let acc_rmvd = S.remove most_recent_vardef_astate acc in
+          let corresponding_callv = List.nth_exn callvs index in
+          let actual_vardef_astate_updated =
+            (proc, vardef, locset, aliasset |> A.add (formal, []) |> A.add corresponding_callv)
+          in
+          S.add actual_vardef_astate_updated acc_rmvd )
+        actual_interid_param_triples ~init:(fst apair)
+    in
+    (* 4. create a returnv and add it to a newly made ph tuple *)
+    let callv_counters = callvs >>| extract_counter_from_callv in
+    let returnv = mk_returnv callee_methname callv_counters node_loc.line in
+    let ph_tuple =
+      match analyze_dependency callee_methname with
+      | Some (_, callee_summary) ->
+          let callee_ret_tuples = find_tuples_with_ret (fst callee_summary) in
+          let carriedover_aps =
+            List.fold
+              ~f:(fun acc astate ->
+                let callee_vardef, _ = second_of astate in
+                if Var.is_return callee_vardef then A.add (Var.of_id ret_id, []) acc
+                  (* 'return' itself should not be considered a pvar that is carrried over *)
+                else A.union acc @@ doubleton (callee_vardef, []) (Var.of_id ret_id, []) )
+              callee_ret_tuples ~init:A.empty
+          in
+          ( methname
+          , (placeholder_vardef methname, [])
+          , LocationSet.singleton Location.dummy
+          , carriedover_aps |> A.add (Var.of_id ret_id, []) |> A.add (returnv, []) )
+      | None ->
+          ( methname
+          , (placeholder_vardef methname, [])
+          , LocationSet.singleton Location.dummy
+          , doubleton (Var.of_id ret_id, []) (returnv, []) )
+    in
+    (* 5. add the ph tuple to the above astate_set *)
+    let newset = S.add ph_tuple astate_set_callv_added in
+    (newset, snd apair)
 
 
   (** Procname.Java.t를 포장한 Procname.t에서 해당 Procname.Java.t를 추출한다. *)

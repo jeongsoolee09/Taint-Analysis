@@ -1,5 +1,6 @@
 (import os)
 (import [rich [print]])
+(import glob)
 
 (setv to-test {:fabricated ["~/Taint-Analysis/Code/benchmarks/fabricated/WhatIWantExample.java"
                             "~/Taint-Analysis/Code/benchmarks/fabricated/ObjectFlowing.java"
@@ -36,9 +37,15 @@
                f"Infer-Spechunter Result for {java-file}: [bold green]SUCCESS[/bold green]"
                f"Infer-SpecHunter Result for {java-file}: [bold magenta]FAIL[/bold magenta]"))))
 
+(defn cleanup []
+  (setv classfiles (.glob glob "*.class"))
+  (for [classfile classfiles]
+    (.system os f"rm {classfile}")))
+
 
 (defmain []
   (setv fabricated-test-result (test-fabricated))
   (setv realworld-test-result (test-realworld))
   (report #*fabricated-test-result)
-  (report #*realworld-test-result))
+  (report #*realworld-test-result)
+  (cleanup))

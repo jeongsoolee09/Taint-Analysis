@@ -708,13 +708,14 @@ let scan_chain_for_most_recent_call (target_caller : Procname.t) (target_callee 
 let rec compute_chain_inner (current_methname : Procname.t) (current_astate_set : S.t)
     (current_astate : S.elt) (current_chain : Chain.t) (current_call_stack : Procname.t list)
     (current_chain_acc : Chain.t list) : Chain.t list =
-  let ap_filter ap =
-    (not @@ is_logical_var @@ fst ap)
-    (* && (not @@ is_irvar_ap ap) *)
-    && (not @@ MyAccessPath.equal (second_of current_astate) ap)
-  in
   let current_aliasset = fourth_of current_astate in
-  let current_aliasset_cleanedup = A.filter ap_filter current_aliasset in
+  let current_aliasset_cleanedup =
+    A.filter
+      (fun ap ->
+        (not @@ is_logical_var @@ fst ap)
+        && (not @@ MyAccessPath.equal (second_of current_astate) ap) )
+      current_aliasset
+  in
   let current_vardef = second_of current_astate in
   (* variable extracted from astate visited right before *)
   let (just_before_procname, just_before_status) : Chain.chain_slice = hd_exn current_chain in
@@ -797,7 +798,6 @@ let rec compute_chain_inner (current_methname : Procname.t) (current_astate_set 
             :: current_chain
           and new_call_stack = List.tl_exn current_call_stack in
           reset_counter current_methname ;
-          L.progress "%a's callv reset to 0@." Procname.pp current_methname ;
           compute_chain_inner just_before_procname just_before_astate_set aliased_with_returnv
             chain_updated new_call_stack current_chain_acc )
         else
@@ -841,12 +841,11 @@ let rec compute_chain_inner (current_methname : Procname.t) (current_astate_set 
                       , third_of statetup_with_returnv ) ) ]
               and call_stack_updated = caller :: current_call_stack in
               reset_counter current_methname ;
-              (* L.progress "%a's callv reset to 0@." Procname.pp current_methname; *)
               (* recurse *)
               compute_chain_inner caller caller_astate_set statetup_with_returnv chain_updated
                 call_stack_updated []
             in
-            let collected_subchains = concat @@ map ~f:mapfunc callers_and_astates in
+            let collected_subchains = callers_and_astates >>= mapfunc in
             List.map ~f:(fun subchain -> subchain @ current_chain) collected_subchains
         | false ->
             let caller = List.nth_exn current_call_stack 1 in
@@ -865,7 +864,6 @@ let rec compute_chain_inner (current_methname : Procname.t) (current_astate_set 
               :: current_chain
             and call_stack_updated = List.tl_exn current_call_stack in
             reset_counter current_methname ;
-            (* L.progress "%a's callv reset to 0@." Procname.pp current_methname; *)
             (* recurse *)
             compute_chain_inner caller caller_astate_set statetup_with_returnv chain_updated
               call_stack_updated current_chain_acc )
@@ -925,9 +923,10 @@ let rec compute_chain_inner (current_methname : Procname.t) (current_astate_set 
                 let current_astate_updated =
                   remove_matching_callv_and_returnv current_astate callv
                 in
-                (* compute_chain_inner current_methname current_astate_set current_astate_updated *)
-                (*   param_ap_computed current_call_stack *)
-                raise TODO
+                param_ap_computed
+                >>= fun chain ->
+                compute_chain_inner current_methname current_astate_set current_astate_updated chain
+                  current_call_stack current_chain_acc
           | false ->
               (* CALL *)
               let new_chain_slice =
@@ -958,7 +957,7 @@ let rec compute_chain_inner (current_methname : Procname.t) (current_astate_set 
                 reset_counter_recursively current_methname ;
                 computed
         in
-        let collected_subchains = concat @@ map ~f:mapfunc earliest_callvs in
+        let collected_subchains = earliest_callvs >>= mapfunc in
         List.map ~f:(fun subchain -> subchain @ current_chain) collected_subchains
       else if
         (* either REDEFINITION or DEAD.
@@ -993,60 +992,48 @@ let rec compute_chain_inner (current_methname : Procname.t) (current_astate_set 
         reset_counter_recursively current_methname ;
         completed_chain :: current_chain_acc
   | nonempty_aplist ->
-      concat
-      @@ map
-           ~f:(fun ap ->
-             (* is it correct to put just_before_procname here? dunno... *)
-             let callees_and_astates = find_direct_callees just_before_procname current_methname in
-             if is_foreign_ap ap current_methname then
-               (* ============ CALL ============ *)
-               let collected_subchains =
-                 fold
-                   ~f:(fun acc callee ->
-                     (* L.progress "working for callee, current_chain: %a: %a@." pp_chain current_chain Procname.pp callee ; *)
-                     let callee_astate_set = get_summary callee in
-                     try
-                       let landing_pad =
-                         search_target_tuple_by_vardef_ap ap callee callee_astate_set
-                       in
-                       let real_aliastup_locset =
-                         find_most_recent_locset_of_ap ap callee_astate_set
-                       in
-                       (* L.progress "current_astate: %a@." T.pp current_astate; *)
-                       (* L.progress "current_astate's aliasset: %a@." A.pp current_aliasset ; *)
-                       let callv =
-                         find_witness_exn ~pred:is_callv_ap (A.elements current_aliasset)
-                       in
-                       let callv_counter = extract_counter_from_callv callv in
-                       let chain_updated =
-                         [ ( current_methname
-                           , Status.Call (callee, ap, real_aliastup_locset, callv_counter) ) ]
-                       and call_stack_updated = callee :: current_call_stack in
-                       let computed =
-                         compute_chain_inner callee callee_astate_set landing_pad chain_updated
-                           call_stack_updated []
-                       in
-                       reset_counter_recursively current_methname ;
-                       computed
-                     with SearchAstateByPVarFailed -> acc
-                     (* this callee does not hold the landing pad *) )
-                   ~init:[] callees_and_astates
-               in
-               List.map ~f:(fun subchain -> subchain @ current_chain) collected_subchains
-             else
-               (* ============ SIMPLE DEFINITION ============ *)
-               let other_statetup =
-                 search_target_tuple_by_vardef_ap ap current_methname current_astate_set
-               in
-               let real_aliastup_locset = find_most_recent_locset_of_ap ap current_astate_set in
-               let chain_updated =
-                 (current_methname, Status.Define (current_methname, ap, real_aliastup_locset))
-                 :: current_chain
-               in
-               (* recurse *)
-               compute_chain_inner current_methname current_astate_set other_statetup chain_updated
-                 current_call_stack current_chain_acc )
-           nonempty_aplist
+      nonempty_aplist
+      >>= fun ap ->
+      (* is it correct to put just_before_procname here? dunno... *)
+      let callees_and_astates = find_direct_callees just_before_procname current_methname in
+      if is_foreign_ap ap current_methname then
+        (* ============ CALL ============ *)
+        let collected_subchains =
+          fold
+            ~f:(fun acc callee ->
+              let callee_astate_set = get_summary callee in
+              try
+                let landing_pad = search_target_tuple_by_vardef_ap ap callee callee_astate_set in
+                let real_aliastup_locset = find_most_recent_locset_of_ap ap callee_astate_set in
+                let callv = find_witness_exn ~pred:is_callv_ap (A.elements current_aliasset) in
+                let callv_counter = extract_counter_from_callv callv in
+                let chain_updated =
+                  [(current_methname, Status.Call (callee, ap, real_aliastup_locset, callv_counter))]
+                and call_stack_updated = callee :: current_call_stack in
+                let computed =
+                  compute_chain_inner callee callee_astate_set landing_pad chain_updated
+                    call_stack_updated []
+                in
+                reset_counter_recursively current_methname ;
+                computed
+              with SearchAstateByPVarFailed -> acc
+              (* this callee does not hold the landing pad *) )
+            ~init:[] callees_and_astates
+        in
+        List.map ~f:(fun subchain -> subchain @ current_chain) collected_subchains
+      else
+        (* ============ SIMPLE DEFINITION ============ *)
+        let other_statetup =
+          search_target_tuple_by_vardef_ap ap current_methname current_astate_set
+        in
+        let real_aliastup_locset = find_most_recent_locset_of_ap ap current_astate_set in
+        let chain_updated =
+          (current_methname, Status.Define (current_methname, ap, real_aliastup_locset))
+          :: current_chain
+        in
+        (* recurse *)
+        compute_chain_inner current_methname current_astate_set other_statetup chain_updated
+          current_call_stack current_chain_acc
 
 
 (** 콜 그래프와 분석 결과를 토대로 체인 (Define -> ... -> Dead)을 계산해 낸다 *)

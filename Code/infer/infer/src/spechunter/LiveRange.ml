@@ -374,6 +374,12 @@ let print_graph graph =
 (* Computing Chains ================================= *)
 (* ================================================== *)
 
+let remove_matching_callv_and_returnv ((proc, vardef, loc, aliasset) : T.t) (callv : MyAccessPath.t)
+    : T.t =
+  let matching_returnv = find_matching_returnv_for_callv aliasset callv in
+  (proc, vardef, loc, aliasset |> A.remove callv |> A.remove matching_returnv)
+
+
 let find_most_recent_locset_of_ap (target_ap : MyAccessPath.t) (astates : S.t) =
   if is_param_ap target_ap then LocationSet.bottom
   else
@@ -701,7 +707,7 @@ let scan_chain_for_most_recent_call (target_caller : Procname.t) (target_callee 
 
 let rec compute_chain_inner (current_methname : Procname.t) (current_astate_set : S.t)
     (current_astate : S.elt) (current_chain : Chain.t) (current_call_stack : Procname.t list)
-    (debug_chain : Chain.t) (current_chain_acc : Chain.t list) : Chain.t list =
+    (current_chain_acc : Chain.t list) : Chain.t list =
   let ap_filter ap =
     (not @@ is_logical_var @@ fst ap)
     (* && (not @@ is_irvar_ap ap) *)
@@ -789,16 +795,11 @@ let rec compute_chain_inner (current_methname : Procname.t) (current_astate_set 
             , Status.Define
                 (current_methname, second_of aliased_with_returnv, third_of aliased_with_returnv) )
             :: current_chain
-          and debug_chain_updated =
-            ( just_before_procname
-            , Status.Define
-                (current_methname, second_of aliased_with_returnv, third_of aliased_with_returnv) )
-            :: debug_chain
           and new_call_stack = List.tl_exn current_call_stack in
           reset_counter current_methname ;
           L.progress "%a's callv reset to 0@." Procname.pp current_methname ;
           compute_chain_inner just_before_procname just_before_astate_set aliased_with_returnv
-            chain_updated new_call_stack debug_chain_updated current_chain_acc )
+            chain_updated new_call_stack current_chain_acc )
         else
           (* ============ DEAD ============ *)
           let is_leaf = is_empty @@ G.succ callgraph current_methname in
@@ -838,19 +839,12 @@ let rec compute_chain_inner (current_methname : Procname.t) (current_astate_set 
                       ( current_methname
                       , second_of statetup_with_returnv
                       , third_of statetup_with_returnv ) ) ]
-              and debug_chain_updated =
-                ( caller
-                , Status.Define
-                    ( current_methname
-                    , second_of statetup_with_returnv
-                    , third_of statetup_with_returnv ) )
-                :: debug_chain
               and call_stack_updated = caller :: current_call_stack in
               reset_counter current_methname ;
               (* L.progress "%a's callv reset to 0@." Procname.pp current_methname; *)
               (* recurse *)
               compute_chain_inner caller caller_astate_set statetup_with_returnv chain_updated
-                call_stack_updated debug_chain_updated []
+                call_stack_updated []
             in
             let collected_subchains = concat @@ map ~f:mapfunc callers_and_astates in
             List.map ~f:(fun subchain -> subchain @ current_chain) collected_subchains
@@ -869,20 +863,14 @@ let rec compute_chain_inner (current_methname : Procname.t) (current_astate_set 
                   (current_methname, second_of statetup_with_returnv, third_of statetup_with_returnv)
               )
               :: current_chain
-            and debug_chain_updated =
-              ( caller
-              , Status.Define
-                  (current_methname, second_of statetup_with_returnv, third_of statetup_with_returnv)
-              )
-              :: debug_chain
             and call_stack_updated = List.tl_exn current_call_stack in
             reset_counter current_methname ;
             (* L.progress "%a's callv reset to 0@." Procname.pp current_methname; *)
             (* recurse *)
             compute_chain_inner caller caller_astate_set statetup_with_returnv chain_updated
-              call_stack_updated debug_chain_updated current_chain_acc )
+              call_stack_updated current_chain_acc )
       else if exists ~f:(fun ap -> is_callv_ap ap) var_aps then
-        (* ============ CALL or VOIDCALL ============ *)
+        (* ============ CALL or VOID CALL ============ *)
         (* Retrieve and update the callv counter. *)
         let callv_counter = get_counter current_methname in
         let callvs_partitioned_by_procname =
@@ -921,7 +909,6 @@ let rec compute_chain_inner (current_methname : Procname.t) (current_astate_set 
                     (callee_methname, param_ap_matching_callv, param_ap_locset, callv_counter) )
               in
               let chain_updated = [new_chain_slice]
-              and debug_chain_updated = new_chain_slice :: debug_chain
               and call_stack_updated = callee_methname :: current_call_stack in
               if is_param_ap param_ap_matching_callv then (* API Call *)
                 raise TODO
@@ -933,8 +920,13 @@ let rec compute_chain_inner (current_methname : Procname.t) (current_astate_set 
                 in
                 let param_ap_computed =
                   compute_chain_inner callee_methname callee_astate_set param_statetup chain_updated
-                    call_stack_updated debug_chain_updated []
+                    call_stack_updated []
                 in
+                let current_astate_updated =
+                  remove_matching_callv_and_returnv current_astate callv
+                in
+                (* compute_chain_inner current_methname current_astate_set current_astate_updated *)
+                (*   param_ap_computed current_call_stack *)
                 raise TODO
           | false ->
               (* CALL *)
@@ -944,13 +936,12 @@ let rec compute_chain_inner (current_methname : Procname.t) (current_astate_set 
                     (callee_methname, param_ap_matching_callv, param_ap_locset, callv_counter) )
               in
               let chain_updated = [new_chain_slice]
-              and debug_chain_updated = new_chain_slice :: debug_chain
               and call_stack_updated = callee_methname :: current_call_stack in
               if is_param_ap param_ap_matching_callv then (
                 (* API Call *)
                 let computed =
                   compute_chain_inner callee_methname callee_astate_set bottuple chain_updated
-                    call_stack_updated debug_chain_updated []
+                    call_stack_updated []
                 in
                 reset_counter_recursively current_methname ;
                 computed )
@@ -962,7 +953,7 @@ let rec compute_chain_inner (current_methname : Procname.t) (current_astate_set 
                 in
                 let computed =
                   compute_chain_inner callee_methname callee_astate_set param_statetup chain_updated
-                    call_stack_updated debug_chain_updated []
+                    call_stack_updated []
                 in
                 reset_counter_recursively current_methname ;
                 computed
@@ -990,13 +981,11 @@ let rec compute_chain_inner (current_methname : Procname.t) (current_astate_set 
         (* remove the current_astate from current_astate_set *)
         let chain_updated =
           (current_methname, Status.Redefine (current_ap, current_locset)) :: current_chain
-        and debug_chain_updated =
-          (current_methname, Status.Redefine (current_ap, current_locset)) :: debug_chain
         in
         (* no need to update the call stack! *)
         (* recurse *)
         compute_chain_inner current_methname current_astate_set_updated least_recently_redefined
-          chain_updated current_call_stack debug_chain_updated current_chain_acc
+          chain_updated current_call_stack current_chain_acc
       else
         (* ============ DEAD ============ *)
         (* no more recursion; return *)
@@ -1032,14 +1021,10 @@ let rec compute_chain_inner (current_methname : Procname.t) (current_astate_set 
                        let chain_updated =
                          [ ( current_methname
                            , Status.Call (callee, ap, real_aliastup_locset, callv_counter) ) ]
-                       and debug_chain_updated =
-                         ( current_methname
-                         , Status.Call (callee, ap, real_aliastup_locset, callv_counter) )
-                         :: debug_chain
                        and call_stack_updated = callee :: current_call_stack in
                        let computed =
                          compute_chain_inner callee callee_astate_set landing_pad chain_updated
-                           call_stack_updated debug_chain_updated []
+                           call_stack_updated []
                        in
                        reset_counter_recursively current_methname ;
                        computed
@@ -1058,13 +1043,9 @@ let rec compute_chain_inner (current_methname : Procname.t) (current_astate_set 
                  (current_methname, Status.Define (current_methname, ap, real_aliastup_locset))
                  :: current_chain
                in
-               let debug_updated =
-                 (current_methname, Status.Define (current_methname, ap, real_aliastup_locset))
-                 :: debug_chain
-               in
                (* recurse *)
                compute_chain_inner current_methname current_astate_set other_statetup chain_updated
-                 current_call_stack debug_updated current_chain_acc )
+                 current_call_stack current_chain_acc )
            nonempty_aplist
 
 
@@ -1078,9 +1059,7 @@ let compute_chain_ (ap : MyAccessPath.t) : Chain.t list =
   in
   compute_chain_inner first_methname first_astate_set first_astate
     [(first_methname, Define (source_meth, ap, first_locset))]
-    [first_methname]
-    [(first_methname, Define (source_meth, ap, first_locset))]
-    []
+    [first_methname] []
   >>| rev
 
 

@@ -20,6 +20,8 @@ exception WeakSearchTargetTupleByIdFailed of string
 
 exception IsForeignAPFailed
 
+exception ParseFailed
+
 let search_target_tuple_by_id (id : Ident.t) (methname : Procname.t) (astate_set : S.t) : T.t =
   let elements = S.elements astate_set in
   let rec inner id (methname : Procname.t) elements =
@@ -415,3 +417,68 @@ let is_inner_class_init (procname : Procname.t) =
 let is_frontend_procname (procname : Procname.t) =
   let simple_name = Procname.get_method procname in
   String.is_prefix simple_name ~prefix:"__"
+
+
+let return_type_is_void (procname : Procname.t) =
+  let proc_string = Procname.to_string procname in
+  String.is_prefix proc_string ~prefix:"void"
+
+
+let extract_counter_from_callv (callv_ap : A.elt) : int =
+  if not @@ is_callv_ap callv_ap then
+    F.kasprintf
+      (fun msg ->
+        L.progress "%s" msg ;
+        raise ParseFailed )
+      "extract_counter_from_returnv failed, callv_ap: %a@." MyAccessPath.pp callv_ap ;
+  assert (is_callv_ap callv_ap) ;
+  F.asprintf "%a" Var.pp (fst callv_ap)
+  |> String.split ~on:':' |> List.hd_exn |> String.split ~on:'_'
+  |> (fun stringlist -> List.nth_exn stringlist 1)
+  |> int_of_string
+
+
+let extract_counter_from_returnv (returnv : MyAccessPath.t) : int list =
+  assert (is_returnv_ap returnv) ;
+  let parse_intlist (string : string) : int list =
+    try
+      let ( >>| ) = List.( >>| ) in
+      String.strip ~drop:(fun char -> Char.( = ) '[' char || Char.( = ) ']' char) string
+      |> String.split ~on:' ' >>| String.strip
+      |> List.filter ~f:(not << String.is_empty)
+      >>| int_of_string
+    with _ ->
+      F.kasprintf
+        (fun msg ->
+          L.progress "%s" msg ;
+          raise ParseFailed )
+        "parse_intlist failed, string: %s@." string
+  in
+  F.asprintf "%a" Var.pp (fst returnv)
+  |> String.split ~on:':' |> List.hd_exn |> String.split ~on:'_'
+  |> (fun stringlist -> List.nth_exn stringlist 1)
+  |> parse_intlist
+
+
+let extract_linum_from_callv (callv : MyAccessPath.t) : int =
+  assert (is_callv_ap callv) ;
+  F.asprintf "%a" Var.pp (fst callv)
+  |> String.split ~on:':' |> List.hd_exn |> String.split ~on:'_'
+  |> (fun stringlist -> List.nth_exn stringlist 2)
+  |> int_of_string
+
+
+let extract_linum_from_returnv (returnv : MyAccessPath.t) : int =
+  assert (is_returnv_ap returnv) ;
+  F.asprintf "%a" Var.pp (fst returnv)
+  |> String.split ~on:':' |> List.hd_exn |> String.split ~on:'_'
+  |> (fun stringlist -> List.nth_exn stringlist 2)
+  |> int_of_string
+
+
+let callv_and_returnv_matches ~(callv : MyAccessPath.t) ~(returnv : MyAccessPath.t) =
+  let callv_counter = extract_counter_from_callv callv
+  and callv_linum = extract_linum_from_callv callv in
+  let returnv_counters = extract_counter_from_returnv returnv
+  and returnv_linum = extract_linum_from_returnv returnv in
+  List.mem returnv_counters callv_counter ~equal:Int.( = ) && Int.( = ) returnv_linum callv_linum

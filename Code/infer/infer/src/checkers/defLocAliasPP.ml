@@ -109,29 +109,36 @@ let get_declaring_function_ap_exn (ap : A.elt) : Procname.t =
   let var, _ = ap in
   match var with
   | LogicalVar _ ->
-     F.kasprintf
-       (fun msg -> L.progress "%s" msg;
-                   raise GetDeclaringFunctionFailed)
-       "get_declaring_function_ap_exn failed: %a@." MyAccessPath.pp ap
-  | ProgramVar pvar ->
-     (match Pvar.get_declaring_function pvar with
-      | None ->
-         F.kasprintf
-           (fun msg -> L.progress "%s" msg;
-                       raise GetDeclaringFunctionFailed)
-           "get_declaring_function_ap_exn failed: %a@." MyAccessPath.pp ap
-      | Some procname ->
-         procname)
+      F.kasprintf
+        (fun msg ->
+          L.progress "%s" msg ;
+          raise GetDeclaringFunctionFailed )
+        "get_declaring_function_ap_exn failed: %a@." MyAccessPath.pp ap
+  | ProgramVar pvar -> (
+    match Pvar.get_declaring_function pvar with
+    | None ->
+        F.kasprintf
+          (fun msg ->
+            L.progress "%s" msg ;
+            raise GetDeclaringFunctionFailed )
+          "get_declaring_function_ap_exn failed: %a@." MyAccessPath.pp ap
+    | Some procname ->
+        procname )
 
 
-let pp_aliasset_with_procname fmt (aliasset: A.t) = 
+let pp_aliasset_with_procname fmt (aliasset : A.t) =
   F.fprintf fmt "[" ;
-  A.iter (fun ap -> F.fprintf fmt "%a from %a, " MyAccessPath.pp ap Procname.pp @@ get_declaring_function_ap_exn ap) aliasset ;
+  A.iter
+    (fun ap ->
+      F.fprintf fmt "%a from %a, " MyAccessPath.pp ap Procname.pp
+      @@ get_declaring_function_ap_exn ap )
+    aliasset ;
   F.fprintf fmt "]"
 
 
-let pp_instr_list fmt (instrlist: Sil.instr list) =
+let pp_instr_list fmt (instrlist : Sil.instr list) =
   F.fprintf fmt "[" ;
-  List.iter ~f:(fun instr ->
-      F.fprintf fmt "%a; " (Sil.pp_instr Pp.text ~print_types:false) instr) instrlist ;
+  List.iter
+    ~f:(fun instr -> F.fprintf fmt "%a; " (Sil.pp_instr Pp.text ~print_types:false) instr)
+    instrlist ;
   F.fprintf fmt "]"

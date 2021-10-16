@@ -46,9 +46,9 @@ exception UnexpectedSubExpression
 
 exception InvalidArgument
 
-exception TooManyMatches of string
+exception TooManyMatches
 
-exception NoMatches of string
+exception NoMatches
 
 exception NotASingleton of string
 
@@ -699,7 +699,9 @@ let find_astate_holding_returnv (astate_set : S.t) (target_callee : Procname.t)
   match matching_astates with
   | [] ->
       F.kasprintf
-        (fun msg -> raise @@ NoMatches msg)
+        (fun msg ->
+          L.progress "%s@." msg ;
+          raise NoMatches )
         "find_astate_holding_returnv failed, astate_set: %a, target_callee: %a, target_counter: \
          %d, target_linum: %d@."
         S.pp astate_set Procname.pp target_callee target_counter target_linum
@@ -707,7 +709,9 @@ let find_astate_holding_returnv (astate_set : S.t) (target_callee : Procname.t)
       matching_astate
   | _ ->
       F.kasprintf
-        (fun msg -> raise @@ TooManyMatches msg)
+        (fun msg ->
+          L.progress "%s@." msg ;
+          raise TooManyMatches )
         "find_astate_holding_returnv failed, astate_set: %a, target_callee: %a target_counter: %d, \
          target_linum: %d@."
         S.pp astate_set Procname.pp target_callee target_counter target_linum
@@ -730,7 +734,9 @@ let find_matching_returnv_in_aliasset (aliasset : A.t) (target_callee : Procname
   match out with
   | [] ->
       F.kasprintf
-        (fun msg -> raise @@ NoMatches msg)
+        (fun msg ->
+          L.progress "%s@." msg ;
+          raise NoMatches )
         "find_matching_returnv_in_aliasset failed, aliasset: %a, target_callee: %a, \
          target_counter: %d, target_linum: %d"
         A.pp aliasset Procname.pp target_callee target_counter target_linum
@@ -738,7 +744,9 @@ let find_matching_returnv_in_aliasset (aliasset : A.t) (target_callee : Procname
       matching_returnv
   | _ ->
       F.kasprintf
-        (fun msg -> raise @@ TooManyMatches msg)
+        (fun msg ->
+          L.progress "%s@." msg ;
+          raise TooManyMatches )
         "find_matching_returnv_in_aliasset failed, aliasset: %a, target_callee: %a, \
          target_counter: %d, target_linum: %d"
         A.pp aliasset Procname.pp target_callee target_counter target_linum
@@ -756,3 +764,51 @@ let locset_as_linum (locset : LocationSet.t) : int =
       F.kasprintf
         (fun msg -> raise @@ NotASingleton msg)
         "locset_as_linum, locset: %a@." LocationSet.pp locset
+
+
+let truncate_lambda_procname (lambda : Procname.t) : string =
+  if not @@ is_lambda lambda then
+    F.kasprintf
+      (fun msg ->
+        L.progress "%s@." msg ;
+        raise InvalidArgument )
+      "find_matching_returnv_in_aliasset failed (not a lambda), lambda: %a@." Procname.pp lambda ;
+  let proc_string = Procname.to_string lambda
+  and regexp =
+    Str.regexp "[A-Za-z]+ \\([a-zA-Z]+\\)\\.[A-Za-z._]+\\$\\([l|L]ambda\\)\\$\\([0-9_]+\\).*"
+  in
+  if not @@ Str.string_match regexp proc_string 0 then
+    F.kasprintf
+      (fun msg ->
+        L.progress "%s@." msg ;
+        raise TooManyMatches )
+      "find_matching_returnv_in_aliasset failed (match failed), lambda: %a@." Procname.pp lambda ;
+  F.asprintf "%s_%s%s" (Str.matched_group 1 proc_string) (Str.matched_group 2 proc_string)
+    (Str.matched_group 3 proc_string)
+
+
+let find_matching_returnv_for_callv (aliasset : A.t) (callv : MyAccessPath.t) =
+  let matches =
+    A.fold
+      (fun ap acc ->
+        if is_returnv_ap ap && callv_and_returnv_matches ~callv ~returnv:ap then ap :: acc else acc
+        )
+      aliasset []
+  in
+  match matches with
+  | [] ->
+      F.kasprintf
+        (fun msg ->
+          L.progress "%s@." msg ;
+          raise NoMatches )
+        "find_matching_returnv_for_aliasset failed, aliasset: %a, callv: %a@." A.pp aliasset
+        MyAccessPath.pp callv
+  | [returnv] ->
+      returnv
+  | _ ->
+      F.kasprintf
+        (fun msg ->
+          L.progress "%s@." msg ;
+          raise TooManyMatches )
+        "find_matching_returnv_for_aliasset failed, aliasset: %a, callv: %a@." A.pp aliasset
+        MyAccessPath.pp callv

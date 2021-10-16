@@ -908,8 +908,21 @@ let rec compute_chain_inner (current_methname : Procname.t) (current_astate_set 
               in
               let chain_updated = [new_chain_slice]
               and call_stack_updated = callee_methname :: current_call_stack in
-              if is_param_ap param_ap_matching_callv then (* API Call *)
-                raise TODO
+              if is_param_ap param_ap_matching_callv then (
+                (* API Call *)
+                let current_astate_updated =
+                  if
+                    A.exists
+                      (fun ap -> is_returnv_ap ap && callv_and_returnv_matches ~callv ~returnv:ap)
+                      (fourth_of current_astate)
+                  then remove_matching_callv_and_returnv current_astate callv
+                  else
+                    let proc, vardef, locset, aliasset = current_astate in
+                    (proc, vardef, locset, A.remove callv aliasset)
+                in
+                reset_counter_recursively current_methname ;
+                compute_chain_inner current_methname current_astate_set current_astate_updated
+                  chain_updated current_call_stack current_chain_acc )
               else
                 (* UDF Call *)
                 let param_statetup =
@@ -921,12 +934,23 @@ let rec compute_chain_inner (current_methname : Procname.t) (current_astate_set 
                     call_stack_updated []
                 in
                 let current_astate_updated =
-                  remove_matching_callv_and_returnv current_astate callv
+                  if
+                    A.exists
+                      (fun ap -> is_returnv_ap ap && callv_and_returnv_matches ~callv ~returnv:ap)
+                      (fourth_of current_astate)
+                  then remove_matching_callv_and_returnv current_astate callv
+                  else
+                    let proc, vardef, locset, aliasset = current_astate in
+                    (proc, vardef, locset, A.remove callv aliasset)
                 in
-                param_ap_computed
-                >>= fun chain ->
-                compute_chain_inner current_methname current_astate_set current_astate_updated chain
-                  current_call_stack current_chain_acc
+                let computed =
+                  param_ap_computed
+                  >>= fun chain ->
+                  compute_chain_inner current_methname current_astate_set current_astate_updated
+                    chain current_call_stack current_chain_acc
+                in
+                reset_counter_recursively current_methname ;
+                computed
           | false ->
               (* CALL *)
               let new_chain_slice =

@@ -1013,8 +1013,9 @@ let rec compute_chain_inner (current_methname : Procname.t) (current_astate_set 
                (* ============ CALL ============ *)
                let collected_subchains =
                  fold
-                   ~f:(fun acc (callee, callee_astate_set) ->
+                   ~f:(fun acc callee ->
                      (* L.progress "working for callee, current_chain: %a: %a@." pp_chain current_chain Procname.pp callee ; *)
+                     let callee_astate_set = get_summary callee in
                      try
                        let landing_pad =
                          search_target_tuple_by_vardef_ap ap callee callee_astate_set

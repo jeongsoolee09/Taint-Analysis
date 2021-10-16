@@ -64,7 +64,7 @@ module Status = struct
         F.fprintf fmt "VoidCall (%a with %a): %a" Procname.pp proc MyAccessPath.pp ap LocationSet.pp
           locset
     | Redefine (ap, locset) ->
-        F.fprintf fmt "Redefine (%a) :%a" MyAccessPath.pp ap LocationSet.pp locset
+        F.fprintf fmt "Redefine (%a): %a" MyAccessPath.pp ap LocationSet.pp locset
     | Dead ->
         F.fprintf fmt "Dead"
 
@@ -129,10 +129,8 @@ module Pair (Domain1 : module type of Procname) (Domain2 : Stype) = struct
 end
 
 (* Pair of Method and its Astate sets *)
-module PairOfMS = struct
-  include Pair (Procname) (S)
-
-  type t = Procname.t * S.t
+module MyProcname = struct
+  include Procname
 
   let hash = Hashtbl.hash
 end
@@ -166,13 +164,13 @@ let string_of_vertex (proc, astateset) = F.asprintf "\"(%a, %a)\"" Procname.pp p
 (* ================================================== *)
 
 module G = struct
-  include Graph.Imperative.Digraph.ConcreteBidirectional (PairOfMS)
+  include Graph.Imperative.Digraph.ConcreteBidirectional (MyProcname)
 
   let graph_attributes _ = []
 
   let default_vertex_attributes _ = []
 
-  let vertex_name (vertex : V.t) : string = string_of_vertex vertex
+  let vertex_name = Procname.to_string
 
   let vertex_attributes (_ : V.t) = [`Shape `Box]
 
@@ -286,17 +284,12 @@ let graph_to_dot (graph : G.t) ?(filename = "callgraph_with_astate.dot") : unit 
 
 (** 해시 테이블 형태의 콜그래프를 ocamlgraph로 변환한다. *)
 let callg_hash2og () : unit =
-  Hashtbl.iter (fun key _ -> G.add_vertex callgraph (key, get_summary key)) summary_table ;
-  Hashtbl.iter
-    (fun key value ->
-      let key_astate_set = get_summary key in
-      let value_astate_set = get_summary value in
-      G.add_edge callgraph (key, key_astate_set) (value, value_astate_set) )
-    callgraph_table
+  Hashtbl.iter (fun key _ -> G.add_vertex callgraph key) summary_table ;
+  Hashtbl.iter (fun key value -> G.add_edge callgraph key value) callgraph_table
 
 
 let resolve_callee_superclass (caller : Procname.t) (callee : Procname.t) : Procname.t =
-  let succs = G.succ callgraph (caller, get_summary caller) >>| fst in
+  let succs = G.succ callgraph caller in
   let callee_simple_string = Procname.get_method callee in
   let callee_param_type = Procname.get_parameters callee in
   let param_list_equal (plist1 : Procname.Parameter.t list) (plist2 : Procname.Parameter.t list) =
@@ -374,10 +367,7 @@ let remove_duplicates_from (astate_set : S.t) : S.t =
 (** 디버깅 용도로 BFS 사용해서 그래프 출력하기 *)
 let print_graph graph =
   L.progress "============ printing callgraph ============@." ;
-  BFS.iter
-    (fun (proc, astate_set) ->
-      L.progress "proc: %a, astate_set: %a@." Procname.pp proc S.pp astate_set )
-    graph ;
+  BFS.iter (fun proc -> L.progress "proc: %a@." Procname.pp proc) graph ;
   L.progress "============================================@."
 
 
@@ -409,10 +399,11 @@ let find_most_recent_locset_of_ap (target_ap : MyAccessPath.t) (astates : S.t) =
 let find_first_occurrence_of (ap : MyAccessPath.t) : Procname.t * S.t * S.elt =
   let astate_set =
     BFS.fold
-      (fun (_, astate) acc ->
-        match S.exists (fun tup -> MyAccessPath.equal (second_of tup) ap) astate with
+      (fun proc acc ->
+        let proc_astate = get_summary proc in
+        match S.exists (fun tup -> MyAccessPath.equal (second_of tup) ap) proc_astate with
         | true ->
-            astate
+            proc_astate
         | false ->
             acc )
       S.empty callgraph
@@ -451,19 +442,14 @@ let collect_program_var_aps_from (aliasset : A.t) ~(self : MyAccessPath.t)
 
 
 (** Find the immediate callers and their summaries of the given Procname.t. *)
-let find_direct_callers (target_meth : Procname.t) : (Procname.t * S.t) list =
-  let callee_vertex = (target_meth, get_summary target_meth) in
-  G.pred callgraph callee_vertex
-
+let find_direct_callers (target_meth : Procname.t) : Procname.t list = G.pred callgraph target_meth
 
 (** Find the immediate callees and their summaries of the given Procname.t. *)
-let find_direct_callees (target_caller : Procname.t) (target_meth : Procname.t) :
-    (Procname.t * S.t) list =
-  let target_vertex = (target_meth, get_summary target_meth) in
-  try G.succ callgraph target_vertex
+let find_direct_callees (target_caller : Procname.t) (target_meth : Procname.t) : Procname.t list =
+  try G.succ callgraph target_meth
   with _ ->
     let retry_targetname = resolve_callee_superclass target_caller target_meth in
-    G.succ callgraph (retry_targetname, get_summary retry_targetname)
+    G.succ callgraph retry_targetname
 
 
 (** Is the Chain.chain_slice already in the given chain? *)
@@ -674,7 +660,7 @@ let find_matching_param_for_callv (ap_set : A.t) (callv_ap : A.elt) : A.elt =
 
 
 let is_caller ~(caller : Procname.t) ~(callee : Procname.t) =
-  let direct_callers = find_direct_callers callee >>| fst in
+  let direct_callers = find_direct_callers callee in
   List.mem direct_callers caller ~equal:Procname.equal
 
 
@@ -682,11 +668,10 @@ let reset_counter_recursively (current_procname : Procname.t) : unit =
   (* L.progress "recursively resetting for %a ...@." Procname.pp current_procname ; *)
   reset_counter current_procname ;
   G.iter_succ
-    (fun (proc, _) ->
+    (fun proc ->
       (* L.progress "%a's counter reset to 0@." Procname.pp proc ; *)
       reset_counter proc )
-    callgraph
-    (current_procname, get_summary current_procname)
+    callgraph current_procname
 
 
 (* computing chains ================================= *)
@@ -736,7 +721,8 @@ let rec compute_chain_inner (current_methname : Procname.t) (current_astate_set 
   let callees = find_direct_callees just_before_procname current_methname in
   let statetup_with_returnv_or_carriedovers =
     fold
-      ~f:(fun acc (_, callee_astate_set) ->
+      ~f:(fun acc callee ->
+        let callee_astate_set = get_summary callee in
         acc @ find_returnv_or_carriedover_ap current_astate_set callee_astate_set )
       ~init:[] callees
   in
@@ -815,8 +801,7 @@ let rec compute_chain_inner (current_methname : Procname.t) (current_astate_set 
             chain_updated new_call_stack debug_chain_updated current_chain_acc )
         else
           (* ============ DEAD ============ *)
-          let current_node = (current_methname, current_astate_set) in
-          let is_leaf = is_empty @@ G.succ callgraph current_node in
+          let is_leaf = is_empty @@ G.succ callgraph current_methname in
           let completed_chain =
             if is_leaf then (current_methname, Status.Dead) :: current_chain else current_chain
           in
@@ -837,9 +822,10 @@ let rec compute_chain_inner (current_methname : Procname.t) (current_astate_set 
         match not_enough_call_stack || popped_meth_is_not_a_caller with
         | true ->
             let callers_and_astates =
-              find_direct_callers current_methname |> List.filter ~f:(not << is_lambda << fst)
+              find_direct_callers current_methname |> List.filter ~f:(not << is_lambda)
             in
-            let mapfunc (caller, caller_astate_set) =
+            let mapfunc caller =
+              let caller_astate_set = get_summary caller in
               let returnv_aliastup =
                 find_returnv_holding_callee_astateset current_methname caller_astate_set
               in
@@ -895,82 +881,94 @@ let rec compute_chain_inner (current_methname : Procname.t) (current_astate_set 
             (* recurse *)
             compute_chain_inner caller caller_astate_set statetup_with_returnv chain_updated
               call_stack_updated debug_chain_updated current_chain_acc )
-      else if exists ~f:(fun ap -> is_callv_ap ap) var_aps then (
-        (* ============ CALL ============ *)
+      else if exists ~f:(fun ap -> is_callv_ap ap) var_aps then
+        (* ============ CALL or VOIDCALL ============ *)
         (* Retrieve and update the callv counter. *)
         let callv_counter = get_counter current_methname in
-        L.progress "current_methname: %a, callv_counter: %a@." Procname.pp current_methname Int.pp
-          callv_counter ;
         let callvs_partitioned_by_procname =
           filter ~f:is_callv_ap var_aps |> partition_callvs_by_procname
         in
-        L.progress "callvs_parititioned_by_procname: %a, callv_counter: %d@." pp_aplist_list
-          callvs_partitioned_by_procname callv_counter ;
         let earliest_callvs =
           List.fold
             ~f:(fun acc callvs ->
               try find_earliest_callv callvs ~greater_than:callv_counter :: acc with _ -> acc )
             callvs_partitioned_by_procname ~init:[]
         in
-        L.progress "earliest_callvs: %a@." pp_ap_list earliest_callvs ;
         let mapfunc callv =
           assert (Int.( <= ) callv_counter (extract_counter_from_callv callv)) ;
           let callv_counter = extract_counter_from_callv callv in
           update_counter current_methname (extract_counter_from_callv callv) ;
-          L.progress "%a's counter updated to %a@." Procname.pp current_methname Int.pp
-            (extract_counter_from_callv callv) ;
-          (* now, find the matching param_ap. *)
           let param_ap_matching_callv = find_matching_param_for_callv (A.of_list var_aps) callv in
           let callee_methname = extract_callee_from callv in
-          L.progress "callee_methname: %a@." Procname.pp callee_methname ;
           let callee_astate_set = get_summary callee_methname in
           let param_ap_locset =
-            if is_param_ap param_ap_matching_callv then
-              let param_linum = extract_linum_from_param_ap param_ap_matching_callv in
-              let location_term : Location.t =
-                {Location.line= param_linum; Location.col= -1; Location.file= SourceFile.invalid ""}
-              in
-              LocationSet.singleton location_term
-            else
-              let param_linum =
-                extract_linum_from_param param_ap_matching_callv callee_astate_set
-              in
-              let location_term : Location.t =
-                {Location.line= param_linum; Location.col= -1; Location.file= SourceFile.invalid ""}
-              in
-              LocationSet.singleton location_term
+            let param_linum =
+              if is_param_ap param_ap_matching_callv then
+                extract_linum_from_param_ap param_ap_matching_callv
+              else extract_linum_from_param param_ap_matching_callv callee_astate_set
+            in
+            let location_term : Location.t =
+              {Location.line= param_linum; Location.col= -1; Location.file= SourceFile.invalid ""}
+            in
+            LocationSet.singleton location_term
           in
-          let new_chain_slice =
-            ( current_methname
-            , Status.Call (callee_methname, param_ap_matching_callv, param_ap_locset, callv_counter)
-            )
-          in
-          let chain_updated = [new_chain_slice]
-          and debug_chain_updated = new_chain_slice :: debug_chain
-          and call_stack_updated = callee_methname :: current_call_stack in
-          if is_param_ap param_ap_matching_callv then (
-            (* API Call *)
-            let computed =
-              compute_chain_inner callee_methname callee_astate_set bottuple chain_updated
-                call_stack_updated debug_chain_updated []
-            in
-            reset_counter_recursively current_methname ;
-            computed )
-          else
-            (* UDF call *)
-            let param_statetup =
-              search_target_tuple_by_pvar_ap param_ap_matching_callv callee_methname
-                callee_astate_set
-            in
-            let computed =
-              compute_chain_inner callee_methname callee_astate_set param_statetup chain_updated
-                call_stack_updated debug_chain_updated []
-            in
-            reset_counter_recursively current_methname ;
-            computed
+          match return_type_is_void callee_methname with
+          | true ->
+              (* VOID CALL *)
+              let new_chain_slice =
+                ( current_methname
+                , Status.VoidCall
+                    (callee_methname, param_ap_matching_callv, param_ap_locset, callv_counter) )
+              in
+              let chain_updated = [new_chain_slice]
+              and debug_chain_updated = new_chain_slice :: debug_chain
+              and call_stack_updated = callee_methname :: current_call_stack in
+              if is_param_ap param_ap_matching_callv then (* API Call *)
+                raise TODO
+              else
+                (* UDF Call *)
+                let param_statetup =
+                  search_target_tuple_by_pvar_ap param_ap_matching_callv callee_methname
+                    callee_astate_set
+                in
+                let param_ap_computed =
+                  compute_chain_inner callee_methname callee_astate_set param_statetup chain_updated
+                    call_stack_updated debug_chain_updated []
+                in
+                raise TODO
+          | false ->
+              (* CALL *)
+              let new_chain_slice =
+                ( current_methname
+                , Status.Call
+                    (callee_methname, param_ap_matching_callv, param_ap_locset, callv_counter) )
+              in
+              let chain_updated = [new_chain_slice]
+              and debug_chain_updated = new_chain_slice :: debug_chain
+              and call_stack_updated = callee_methname :: current_call_stack in
+              if is_param_ap param_ap_matching_callv then (
+                (* API Call *)
+                let computed =
+                  compute_chain_inner callee_methname callee_astate_set bottuple chain_updated
+                    call_stack_updated debug_chain_updated []
+                in
+                reset_counter_recursively current_methname ;
+                computed )
+              else
+                (* UDF call *)
+                let param_statetup =
+                  search_target_tuple_by_pvar_ap param_ap_matching_callv callee_methname
+                    callee_astate_set
+                in
+                let computed =
+                  compute_chain_inner callee_methname callee_astate_set param_statetup chain_updated
+                    call_stack_updated debug_chain_updated []
+                in
+                reset_counter_recursively current_methname ;
+                computed
         in
         let collected_subchains = concat @@ map ~f:mapfunc earliest_callvs in
-        List.map ~f:(fun subchain -> subchain @ current_chain) collected_subchains )
+        List.map ~f:(fun subchain -> subchain @ current_chain) collected_subchains
       else if
         (* either REDEFINITION or DEAD.
            check which one is the case by checking if there are multiple current_vardefs in the alias set *)
@@ -1006,7 +1004,6 @@ let rec compute_chain_inner (current_methname : Procname.t) (current_astate_set 
         reset_counter_recursively current_methname ;
         completed_chain :: current_chain_acc
   | nonempty_aplist ->
-      L.progress "nonempty_aplist: %a@." pp_ap_list nonempty_aplist ;
       concat
       @@ map
            ~f:(fun ap ->

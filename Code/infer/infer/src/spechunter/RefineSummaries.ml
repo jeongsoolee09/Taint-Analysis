@@ -234,22 +234,20 @@ let merge_cast_returnv_with_return (table : (Procname.t, S.t) Hashtbl.t) :
         S.map
           (fun astate ->
             let cast_returnv =
-              find_witness_exn
-                ~pred:(fun ap -> is_returnv_ap ap && is_cast (extract_callee_from ap))
+              List.find_exn
+                ~f:(fun ap -> is_returnv_ap ap && is_cast (extract_callee_from ap))
                 (A.elements (fourth_of astate))
             in
             let cast_returnv_counter = extract_counter_from_returnv cast_returnv
             and cast_returnv_linum = extract_linum_from_returnv cast_returnv in
             let ( (callv_proc, callv_vardef, callv_loc, callv_aliasset) as
                 astate_holding_matching_cast_callv ) =
-              find_witness_exn
-                ~pred:(fun other_astate ->
+              List.find_exn
+                ~f:(fun other_astate ->
                   let other_aliasset = fourth_of other_astate in
                   A.exists is_cast_callv other_aliasset
                   &&
-                  let cast_callv =
-                    find_witness_exn ~pred:is_cast_callv (A.elements other_aliasset)
-                  in
+                  let cast_callv = List.find_exn ~f:is_cast_callv (A.elements other_aliasset) in
                   let cast_callv_counter = extract_counter_from_callv cast_callv
                   and cast_callv_linum = extract_linum_from_callv cast_callv in
                   List.mem cast_returnv_counter cast_callv_counter ~equal:Int.( = )
@@ -311,7 +309,6 @@ let move_void_callee_returnv_and_remove_ph (table : (Procname.t, S.t) Hashtbl.t)
                 (fourth_of astate) ) )
         void_returnvs
     in
-    astates_holding_corresponding_callvs ;
     let astates_holding_corresponding_callvs_updated =
       List.map
         ~f:(fun (proc, vardef, loc, aliasset) ->
@@ -329,6 +326,49 @@ let move_void_callee_returnv_and_remove_ph (table : (Procname.t, S.t) Hashtbl.t)
     |> (fun astate_set -> S.diff astate_set ph_tuples_with_void_returnvs)
     |> (fun astate_set -> S.diff astate_set (S.of_list astates_holding_corresponding_callvs))
     |> S.union (S.of_list astates_holding_corresponding_callvs_updated)
+  in
+  Hashtbl.iter (fun proc astate_set -> Hashtbl.replace table proc (one_pass_S astate_set)) table ;
+  table
+
+
+let merge_cast_returnv_aliasset_with_callv_ones (table : (Procname.t, S.t) Hashtbl.t) :
+    (Procname.t, S.t) Hashtbl.t =
+  let is_cast_callv ap = is_callv_ap ap && is_cast (extract_callee_from ap) in
+  let is_cast_returnv ap = is_returnv_ap ap && is_cast (extract_callee_from ap) in
+  let one_pass_S (astate_set : S.t) : S.t =
+    let ph_tuple_with_cast_returnv =
+      S.filter
+        (fun (_, vardef, _, aliasset) ->
+          is_placeholder_vardef_ap vardef && A.exists is_cast_returnv aliasset )
+        astate_set
+    in
+    S.fold
+      (fun ph_astate acc ->
+        let cast_returnv = List.find_exn ~f:is_cast_returnv (A.elements (fourth_of ph_astate)) in
+        let ((matching_proc, matching_vardef, matching_loc, matching_aliasset) as matching_tuple) =
+          List.find_exn
+            ~f:(fun astate ->
+              A.exists
+                (fun ap ->
+                  is_cast_callv ap && callv_and_returnv_matches ~callv:ap ~returnv:cast_returnv )
+                (fourth_of ph_astate) )
+            (S.elements acc)
+        in
+        let matching_tuple_updated =
+          ( matching_proc
+          , matching_vardef
+          , matching_loc
+          , A.union (fourth_of ph_astate) matching_aliasset
+            |> A.remove cast_returnv
+            |> A.remove
+                 (List.find_exn
+                    ~f:(fun ap ->
+                      is_cast_callv ap && callv_and_returnv_matches ~callv:ap ~returnv:cast_returnv
+                      )
+                    (A.elements matching_aliasset) ) )
+        in
+        acc |> S.remove ph_astate |> S.remove matching_tuple |> S.add matching_tuple_updated )
+      ph_tuple_with_cast_returnv astate_set
   in
   Hashtbl.iter (fun proc astate_set -> Hashtbl.replace table proc (one_pass_S astate_set)) table ;
   table
@@ -594,8 +634,10 @@ let main : (Procname.t, S.t) Hashtbl.t -> unit =
   |> summary_table_to_file_and_return "6_merge_cast_returnv_with_return.txt"
   |> move_void_callee_returnv_and_remove_ph
   |> summary_table_to_file_and_return "7_move_void_callee_returnv_and_remove_ph.txt"
+  (* |> merge_cast_returnv_aliasset_with_callv_ones *)
+  (* |> summary_table_to_file_and_return "8_merge_cast_returnv_aliasset_with_callv_ones.txt" *)
   |> remove_unimportant_elems
-  |> summary_table_to_file_and_return "8_remove_unimportant_elems.txt"
+  |> summary_table_to_file_and_return "9_remove_unimportant_elems.txt"
   |> remove_java_constants
-  |> summary_table_to_file_and_return "9_remove_java_constants.txt"
+  |> summary_table_to_file_and_return "10_remove_java_constants.txt"
   |> return

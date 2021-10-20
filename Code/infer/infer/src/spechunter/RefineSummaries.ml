@@ -345,29 +345,33 @@ let merge_cast_returnv_aliasset_with_callv_ones (table : (Procname.t, S.t) Hasht
     S.fold
       (fun ph_astate acc ->
         let cast_returnv = List.find_exn ~f:is_cast_returnv (A.elements (fourth_of ph_astate)) in
-        let ((matching_proc, matching_vardef, matching_loc, matching_aliasset) as matching_tuple) =
-          List.find_exn
+        let matching_tuple_opt =
+          List.find
             ~f:(fun astate ->
               A.exists
                 (fun ap ->
                   is_cast_callv ap && callv_and_returnv_matches ~callv:ap ~returnv:cast_returnv )
-                (fourth_of ph_astate) )
+                (fourth_of astate) )
             (S.elements acc)
         in
-        let matching_tuple_updated =
-          ( matching_proc
-          , matching_vardef
-          , matching_loc
-          , A.union (fourth_of ph_astate) matching_aliasset
-            |> A.remove cast_returnv
-            |> A.remove
-                 (List.find_exn
-                    ~f:(fun ap ->
-                      is_cast_callv ap && callv_and_returnv_matches ~callv:ap ~returnv:cast_returnv
-                      )
-                    (A.elements matching_aliasset) ) )
-        in
-        acc |> S.remove ph_astate |> S.remove matching_tuple |> S.add matching_tuple_updated )
+        match matching_tuple_opt with
+        | Some ((matching_proc, matching_vardef, matching_loc, matching_aliasset) as matching_tuple)
+          ->
+            let matching_tuple_updated =
+              ( matching_proc
+              , matching_vardef
+              , matching_loc
+              , A.union (fourth_of ph_astate) matching_aliasset
+                |> A.filter (fun ap ->
+                       not
+                         ( MyAccessPath.equal cast_returnv ap
+                         || is_cast_callv ap
+                            && callv_and_returnv_matches ~callv:ap ~returnv:cast_returnv
+                         || (is_param_ap ap && (is_cast @@ extract_callee_from ap)) ) ) )
+            in
+            acc |> S.remove ph_astate |> S.remove matching_tuple |> S.add matching_tuple_updated
+        | None ->
+            acc )
       ph_tuple_with_cast_returnv astate_set
   in
   Hashtbl.iter (fun proc astate_set -> Hashtbl.replace table proc (one_pass_S astate_set)) table ;
@@ -634,8 +638,8 @@ let main : (Procname.t, S.t) Hashtbl.t -> unit =
   |> summary_table_to_file_and_return "6_merge_cast_returnv_with_return.txt"
   |> move_void_callee_returnv_and_remove_ph
   |> summary_table_to_file_and_return "7_move_void_callee_returnv_and_remove_ph.txt"
-  (* |> merge_cast_returnv_aliasset_with_callv_ones *)
-  (* |> summary_table_to_file_and_return "8_merge_cast_returnv_aliasset_with_callv_ones.txt" *)
+  |> merge_cast_returnv_aliasset_with_callv_ones
+  |> summary_table_to_file_and_return "8_merge_cast_returnv_aliasset_with_callv_ones.txt"
   |> remove_unimportant_elems
   |> summary_table_to_file_and_return "9_remove_unimportant_elems.txt"
   |> remove_java_constants

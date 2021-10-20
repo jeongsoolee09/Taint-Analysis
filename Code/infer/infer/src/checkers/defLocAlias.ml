@@ -68,6 +68,9 @@ module TransferFunctions (CFG : ProcCfg.S) = struct
     List.hd_exn @@ String.split ~on:'_' to_truncate
 
 
+  (* Manglers ========================================= *)
+  (* ================================================== *)
+
   (** specially mangled variable to mark an AP as passed to a callee *)
   let mk_callv_pvar procname linum =
     let antipattern = Str.regexp "\\(.*_[0-9]+_[0-9]+\\)" in
@@ -121,6 +124,14 @@ module TransferFunctions (CFG : ProcCfg.S) = struct
          procname
 
 
+  let mk_cast_of (ap : MyAccessPath.t) (procname : Procname.t) =
+    let var, flds = ap in
+    let cast_var =
+      Var.of_pvar @@ Pvar.mk (Mangled.from_string @@ F.asprintf "%a_cast" Var.pp var) procname
+    in
+    (cast_var, flds)
+
+
   let rec extract_nonthisvar_from_args methname (arg_ts : (Exp.t * Typ.t) list) (astate_set : S.t) :
       Exp.t list =
     match arg_ts with
@@ -146,75 +157,6 @@ module TransferFunctions (CFG : ProcCfg.S) = struct
             var1 Var.pp var2
     in
     List.filter ~f:leave_logical ziplist |> List.map ~f:map_func
-
-
-  (** Retrieve the latest pvar associated with the given id *)
-  let search_recent_vardef_astate (methname : Procname.t) (id : Var.t) (apair : P.t) : T.t =
-    let elements = S.elements (fst apair) in
-    let rec inner methname id astate_list =
-      match astate_list with
-      | [] ->
-          L.die InternalError
-            "search_recent_vardef_astate failed, methname: %a, id: %a, astate_set: %a@." Procname.pp
-            methname Var.pp id P.pp apair
-      | targetTuple :: t ->
-          let proc, (var, _), loc, aliasset = targetTuple in
-          let proc_cond = Procname.equal proc methname in
-          let id_cond = A.mem (id, []) aliasset in
-          let var_cond = not @@ Var.equal var (placeholder_vardef proc) in
-          if var_cond then
-            let most_recent_loc = H.get_most_recent_loc (methname, (var, [])) (snd apair) in
-            let loc_cond = LocationSet.equal most_recent_loc loc in
-            if proc_cond && id_cond && loc_cond then targetTuple else inner methname id t
-          else inner methname id t
-    in
-    inner methname id elements
-
-
-  (** given a doubleton set of lv and pv, extract the pv. *)
-  let rec extract_another_pvar (id : Ident.t) (varsetlist : A.t list) : Var.t =
-    match varsetlist with
-    | [] ->
-        L.die InternalError "extract_another_pvar failed, id: %a, varsetlist: %a@." Ident.pp id
-          pp_aliasset_list varsetlist
-    | set :: t ->
-        if Int.equal (A.cardinal set) 2 && A.mem (Var.of_id id, []) set then
-          match set |> A.remove (Var.of_id id, []) |> A.elements with
-          | [(x, _)] ->
-              x
-          | _ ->
-              L.die InternalError "extract_another_pvar failed, id: %a, varsetlist: %a@." Ident.pp
-                id pp_aliasset_list varsetlist
-        else extract_another_pvar id t
-
-
-  (** Takes an actual(logical)-formal binding list and adds the formals to the respective pvar
-      tuples of the actual arguments *)
-  let rec add_bindings_to_alias_of_tuples (methname : Procname.t) bindinglist
-      (actual_astates : T.t list) (history : HistoryMap.t) =
-    match bindinglist with
-    | [] ->
-        []
-    | (actualvar, formalvar) :: tl -> (
-      match actualvar with
-      | Var.LogicalVar vl ->
-          let actual_pvar, _ =
-            second_of @@ weak_search_target_tuple_by_id vl (S.of_list actual_astates)
-          in
-          (* possibly various definitions of the pvar in question. *)
-          let candTuples =
-            search_target_tuples_by_vardef actual_pvar methname (S.of_list actual_astates)
-          in
-          (* the most recent one among the definitions. *)
-          let most_recent_loc = H.get_most_recent_loc (methname, (actual_pvar, [])) history in
-          let proc, var, loc, aliasset' = search_astate_by_loc most_recent_loc candTuples in
-          let newTuple = (proc, var, loc, A.add (formalvar, []) aliasset') in
-          newTuple :: add_bindings_to_alias_of_tuples methname tl actual_astates history
-      | Var.ProgramVar _ ->
-          L.die InternalError
-            "add_bindings_to_alias_of_tuples failed, methname: %a, bindinglist: %a, \
-             actual_astates: %a@."
-            Procname.pp methname pp_bindinglist bindinglist pp_astatelist actual_astates )
 
 
   let get_formal_args analyze_dependency (callee_methname : Procname.t) : Var.t list =
@@ -772,39 +714,75 @@ module TransferFunctions (CFG : ProcCfg.S) = struct
   let exec_lib_call (ret_id : Ident.t) (callee_methname : Procname.t)
       (arg_ts : (Exp.t * Typ.t) list) ((astate_set, histmap) : P.t) (caller_methname : Procname.t)
       (node_loc : Location.t) : P.t =
-    let callee_name_simple = Procname.get_method callee_methname in
-    let param_indices = List.init (List.length arg_ts) ~f:Int.to_string in
-    let mangles : Mangled.t list =
-      param_indices
-      >>| fun param_index ->
-      Mangled.from_string
-      @@ F.asprintf "param_%s_%d_%s" callee_name_simple node_loc.line param_index
-    in
-    let mangled_params : Pvar.t list =
-      List.map ~f:(fun mangle -> Pvar.mk mangle callee_methname) mangles
-    in
-    (* Associate mangled parameters and their resp. actual arguments as aliases. *)
-    let actuals_logical = arg_ts >>| (fst >> convert_exp_to_logical) in
-    let callvs =
-      List.init (List.length actuals_logical) ~f:(fun _ ->
-          mk_callv_pvar callee_methname node_loc.line )
-    in
-    let astate_set' =
-      batch_alias_assoc astate_set actuals_logical mangled_params
-      |> fun astate_set -> batch_alias_assoc astate_set actuals_logical callvs
-    in
-    (* We need to create a new astate (ph tuple) here *)
-    let callv_counters =
-      callvs >>| (fun callv -> (Var.of_pvar callv, [])) >>| extract_counter_from_callv
-    in
-    let returnv = mk_returnv callee_methname callv_counters node_loc.line in
-    let newtuple =
-      ( caller_methname
-      , (placeholder_vardef caller_methname, [])
-      , LocationSet.singleton Location.dummy
-      , doubleton (Var.of_id ret_id, []) (returnv, []) )
-    in
-    (S.add newtuple astate_set', histmap)
+    match is_cast callee_methname with
+    | true ->
+        let actuals_logical_id =
+          List.hd_exn
+            (arg_ts >>| (fst >> convert_exp_to_logical) |> List.filter ~f:(not << Ident.is_none))
+        in
+        let ((actual_proc, actual_vardef, actual_loc, actual_aliasset) as actual_astate) =
+          weak_search_target_tuple_by_id actuals_logical_id astate_set
+        in
+        let callv = mk_callv callee_methname node_loc.line in
+        let callv_ap = (callv, []) in
+        let param_ap = (mk_param callee_methname node_loc.line 0, []) in
+        let callv_counter = extract_counter_from_callv callv_ap in
+        let returnv = mk_returnv callee_methname [callv_counter] node_loc.line in
+        let returnv_ap = (returnv, []) in
+        let actual_astate_updated =
+          ( actual_proc
+          , actual_vardef
+          , actual_loc
+          , actual_aliasset |> A.add callv_ap |> A.add param_ap )
+        in
+        let cast_vardef = mk_cast_of actual_vardef caller_methname in
+        let new_tuple =
+          ( caller_methname
+          , cast_vardef
+          , LocationSet.singleton node_loc
+          , A.add (Var.of_id ret_id, []) (doubleton returnv_ap cast_vardef) )
+        in
+        let newmap =
+          H.add_to_history (caller_methname, cast_vardef) (LocationSet.singleton node_loc) histmap
+        in
+        let newset =
+          astate_set |> S.remove actual_astate |> S.add actual_astate_updated |> S.add new_tuple
+        in
+        (newset, newmap)
+    | false ->
+        let callee_name_simple = Procname.get_method callee_methname in
+        let param_indices = List.init (List.length arg_ts) ~f:Int.to_string in
+        let mangles : Mangled.t list =
+          param_indices
+          >>| fun param_index ->
+          Mangled.from_string
+          @@ F.asprintf "param_%s_%d_%s" callee_name_simple node_loc.line param_index
+        in
+        let mangled_params : Pvar.t list =
+          List.map ~f:(fun mangle -> Pvar.mk mangle callee_methname) mangles
+        in
+        (* Associate mangled parameters and their resp. actual arguments as aliases. *)
+        let actuals_logical = arg_ts >>| (fst >> convert_exp_to_logical) in
+        let callvs =
+          List.init (List.length actuals_logical) ~f:(fun _ ->
+              mk_callv_pvar callee_methname node_loc.line )
+        in
+        let astate_set' =
+          batch_alias_assoc astate_set actuals_logical mangled_params
+          |> fun astate_set -> batch_alias_assoc astate_set actuals_logical callvs
+        in
+        (* We need to create a new astate (ph tuple) here *)
+        let callv_counters =
+          callvs >>| (fun callv -> (Var.of_pvar callv, [])) >>| extract_counter_from_callv
+        in
+        let returnv = mk_returnv callee_methname callv_counters node_loc.line in
+        let newtuple =
+          ( caller_methname
+          , (placeholder_vardef caller_methname, [])
+          , LocationSet.singleton Location.dummy
+          , doubleton (Var.of_id ret_id, []) (returnv, []) )
+        in
+        (S.add newtuple astate_set', histmap)
 
 
   let exec_call (ret_id : Ident.t) (callee_methname : Procname.t) (arg_ts : (Exp.t * Typ.t) list)
@@ -831,6 +809,8 @@ module TransferFunctions (CFG : ProcCfg.S) = struct
           with FindActualPvarFailed -> acc )
         actuals_logical_id ~init:[]
     in
+    L.d_printfln "actual_interid_param_triples, formals: %a@." pp_varlist
+      (actual_interid_param_triples >>| fun (_, _, a) -> a) ;
     (* 1. mangle callvs *)
     let callvs =
       List.init
@@ -1042,98 +1022,37 @@ module TransferFunctions (CFG : ProcCfg.S) = struct
     |> List.map ~f:Array.to_list |> List.concat |> List.filter ~f:is_call
 
 
-  (** adds this-actual to aliasset of each non-this actual. *)
-  let check_callv_for_void_calls ((astate_set, historymap) : P.t) (pdesc : Procdesc.t) : P.t =
-    (* first, collect all callvs from each aliasset. *)
-    let all_call_instrs = collect_call_instrs pdesc in
-    let newset =
-      List.fold
-        ~f:(fun astate_set_acc instr ->
-          match instr with
-          | Sil.Call ((ret_id, _), e_fun, arg_ts, _, _) -> (
-            try
-              let ret_id_astate = weak_search_target_tuple_by_id ret_id astate_set in
-              if is_irvar_ap @@ second_of ret_id_astate then
-                let actual_logical_ids =
-                  arg_ts >>| (fst >> convert_exp_to_logical) |> List.filter ~f:(not << Ident.is_none)
-                in
-                match actual_logical_ids with
-                | [] ->
-                    astate_set_acc
-                | actual_logical_ids ->
-                    let this_actual_id = List.hd_exn actual_logical_ids in
-                    let this_actual_astate =
-                      weak_search_target_tuple_by_id this_actual_id astate_set_acc
-                    in
-                    let non_this_actual_ids = List.tl_exn actual_logical_ids in
-                    let non_this_actual_astates =
-                      List.map
-                        ~f:(fun ap -> weak_search_target_tuple_by_id ap astate_set_acc)
-                        non_this_actual_ids
-                    in
-                    let non_this_actual_astates_updated =
-                      List.map
-                        ~f:(fun non_this_actual_astate ->
-                          let proc, vardef, locset, aliasset = non_this_actual_astate in
-                          (proc, vardef, locset, A.add (second_of this_actual_astate) aliasset) )
-                        non_this_actual_astates
-                    in
-                    astate_set_acc
-                    |> (fun set -> S.diff set (S.of_list non_this_actual_astates))
-                    |> S.union (S.of_list non_this_actual_astates_updated)
-              else astate_set_acc
-            with WeakSearchTargetTupleByIdFailed _ -> astate_set_acc )
-          | _ ->
-              F.kasprintf
-                (fun msg -> raise @@ NotACallInstr msg)
-                "check_callv_for_void_calls failed, instr: %a@."
-                (Sil.pp_instr Pp.text ~print_types:false)
-                instr )
-        all_call_instrs ~init:astate_set
-    in
-    (newset, historymap)
-
-
   let exec_instr (prev' : P.t)
       {InterproceduralAnalysis.proc_desc; InterproceduralAnalysis.analyze_dependency}
       (node : CFG.Node.t) (instr : Sil.instr) : P.t =
     let methname = node |> CFG.Node.underlying_node |> Procdesc.Node.get_proc_name in
     let node_loc = CFG.Node.loc node in
     let prev = register_formals prev' node methname in
-    let ((astate_set, historymap) as transferred_apair) =
-      match instr with
-      | Load {id; e= exp} ->
-          exec_load id exp prev methname node_loc
-      | Store {e1= exp1; e2= exp2} ->
-          exec_store exp1 exp2 methname prev node_loc
-      | Prune _ ->
-          prev
-      | Call ((ret_id, _), e_fun, arg_ts, _, _) -> (
-        match e_fun with
-        | Const (Cfun callee_methname) -> (
-          match is_initializer callee_methname with
-          | true ->
-              if Option.is_some @@ Procdesc.load callee_methname then
-                exec_user_init_call ret_id callee_methname arg_ts analyze_dependency prev methname
-                  node_loc
-              else exec_lib_init_call ret_id callee_methname arg_ts prev methname node_loc
-          | false ->
-              if Option.is_some @@ Procdesc.load callee_methname then
-                exec_call ret_id callee_methname arg_ts analyze_dependency prev methname node_loc
-              else exec_lib_call ret_id callee_methname arg_ts prev methname node_loc )
-        | _ ->
-            L.die InternalError
-              "exec_call failed, ret_id: %a, e_fun: %a astate_set: %a, methname: %a" Ident.pp ret_id
-              Exp.pp e_fun S.pp (fst prev) Procname.pp methname )
-      | Metadata _ ->
-          prev
-    in
-    if
-      Procdesc.Node.equal_nodekind
-        (Procdesc.Node.get_kind @@ CFG.Node.underlying_node node)
-        Procdesc.Node.Exit_node
-    then check_callv_for_void_calls transferred_apair proc_desc
-    else transferred_apair
+    match instr with
+    | Load {id; e= exp} ->
+        exec_load id exp prev methname node_loc
+    | Store {e1= exp1; e2= exp2} ->
+        exec_store exp1 exp2 methname prev node_loc
+    | Prune _ ->
+        prev
+    | Call ((ret_id, _), e_fun, arg_ts, _, _) -> (
+      match e_fun with
+      | Const (Cfun callee_methname) -> (
+        match is_initializer callee_methname with
+        | true ->
+            if Option.is_some @@ Procdesc.load callee_methname then
+              exec_user_init_call ret_id callee_methname arg_ts analyze_dependency prev methname
+                node_loc
+            else exec_lib_init_call ret_id callee_methname arg_ts prev methname node_loc
+        | false ->
+            if Option.is_some @@ Procdesc.load callee_methname then
+              exec_call ret_id callee_methname arg_ts analyze_dependency prev methname node_loc
+            else exec_lib_call ret_id callee_methname arg_ts prev methname node_loc )
+      | _ ->
+          L.die InternalError "exec_call failed, ret_id: %a, e_fun: %a astate_set: %a, methname: %a"
+            Ident.pp ret_id Exp.pp e_fun S.pp (fst prev) Procname.pp methname )
+    | Metadata _ ->
+        prev
 
 
   let pp_session_name node fmt = F.fprintf fmt "def/loc/alias %a" CFG.Node.pp_id (CFG.Node.id node)

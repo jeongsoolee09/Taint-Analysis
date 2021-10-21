@@ -835,6 +835,7 @@ let rec compute_chain_inner (current_methname : Procname.t) (current_astate_set 
                the level of preferences among different A.elt's. *) )
         else if exists ~f:(fun (var, _) -> Var.is_return var) var_aps then (
           (* ============ DEFINITION AT THE CALLER ============ *)
+          L.progress "here!!!@." ;
           let not_enough_call_stack = Option.is_none @@ List.nth current_call_stack 1
           and popped_meth_is_not_a_caller =
             match List.nth current_call_stack 1 with
@@ -967,11 +968,16 @@ let rec compute_chain_inner (current_methname : Procname.t) (current_astate_set 
                           (List.count
                              ~f:(fun ap ->
                                is_callv_ap ap
-                               && Procname.equal (extract_callee_from ap) callee_methname )
+                               && Procname.equal (extract_callee_from ap)
+                                    (extract_callee_from callv) )
                              (A.elements aliasset) )
                           2
-                      then (proc, vardef, locset, aliasset)
-                      else (proc, vardef, locset, A.remove param_ap_matching_callv aliasset)
+                      then (proc, vardef, locset, A.remove callv aliasset)
+                      else
+                        ( proc
+                        , vardef
+                        , locset
+                        , aliasset |> A.remove callv |> A.remove param_ap_matching_callv )
                     else
                       let proc, vardef, locset, aliasset = current_astate in
                       if
@@ -979,7 +985,8 @@ let rec compute_chain_inner (current_methname : Procname.t) (current_astate_set 
                           (List.count
                              ~f:(fun ap ->
                                is_callv_ap ap
-                               && Procname.equal (extract_callee_from ap) callee_methname )
+                               && Procname.equal (extract_callee_from ap)
+                                    (extract_callee_from callv) )
                              (A.elements aliasset) )
                           2
                       then (proc, vardef, locset, aliasset |> A.remove callv)
@@ -1017,11 +1024,16 @@ let rec compute_chain_inner (current_methname : Procname.t) (current_astate_set 
                           (List.count
                              ~f:(fun ap ->
                                is_callv_ap ap
-                               && Procname.equal (extract_callee_from ap) callee_methname )
+                               && Procname.equal (extract_callee_from ap)
+                                    (extract_callee_from callv) )
                              (A.elements aliasset) )
                           2
-                      then (proc, vardef, locset, aliasset)
-                      else (proc, vardef, locset, A.remove param_ap_matching_callv aliasset)
+                      then (proc, vardef, locset, A.remove callv aliasset)
+                      else
+                        ( proc
+                        , vardef
+                        , locset
+                        , aliasset |> A.remove callv |> A.remove param_ap_matching_callv )
                     else
                       let proc, vardef, locset, aliasset = current_astate in
                       if
@@ -1029,7 +1041,8 @@ let rec compute_chain_inner (current_methname : Procname.t) (current_astate_set 
                           (List.count
                              ~f:(fun ap ->
                                is_callv_ap ap
-                               && Procname.equal (extract_callee_from ap) callee_methname )
+                               && Procname.equal (extract_callee_from ap)
+                                    (extract_callee_from callv) )
                              (A.elements aliasset) )
                           2
                       then (proc, vardef, locset, aliasset |> A.remove callv)
@@ -1194,11 +1207,16 @@ let rec compute_chain_inner (current_methname : Procname.t) (current_astate_set 
                             (List.count
                                ~f:(fun ap ->
                                  is_callv_ap ap
-                                 && Procname.equal (extract_callee_from ap) callee_methname )
+                                 && Procname.equal (extract_callee_from ap)
+                                      (extract_callee_from callv) )
                                (A.elements aliasset) )
                             2
-                        then (proc, vardef, locset, aliasset)
-                        else (proc, vardef, locset, A.remove param_ap_matching_callv aliasset)
+                        then (proc, vardef, locset, A.remove callv aliasset)
+                        else
+                          ( proc
+                          , vardef
+                          , locset
+                          , aliasset |> A.remove callv |> A.remove param_ap_matching_callv )
                       else
                         let proc, vardef, locset, aliasset = current_astate in
                         if
@@ -1206,7 +1224,8 @@ let rec compute_chain_inner (current_methname : Procname.t) (current_astate_set 
                             (List.count
                                ~f:(fun ap ->
                                  is_callv_ap ap
-                                 && Procname.equal (extract_callee_from ap) callee_methname )
+                                 && Procname.equal (extract_callee_from ap)
+                                      (extract_callee_from callv) )
                                (A.elements aliasset) )
                             2
                         then (proc, vardef, locset, aliasset |> A.remove callv)
@@ -1244,11 +1263,16 @@ let rec compute_chain_inner (current_methname : Procname.t) (current_astate_set 
                             (List.count
                                ~f:(fun ap ->
                                  is_callv_ap ap
-                                 && Procname.equal (extract_callee_from ap) callee_methname )
+                                 && Procname.equal (extract_callee_from ap)
+                                      (extract_callee_from callv) )
                                (A.elements aliasset) )
                             2
-                        then (proc, vardef, locset, aliasset)
-                        else (proc, vardef, locset, A.remove param_ap_matching_callv aliasset)
+                        then (proc, vardef, locset, A.remove callv aliasset)
+                        else
+                          ( proc
+                          , vardef
+                          , locset
+                          , aliasset |> A.remove callv |> A.remove param_ap_matching_callv )
                       else
                         let proc, vardef, locset, aliasset = current_astate in
                         if
@@ -1256,7 +1280,8 @@ let rec compute_chain_inner (current_methname : Procname.t) (current_astate_set 
                             (List.count
                                ~f:(fun ap ->
                                  is_callv_ap ap
-                                 && Procname.equal (extract_callee_from ap) callee_methname )
+                                 && Procname.equal (extract_callee_from ap)
+                                      (extract_callee_from callv) )
                                (A.elements aliasset) )
                             2
                         then (proc, vardef, locset, aliasset |> A.remove callv)
@@ -1309,8 +1334,8 @@ let rec compute_chain_inner (current_methname : Procname.t) (current_astate_set 
         and define_chains =
           List.filter ~f:(not << is_return_ap) local_aps
           >>= fun local_ap ->
+          L.progress "yayay!!@." ;
           let other_statetup =
-            L.progress "looking for local_ap: %a@." MyAccessPath.pp local_ap ;
             search_target_tuple_by_vardef_ap local_ap current_methname current_astate_set
           in
           let real_aliastup_locset = find_most_recent_locset_of_ap local_ap current_astate_set in
@@ -1330,7 +1355,13 @@ let rec compute_chain_inner (current_methname : Procname.t) (current_astate_set 
 let compute_chain_ (ap : MyAccessPath.t) : Chain.t list =
   let first_methname, first_astate_set, first_astate = find_first_occurrence_of ap in
   let first_aliasset, first_locset = (fourth_of first_astate, third_of first_astate) in
-  let returnv_opt = A.find_first_opt is_returnv_ap first_aliasset in
+  let returnv_opt =
+    match List.filter ~f:is_returnv_ap (A.elements first_aliasset) with
+    | [] ->
+        None
+    | returnvs ->
+        Some (find_earliest_returnv returnvs ~greater_than:0)
+  in
   let source_meth =
     match returnv_opt with Some returnv -> extract_callee_from returnv | None -> first_methname
   in
@@ -1501,9 +1532,8 @@ let main () =
          && (not @@ is_inner_class_proc proc) )
   |> iter ~f:(fun (proc, ap, locset) ->
          (* if *)
-         (*   String.equal (Procname.to_string proc) *)
-         (*     "void RelationalDataAccessApplication.printer(Map)" *)
-         (*   && String.equal (F.asprintf "%a" MyAccessPath.pp ap) "(results, [])" *)
+         (*   String.equal (Procname.to_string proc) "void WhatIWantExample.f()" *)
+         (*   && String.equal (F.asprintf "%a" MyAccessPath.pp ap) "(x, [])" *)
          (* then add_chain (proc, ap, locset) @@ List.hd_exn @@ compute_chain ap ) ; *)
          let computed_chains = compute_chain ap in
          iter ~f:(fun chain -> add_chain (proc, ap, locset) chain) computed_chains ) ;

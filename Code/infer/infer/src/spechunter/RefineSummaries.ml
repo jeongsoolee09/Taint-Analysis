@@ -1,12 +1,11 @@
 open! IStd
-open DefLocAliasPP
+
+(* open DefLocAliasPP *)
 open DefLocAliasSearches
 open DefLocAliasPredicates
 open DefLocAliasDomain
 open Partitioners
 open SpecHunterUtils
-
-(* open DefLocAliasPP *)
 module Hashtbl = Caml.Hashtbl
 module P = DefLocAliasDomain.AbstractPair
 module S = DefLocAliasDomain.AbstractStateSetFinite
@@ -94,65 +93,57 @@ let substitute_frontend_new_returnv_with_init_returnv (table : (Procname.t, S.t)
     if is_lambda @@ first_of @@ List.hd_exn @@ S.elements astate_set then astate_set
     else
       (* key predicates on ap *)
-      (* let is_init_callv ap = is_callv_ap ap && (is_initializer @@ extract_callee_from ap) *)
-      let is_init_returnv ap = is_returnv_ap ap && (is_initializer @@ extract_callee_from ap)
-      and is_new_returnv ap = is_returnv_ap ap && (is_new @@ extract_callee_from ap) in
-      let new_returnv_astates =
+      let is_init_callv ap = is_callv_ap ap && (is_initializer @@ extract_callee_from ap)
+      and is_init_returnv ap = is_returnv_ap ap && (is_initializer @@ extract_callee_from ap) in
+      L.progress "Working on astate of proc: %a@." MyAccessPath.pp
+        (second_of @@ List.hd_exn @@ S.elements astate_set) ;
+      let init_callv_astates =
         S.filter
           (fun astate ->
             let aliasset = fourth_of astate in
-            A.exists is_new_returnv aliasset )
+            A.exists is_init_callv aliasset )
           astate_set
       in
-      let all_init_returnvs : MyAccessPath.t list =
-        S.fold
-          (fun astate big_acc ->
-            let aliasset = fourth_of astate in
-            let init_returnvs =
-              A.fold
-                (fun ap small_acc -> if is_init_returnv ap then ap :: small_acc else small_acc)
-                aliasset []
-            in
-            big_acc @ init_returnvs )
-          astate_set []
-      in
       (* sanity check on the astates holding <init> returnvs *)
-      let astates_holding_init_returnv_aps =
+      let astates_holding_init_returnvs =
         S.filter
           (fun astate ->
             let aliasset = fourth_of astate in
             A.exists is_init_returnv aliasset )
           astate_set
       in
+      L.progress "astates_holding_init_returnvs: %a@." S.pp astates_holding_init_returnvs ;
       S.iter
         (fun astate -> assert (is_placeholder_vardef_ap (second_of astate)))
-        astates_holding_init_returnv_aps ;
+        astates_holding_init_returnvs ;
       (* now, update the new_returnv_astates *)
-      let target_astates_updated =
+      let init_callv_astates_updated =
         S.map
           (fun (proc, vardef, loc, aliasset) ->
-            let aliasset_rmvd = A.filter (fun ap -> not @@ is_new_returnv ap) aliasset in
-            let new_returnvs = A.filter is_new_returnv aliasset in
-            let corresponding_returnvs =
-              A.map
-                (fun new_returnv ->
-                  let new_returnv_linum = extract_linum_from_returnv new_returnv in
-                  try
-                    List.find_exn
-                      ~f:(fun init_returnv ->
-                        let init_returnv_linum = extract_linum_from_returnv init_returnv in
-                        Int.( = ) new_returnv_linum init_returnv_linum )
-                      all_init_returnvs
-                  with _ ->
-                    L.die InternalError "astate_set: %a, new_returnv: %a, all_init_returnvs: %a@."
-                      S.pp astate_set MyAccessPath.pp new_returnv pp_ap_list all_init_returnvs )
-                new_returnvs
+            let init_callv = List.find_exn ~f:is_init_callv (A.elements aliasset) in
+            L.progress "init_callv: %a@." MyAccessPath.pp init_callv ;
+            let matching_init_returnv_astate =
+              List.find_exn
+                ~f:(fun astate_holding_returnv ->
+                  let init_returnvs =
+                    List.filter ~f:is_init_returnv (A.elements @@ fourth_of astate_holding_returnv)
+                  in
+                  List.exists
+                    ~f:(fun init_returnv ->
+                      callv_and_returnv_matches ~callv:init_callv ~returnv:init_returnv )
+                    init_returnvs )
+                (S.elements astates_holding_init_returnvs)
             in
-            let aliasset_updated = A.union aliasset_rmvd corresponding_returnvs in
-            (proc, vardef, loc, aliasset_updated) )
-          new_returnv_astates
+            ( proc
+            , vardef
+            , loc
+            , A.union aliasset
+                (A.filter
+                   (fun ap -> (not @@ is_callv_ap ap) && (not @@ is_returnv_ap ap))
+                   (fourth_of matching_init_returnv_astate) ) ) )
+          init_callv_astates
       in
-      S.diff astate_set new_returnv_astates |> S.union target_astates_updated
+      S.diff astate_set init_callv_astates |> S.union init_callv_astates_updated
   in
   Hashtbl.iter (fun proc astate_set -> Hashtbl.replace table proc (one_pass_S astate_set)) table ;
   table
@@ -634,12 +625,12 @@ let main : (Procname.t, S.t) Hashtbl.t -> unit =
   |> summary_table_to_file_and_return "4_consolidate_dup_pvars.txt"
   |> substitute_frontend_new_returnv_with_init_returnv
   |> summary_table_to_file_and_return "5_substitute_frontend_new_returnv_with_init_returnv.txt"
-  |> merge_cast_returnv_with_return
-  |> summary_table_to_file_and_return "6_merge_cast_returnv_with_return.txt"
+  (* |> merge_cast_returnv_with_return *)
+  (* |> summary_table_to_file_and_return "6_merge_cast_returnv_with_return.txt" *)
   |> move_void_callee_returnv_and_remove_ph
   |> summary_table_to_file_and_return "7_move_void_callee_returnv_and_remove_ph.txt"
-  |> merge_cast_returnv_aliasset_with_callv_ones
-  |> summary_table_to_file_and_return "8_merge_cast_returnv_aliasset_with_callv_ones.txt"
+  (* |> merge_cast_returnv_aliasset_with_callv_ones *)
+  (* |> summary_table_to_file_and_return "8_merge_cast_returnv_aliasset_with_callv_ones.txt" *)
   |> remove_unimportant_elems
   |> summary_table_to_file_and_return "9_remove_unimportant_elems.txt"
   |> remove_java_constants

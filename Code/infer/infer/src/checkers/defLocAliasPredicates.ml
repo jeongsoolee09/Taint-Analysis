@@ -16,6 +16,8 @@ exception NotAJavaProcname of string
 
 exception CannotGetPackage of string
 
+exception CouldNotExtractCallee of string
+
 exception WeakSearchTargetTupleByIdFailed of string
 
 exception IsForeignAPFailed
@@ -188,12 +190,8 @@ let is_param (var : Var.t) : bool =
 
 
 let is_param_ap (ap : A.elt) : bool =
-  let var, _ = ap in
-  match var with
-  | LogicalVar _ ->
-      false
-  | ProgramVar pv ->
-      String.is_substring (Pvar.to_string pv) ~substring:"param"
+  let varstring = F.asprintf "%a" Var.pp (fst ap) in
+  String.is_substring varstring ~substring:"param"
 
 
 let maybe_static (ap : MyAccessPath.t) =
@@ -414,6 +412,13 @@ let is_inner_class_init (procname : Procname.t) =
   Str.string_match pattern proc_string 0
 
 
+let is_inner_class_proc (procname : Procname.t) =
+  let class_string =
+    match Procname.get_class_name procname with Some class_string -> class_string | None -> ""
+  in
+  String.is_substring class_string ~substring:"$"
+
+
 let is_frontend_procname (procname : Procname.t) =
   let simple_name = Procname.get_method procname in
   String.is_prefix simple_name ~prefix:"__"
@@ -482,3 +487,28 @@ let callv_and_returnv_matches ~(callv : MyAccessPath.t) ~(returnv : MyAccessPath
   let returnv_counters = extract_counter_from_returnv returnv
   and returnv_linum = extract_linum_from_returnv returnv in
   List.mem returnv_counters callv_counter ~equal:Int.( = ) && Int.( = ) returnv_linum callv_linum
+
+
+(** Extract the callee's method name embedded in returnv, callv, or param. *)
+let extract_callee_from (ap : MyAccessPath.t) =
+  let special, _ = ap in
+  match special with
+  | LogicalVar _ ->
+      F.kasprintf
+        (fun msg -> raise @@ CouldNotExtractCallee msg)
+        "extract_callee_from failed: it's a LogicalVar. ap: %a@." MyAccessPath.pp ap
+  | ProgramVar pv -> (
+    match Pvar.get_declaring_function pv with
+    | Some procname ->
+        procname
+    | None ->
+        F.kasprintf
+          (fun msg -> raise @@ CouldNotExtractCallee msg)
+          "extract_callee_from failed. ap: %a@." MyAccessPath.pp ap )
+
+
+let is_local_to_known_procname (ap : MyAccessPath.t) =
+  try
+    let _ = extract_callee_from ap in
+    true
+  with CouldNotExtractCallee _ -> false

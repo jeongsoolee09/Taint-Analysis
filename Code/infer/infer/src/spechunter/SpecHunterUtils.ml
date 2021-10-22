@@ -7,6 +7,8 @@ module F = Format
 
 exception FindIndexFailed
 
+exception NoWitness
+
 let option_get : 'a option -> 'a = function
   | None ->
       L.die InternalError "Given option is empty"
@@ -33,3 +35,20 @@ let find_index_of (elem : 'a) (lst : 'a list) ~(equal : 'a -> 'a -> bool) : int 
         if equal h elem then acc else inner (acc + 1) t
   in
   inner 0 lst
+
+
+(** Find the *first* element to match the predicate *)
+let find_witness_exn (lst : 'a list) ~(pred : 'a -> bool) : 'a =
+  let opt =
+    List.fold_left ~f:(fun acc elem -> if pred elem then Some elem else acc) ~init:None
+    @@ List.rev lst
+  in
+  match opt with
+  | None ->
+      F.kasprintf
+        (fun msg ->
+          L.progress "%s@." msg ;
+          raise NoWitness )
+        "find_witness_exn failed.@."
+  | Some elem ->
+      elem

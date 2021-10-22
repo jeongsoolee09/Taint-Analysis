@@ -18,6 +18,8 @@ exception CouldNotExtractCallee of string
 
 exception SearchAstateByPVarFailed
 
+exception SearchAstateByVardefFailed of string
+
 exception SearchAstateByIdFailed of string
 
 exception SearchAstateByLocFailed of string
@@ -422,7 +424,7 @@ let search_target_tuple_by_vardef_ap (ap : MyAccessPath.t) (methname : Procname.
     match elements with
     | [] ->
         F.kasprintf
-          (fun msg -> raise @@ SearchAstateByPVarFailed)
+          (fun msg -> raise @@ SearchAstateByVardefFailed msg)
           "search_target_tuple_by_vardef_ap failed, ap:%a, methname: %a, elements: %a@."
           MyAccessPath.pp ap Procname.pp methname pp_tuplelist elements
     | ((procname, vardef, _, _) as target) :: t ->
@@ -612,6 +614,15 @@ let find_earliest_callv (callvs : MyAccessPath.t list) ~(greater_than : int) : M
   if List.is_empty callvs then raise InvalidArgument ;
   callvs
   |> List.map ~f:(fun callv -> (callv, extract_counter_from_callv callv))
+  |> List.filter ~f:(fun (_, number) -> Int.( <= ) greater_than number)
+  |> List.sort ~compare:(fun (_, a) (_, b) -> Int.compare a b)
+  |> List.hd_exn |> fst
+
+
+let find_earliest_returnv (returnvs : MyAccessPath.t list) ~(greater_than : int) : MyAccessPath.t =
+  if List.is_empty returnvs then raise InvalidArgument ;
+  returnvs
+  |> List.map ~f:(fun returnv -> (returnv, extract_linum_from_returnv returnv))
   |> List.filter ~f:(fun (_, number) -> Int.( <= ) greater_than number)
   |> List.sort ~compare:(fun (_, a) (_, b) -> Int.compare a b)
   |> List.hd_exn |> fst

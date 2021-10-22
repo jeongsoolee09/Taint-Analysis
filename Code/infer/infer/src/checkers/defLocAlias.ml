@@ -941,7 +941,7 @@ module TransferFunctions (CFG : ProcCfg.S) = struct
           in
           let newset = fst apair |> S.remove rhs_astate |> S.add rhs_astate_updated in
           (newset, snd apair)
-        with SearchAstateByPVarFailed ->
+        with SearchAstateByVardefFailed _ ->
           (* there does not exist a pvar + fld astate. We make a new one. *)
           let rhs_vardef = put_fieldname fld rhs_base_vardef in
           let new_tuple =

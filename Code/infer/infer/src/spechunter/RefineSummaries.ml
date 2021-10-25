@@ -92,16 +92,24 @@ let substitute_frontend_new_returnv_with_init_returnv (table : (Procname.t, S.t)
   let one_pass_S (astate_set : S.t) : S.t =
     if is_lambda @@ first_of @@ List.hd_exn @@ S.elements astate_set then astate_set
     else
-      (* key predicates on ap *)
-      let is_init_callv ap = is_callv_ap ap && (is_initializer @@ extract_callee_from ap)
-      and is_init_returnv ap = is_returnv_ap ap && (is_initializer @@ extract_callee_from ap) in
-      L.progress "Working on astate of proc: %a@." MyAccessPath.pp
-        (second_of @@ List.hd_exn @@ S.elements astate_set) ;
-      let init_callv_astates =
+      (* L.progress "astate_Set: %a@." S.pp astate_set ; *)
+      let is_matching_new_returnv new_returnv init_returnv =
+        (* L.progress "new_returnv: %a " MyAccessPath.pp new_returnv ; *)
+        (* L.progress "returnv: %a@." MyAccessPath.pp init_returnv ; *)
+        is_new_returnv new_returnv
+        && Int.( = )
+             (extract_linum_from_returnv new_returnv)
+             (extract_linum_from_returnv init_returnv)
+        &&
+        let new_returnv_classname = extract_classname_from_new_returnv new_returnv
+        and init_returnv_classname = extract_classname_from_init_returnv init_returnv in
+        String.equal new_returnv_classname init_returnv_classname
+      in
+      let new_returnv_astates =
         S.filter
           (fun astate ->
             let aliasset = fourth_of astate in
-            A.exists is_init_callv aliasset )
+            A.exists is_new_returnv aliasset )
           astate_set
       in
       (* sanity check on the astates holding <init> returnvs *)
@@ -112,27 +120,29 @@ let substitute_frontend_new_returnv_with_init_returnv (table : (Procname.t, S.t)
             A.exists is_init_returnv aliasset )
           astate_set
       in
-      L.progress "astates_holding_init_returnvs: %a@." S.pp astates_holding_init_returnvs ;
       S.iter
         (fun astate -> assert (is_placeholder_vardef_ap (second_of astate)))
         astates_holding_init_returnvs ;
       (* now, update the new_returnv_astates *)
-      let init_callv_astates_updated =
+      let new_returnv_astates_updated =
         S.map
           (fun (proc, vardef, loc, aliasset) ->
-            let init_callv = List.find_exn ~f:is_init_callv (A.elements aliasset) in
-            L.progress "init_callv: %a@." MyAccessPath.pp init_callv ;
-            let matching_init_returnv_astate =
-              List.find_exn
+            let new_returnv = List.find_exn ~f:is_new_returnv (A.elements aliasset) in
+            let matching_init_returnv_astates =
+              List.filter
                 ~f:(fun astate_holding_returnv ->
                   let init_returnvs =
                     List.filter ~f:is_init_returnv (A.elements @@ fourth_of astate_holding_returnv)
                   in
                   List.exists
-                    ~f:(fun init_returnv ->
-                      callv_and_returnv_matches ~callv:init_callv ~returnv:init_returnv )
+                    ~f:(fun init_returnv -> is_matching_new_returnv new_returnv init_returnv)
                     init_returnvs )
                 (S.elements astates_holding_init_returnvs)
+            in
+            let matching_init_returnv_astate_returnvs =
+              List.filter
+                ~f:(fun ap -> is_init_returnv ap && is_matching_new_returnv new_returnv ap)
+                (matching_init_returnv_astates >>| (fourth_of >> A.elements) |> List.concat)
             in
             ( proc
             , vardef
@@ -140,10 +150,14 @@ let substitute_frontend_new_returnv_with_init_returnv (table : (Procname.t, S.t)
             , A.union aliasset
                 (A.filter
                    (fun ap -> (not @@ is_callv_ap ap) && (not @@ is_returnv_ap ap))
-                   (fourth_of matching_init_returnv_astate) ) ) )
-          init_callv_astates
+                   ( matching_init_returnv_astates >>| (fourth_of >> A.elements) |> List.concat
+                   |> A.of_list ) )
+              |> A.union (A.of_list matching_init_returnv_astate_returnvs)
+              |> A.filter (not << is_new_returnv)
+              |> A.remove new_returnv ) )
+          new_returnv_astates
       in
-      S.diff astate_set init_callv_astates |> S.union init_callv_astates_updated
+      S.diff astate_set new_returnv_astates |> S.union new_returnv_astates_updated
   in
   Hashtbl.iter (fun proc astate_set -> Hashtbl.replace table proc (one_pass_S astate_set)) table ;
   table

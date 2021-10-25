@@ -115,6 +115,20 @@ module TransferFunctions (CFG : ProcCfg.S) = struct
            procname
 
 
+  let mk_returnv_for_frontend_new (procname : Procname.t) ~(classname_str : string)
+      (counters : int list) (linum : int) =
+    let pp_int_list fmt intlist =
+      F.fprintf fmt "[" ;
+      List.iter ~f:(F.fprintf fmt "%d ") counters ;
+      F.fprintf fmt "]"
+    in
+    Var.of_pvar
+    @@ Pvar.mk
+         ( Mangled.from_string
+         @@ F.asprintf "returnv_%a_%d: __new_%s" pp_int_list counters linum classname_str )
+         procname
+
+
   (** specially mangled variable to mark a value as a param of the callee *)
   let mk_param (procname : Procname.t) (linum : int) (param_index : int) =
     Var.of_pvar
@@ -755,8 +769,14 @@ module TransferFunctions (CFG : ProcCfg.S) = struct
         let mangles : Mangled.t list =
           param_indices
           >>| fun param_index ->
-          Mangled.from_string
-          @@ F.asprintf "param_%s_%d_%s" callee_name_simple node_loc.line param_index
+          if is_new callee_methname then
+            let __new_classname = extract_classname_from_sizeof_exp @@ List.hd_exn arg_ts in
+            Mangled.from_string
+            @@ F.asprintf "param_%s_%s_%d_%s" callee_name_simple __new_classname node_loc.line
+                 param_index
+          else
+            Mangled.from_string
+            @@ F.asprintf "param_%s_%d_%s" callee_name_simple node_loc.line param_index
         in
         let mangled_params : Pvar.t list =
           List.map ~f:(fun mangle -> Pvar.mk mangle callee_methname) mangles
@@ -775,7 +795,13 @@ module TransferFunctions (CFG : ProcCfg.S) = struct
         let callv_counters =
           callvs >>| (fun callv -> (Var.of_pvar callv, [])) >>| extract_counter_from_callv
         in
-        let returnv = mk_returnv callee_methname callv_counters node_loc.line in
+        let returnv =
+          if is_new callee_methname then
+            let __new_classname = extract_classname_from_sizeof_exp @@ List.hd_exn arg_ts in
+            mk_returnv_for_frontend_new callee_methname callv_counters node_loc.line
+              ~classname_str:__new_classname
+          else mk_returnv callee_methname callv_counters node_loc.line
+        in
         let newtuple =
           ( caller_methname
           , (placeholder_vardef caller_methname, [])

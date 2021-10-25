@@ -512,3 +512,10 @@ let is_local_to_known_procname (ap : MyAccessPath.t) =
     let _ = extract_callee_from ap in
     true
   with CouldNotExtractCallee _ -> false
+
+
+let is_init_returnv (ap : MyAccessPath.t) =
+  is_returnv_ap ap && (is_initializer @@ extract_callee_from ap)
+
+
+let is_new_returnv (ap : MyAccessPath.t) = is_returnv_ap ap && (is_new @@ extract_callee_from ap)

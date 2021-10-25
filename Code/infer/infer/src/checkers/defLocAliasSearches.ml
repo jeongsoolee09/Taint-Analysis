@@ -487,10 +487,10 @@ let extract_linum_from_param (ap : MyAccessPath.t) (callee_summary : S.t) : int 
   | ProgramVar pv -> (
     match is_param_ap ap with
     | true ->
-        F.asprintf "%a" Var.pp (fst ap)
-        |> String.split ~on:'_'
-        |> (fun s -> List.nth_exn s 1)
-        |> int_of_string
+        let varstring = F.asprintf "%a" Var.pp (fst ap) in
+        let regex = Str.regexp "param_\\([_a-zA-Z<>]+\\)_\\([0-9]+\\)_\\([-0-9]+\\)" in
+        ignore @@ Str.string_match regex varstring 0 ;
+        int_of_string @@ Str.matched_group 2 varstring
     | false ->
         let param_vardef_aps = weak_search_target_tuples_by_vardef_ap ap callee_summary in
         let earliest_param_vardef = find_earliest_astate_within param_vardef_aps in
@@ -823,3 +823,48 @@ let find_matching_returnv_for_callv (aliasset : A.t) (callv : MyAccessPath.t) =
           raise TooManyMatches )
         "find_matching_returnv_for_aliasset failed, aliasset: %a, callv: %a@." A.pp aliasset
         MyAccessPath.pp callv
+
+
+let extract_classname_from_sizeof_exp (exp : Exp.t) : string =
+  match exp with
+  | Sizeof {typ= {desc}} -> (
+    match desc with
+    | Typ.Tstruct name -> (
+      match name with
+      | JavaClass javaclass ->
+          JavaClassName.classname javaclass
+      | _ ->
+          L.progress "extract_classname_from_sizeof_exp failed, exp: %a@." Exp.pp exp ;
+          raise InvalidArgument )
+    | _ ->
+        L.progress "extract_classname_from_sizeof_exp failed, exp: %a@." Exp.pp exp ;
+        raise InvalidArgument )
+  | _ ->
+      L.progress "extract_classname_from_sizeof_exp failed, exp: %a@." Exp.pp exp ;
+      raise InvalidArgument
+
+
+let extract_classname_from_new_returnv (new_returnv : MyAccessPath.t) : string =
+  if not @@ is_new_returnv new_returnv then
+    F.kasprintf
+      (fun msg ->
+        L.progress "%s@." msg ;
+        raise InvalidArgument )
+      "extract_classname_from_new_returnv, input: %a@." MyAccessPath.pp new_returnv ;
+  let new_returnv_str = F.asprintf "%a" MyAccessPath.pp new_returnv in
+  let regexp = Str.regexp ".*__new_\\([a-zA-Z0-9]+\\)" in
+  assert (Str.string_match regexp new_returnv 0) ;
+  Str.matched_group 1 new_returnv_str
+
+
+let extract_classname_from_init_returnv (init_returnv : MyAccessPath.t) : string =
+  if not @@ is_init_returnv init_returnv then
+    F.kasprintf
+      (fun msg ->
+        L.progress "%s@." msg ;
+        raise InvalidArgument )
+      "extract_classname_from_new_returnv, input: %a@." MyAccessPath.pp new_returnv ;
+  let init_returnv_str = F.asprintf "%a" MyAccessPath.pp new_returnv in
+  let regexp = Str.regexp ".+: [a-zA-Z]+ \\([a-zA-Z]+\\)\.[a-zA-Z_0-9()]+" in
+  assert (Str.string_match regexp new_returnv 0) ;
+  Str.matched_group 1 new_returnv_str

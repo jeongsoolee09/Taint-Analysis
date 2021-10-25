@@ -5,11 +5,10 @@ class LambdaExample {
     }
 
     public static int[] transform(int[] a) {
-        int[] out = Arrays.stream(a)
+        return Arrays.stream(a)
             .map(num -> num+1)
 	    .filter(num2 -> num2 % 2 == 0)
             .toArray();
-        return out;
     }
 
     public static void main() {

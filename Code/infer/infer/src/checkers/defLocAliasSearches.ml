@@ -850,10 +850,10 @@ let extract_classname_from_new_returnv (new_returnv : MyAccessPath.t) : string =
       (fun msg ->
         L.progress "%s@." msg ;
         raise InvalidArgument )
-      "extract_classname_from_new_returnv, input: %a@." MyAccessPath.pp new_returnv ;
-  let new_returnv_str = F.asprintf "%a" MyAccessPath.pp new_returnv in
+      "extract_classname_from_new_returnv failed, input: %a@." MyAccessPath.pp new_returnv ;
+  let new_returnv_str = F.asprintf "%a" Var.pp (fst new_returnv) in
   let regexp = Str.regexp ".*__new_\\([a-zA-Z0-9]+\\)" in
-  assert (Str.string_match regexp new_returnv 0) ;
+  assert (Str.string_match regexp new_returnv_str 0) ;
   Str.matched_group 1 new_returnv_str
 
 
@@ -863,8 +863,8 @@ let extract_classname_from_init_returnv (init_returnv : MyAccessPath.t) : string
       (fun msg ->
         L.progress "%s@." msg ;
         raise InvalidArgument )
-      "extract_classname_from_new_returnv, input: %a@." MyAccessPath.pp new_returnv ;
-  let init_returnv_str = F.asprintf "%a" MyAccessPath.pp new_returnv in
+      "extract_classname_from_init_returnv failed, input: %a@." MyAccessPath.pp init_returnv ;
+  let init_returnv_str = F.asprintf "%a" Var.pp (fst init_returnv) in
   let regexp = Str.regexp ".+: [a-zA-Z]+ \\([a-zA-Z]+\\)\.[a-zA-Z_0-9()]+" in
-  assert (Str.string_match regexp new_returnv 0) ;
-  Str.matched_group 1 new_returnv_str
+  assert (Str.string_match regexp init_returnv_str 0) ;
+  Str.matched_group 1 init_returnv_str

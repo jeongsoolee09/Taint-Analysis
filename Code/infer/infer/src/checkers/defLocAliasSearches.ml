@@ -825,23 +825,34 @@ let find_matching_returnv_for_callv (aliasset : A.t) (callv : MyAccessPath.t) =
         MyAccessPath.pp callv
 
 
-let extract_classname_from_sizeof_exp (exp : Exp.t) : string =
-  match exp with
-  | Sizeof {typ= {desc}} -> (
-    match desc with
-    | Typ.Tstruct name -> (
-      match name with
-      | JavaClass javaclass ->
-          JavaClassName.classname javaclass
-      | _ ->
-          L.progress "extract_classname_from_sizeof_exp failed, exp: %a@." Exp.pp exp ;
-          raise InvalidArgument )
+let rec typdesc_to_java_class_string (typdesc : Typ.desc) : string =
+  match typdesc with
+  | Typ.Tstruct name -> (
+    match name with
+    | JavaClass javaclass ->
+        JavaClassName.classname javaclass
+    | _ ->
+        L.progress "typ_to_string failed@." ;
+        raise InvalidArgument )
+  | Tptr (t, _) ->
+      typdesc_to_java_class_string t.desc
+  | _ ->
+      L.progress "typ_to_string failed@." ;
+      raise InvalidArgument
+
+
+let extract_classname_from_sizeof_exp ((exp, typ) : Exp.t * Typ.t) : string =
+  let typdesc =
+    match exp with
+    | Var _ ->
+        typ.desc
+    | Sizeof {typ= {desc}} ->
+        desc
     | _ ->
         L.progress "extract_classname_from_sizeof_exp failed, exp: %a@." Exp.pp exp ;
-        raise InvalidArgument )
-  | _ ->
-      L.progress "extract_classname_from_sizeof_exp failed, exp: %a@." Exp.pp exp ;
-      raise InvalidArgument
+        raise InvalidArgument
+  in
+  typdesc_to_java_class_string typdesc
 
 
 let extract_classname_from_new_returnv (new_returnv : MyAccessPath.t) : string =
@@ -865,6 +876,7 @@ let extract_classname_from_init_returnv (init_returnv : MyAccessPath.t) : string
         raise InvalidArgument )
       "extract_classname_from_init_returnv failed, input: %a@." MyAccessPath.pp init_returnv ;
   let init_returnv_str = F.asprintf "%a" Var.pp (fst init_returnv) in
-  let regexp = Str.regexp ".+: [a-zA-Z]+ \\([a-zA-Z]+\\)\.[a-zA-Z_0-9()]+" in
+  L.progress "init_returnv_str: %s@." init_returnv_str ;
+  let regexp = Str.regexp ".+: \\([a-zA-Z$0-9]+\\)\\.[a-zA-Z_0-9()<>]+" in
   assert (Str.string_match regexp init_returnv_str 0) ;
   Str.matched_group 1 init_returnv_str

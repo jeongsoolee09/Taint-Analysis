@@ -2,7 +2,7 @@
 (import [networkx.algorithms :as nxalg])
 (import glob)
 (import [rich [print]])
-(import [traceback-with-variables [activate-by-import]])
+;; (import [traceback-with-variables [activate-by-import]])
 
 
 (defclass NoMatches [Exception]
@@ -19,7 +19,7 @@
 
 (defclass DirectoryHandler []
   (defn find-callgraph-txt []
-    (setv out (glob.glob "Callgraph.txt"))
+    (setv out (glob.glob "/Users/jslee/Dropbox/Taint-Analysis/Code/benchmarks/realworld/sagan/Callgraph.txt"))
     (cond [(= (len out) 0) (do (import os)
                                (raise (NoMatches (os.getcwd))))]
           [(= (len out) 1) (first out)]

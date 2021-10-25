@@ -326,7 +326,6 @@
     (list (filter (fn [node] (= (len (.in-edges (. self graph) node)) 0))
                   (. self graph nodes))))
 
-
   ;; ============ Inference Rules ============
 
   (defn f []

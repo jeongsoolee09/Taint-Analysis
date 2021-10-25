@@ -249,7 +249,7 @@ let () =
                 Summary.pp_text fmt summary
           in
           Option.iter (Procedures.select_proc_names_interactive ~filter) ~f:(fun proc_names ->
-              L.result "%a" (fun fmt () -> List.iter proc_names ~f:(pp_summary fmt)) ())
+              L.result "%a" (fun fmt () -> List.iter proc_names ~f:(pp_summary fmt)) () )
         else
           L.result "%a"
             Config.(
@@ -262,7 +262,7 @@ let () =
         L.result "%a"
           (SourceFiles.pp_all ~filter ~type_environment:Config.source_files_type_environment
              ~procedure_names:Config.source_files_procedure_names
-             ~freshly_captured:Config.source_files_freshly_captured)
+             ~freshly_captured:Config.source_files_freshly_captured )
           () ;
         if Config.source_files_cfg then (
           let source_files = SourceFiles.get_all ~filter () in
@@ -274,9 +274,9 @@ let () =
               let cfgs = Procname.Hash.create (List.length proc_names) in
               List.iter proc_names ~f:(fun proc_name ->
                   Procdesc.load proc_name
-                  |> Option.iter ~f:(fun cfg -> Procname.Hash.add cfgs proc_name cfg)) ;
+                  |> Option.iter ~f:(fun cfg -> Procname.Hash.add cfgs proc_name cfg) ) ;
               (* emit the dot file in captured/... *)
-              DotCfg.emit_frontend_cfg source_file cfgs) ;
+              DotCfg.emit_frontend_cfg source_file cfgs ) ;
           L.result "CFGs written in %s/*/%s@." (ResultsDir.get_path Debug)
             Config.dotty_frontend_output ) )
   | SpecHunter ->

@@ -353,7 +353,7 @@ let transitively_collect_aliases ap summary methname =
       Search.search_target_tuples_by_vardef (fst current_ap) methname summary in
     (* recursion bottoms out *)
     if Int.equal (List.length ap_vardef_tuples) 0 then A.singleton current_ap else
-    let ap_vardef_tuple = Search.find_earliest_astate_within ap_vardef_tuples methname in
+    let ap_vardef_tuple = Search.find_earliest_astate_within ap_vardef_tuples in
     let aliasset = fourth_of ap_vardef_tuple
                    |> A.filter (fun tup ->
                        not @@ Test.is_returnv_ap tup &&

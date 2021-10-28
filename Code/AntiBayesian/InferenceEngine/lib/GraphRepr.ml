@@ -8,6 +8,8 @@ let ( >> ) g f x = f (g x)
 
 let ( >>| ) = List.( >>| )
 
+let ( >>= ) = List.( >>= )
+
 module Set = Caml.Set
 
 module Vertex = struct
@@ -38,12 +40,13 @@ module Dot = Graph.Graphviz.Dot (G)
 
 module ChainSlice = struct
   type t =
-    | DefineSlice of (string * string * string * string)
-    | CallSlice of (string * string * string * string)
-    | VoidCallSlice of (string * string * string * string)
-    | RedefineSlice of (string * string * string)
-    | DeadSlice of string
+    | DefineSlice of (string * string * string * string) (* current_method, access_path, location, using *)
+    | CallSlice of (string * string * string * string) (* current_method, callee, location, with *)
+    | VoidCallSlice of (string * string * string * string) (* current_method, callee, location, with *)
+    | RedefineSlice of (string * string * string) (* current_method, location, access_path *)
+    | DeadSlice of string (* current_method *)
     | DeadByCycleSlice of string
+  (* current_method *)
 
   let chain_slice_of_json_assoc (json_assoc : json) : t =
     match json_assoc with
@@ -120,13 +123,31 @@ module ChainSliceManager = struct
 end
 
 module VertexMaker = struct
+  let vertex_of_chain_slice (chain_slice : ChainSlice.t) : G.V.t =
+    match chain_slice with
+    | DefineSlice (current, _, loc, _) ->
+        (current, loc)
+    | CallSlice (current, _, loc, _) ->
+        (current, loc)
+    | VoidCallSlice (current, _, loc, _) ->
+        (current, loc)
+    | RedefineSlice (current, loc, _) ->
+        (current, loc)
+    | DeadSlice current ->
+        (current, "")
+    | DeadByCycleSlice current ->
+        (current, "")
+
+
   module VertexSet = Set.Make (Vertex)
 
-  let vertex_of_chain_slice (chain_slice : ChainSlice.t) : G.V.t = raise TODO
-
   let get_all_vertices (raw_json : json) : G.V.t list =
-    let all_raw_chains = ChainSliceManager.wrapped_chain_list_of_raw_json raw_json in
-    raise TODO
+    let vertices_with_dup =
+      ChainSliceManager.wrapped_chain_list_of_raw_json raw_json
+      >>= ChainSliceManager.chain_slice_list_of_wrapped_chain >>| vertex_of_chain_slice
+    in
+    (* remove duplicates by switching to and from a set *)
+    vertices_with_dup |> VertexSet.of_list |> VertexSet.elements
 
 
   let get_all_methods () =
@@ -140,4 +161,8 @@ end
 
 module EdgeMaker = struct
   let get_all_edges (json : json) : G.E.t list = raise TODO
+
+  let make_bicycle_chain (list : 'a list) : ('a * 'a) list =
+    let all_but_last = List.slice list 0 (List.length list) and all_but_first = List.tl_exn list in
+    List.zip_exn all_but_last all_but_first
 end

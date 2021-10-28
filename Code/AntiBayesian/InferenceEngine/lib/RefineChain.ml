@@ -1,4 +1,5 @@
 open Yojson.Basic
+open GraphRepr
 
 exception TODO
 
@@ -7,25 +8,11 @@ type json = Yojson.Basic.t
 (* TEMP DON'T SHIP WITH THIS CODE *)
 let x = Deserializer.deserialize_json "Chain.json"
 
-module StatusPredicates = struct
-  (** check if a association is present in an *unwrapped* chain. *)
-  let status_is_member statusname unwrapped_chain =
-    List.mem
-      ~equal:(fun (key1, jsonval1) (key2, jsonval2) ->
-        String.equal key1 key2 && Yojson.Basic.equal jsonval1 jsonval2 )
-      unwrapped_chain
-      ("status", `String statusname)
-
-
-  let is_define = status_is_member "Define"
-
-  let is_call = status_is_member "Call"
-
-  let is_redefine = status_is_member "Redefine"
-
-  let is_voidcall = status_is_member "VoidCall"
-
-  let is_dead = status_is_member "Dead"
-
-  let is_deadbycycle = status_is_member "DeadByCycle"
+module ChainRefiners = struct
+  let delete_inner_deads (chain_slices : ChainSlice.t list) : ChainSlice.t list =
+    let all_but_last = List.slice chain_slices 0 (List.length chain_slices - 1) in
+    let dead_filtered =
+      List.filter ~f:(fun chain_slice -> not @@ ChainSlice.is_dead chain_slice) all_but_last
+    in
+    dead_filtered @ [List.last_exn chain_slices]
 end

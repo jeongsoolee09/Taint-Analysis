@@ -48,6 +48,18 @@ module ChainSlice = struct
     | DeadByCycleSlice of string
   (* current_method *)
 
+  let is_define slice = match slice with DefineSlice _ -> true | _ -> false
+
+  let is_call slice = match slice with CallSlice _ -> true | _ -> false
+
+  let is_voidcall slice = match slice with VoidCallSlice _ -> true | _ -> false
+
+  let is_redefine slice = match slice with RedefineSlice _ -> true | _ -> false
+
+  let is_dead slice = match slice with DeadSlice _ -> true | _ -> false
+
+  let is_deadbycycle slice = match slice with DeadByCycleSlice _ -> true | _ -> false
+
   let chain_slice_of_json_assoc (json_assoc : json) : t =
     match json_assoc with
     | `Assoc alist -> (
@@ -162,7 +174,10 @@ end
 module EdgeMaker = struct
   let get_all_edges (json : json) : G.E.t list = raise TODO
 
+  let edge_list_of_chain_slice_list (chain_slices : ChainSlice.t list) = raise TODO
+
   let make_bicycle_chain (list : 'a list) : ('a * 'a) list =
-    let all_but_last = List.slice list 0 (List.length list) and all_but_first = List.tl_exn list in
+    let all_but_last = List.slice list 0 (List.length list - 1)
+    and all_but_first = List.tl_exn list in
     List.zip_exn all_but_last all_but_first
 end

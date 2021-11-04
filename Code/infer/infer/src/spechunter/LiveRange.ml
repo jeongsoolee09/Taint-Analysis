@@ -1357,17 +1357,34 @@ let rec compute_chain_inner (current_methname : Procname.t) (current_astate_set 
         call_chains @ define_chains
 
 
+let specify_returnv_for_define_slice_using_field (first_methname : Procname.t) (aliasset : A.t) :
+    MyAccessPath.t option =
+  (* first, filter out all void returnvs that have the matching callvs *)
+  let filtered_returnvs =
+    A.filter
+      (fun ap ->
+        is_returnv_ap ap
+        && not
+           @@ ( return_type_is_void (extract_callee_from ap)
+              && A.exists
+                   (fun callv -> is_callv_ap callv && callv_and_returnv_matches ~callv ~returnv:ap)
+                   aliasset ) )
+      aliasset
+  in
+  match A.elements filtered_returnvs with
+  | [] ->
+      None
+  | returnvs ->
+      Some (find_earliest_returnv returnvs ~greater_than:0)
+
+
+(* if there are multiple returnvs, then find the earliest returnv. *)
+
 (** 콜 그래프와 분석 결과를 토대로 체인 (Define -> ... -> Dead)을 계산해 낸다 *)
 let compute_chain_ (ap : MyAccessPath.t) : Chain.t list =
   let first_methname, first_astate_set, first_astate = find_first_occurrence_of ap in
   let first_aliasset, first_locset = (fourth_of first_astate, third_of first_astate) in
-  let returnv_opt =
-    match List.filter ~f:is_returnv_ap (A.elements first_aliasset) with
-    | [] ->
-        None
-    | returnvs ->
-        Some (find_earliest_returnv returnvs ~greater_than:0)
-  in
+  let returnv_opt = specify_returnv_for_define_slice_using_field first_methname first_aliasset in
   let source_meth =
     match returnv_opt with Some returnv -> extract_callee_from returnv | None -> first_methname
   in
@@ -1516,7 +1533,6 @@ let main () =
   (* Initialize the summary_table *)
   SummaryLoader.load_summary_from_disk_to summary_table ~exclude_test:true ;
   RefineSummaries.main summary_table ;
-  (* L.die InternalError "break!!!@." ; *)
   (* Initialize the formal_args table *)
   batch_add_formal_args () ;
   save_skip_function () ;

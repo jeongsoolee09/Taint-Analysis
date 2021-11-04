@@ -1359,7 +1359,6 @@ let rec compute_chain_inner (current_methname : Procname.t) (current_astate_set 
 
 let specify_returnv_for_define_slice_using_field (first_methname : Procname.t) (aliasset : A.t) :
     MyAccessPath.t option =
-  (* first, filter out all void returnvs that have the matching callvs *)
   let filtered_returnvs =
     A.filter
       (fun ap ->
@@ -1377,8 +1376,6 @@ let specify_returnv_for_define_slice_using_field (first_methname : Procname.t) (
   | returnvs ->
       Some (find_earliest_returnv returnvs ~greater_than:0)
 
-
-(* if there are multiple returnvs, then find the earliest returnv. *)
 
 (** 콜 그래프와 분석 결과를 토대로 체인 (Define -> ... -> Dead)을 계산해 낸다 *)
 let compute_chain_ (ap : MyAccessPath.t) : Chain.t list =

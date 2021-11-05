@@ -1119,9 +1119,17 @@ let rec compute_chain_inner (current_methname : Procname.t) (current_astate_set 
           let current_astate_set_updated = S.remove current_astate current_astate_set in
           (* remove the current_astate from current_astate_set *)
           let chain_updated =
-            (current_methname, Status.Redefine (current_ap, current_locset)) :: current_chain
+            ( current_methname
+            , Status.Redefine
+                ( current_ap
+                , LocationSet.map (fun loc -> {loc with line= loc.line + 1}) current_locset ) )
+            :: current_chain
           and debug_chain_updated =
-            (current_methname, Status.Redefine (current_ap, current_locset)) :: debug_chain
+            ( current_methname
+            , Status.Redefine
+                ( current_ap
+                , LocationSet.map (fun loc -> {loc with line= loc.line + 1}) current_locset ) )
+            :: debug_chain
           in
           (* no need to update the call stack! *)
           (* recurse *)

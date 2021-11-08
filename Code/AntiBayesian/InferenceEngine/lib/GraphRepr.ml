@@ -252,17 +252,17 @@ module EdgeMaker = struct
 
   let process_head_define (chain_slices : ChainSlice.t list) : ChainSlice.t list =
     let head_define = List.hd_exn chain_slices in
-    let define_current_method_field, define_using_field =
+    let define_current_method_field, location_field, define_using_field =
       match head_define with
-      | DefineSlice (current_method, _, _, using_method) ->
-          (current_method, using_method)
+      | DefineSlice (current_method, _, location, using_method) ->
+          (current_method, location, using_method)
       | _ ->
           failwith "ahahahahah"
     in
     if
       (not @@ String.equal define_current_method_field define_using_field)
       && List.mem ~equal:String.equal skip_func_method_names (parse_skip_func define_using_field)
-    then Temp (define_using_field, "") :: chain_slices
+    then Temp (define_using_field, location_field) :: chain_slices
     else chain_slices
 
 

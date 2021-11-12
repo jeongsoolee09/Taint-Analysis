@@ -4,6 +4,7 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.SpringApplication;
 import org.springframework.boot.autoconfigure.SpringBootApplication;
 import org.springframework.jdbc.core.JdbcTemplate;
+import org.springframework.dao.DataAccessException;
 
 import java.util.Scanner;
 import java.util.Map;
@@ -26,14 +27,14 @@ public class RelationalDataAccessApplication {
         return name;
     }
 
-    public void run() throws Exception {
+    public void run() throws DataAccessException {
         String name = create();
         String sql = "INSERT INTO customers VALUES (" + name + ")";
         List<Object[]> args = new ArrayList();
         jdbcTemplate.batchUpdate(sql, args);
     }
 
-    public Map<String, Object> query() throws Exception {
+    public Map<String, Object> query() throws DataAccessException {
         Map<String, Object> results = jdbcTemplate.queryForMap("SELECT id, first_name, FROM customers WHERE first_name = ?", new Object[] { "John" });
         return results;
     }

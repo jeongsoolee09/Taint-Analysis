@@ -1,6 +1,7 @@
 open! IStd
 open DefLocAliasDomain
 open DefLocAliasPP
+open DefLocAliasModels
 module L = Logging
 module P = DefLocAliasDomain.AbstractPair
 module S = DefLocAliasDomain.AbstractStateSetFinite
@@ -23,6 +24,8 @@ exception WeakSearchTargetTupleByIdFailed of string
 exception IsForeignAPFailed
 
 exception ParseFailed
+
+exception CannotGetClassname of string
 
 let search_target_tuple_by_id (id : Ident.t) (methname : Procname.t) (astate_set : S.t) : T.t =
   let elements = S.elements astate_set in
@@ -361,30 +364,6 @@ let exp_is_lfield (exp : Exp.t) : bool = match exp with Lfield _ -> true | _ -> 
 
 let exp_is_lindex (exp : Exp.t) : bool = match exp with Lindex _ -> true | _ -> false
 
-let is_modeled (procname : Procname.t) =
-  let java_procname =
-    match procname with
-    | Java java ->
-        java
-    | _ ->
-        F.kasprintf
-          (fun msg -> raise @@ NotAJavaProcname msg)
-          "is_modeled failed, procname: %a@." Procname.pp procname
-  in
-  match Procname.Java.get_package java_procname with
-  (* TODO: handle cases where getting package for UDFs fails *)
-  | None ->
-      F.kasprintf
-        (fun msg -> raise @@ CannotGetPackage msg)
-        "is_modeled failed, procname: %a@." Procname.pp procname
-  | Some package_string ->
-      let package_methname_tuple = (package_string, Procname.get_method procname) in
-      let double_equal (package_string1, method_string1) (package_string2, method_string2) =
-        String.equal package_string1 package_string2 && String.equal method_string1 method_string2
-      in
-      List.mem ~equal:double_equal DefLocAliasModels.methods package_methname_tuple
-
-
 let is_call (instr : Sil.instr) = match instr with Call _ -> true | _ -> false
 
 let locset_is_singleton (locset : LocationSet.t) = Int.( = ) (LocationSet.cardinal locset) 1
@@ -519,3 +498,18 @@ let is_init_returnv (ap : MyAccessPath.t) =
 
 
 let is_new_returnv (ap : MyAccessPath.t) = is_returnv_ap ap && (is_new @@ extract_callee_from ap)
+
+let is_modeled (procname : Procname.t) =
+  let classname =
+    match Procname.get_class_name procname with
+    | Some classname ->
+        List.last_exn @@ String.split ~on:'.' classname
+    | None ->
+        F.kasprintf
+          (fun msg -> raise @@ CannotGetClassname msg)
+          "is_modeled failed. procname: %a@." Procname.pp procname
+  in
+  let method_name = Procname.get_method procname in
+  L.progress "classname: %s, method_name: %s@." classname method_name ;
+  List.mem modeled_methods (classname, method_name) ~equal:(fun (a1, b1) (a2, b2) ->
+      String.equal a1 a2 && String.equal b1 b2 )

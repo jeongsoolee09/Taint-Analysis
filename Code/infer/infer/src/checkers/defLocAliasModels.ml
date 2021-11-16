@@ -1,5 +1,5 @@
-let methods = [
-    ("BeanContext", "addBeanContextMembershipListener")
+let modeled_methods =
+  [ ("BeanContext", "addBeanContextMembershipListener")
   ; ("BeanContext", "removeBeanContextMembershipListener")
   ; ("BeanContextServices", "addService")
   ; ("BeanContextServices", "addBeanContextServicesListener")
@@ -483,6 +483,4 @@ let methods = [
   ; ("AbstractCollection", "remove")
   ; ("AbstractCollection", "removeAll")
   ; ("AbstractCollection", "retainAll")
-  ; ("AbstractCollection", "clear")
-]
-
+  ; ("AbstractCollection", "clear") ]

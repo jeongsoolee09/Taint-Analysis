@@ -494,7 +494,7 @@ let save_skip_function () : unit =
   let procnames_list = Procname.Set.elements procnames in
   iter
     ~f:(fun procname ->
-      let func_name = Procname.to_string procname in
+      let func_name = F.asprintf "%a" Procname.pp_unique_id procname in
       Out_channel.output_string out_chan @@ func_name ^ "\n" )
     procnames_list ;
   Out_channel.close out_chan
@@ -941,7 +941,7 @@ let rec compute_chain_inner (current_methname : Procname.t) (current_astate_set 
               in
               LocationSet.singleton location_term
             in
-            match return_type_is_void callee_methname with
+            match return_type_is_void callee_methname || is_modeled callee_methname with
             | true ->
                 (* VOID CALL *)
                 let new_chain_slice =
@@ -1186,7 +1186,7 @@ let rec compute_chain_inner (current_methname : Procname.t) (current_astate_set 
                 in
                 LocationSet.singleton location_term
               in
-              match return_type_is_void callee_methname with
+              match return_type_is_void callee_methname || is_modeled callee_methname with
               | true ->
                   (* VOID CALL *)
                   let new_chain_slice =

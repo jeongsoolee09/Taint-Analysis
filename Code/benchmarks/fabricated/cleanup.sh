@@ -3,7 +3,7 @@
 rm -rf *.dot
 rm -rf infer-out/
 rm -rf *.class
-rm -rf *.txt
-rm -rf *.json
+rm -rf [0-9]*.txt
+rm -rf Chain.json
 rm -rf *.png
 rm -rf *.svg

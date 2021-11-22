@@ -11,7 +11,7 @@ let calculate () =
     SourceFiles.get_all ~filter:(fun _ -> true) ()
     |> List.map ~f:SourceFiles.proc_names_of_source
     |> List.concat
-    |> List.map ~f:Procname.to_string
+    |> List.map ~f:(fun procname -> F.asprintf "%a" Procname.pp_unique_id procname)
     |> List.iter ~f:(fun str ->
         Out_channel.output_string out_channel @@ str ^"\n" )
 

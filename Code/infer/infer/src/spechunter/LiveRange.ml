@@ -941,7 +941,7 @@ let rec compute_chain_inner (current_methname : Procname.t) (current_astate_set 
               in
               LocationSet.singleton location_term
             in
-            match return_type_is_void callee_methname || is_modeled callee_methname with
+            match return_type_is_void callee_methname (*|| is_modeled callee_methname*) with
             | true ->
                 (* VOID CALL *)
                 let new_chain_slice =
@@ -1186,7 +1186,7 @@ let rec compute_chain_inner (current_methname : Procname.t) (current_astate_set 
                 in
                 LocationSet.singleton location_term
               in
-              match return_type_is_void callee_methname || is_modeled callee_methname with
+              match return_type_is_void callee_methname (*|| is_modeled callee_methname*) with
               | true ->
                   (* VOID CALL *)
                   let new_chain_slice =

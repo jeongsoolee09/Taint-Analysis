@@ -592,11 +592,8 @@ module TransferFunctions (CFG : ProcCfg.S) = struct
                  let actual_pvar_ap =
                    find_actual_pvar_for_inter_id inter_id methname (fst apair) |> second_of
                  in
-                 (* let corresponding_formal = List.nth_exn formals index in *)
-                 (* (actual_pvar_ap, inter_id, corresponding_formal) :: acc *)
-                 match List.nth formals index with
-                 | None -> acc
-                 | Some corresponding_formal -> (actual_pvar_ap, inter_id, corresponding_formal)::acc 
+                 let corresponding_formal = List.nth_exn formals index in
+                 (actual_pvar_ap, inter_id, corresponding_formal) :: acc
                with FindActualPvarFailed -> acc )
              actuals_logical_id ~init:[]
       in

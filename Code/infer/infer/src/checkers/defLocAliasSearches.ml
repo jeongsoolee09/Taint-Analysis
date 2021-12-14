@@ -876,6 +876,7 @@ let extract_classname_from_init_returnv (init_returnv : MyAccessPath.t) : string
         raise InvalidArgument )
       "extract_classname_from_init_returnv failed, input: %a@." MyAccessPath.pp init_returnv ;
   let init_returnv_str = F.asprintf "%a" Var.pp (fst init_returnv) in
+  L.progress "init_returnv_str: %s@." init_returnv_str ;
   let regexp = Str.regexp ".+: \\([a-zA-Z$0-9]+\\)\\.[a-zA-Z_0-9()<>]+" in
   assert (Str.string_match regexp init_returnv_str 0) ;
   Str.matched_group 1 init_returnv_str

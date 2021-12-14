@@ -308,7 +308,6 @@ let move_void_callee_returnv_and_remove_ph (table : (Procname.t, S.t) Hashtbl.t)
     let astates_holding_corresponding_callvs =
       List.map
         ~f:(fun returnv ->
-            L.progress "returnv: %a@." MyAccessPath.pp returnv;
           find_witness_exn (S.elements astate_set) ~pred:(fun astate ->
               A.exists
                 (fun ap -> is_callv_ap ap && callv_and_returnv_matches ~callv:ap ~returnv)
@@ -333,9 +332,7 @@ let move_void_callee_returnv_and_remove_ph (table : (Procname.t, S.t) Hashtbl.t)
     |> (fun astate_set -> S.diff astate_set (S.of_list astates_holding_corresponding_callvs))
     |> S.union (S.of_list astates_holding_corresponding_callvs_updated)
   in
-  Hashtbl.iter (fun proc astate_set -> 
-      L.progress "iterating on %a@." Procname.pp proc;
-      Hashtbl.replace table proc (one_pass_S astate_set)) table ;
+  Hashtbl.iter (fun proc astate_set -> Hashtbl.replace table proc (one_pass_S astate_set)) table ;
   table
 
 

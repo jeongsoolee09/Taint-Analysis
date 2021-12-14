@@ -25,3 +25,6 @@ infer-out
 /My-Papers/AutoSpec/*.gz
 MANIFEST.MF
 *.MF
+[0-9]**.txt
+*.dot
+*.bin

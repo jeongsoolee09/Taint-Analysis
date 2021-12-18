@@ -42,7 +42,9 @@ $ cd Code/infer
 다음을 실행합니다:
 
 ```shell
-$ ./build-infer.sh java && sudo make install && cd infer/src && make -k
+$ ./build-infer.sh java && sudo make install
+$ sudo chown -R `whoami` *
+$ cd infer/src && make -k
 ```
 
 ### 제공된 벤치마크에 대해 SpecHunter 실행하기
@@ -64,7 +66,7 @@ $ cd relational-data-access
 그 다음, 이 디렉토리에서 infer를 실행합니다:
 
 ```shell
-$ infer -g run -- gradle build
+$ infer -g run -- ./gradlew build
 $ infer spechunter
 ```
 
@@ -194,7 +196,7 @@ SpecHunter를 기본으로 제공되어 있지 않은 다른 벤치마크에 대
 사용하고자 하는 프로젝트의 root directory로 이동해 다음을 실행합니다 (프로젝트에 들어 있는 `.java` 파일 개수에 따라 시간이 오래 걸릴 수도 있습니다, 여러 개의 코어가 있는 서버급 워크스테이션에서 실행하시는 것을 권장드립니다):
 
 ```shell
-$ infer -g run -- gradle build
+$ infer -g run -- ./gradlew build
 $ infer spechunter
 ```
 

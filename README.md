@@ -267,3 +267,14 @@ infer로 작성된 정적분석기가 다루지 못하는 케이스를 맞닥뜨
 ### `./build-infer.sh java` 시 `conf-gmp` 빌드에 실패하는 경우
 
 Clang 12를 쓰고 계신가요? Clang 11로 다운그레이드하시면 해결될 것 같습니다.
+
+### `./build-infer.sh java` 혹은 `infer` 실행시 segv 가 발생하는 경우 (Mac에서만 발생)
+
+```shell
+brew install sqlite3
+export LDFLAGS="-L<path-to-homebrew>/opt/sqlite/lib"
+export CPPFLAGS="-I<path-to-homebrew>/opt/sqlite/include"
+export PKG_CONFIG_PATH="<path-to-homebrew>/opt/sqlite/lib/pkgconfig"
+opam reinstall conf-sqlite3 sqlite3
+<in infer dir> make clean ; ./build-infer.sh
+```

@@ -203,9 +203,12 @@ module AbstractPair = struct
     let preprocess_astate_set (astate_set : S.t) : S.t =
       S.map
         (fun (proc, vardef, locset, aliasset) ->
-          (proc, vardef, locset, A.map (fun ap ->
-                                         if_returnv_then_remove_number @@
-                                           if_callv_then_remove_number ap) aliasset))
+          ( proc
+          , vardef
+          , locset
+          , A.map
+              (fun ap -> if_returnv_then_remove_number @@ if_callv_then_remove_number ap)
+              aliasset ) )
         astate_set
     in
     let new_a, new_b = (preprocess_astate_set a, preprocess_astate_set b) in
@@ -227,7 +230,7 @@ module AbstractPair = struct
 
 
   (** finds state tuples with same methname and AP in s1 and s2 *)
-  let find_duplicate_keys (s1: S.t) (s2: S.t) : S.t =
+  let find_duplicate_keys (s1 : S.t) (s2 : S.t) : S.t =
     let s1_elements = S.elements s1 in
     let s2_elements = S.elements s2 in
     let list_intersection_modulo_firstsecond l1 l2 =
@@ -278,7 +281,7 @@ module AbstractPair = struct
       @@ S.fold
            (fun astate acc ->
              let vardef = second_of astate in
-             vardef :: acc)
+             vardef :: acc )
            statetups []
     in
     List.fold
@@ -286,10 +289,11 @@ module AbstractPair = struct
         let matches =
           S.fold
             (fun statetup acc' ->
-              if MyAccessPath.equal vardef (second_of statetup) then S.add statetup acc' else acc')
+              if MyAccessPath.equal vardef (second_of statetup) then S.add statetup acc' else acc'
+              )
             statetups S.empty
         in
-        matches :: acc)
+        matches :: acc )
       ~init:[] vardefs
 
 
@@ -301,8 +305,8 @@ module AbstractPair = struct
          ~f:(fun partition ->
            S.fold
              (fun (proc, vardef, loc1, aliasset1) (_, _, loc2, aliasset2) ->
-               (proc, vardef, LocationSet.union loc1 loc2, A.union aliasset1 aliasset2))
-             partition bottuple)
+               (proc, vardef, LocationSet.union loc1 loc2, A.union aliasset1 aliasset2) )
+             partition bottuple )
          partitioned_tuples
 
 
@@ -321,7 +325,7 @@ module AbstractPair = struct
     S.of_list s1_minus_s2_modulo_123
 
 
-  let join (lhs_pair: t) (rhs_pair: t) : t =
+  let join (lhs_pair : t) (rhs_pair : t) : t =
     let lhs, lhs_map = lhs_pair in
     let rhs, rhs_map = rhs_pair in
     let lhs_minus_rhs = S.diff lhs rhs in
@@ -335,13 +339,16 @@ module AbstractPair = struct
       let lhs_minus_duplicate_keys = S.diff lhs duplicate_keys_in_lhs_minus_rhs in
       let rhs_minus_duplicate_keys = S.diff rhs duplicate_keys_in_rhs_minus_lhs in
       let newset =
-        S.union joined_tuples @@ S.union lhs_minus_duplicate_keys rhs_minus_duplicate_keys in
+        S.union joined_tuples @@ S.union lhs_minus_duplicate_keys rhs_minus_duplicate_keys
+      in
       let keys_and_loc =
         List.map
           ~f:(fun tup -> ((first_of tup, second_of tup), third_of tup))
-          (S.elements joined_tuples) in
+          (S.elements joined_tuples)
+      in
       let newmap =
-        HistoryMap.batch_add_to_history2 keys_and_loc (HistoryMap.join lhs_map rhs_map) in
+        HistoryMap.batch_add_to_history2 keys_and_loc (HistoryMap.join lhs_map rhs_map)
+      in
       (newset, newmap)
     else
       let newset = S.union lhs rhs in

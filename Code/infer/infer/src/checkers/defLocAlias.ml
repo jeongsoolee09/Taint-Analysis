@@ -764,6 +764,7 @@ module TransferFunctions (CFG : ProcCfg.S) = struct
         in
         (newset, newmap)
     | false ->
+        if is_set_file_attribute callee_methname then (astate_set, histmap) else
         let callee_name_simple = Procname.get_method callee_methname in
         let param_indices = List.init (List.length arg_ts) ~f:Int.to_string in
         let mangles : Mangled.t list =

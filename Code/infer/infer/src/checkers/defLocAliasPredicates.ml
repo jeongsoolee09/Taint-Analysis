@@ -321,6 +321,10 @@ let is_cast (proc : Procname.t) : bool =
   String.is_substring (Procname.to_string proc) ~substring:"__cast"
 
 
+let is_set_file_attribute(proc : Procname.t) : bool =
+  String.is_substring (Procname.to_string proc) ~substring:"__set_file_attribute"
+
+
 let extract_ident_from_callv (callv : MyAccessPath.t) : Ident.t =
   let varname = F.asprintf "%a" Var.pp (fst callv) in
   let splitted_on_colon = String.split varname ~on:':' in

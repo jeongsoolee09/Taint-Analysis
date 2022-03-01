@@ -492,7 +492,7 @@ let physical_cores () =
 let cpus = Setcore.numcores ()
 
 let numcores =
-  match Version.build_platform with Darwin | Windows -> cpus / 2 | Linux -> physical_cores ()
+  match Version.build_platform with Darwin | Windows -> cpus (*/ 2*) | Linux -> physical_cores ()
 
 
 let set_best_cpu_for worker_id =

@@ -594,7 +594,7 @@ module TransferFunctions (CFG : ProcCfg.S) = struct
                  in
                  let corresponding_formal = List.nth_exn formals index in
                  (actual_pvar_ap, inter_id, corresponding_formal) :: acc
-               with FindActualPvarFailed -> acc )
+               with FindActualPvarFailed | Invalid_argument _ -> acc )
              actuals_logical_id ~init:[]
       in
       match is_inner_class_init callee_methname with

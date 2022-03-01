@@ -43,7 +43,7 @@ depends: [
   "cmdliner" {= "1.0.4"}
   "conf-autoconf" {= "0.1"}
   "conf-gmp" {= "3"}
-  "conf-mpfr" {= "2"}
+  "conf-mpfr" {= "3"}
   "conf-perl" {= "1"}
   "conf-pkg-config" {= "2"}
   "conf-sqlite3" {= "1"}
@@ -68,7 +68,7 @@ depends: [
   "menhir" {= "20210419"}
   "menhirLib" {= "20210419"}
   "menhirSdk" {= "20210419"}
-  "mlgmpidl" {= "1.2.13"}
+  "mlgmpidl" {= "1.2.14"}
   "mtime" {= "1.2.0"}
   "num" {= "1.4"}
   "ocaml" {= "4.12.0"}

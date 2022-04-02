@@ -510,7 +510,7 @@ let extract_linum_from_param_ap (ap : MyAccessPath.t) : int =
     | true -> (
       try
         let varstring = F.asprintf "%a" Var.pp (fst ap) in
-        let regex = Str.regexp "param_\\([_a-zA-Z<>]+\\)_\\([0-9]+\\)_\\([-0-9]+\\)" in
+        let regex = Str.regexp "param_\\([_a-zA-Z<>0-9]+\\)_\\([0-9]+\\)_\\([-0-9]+\\)" in
         ignore @@ Str.string_match regex varstring 0 ;
         int_of_string @@ Str.matched_group 2 varstring
       with Invalid_argument _ ->

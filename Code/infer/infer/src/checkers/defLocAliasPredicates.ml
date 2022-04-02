@@ -191,7 +191,7 @@ let is_param (var : Var.t) : bool =
 
 let is_param_ap (ap : A.elt) : bool =
   let varstring = F.asprintf "%a" Var.pp (fst ap) in
-  String.is_substring varstring ~substring:"param"
+  String.is_substring varstring ~substring:"param_"
 
 
 let maybe_static (ap : MyAccessPath.t) =

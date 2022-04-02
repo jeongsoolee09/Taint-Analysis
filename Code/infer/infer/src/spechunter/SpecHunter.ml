@@ -24,7 +24,8 @@ let infer_analyze_main () =
 
 let main () =
   run_only_when_not_file_exists infer_analyze_main "AnalysisResult.bin" ;
-  run_only_when_not_file_exists SetofAllMeths.calculate "Methods.txt" ;
+  run_only_when_not_file_exists SetofAllMeths.calculate_methname "UDFs.txt" ;
+  run_only_when_not_file_exists SetofAllMeths.calculate_unique_id "UDFs_unique_id.txt" ;
   run_only_when_not_file_exists ExtractAnnotations.main "Annotations.json" ;
   run_only_when_not_file_exists LiveRange.main "Chain.json" ;
   run_only_when_not_file_exists GetterSetter.main "GetterSetter.json" ;

@@ -473,7 +473,7 @@ let have_been_before (chain_slice : Chain.chain_slice) (chain : Chain.t) : bool 
 
 let is_skip_function (methname : Procname.t) : bool = Option.is_none @@ Procdesc.load methname
 
-let save_skip_function () : unit =
+let save_APIs () : unit =
   let procnames =
     Hashtbl.fold
       (fun meth1 meth2 acc ->
@@ -490,14 +490,21 @@ let save_skip_function () : unit =
             acc )
       callgraph_table Procname.Set.empty
   in
-  let out_chan = Out_channel.create "skip_func.txt" in
+  let out_chan_unique_ids = Out_channel.create "APIs_unique_id.txt"
+  and out_chan_methnames = Out_channel.create "APIs.txt" in
   let procnames_list = Procname.Set.elements procnames in
   iter
     ~f:(fun procname ->
       let func_name = F.asprintf "%a" Procname.pp_unique_id procname in
-      Out_channel.output_string out_chan @@ func_name ^ "\n" )
+      Out_channel.output_string out_chan_unique_ids @@ func_name ^ "\n" )
     procnames_list ;
-  Out_channel.close out_chan
+  iter
+    ~f:(fun procname ->
+      let func_name = F.asprintf "%s" (Procname.to_string procname) in
+      Out_channel.output_string out_chan_methnames @@ func_name ^ "\n" )
+    procnames_list ;
+  Out_channel.close out_chan_unique_ids ;
+  Out_channel.close out_chan_methnames
 
 
 let extract_ap_from_chain_slice (slice : (Procname.t * Status.t) option) : MyAccessPath.t option =
@@ -1540,7 +1547,7 @@ let main () =
   RefineSummaries.main summary_table ;
   (* Initialize the formal_args table *)
   batch_add_formal_args () ;
-  save_skip_function () ;
+  save_APIs () ;
   (* Filter the callgraph_table *)
   filter_callgraph_table callgraph_table ;
   (* Initialize OCamlgraph *)
@@ -1559,10 +1566,6 @@ let main () =
          && (not @@ is_callv var)
          && (not @@ is_inner_class_proc proc) )
   |> iter ~f:(fun (proc, ap, locset) ->
-         (* if *)
-         (*   String.equal (Procname.to_string proc) "void WhatIWantExample.f()" *)
-         (*   && String.equal (F.asprintf "%a" MyAccessPath.pp ap) "(x, [])" *)
-         (* then add_chain (proc, ap, locset) @@ List.hd_exn @@ compute_chain ap ) ; *)
          let computed_chains = compute_chain ap in
          iter ~f:(fun chain -> add_chain (proc, ap, locset) chain) computed_chains ) ;
   (* ============ Serialize ============ *)

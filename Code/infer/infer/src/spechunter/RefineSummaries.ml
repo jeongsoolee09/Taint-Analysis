@@ -306,26 +306,30 @@ let move_void_callee_returnv_and_remove_ph (table : (Procname.t, S.t) Hashtbl.t)
                 not @@ Procname.Java.is_static java_proc ) )
     in
     let astates_holding_corresponding_callvs =
-      List.map
-        ~f:(fun returnv ->
-          find_witness_exn (S.elements astate_set) ~pred:(fun astate ->
-              A.exists
-                (fun ap -> is_callv_ap ap && callv_and_returnv_matches ~callv:ap ~returnv)
-                (fourth_of astate) ) )
-        void_returnvs
+      try
+        List.map
+          ~f:(fun returnv ->
+            find_witness_exn (S.elements astate_set) ~pred:(fun astate ->
+                A.exists
+                  (fun ap -> is_callv_ap ap && callv_and_returnv_matches ~callv:ap ~returnv)
+                  (fourth_of astate) ) )
+          void_returnvs
+      with NoWitness -> []
     in
     let astates_holding_corresponding_callvs_updated =
-      List.map
-        ~f:(fun (proc, vardef, loc, aliasset) ->
-          let void_callv = find_witness_exn ~pred:is_void_method_callv (A.elements aliasset) in
-          let corresponding_returnv =
-            find_witness_exn
-              ~pred:(fun void_returnv ->
-                callv_and_returnv_matches ~callv:void_callv ~returnv:void_returnv )
-              void_returnvs
-          in
-          (proc, vardef, loc, A.add corresponding_returnv aliasset) )
-        astates_holding_corresponding_callvs
+      try
+        List.map
+          ~f:(fun (proc, vardef, loc, aliasset) ->
+            let void_callv = find_witness_exn ~pred:is_void_method_callv (A.elements aliasset) in
+            let corresponding_returnv =
+              find_witness_exn
+                ~pred:(fun void_returnv ->
+                  callv_and_returnv_matches ~callv:void_callv ~returnv:void_returnv )
+                void_returnvs
+            in
+            (proc, vardef, loc, A.add corresponding_returnv aliasset) )
+          astates_holding_corresponding_callvs
+      with _ -> []
     in
     astate_set
     |> (fun astate_set -> S.diff astate_set ph_tuples_with_void_returnvs)
@@ -378,6 +382,33 @@ let merge_cast_returnv_aliasset_with_callv_ones (table : (Procname.t, S.t) Hasht
         | None ->
             acc )
       ph_tuple_with_cast_returnv astate_set
+  in
+  Hashtbl.iter (fun proc astate_set -> Hashtbl.replace table proc (one_pass_S astate_set)) table ;
+  table
+
+
+let promote_ph_to_pvar_with_get_array_length_returnv (table : (Procname.t, S.t) Hashtbl.t) :
+    (Procname.t, S.t) Hashtbl.t =
+  let has_get_array_length_returnv (aliasset : A.t) : bool =
+    A.exists
+      (fun (var, _) ->
+        String.is_substring (F.asprintf "%a" Var.pp var) ~substring:"__get_array_length"
+        && is_returnv var )
+      aliasset
+  in
+  let one_pass_S (astate_set : S.t) : S.t =
+    let counter = ref 1 in
+    S.fold
+      (fun ((proc, vardef, locset, aliasset) as astate) acc ->
+        if has_get_array_length_returnv aliasset && is_placeholder_vardef (fst vardef) then
+          S.remove astate acc
+          |> S.add
+               ( proc
+               , (Var.of_pvar @@ Pvar.mk_tmp (F.sprintf "promoted%d" !counter) proc, [])
+               , locset
+               , aliasset )
+        else acc )
+      astate_set astate_set
   in
   Hashtbl.iter (fun proc astate_set -> Hashtbl.replace table proc (one_pass_S astate_set)) table ;
   table
@@ -645,8 +676,10 @@ let main : (Procname.t, S.t) Hashtbl.t -> unit =
   |> summary_table_to_file_and_return "7_move_void_callee_returnv_and_remove_ph.txt"
   (* |> merge_cast_returnv_aliasset_with_callv_ones *)
   (* |> summary_table_to_file_and_return "8_merge_cast_returnv_aliasset_with_callv_ones.txt" *)
+  |> promote_ph_to_pvar_with_get_array_length_returnv
+  |> summary_table_to_file_and_return "9_promote_ph_to_pvar_with_get_array_length_returnv.txt"
   |> remove_unimportant_elems
-  |> summary_table_to_file_and_return "9_remove_unimportant_elems.txt"
+  |> summary_table_to_file_and_return "10_remove_unimportant_elems.txt"
   |> remove_java_constants
-  |> summary_table_to_file_and_return "10_remove_java_constants.txt"
+  |> summary_table_to_file_and_return "11_remove_java_constants.txt"
   |> return

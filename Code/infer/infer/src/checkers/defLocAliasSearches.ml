@@ -719,6 +719,8 @@ let find_astate_holding_returnv (astate_set : S.t) (target_callee : Procname.t)
   | [matching_astate] ->
       matching_astate
   | _ ->
+      (* astate_list -> *)
+      (* List.hd_exn @@ List.filter ~f:(second_of >> is_placeholder_vardef_ap) astate_list *)
       F.kasprintf
         (fun msg ->
           L.progress "%s@." msg ;
@@ -828,34 +830,34 @@ let find_matching_returnv_for_callv (aliasset : A.t) (callv : MyAccessPath.t) =
 let rec typdesc_to_java_class_string =
   let cnt = ref 0 in
   fun (typdesc : Typ.desc) : string ->
-  match typdesc with
-  | Typ.Tstruct name -> (
-    match name with
-    | JavaClass javaclass ->
-        JavaClassName.classname javaclass
-    | _ ->
-        L.progress "typ_to_string failed: 1@." ;
-        raise InvalidArgument )
-  | Tptr (t, _) ->
-      typdesc_to_java_class_string t.desc
-  | Tint _ ->
-      cnt := !cnt + 1;
-      F.asprintf "int%d" !cnt
-  | Tfloat _ ->
-      cnt := !cnt + 1;
-      F.asprintf "float%d" !cnt
-  | Tfun ->
-      cnt := !cnt + 1;
-      F.asprintf "function%d" !cnt
-  | Tarray _ ->
-      cnt := !cnt + 1;
-      F.asprintf "array%d" !cnt
-  | TVar varname ->
-      cnt := !cnt + 1;
-      F.asprintf "var%d" !cnt
-  | Tvoid ->
-      cnt := !cnt + 1;
-      F.asprintf "void%d" !cnt
+    match typdesc with
+    | Typ.Tstruct name -> (
+      match name with
+      | JavaClass javaclass ->
+          JavaClassName.classname javaclass
+      | _ ->
+          L.progress "typ_to_string failed: 1@." ;
+          raise InvalidArgument )
+    | Tptr (t, _) ->
+        typdesc_to_java_class_string t.desc
+    | Tint _ ->
+        cnt := !cnt + 1 ;
+        F.asprintf "int%d" !cnt
+    | Tfloat _ ->
+        cnt := !cnt + 1 ;
+        F.asprintf "float%d" !cnt
+    | Tfun ->
+        cnt := !cnt + 1 ;
+        F.asprintf "function%d" !cnt
+    | Tarray _ ->
+        cnt := !cnt + 1 ;
+        F.asprintf "array%d" !cnt
+    | TVar varname ->
+        cnt := !cnt + 1 ;
+        F.asprintf "var%d" !cnt
+    | Tvoid ->
+        cnt := !cnt + 1 ;
+        F.asprintf "void%d" !cnt
 
 
 let extract_classname_from_sizeof_exp ((exp, typ) : Exp.t * Typ.t) : string =

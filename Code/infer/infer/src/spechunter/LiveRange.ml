@@ -297,7 +297,10 @@ let callg_hash2og () : unit =
 
 let resolve_callee_superclass (caller : Procname.t) (callee : Procname.t) : Procname.t =
   let succs = G.succ callgraph caller in
-  let callee_class_name = Option.value ~default:"" @@ Procname.get_class_name callee in
+  let callee_class_name =
+    List.last_exn @@ String.split ~on:'.' @@ Option.value ~default:"wefwefwef"
+    @@ Procname.get_class_name callee
+  in
   let callee_simple_string = Procname.get_method callee in
   let callee_param_type = Procname.get_parameters callee in
   let param_list_equal (plist1 : Procname.Parameter.t list) (plist2 : Procname.Parameter.t list) =
@@ -312,16 +315,19 @@ let resolve_callee_superclass (caller : Procname.t) (callee : Procname.t) : Proc
         false
   in
   let matches =
+    L.progress "callee_class_name: %s" callee_class_name ;
     List.fold
       ~f:(fun acc succ ->
         let succ_simple_string = Procname.get_method succ in
         let succ_param_type = Procname.get_parameters succ in
-        let succ_class_name = Option.value ~default:"" @@ Procname.get_class_name callee in
+        let succ_class_name =
+          List.last_exn @@ String.split ~on:'.' @@ Option.value ~default:""
+          @@ Procname.get_class_name succ
+        in
+        L.progress "succ_class_name: %s@." succ_class_name ;
         if
           String.equal callee_simple_string succ_simple_string
           && param_list_equal callee_param_type succ_param_type
-          && ( String.is_substring ~substring:callee_class_name succ_class_name
-             || String.is_substring ~substring:succ_class_name callee_class_name )
         then succ :: acc
         else acc )
       succs ~init:[]
@@ -337,13 +343,15 @@ let resolve_callee_superclass (caller : Procname.t) (callee : Procname.t) : Proc
   | [proc] ->
       L.progress "callee %a resolved to %a@." Procname.pp callee Procname.pp proc ;
       proc
-  | _ ->
-      F.kasprintf
-        (fun msg ->
-          L.progress "%s" msg ;
-          raise TooManyMatches )
-        "resolve_callee_superclass failed, caller: %a, callee: %a, matches: %a" Procname.pp caller
-        Procname.pp callee pp_proc_list matches
+  | procs ->
+      List.hd_exn
+      @@ List.filter procs ~f:(fun proc ->
+             let proc_class_name =
+               List.last_exn @@ String.split ~on:'.' @@ Option.value ~default:""
+               @@ Procname.get_class_name proc
+             in
+             String.is_substring ~substring:callee_class_name proc_class_name
+             || String.is_substring ~substring:proc_class_name callee_class_name )
 
 
 (** 주어진 hashtbl의 엔트리 중에서 (callgraph_table이 쓰일 것) summary_table에 있지 않은 엔트리를 날린다. *)
@@ -748,10 +756,10 @@ let rec compute_chain_inner (current_methname : Procname.t) (current_astate_set 
   else if
     (not @@ List.is_empty debug_chain) && List.contains_dup debug_chain ~compare:ChainSlice.compare
     (* && List.mem (List.tl_exn debug_chain) (hd_exn debug_chain) ~equal:Chain.equal_chain_slice *)
-  then (
+  then
     let completed_chain = (current_methname, Status.DeadByCycle) :: current_chain in
     (* reset_counter_recursively current_methname ; *)
-    completed_chain :: current_chain_acc )
+    completed_chain :: current_chain_acc
   else
     let current_aliasset = fourth_of current_astate in
     let current_aliasset_cleanedup =
@@ -943,7 +951,7 @@ let rec compute_chain_inner (current_methname : Procname.t) (current_astate_set 
               (* recurse *)
               compute_chain_inner caller caller_astate_set statetup_with_returnv chain_updated
                 call_stack_updated debug_chain_updated current_chain_acc )
-        else if exists ~f:is_callv_ap var_aps then
+        else if exists ~f:is_callv_ap var_aps then (
           (* ============ CALL or VOID CALL ============ *)
           (* Retrieve and update the callv counter. *)
           let callv_counter = get_counter current_methname in
@@ -955,13 +963,12 @@ let rec compute_chain_inner (current_methname : Procname.t) (current_astate_set 
               ~f:(fun acc callvs ->
                 try find_earliest_callv callvs ~greater_than:callv_counter :: acc with _ -> acc )
               callvs_partitioned_by_procname ~init:[]
-            |> List.filter
-                 ~f:(fun callv ->
+            |> List.filter ~f:(fun callv ->
                    let callee = extract_callee_from callv
                    and past_visited = List.map ~f:ChainSlice.get_procname debug_chain in
                    not @@ List.mem past_visited callee ~equal:Procname.equal )
           in
-          L.progress "earliest_callvs: %a@." pp_ap_list earliest_callvs;
+          L.progress "earliest_callvs: %a@." pp_ap_list earliest_callvs ;
           let mapfunc callv =
             assert (Int.( <= ) callv_counter (extract_counter_from_callv callv)) ;
             let callv_counter = extract_counter_from_callv callv in
@@ -1134,7 +1141,7 @@ let rec compute_chain_inner (current_methname : Procname.t) (current_astate_set 
                   computed
           in
           let collected_subchains = earliest_callvs >>= mapfunc in
-          List.map ~f:(fun subchain -> subchain @ current_chain) collected_subchains
+          List.map ~f:(fun subchain -> subchain @ current_chain) collected_subchains )
         else if
           (* either REDEFINITION or DEAD.
              check which one is the case by checking if there are multiple current_vardefs in the alias set *)

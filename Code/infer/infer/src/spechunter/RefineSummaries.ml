@@ -17,8 +17,6 @@ module F = Format
 
 exception TODO
 
-exception WTF
-
 exception ConsolidateByLocsetFailed of string
 
 let ( >>| ) = List.( >>| )
@@ -416,13 +414,18 @@ let promote_ph_to_pvar_with_get_array_length_returnv (table : (Procname.t, S.t) 
 
 let remove_too_many_callv_returnv_setters (table : (Procname.t, S.t) Hashtbl.t) :
     (Procname.t, S.t) Hashtbl.t =
+  let is_setter (procname : Procname.t) : bool =
+    return_type_is_void procname && String.is_prefix (Procname.get_method procname) ~prefix:"set"
+  in
   let all_callv_in_astate_set (astate_set : S.t) : MyAccessPath.t list =
     A.elements
     @@ S.fold
          (fun astate big_acc ->
-          let this_astate_void_callvs = A.filter (fun ap ->
-               is_callv_ap ap &&
-              return_type_is_void (extract_callee_from ap)) (fourth_of astate) in
+           let this_astate_void_callvs =
+             A.filter
+               (fun ap -> is_callv_ap ap && is_setter (extract_callee_from ap))
+               (fourth_of astate)
+           in
            A.union this_astate_void_callvs big_acc )
          astate_set A.empty
   in
@@ -442,7 +445,8 @@ let remove_too_many_callv_returnv_setters (table : (Procname.t, S.t) Hashtbl.t) 
         (Procname.to_string @@ first_of @@ List.hd_exn @@ S.elements astate_set)
         "ImportStatus ExcelImporter.importFile(File)"
     then
-      Out_channel.with_file "excel.bin" ~f:(fun out_chan -> Marshal.to_channel out_chan astate_set []) ;
+      Out_channel.with_file "excel.bin" ~f:(fun out_chan ->
+          Marshal.to_channel out_chan astate_set [] ) ;
     L.progress "astate_set : %a@." S.pp astate_set ;
     Out_channel.flush stdout ;
     if
@@ -469,8 +473,8 @@ let remove_too_many_callv_returnv_setters (table : (Procname.t, S.t) Hashtbl.t) 
                 | returnv when is_returnv_ap returnv ->
                     (* use only_earliest_callvs *)
                     List.exists all_callvs_for_void_methods ~f:(fun callv ->
-                           callv_and_returnv_matches ~callv ~returnv
-                           && List.mem only_earliest_callvs callv ~equal:MyAccessPath.equal )
+                        callv_and_returnv_matches ~callv ~returnv
+                        && List.mem only_earliest_callvs callv ~equal:MyAccessPath.equal )
                 | _ ->
                     true )
               aliasset

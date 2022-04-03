@@ -1,9 +1,7 @@
-open! IStd
-
-(* open DefLocAliasPP *)
 open DefLocAliasSearches
 open DefLocAliasPredicates
 open DefLocAliasDomain
+open DefLocAliasPP
 open Partitioners
 open SpecHunterUtils
 module Hashtbl = Caml.Hashtbl
@@ -18,6 +16,8 @@ module F = Format
 (* ================================================== *)
 
 exception TODO
+
+exception WTF
 
 exception ConsolidateByLocsetFailed of string
 
@@ -414,6 +414,75 @@ let promote_ph_to_pvar_with_get_array_length_returnv (table : (Procname.t, S.t) 
   table
 
 
+let remove_too_many_callv_returnv_setters (table : (Procname.t, S.t) Hashtbl.t) :
+    (Procname.t, S.t) Hashtbl.t =
+  let all_callv_in_astate_set (astate_set : S.t) : MyAccessPath.t list =
+    A.elements
+    @@ S.fold
+         (fun astate big_acc ->
+          let this_astate_void_callvs = A.filter (fun ap ->
+               is_callv_ap ap &&
+              return_type_is_void (extract_callee_from ap)) (fourth_of astate) in
+           A.union this_astate_void_callvs big_acc )
+         astate_set A.empty
+  in
+  let more_than_one_callv_per_void_method_in_astate_set (astate_set : S.t) =
+    let all_void_callvs = all_callv_in_astate_set astate_set in
+    let all_void_callvs_partitioned = partition_callvs_by_procname all_void_callvs in
+    List.for_all all_void_callvs_partitioned ~f:(fun partition -> List.length partition >= 2)
+  in
+  let leave_only_earliest_callv (callvs : MyAccessPath.t list) : MyAccessPath.t =
+    Option.value ~default:MyAccessPath.dummy
+    @@ List.min_elt callvs ~compare:(fun callv1 callv2 ->
+           Int.compare (extract_counter_from_callv callv1) (extract_counter_from_callv callv2) )
+  in
+  let one_pass_S (astate_set : S.t) : S.t =
+    if
+      String.equal
+        (Procname.to_string @@ first_of @@ List.hd_exn @@ S.elements astate_set)
+        "ImportStatus ExcelImporter.importFile(File)"
+    then
+      Out_channel.with_file "excel.bin" ~f:(fun out_chan -> Marshal.to_channel out_chan astate_set []) ;
+    L.progress "astate_set : %a@." S.pp astate_set ;
+    Out_channel.flush stdout ;
+    if
+      List.length (all_callv_in_astate_set astate_set) > 2
+      && more_than_one_callv_per_void_method_in_astate_set astate_set
+    then (
+      let all_callvs_for_void_methods = all_callv_in_astate_set astate_set in
+      let all_callvs_partitioned_by_callee =
+        partition_callvs_by_procname all_callvs_for_void_methods
+      in
+      let only_earliest_callvs : MyAccessPath.t list =
+        all_callvs_partitioned_by_callee >>| leave_only_earliest_callv
+      in
+      L.progress "only_earliest_callvs: %a@." pp_ap_list only_earliest_callvs ;
+      S.fold
+        (fun ((proc, vardef, locset, aliasset) as astate) acc ->
+          let aliasset_dieted =
+            A.filter
+              (fun ap ->
+                match ap with
+                | callv when is_callv_ap callv ->
+                    (* use only_earliest_callvs *)
+                    List.mem only_earliest_callvs callv ~equal:MyAccessPath.equal
+                | returnv when is_returnv_ap returnv ->
+                    (* use only_earliest_callvs *)
+                    List.exists all_callvs_for_void_methods ~f:(fun callv ->
+                           callv_and_returnv_matches ~callv ~returnv
+                           && List.mem only_earliest_callvs callv ~equal:MyAccessPath.equal )
+                | _ ->
+                    true )
+              aliasset
+          in
+          S.remove astate acc |> S.add (proc, vardef, locset, aliasset_dieted) )
+        astate_set astate_set )
+    else astate_set
+  in
+  Hashtbl.iter (fun proc astate_set -> Hashtbl.replace table proc (one_pass_S astate_set)) table ;
+  table
+
+
 (* removing unimportant elements ==================== *)
 (* ================================================== *)
 
@@ -678,8 +747,10 @@ let main : (Procname.t, S.t) Hashtbl.t -> unit =
   (* |> summary_table_to_file_and_return "8_merge_cast_returnv_aliasset_with_callv_ones.txt" *)
   |> promote_ph_to_pvar_with_get_array_length_returnv
   |> summary_table_to_file_and_return "9_promote_ph_to_pvar_with_get_array_length_returnv.txt"
+  |> remove_too_many_callv_returnv_setters
+  |> summary_table_to_file_and_return "10_remove_too_many_callv_returnv_setters.txt"
   |> remove_unimportant_elems
-  |> summary_table_to_file_and_return "10_remove_unimportant_elems.txt"
+  |> summary_table_to_file_and_return "11_remove_unimportant_elems.txt"
   |> remove_java_constants
-  |> summary_table_to_file_and_return "11_remove_java_constants.txt"
+  |> summary_table_to_file_and_return "12_remove_java_constants.txt"
   |> return

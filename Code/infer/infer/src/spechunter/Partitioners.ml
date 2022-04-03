@@ -138,6 +138,27 @@ let partition_callvs_by_procname (callvs : MyAccessPath.t list) : MyAccessPath.t
   callees >>| mapfunc
 
 
+let partition_callvs_by_procname_and_location (callvs : MyAccessPath.t list) :
+    MyAccessPath.t list list =
+  let open List in
+  let callees =
+    callvs
+    >>| (fun callv -> (get_declaring_function_ap_exn callv, extract_linum_from_callv callv))
+    |> List.stable_dedup
+  in
+  let mapfunc (proc, linum) =
+    List.fold
+      ~f:(fun acc callv ->
+        if
+          Procname.equal (get_declaring_function_ap_exn callv) proc
+          && Int.equal (extract_linum_from_callv callv) linum
+        then callv :: acc
+        else acc )
+      callvs ~init:[]
+  in
+  callees >>| mapfunc
+
+
 let partition_statetups_modulo_123 (statetups : S.t) : S.t list =
   let procnames : Procname.t list =
     List.stable_dedup

@@ -1,4 +1,3 @@
-(* open! IStd *)
 open DefLocAliasDomain
 open DefLocAliasSearches
 open DefLocAliasPredicates

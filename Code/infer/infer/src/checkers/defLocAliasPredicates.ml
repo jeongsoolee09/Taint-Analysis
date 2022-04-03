@@ -419,6 +419,11 @@ let is_inner_class_proc (procname : Procname.t) =
   String.is_substring class_string ~substring:"$"
 
 
+let is_access_method (procname : Procname.t) =
+  let simple_name = Procname.get_method procname in
+  String.is_substring simple_name ~substring:"access$"
+
+
 let is_frontend_procname (procname : Procname.t) =
   let simple_name = Procname.get_method procname in
   String.is_prefix simple_name ~prefix:"__"

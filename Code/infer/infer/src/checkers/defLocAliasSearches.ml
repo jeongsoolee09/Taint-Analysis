@@ -718,16 +718,17 @@ let find_astate_holding_returnv (astate_set : S.t) (target_callee : Procname.t)
         S.pp astate_set Procname.pp target_callee target_counter target_linum
   | [matching_astate] ->
       matching_astate
-  | _ ->
+  | otherwise ->
       (* astate_list -> *)
       (* List.hd_exn @@ List.filter ~f:(second_of >> is_placeholder_vardef_ap) astate_list *)
-      F.kasprintf
-        (fun msg ->
-          L.progress "%s@." msg ;
-          raise TooManyMatches )
-        "find_astate_holding_returnv failed, astate_set: %a, target_callee: %a target_counter: %d, \
-         target_linum: %d@."
-        S.pp astate_set Procname.pp target_callee target_counter target_linum
+      (* F.kasprintf *)
+      (*   (fun msg -> *)
+      (*     L.progress "%s@." msg ; *)
+      (*     raise TooManyMatches ) *)
+      (*   "find_astate_holding_returnv failed, astate_set: %a, target_callee: %a target_counter: %d, \ *)
+      (*    target_linum: %d@." *)
+      (*   S.pp astate_set Procname.pp target_callee target_counter target_linum *)
+      List.hd_exn otherwise
 
 
 let find_matching_returnv_in_aliasset (aliasset : A.t) (target_callee : Procname.t)

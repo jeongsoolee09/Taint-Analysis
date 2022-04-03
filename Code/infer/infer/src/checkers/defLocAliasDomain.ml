@@ -9,6 +9,11 @@ module L = Logging
 
 (** An tuple (element of an astate_set) represents a single data definition *)
 
+let placeholder_vardef (pid : Procname.t) : Var.t =
+  let mangled = Mangled.from_string "ph" in
+  let ph_vardef = Pvar.mk mangled pid in
+  Var.of_pvar ph_vardef
+
 module MyAccessPath = struct
   type t = Var.t * AccessPath.access list [@@deriving equal, compare]
 
@@ -26,6 +31,8 @@ module MyAccessPath = struct
 
 
   let to_string (x : t) : string = F.asprintf "%a" pp x
+
+  let dummy = (placeholder_vardef Procname.empty_block, [])
 end
 
 (** set of locations (source-code level) where pieces of data are defined. *)
@@ -374,7 +381,7 @@ let placeholder_vardef (pid : Procname.t) : Var.t =
 
 let bottuple =
   ( Procname.empty_block
-  , (placeholder_vardef Procname.empty_block, [])
+  , MyAccessPath.dummy
   , LocationSet.empty
   , SetofAliases.empty )
 

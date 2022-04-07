@@ -390,6 +390,11 @@ let print_graph graph =
   L.progress "============================================@."
 
 
+(* Test classes ===================================== *)
+(* ================================================== *)
+
+let class_table = Hashtbl.create 777
+
 (* Computing Chains ================================= *)
 (* ================================================== *)
 
@@ -680,19 +685,18 @@ let compare_astate astate1 astate2 =
   Location.compare min_linum1 min_linum2
 
 
-let rec next_elem_of_list (lst : S.elt list) ~(next_to : S.elt) : S.elt =
+let rec next_elem_of_list (lst : 'a list) ~(next_to : 'a) ~(equal : 'a -> 'a -> bool) =
   match lst with
-  | [] ->
-      F.kasprintf
-        (fun msg -> raise @@ NoSuchElem msg)
-        "next_elem_of_list failed: lst: %a, next_to: %a@." pp_tuplelist lst T.pp next_to
-  | this :: t ->
-      if T.equal this next_to then hd_exn t else next_elem_of_list t ~next_to
+  | [] | [_] ->
+      L.die InternalError "get_next_elem failed"
+  | x1 :: (x2 :: _ as rest) ->
+      if equal x1 next_to then x2 else next_elem_of_list rest ~next_to ~equal
 
 
 let find_matching_param_for_callv (ap_set : A.t) (callv_ap : A.elt) : A.elt =
   let callv_methname = extract_callee_from callv_ap in
   let callee_params = get_formal_args callv_methname in
+  L.progress "callee_params: %a@." pp_ap_list callee_params ;
   L.progress "ap_set is empty: %a@." Bool.pp @@ A.is_empty ap_set ;
   L.progress "ap_set is: %a@." A.pp ap_set ;
   let param_aps =
@@ -709,15 +713,22 @@ let find_matching_param_for_callv (ap_set : A.t) (callv_ap : A.elt) : A.elt =
       ap_set
   in
   let non_param_ap_parameters =
-    if A.is_empty param_aps then
-      A.filter (fun ap -> List.mem callee_params ap ~equal:MyAccessPath.equal) ap_set
+    if A.is_empty param_aps then A.filter (List.mem callee_params ~equal:MyAccessPath.equal) ap_set
     else A.empty
   in
   match (A.is_empty param_aps, A.is_empty non_param_ap_parameters) with
   | true, true ->
-      L.progress "find_matching_param_for_callv failed. ap_set: %a, callv_ap: %a@." A.pp ap_set
-        MyAccessPath.pp callv_ap ;
-      raise ThisIsImpossible
+      let this_callee_aps =
+        A.filter
+          (fun ap ->
+            (not @@ is_param_ap ap)
+            && (not @@ is_returnv_ap ap)
+            && (not @@ is_callv_ap ap)
+            && Procname.equal (extract_callee_from ap) callv_methname )
+          ap_set
+      in
+      L.progress "yayay: %a@." MyAccessPath.pp (List.hd_exn @@ A.elements this_callee_aps) ;
+      List.hd_exn @@ A.elements this_callee_aps
   | true, false ->
       List.hd_exn @@ A.elements non_param_ap_parameters
   | false, true ->
@@ -754,12 +765,13 @@ let rec compute_chain_inner (current_methname : Procname.t) (current_astate_set 
     reset_counter_recursively current_methname ;
     completed_chain :: current_chain_acc )
   else if
-    (not @@ List.is_empty debug_chain) && List.contains_dup debug_chain ~compare:ChainSlice.compare
-    (* && List.mem (List.tl_exn debug_chain) (hd_exn debug_chain) ~equal:Chain.equal_chain_slice *)
-  then
+    (not @@ List.is_empty debug_chain)
+    (*&& List.contains_dup debug_chain ~compare:ChainSlice.compare*)
+    && List.mem (List.tl_exn debug_chain) (hd_exn debug_chain) ~equal:ChainSlice.equal
+  then (
     let completed_chain = (current_methname, Status.DeadByCycle) :: current_chain in
-    (* reset_counter_recursively current_methname ; *)
-    completed_chain :: current_chain_acc
+    reset_counter_recursively current_methname ;
+    completed_chain :: current_chain_acc )
   else
     let current_aliasset = fourth_of current_astate in
     let current_aliasset_cleanedup =
@@ -956,7 +968,7 @@ let rec compute_chain_inner (current_methname : Procname.t) (current_astate_set 
           (* Retrieve and update the callv counter. *)
           let callv_counter = get_counter current_methname in
           let callvs_partitioned_by_procname =
-            filter ~f:is_callv_ap var_aps |> partition_callvs_by_procname
+            filter ~f:is_callv_ap var_aps |> partition_aps_by_procname
           in
           let earliest_callvs =
             List.fold
@@ -966,7 +978,11 @@ let rec compute_chain_inner (current_methname : Procname.t) (current_astate_set 
             |> List.filter ~f:(fun callv ->
                    let callee = extract_callee_from callv
                    and past_visited = List.map ~f:ChainSlice.get_procname debug_chain in
-                   not @@ List.mem past_visited callee ~equal:Procname.equal )
+                   (not @@ List.mem past_visited callee ~equal:Procname.equal)
+                   &&
+                   let callee = extract_callee_from callv in
+                   (not @@ TestCodeDetector.belongs_to_test_class class_table callee)
+                   && (not @@ TestCodeDetector.is_test_method callee) )
           in
           L.progress "earliest_callvs: %a@." pp_ap_list earliest_callvs ;
           let mapfunc callv =
@@ -1148,9 +1164,9 @@ let rec compute_chain_inner (current_methname : Procname.t) (current_astate_set 
           (not @@ LocationSet.is_empty (third_of current_astate))
           && Int.( >= )
                (count_vardefs_in_astateset current_astate_set ~find_this:current_vardef
-                  ~after_than:(LocationSet.min_elt (third_of current_astate)) )
+                  ~after_than:(LocationSet.max_elt (third_of current_astate)) )
                1
-        then
+        then (
           (* ============ REDEFINITION ============ *)
           (* Intuition: get to the least recently redefined variable and recurse on that *)
           let all_states_with_current_ap =
@@ -1159,11 +1175,17 @@ let rec compute_chain_inner (current_methname : Procname.t) (current_astate_set 
                    MyAccessPath.equal (second_of current_astate) (second_of astate) )
             @@ S.elements current_astate_set
           in
+          L.progress "all_states_with_current_ap: %a, current_astate: %a@." pp_tuplelist
+            all_states_with_current_ap T.pp current_astate ;
           let least_recently_redefined =
             next_elem_of_list all_states_with_current_ap ~next_to:current_astate
+              ~equal:(fun astate1 astate2 ->
+                Procname.equal (first_of astate1) (first_of astate2)
+                && MyAccessPath.equal (second_of astate1) (second_of astate2)
+                && LocationSet.equal (third_of astate1) (third_of astate2) )
           in
-          let current_ap, current_locset = (second_of current_astate, third_of current_astate) in
-          let current_astate_set_updated = S.remove current_astate current_astate_set in
+          let current_ap, current_locset = (second_of current_astate, third_of current_astate)
+          and current_astate_set_updated = S.remove current_astate current_astate_set in
           (* remove the current_astate from current_astate_set *)
           let chain_updated =
             ( current_methname
@@ -1181,7 +1203,7 @@ let rec compute_chain_inner (current_methname : Procname.t) (current_astate_set 
           (* no need to update the call stack! *)
           (* recurse *)
           compute_chain_inner current_methname current_astate_set_updated least_recently_redefined
-            chain_updated current_call_stack debug_chain_updated current_chain_acc
+            chain_updated current_call_stack debug_chain_updated current_chain_acc )
         else
           (* ============ DEAD ============ *)
           (* no more recursion; return *)
@@ -1190,18 +1212,23 @@ let rec compute_chain_inner (current_methname : Procname.t) (current_astate_set 
           completed_chain :: current_chain_acc
     | nonempty_aplist ->
         let local_aps =
-          List.filter
-            ~f:(fun ap -> Procname.equal (extract_callee_from ap) current_methname)
-            var_aps
+          List.filter var_aps ~f:(fun ap ->
+              Procname.equal (extract_callee_from ap) current_methname )
+        and callvs =
+          List.filter var_aps ~f:(fun ap ->
+              is_callv_ap ap
+              &&
+              let callee = extract_callee_from ap in
+              (not @@ TestCodeDetector.belongs_to_test_class class_table callee)
+              && (not @@ TestCodeDetector.is_test_method callee) )
         in
-        let callvs = List.filter ~f:is_callv_ap var_aps in
         let call_chains =
           if is_empty callvs then []
           else
             (* ============ CALL or VOID CALL ============ *)
             (* Retrieve and update the callv counter. *)
             let callv_counter = get_counter current_methname in
-            let callvs_partitioned_by_procname = callvs |> partition_callvs_by_procname in
+            let callvs_partitioned_by_procname = partition_aps_by_procname callvs in
             let earliest_callvs =
               List.fold
                 ~f:(fun acc callvs ->
@@ -1215,6 +1242,7 @@ let rec compute_chain_inner (current_methname : Procname.t) (current_astate_set 
             L.progress "callvs: %a, callv_counter: %d@." pp_ap_list callvs callv_counter ;
             (* let earliest_callv = find_earliest_callv callvs ~greater_than:callv_counter in *)
             let mapfunc callv =
+              L.progress "callv: %a@." MyAccessPath.pp callv ;
               assert (Int.( <= ) callv_counter (extract_counter_from_callv callv)) ;
               let callv_counter = extract_counter_from_callv callv in
               update_counter current_methname (extract_counter_from_callv callv) ;
@@ -1482,7 +1510,7 @@ let compute_chain (ap : MyAccessPath.t) : Chain.t list =
 (* I/O stuffs ======================================= *)
 (* ================================================== *)
 
-let collect_all_proc_and_ap () =
+let collect_all_proc_and_ap () : (Procname.t * MyAccessPath.t * LocationSet.t) list =
   let setofallstates = Hashtbl.fold (fun _ v acc -> S.union v acc) summary_table S.empty in
   let listofallstates = S.elements setofallstates in
   let list_of_all_proc_and_ap =
@@ -1589,6 +1617,8 @@ let main () =
   (* Initialize the summary_table *)
   SummaryLoader.load_summary_from_disk_to summary_table ~exclude_test:true ;
   RefineSummaries.main summary_table ;
+  (* Initialize the class_table *)
+  TestCodeDetector.make_class_table class_table ;
   (* Initialize the formal_args table *)
   batch_add_formal_args () ;
   save_APIs () ;
@@ -1612,7 +1642,7 @@ let main () =
          && (not @@ is_access_method proc) )
   |> iter ~f:(fun (proc, ap, locset) ->
          let computed_chains = compute_chain ap in
-         iter ~f:(fun chain -> add_chain (proc, ap, locset) chain) computed_chains ) ;
+         iter ~f:(add_chain (proc, ap, locset)) computed_chains ) ;
   (* ============ Serialize ============ *)
   let wrapped_chains =
     Hashtbl.fold

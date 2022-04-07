@@ -126,14 +126,14 @@ let partition_statetups_by_vardef_and_locset (statetups : S.t) : S.t list =
     ~init:[] vardef_locset_pairs
 
 
-let partition_callvs_by_procname (callvs : MyAccessPath.t list) : MyAccessPath.t list list =
+let partition_aps_by_procname (aps : MyAccessPath.t list) : MyAccessPath.t list list =
   let open List in
-  let callees = callvs >>| get_declaring_function_ap_exn |> List.stable_dedup in
+  let callees = aps >>| get_declaring_function_ap_exn |> List.stable_dedup in
   let mapfunc proc =
     List.fold
-      ~f:(fun acc callv ->
-        if Procname.equal (get_declaring_function_ap_exn callv) proc then callv :: acc else acc )
-      callvs ~init:[]
+      ~f:(fun acc ap ->
+        if Procname.equal (get_declaring_function_ap_exn ap) proc then ap :: acc else acc )
+      aps ~init:[]
   in
   callees >>| mapfunc
 

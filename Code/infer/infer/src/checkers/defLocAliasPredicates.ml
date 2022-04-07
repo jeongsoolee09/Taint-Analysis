@@ -297,11 +297,6 @@ let ( ==> ) (x : LocationSet.t) (y : LocationSet.t) : bool =
   (* SourceFile.equal x_min.file y_min.file && *) loc_cond
 
 
-let is_test_method (proc : Procname.t) : bool =
-  let procname_str = Procname.to_string proc in
-  String.is_substring procname_str ~substring:"Test"
-
-
 let is_ternary_frontend_ap ((var, _) : MyAccessPath.t) : bool =
   if not @@ is_frontend_tmp_var var then false
   else

@@ -1,7 +1,5 @@
 open! IStd
 
-open DefLocAliasPredicates
-
 module Hashtbl = Caml.Hashtbl
 module L = Logging
 
@@ -26,7 +24,7 @@ let load_summary_from_disk_to hashtbl ~(exclude_test: bool) =
   |> catMaybes_tuplist
   |> List.map ~f:(fun (x, (y, _)) -> (x, y))
   |> List.iter ~f:(fun (proc, astate) ->
-      match exclude_test, is_test_method proc with
+      match exclude_test, TestCodeDetector.is_test_method proc with
       | true, true -> ()
       | true, false -> Hashtbl.add hashtbl proc astate
       | false, true -> Hashtbl.add hashtbl proc astate

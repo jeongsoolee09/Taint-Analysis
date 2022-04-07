@@ -16,6 +16,24 @@ let option_get : 'a option -> 'a = function
       elem
 
 
+let rec catMaybes (optlist : 'a option list) : 'a list =
+  match optlist with
+  | [] ->
+      []
+  | None :: rest ->
+      catMaybes rest
+  | Some x :: rest ->
+      x :: catMaybes rest
+
+
+let get_class_name (procname : Procname.t) : string =
+  match Procname.get_class_name procname with
+  | None ->
+      ""
+  | Some raw_class_name ->
+      List.last_exn @@ String.split ~on:' ' @@ List.hd_exn @@ String.split ~on:'.' raw_class_name
+
+
 let rec catMaybes_tuplist (optlist : ('a * 'b option) list) : ('a * 'b) list =
   match optlist with
   | [] ->
@@ -52,3 +70,8 @@ let find_witness_exn (lst : 'a list) ~(pred : 'a -> bool) : 'a =
         "find_witness_exn failed.@."
   | Some elem ->
       elem
+
+
+let ( >> ) f g x = g (f x)
+
+let ( << ) f g x = f (g x)

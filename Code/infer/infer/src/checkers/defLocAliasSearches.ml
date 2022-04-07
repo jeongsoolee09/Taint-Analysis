@@ -314,12 +314,10 @@ let find_earliest_astate_within (astatelist : S.elt list) : T.t =
   | Some earliest_location ->
       search_astate_by_loc earliest_location astatelist
   | None ->
-      raise IDontKnow
-
-
-let find_earliest_astate_of_var_within (tuplelist : S.elt list) : T.t =
-  let vartuples = tuplelist in
-  find_earliest_astate_within vartuples
+      F.kasprintf
+        (fun msg -> raise @@ FindEarliestAstateFailed msg)
+        "find_earliest_astate_within failed, astatelist: %a@." S.pp
+      @@ S.of_list astatelist
 
 
 let find_var_being_returned (aliasset : A.t) : Var.t =
@@ -492,8 +490,9 @@ let extract_linum_from_param (ap : MyAccessPath.t) (callee_summary : S.t) : int 
         ignore @@ Str.string_match regex varstring 0 ;
         int_of_string @@ Str.matched_group 2 varstring
     | false ->
-        let param_vardef_aps = weak_search_target_tuples_by_vardef_ap ap callee_summary in
-        let earliest_param_vardef = find_earliest_astate_within param_vardef_aps in
+        L.progress "callee_summary: %a@." S.pp callee_summary;
+        let param_vardef_tuples = weak_search_target_tuples_by_vardef_ap ap callee_summary in
+        let earliest_param_vardef = find_earliest_astate_within param_vardef_tuples in
         let earliest_param_locset = third_of earliest_param_vardef in
         LocationSet.elements earliest_param_locset
         |> List.hd_exn
@@ -725,8 +724,8 @@ let find_astate_holding_returnv (astate_set : S.t) (target_callee : Procname.t)
       (*   (fun msg -> *)
       (*     L.progress "%s@." msg ; *)
       (*     raise TooManyMatches ) *)
-      (*   "find_astate_holding_returnv failed, astate_set: %a, target_callee: %a target_counter: %d, \ *)
-      (*    target_linum: %d@." *)
+      (* "find_astate_holding_returnv failed, astate_set: %a, target_callee: %a target_counter: %d, \ *)
+         (*    target_linum: %d@." *)
       (*   S.pp astate_set Procname.pp target_callee target_counter target_linum *)
       List.hd_exn otherwise
 

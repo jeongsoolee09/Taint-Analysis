@@ -18,6 +18,12 @@ let rec catMaybes_tuplist (optlist : ('a * 'b option) list) : ('a * 'b) list =
       L.die InternalError "catMaybes_tuplist failed"
 
 
+let load_annot_for (proc : Procname.t) : Annot.Method.t =
+  match Procdesc.load proc with
+  | None -> Annot.Method.empty
+  | Some pdesc -> (Procdesc.get_attributes pdesc).ProcAttributes.method_annotation
+
+
 (** 디스크에서 pdesc를 읽어와서 해시테이블에 (Methname.t, annotation) 등록 *)
 let load_annots_from_disk_to (hashtbl : (Procname.t, Annot.Method.t) Hashtbl.t) : unit =
   let methods_and_annots =
@@ -28,7 +34,7 @@ let load_annots_from_disk_to (hashtbl : (Procname.t, Annot.Method.t) Hashtbl.t) 
     |> List.filter ~f:(fun (_, opt) -> Option.is_some opt)
     |> catMaybes_tuplist
     |> List.map ~f:(fun (p, pdesc) ->
-           (p, (Procdesc.get_attributes pdesc).ProcAttributes.method_annotation))
+           (p, (Procdesc.get_attributes pdesc).ProcAttributes.method_annotation) )
   in
   List.iter methods_and_annots ~f:(fun (k, annot) -> Hashtbl.add hashtbl k annot)
 
@@ -54,6 +60,8 @@ let write_json_to_file (json_repr : json) : unit =
 let main () : unit =
   L.progress "Extracting Annotations from methods...\n" ;
   load_annots_from_disk_to method_annot_table ;
+  Out_channel.with_file "annot_table.bin" ~f:(fun out_chan ->
+      Marshal.to_channel out_chan method_annot_table [] ) ;
   let json_repr = to_json_repr method_annot_table in
   write_json_to_file json_repr ;
   L.progress "Extracting Annotations from methods...done\n"

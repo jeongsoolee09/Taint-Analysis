@@ -558,8 +558,7 @@ module TransferFunctions (CFG : ProcCfg.S) = struct
   let find_actual_pvar_for_inter_id (id : Ident.t) (current_methname : Procname.t) (astate_set : S.t)
       =
     let statetups_alias_with_id = search_target_tuples_by_id id current_methname astate_set in
-    (* try find_most_linenumber statetups_alias_with_id with _ -> raise FindActualPvarFailed *)
-    List.hd_exn statetups_alias_with_id
+    try List.hd_exn statetups_alias_with_id with _ -> raise FindActualPvarFailed
 
 
   let exec_user_init_call (ret_id : Ident.t) (callee_methname : Procname.t)
@@ -728,40 +727,45 @@ module TransferFunctions (CFG : ProcCfg.S) = struct
       (arg_ts : (Exp.t * Typ.t) list) ((astate_set, histmap) : P.t) (caller_methname : Procname.t)
       (node_loc : Location.t) : P.t =
     match is_cast callee_methname with
-    | true ->
-        let actuals_logical_id =
-          List.hd_exn
+    | true -> (
+        let actuals_logical_id_opt =
+          List.hd
             (arg_ts >>| (fst >> convert_exp_to_logical) |> List.filter ~f:(not << Ident.is_none))
         in
-        let ((actual_proc, actual_vardef, actual_loc, actual_aliasset) as actual_astate) =
-          weak_search_target_tuple_by_id actuals_logical_id astate_set
-        in
-        let callv = mk_callv callee_methname node_loc.line in
-        let callv_ap = (callv, []) in
-        let param_ap = (mk_param callee_methname node_loc.line 0, []) in
-        let callv_counter = extract_counter_from_callv callv_ap in
-        let returnv = mk_returnv callee_methname [callv_counter] node_loc.line in
-        let returnv_ap = (returnv, []) in
-        let actual_astate_updated =
-          ( actual_proc
-          , actual_vardef
-          , actual_loc
-          , actual_aliasset |> A.add callv_ap |> A.add param_ap )
-        in
-        let cast_vardef = mk_cast_of actual_vardef caller_methname in
-        let new_tuple =
-          ( caller_methname
-          , cast_vardef
-          , LocationSet.singleton node_loc
-          , A.add (Var.of_id ret_id, []) (doubleton returnv_ap cast_vardef) )
-        in
-        let newmap =
-          H.add_to_history (caller_methname, cast_vardef) (LocationSet.singleton node_loc) histmap
-        in
-        let newset =
-          astate_set |> S.remove actual_astate |> S.add actual_astate_updated |> S.add new_tuple
-        in
-        (newset, newmap)
+        match actuals_logical_id_opt with
+        | Some actuals_logical_id ->
+            let ((actual_proc, actual_vardef, actual_loc, actual_aliasset) as actual_astate) =
+              weak_search_target_tuple_by_id actuals_logical_id astate_set
+            in
+            let callv = mk_callv callee_methname node_loc.line in
+            let callv_ap = (callv, []) in
+            let param_ap = (mk_param callee_methname node_loc.line 0, []) in
+            let callv_counter = extract_counter_from_callv callv_ap in
+            let returnv = mk_returnv callee_methname [callv_counter] node_loc.line in
+            let returnv_ap = (returnv, []) in
+            let actual_astate_updated =
+              ( actual_proc
+              , actual_vardef
+              , actual_loc
+              , actual_aliasset |> A.add callv_ap |> A.add param_ap )
+            in
+            let cast_vardef = mk_cast_of actual_vardef caller_methname in
+            let new_tuple =
+              ( caller_methname
+              , cast_vardef
+              , LocationSet.singleton node_loc
+              , A.add (Var.of_id ret_id, []) (doubleton returnv_ap cast_vardef) )
+            in
+            let newmap =
+              H.add_to_history (caller_methname, cast_vardef) (LocationSet.singleton node_loc)
+                histmap
+            in
+            let newset =
+              astate_set |> S.remove actual_astate |> S.add actual_astate_updated |> S.add new_tuple
+            in
+            (newset, newmap)
+        | None ->
+            (astate_set, histmap) )
     | false ->
         let callee_name_simple = Procname.get_method callee_methname in
         let param_indices = List.init (List.length arg_ts) ~f:Int.to_string in

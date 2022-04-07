@@ -1,7 +1,8 @@
 open DefLocAliasSearches
 open DefLocAliasPredicates
 open DefLocAliasDomain
-open DefLocAliasPP
+
+(* open DefLocAliasPP *)
 open Partitioners
 open SpecHunterUtils
 module Hashtbl = Caml.Hashtbl
@@ -69,13 +70,11 @@ let remove_ternary_frontend (table : (Procname.t, S.t) Hashtbl.t) : (Procname.t,
   let one_pass_S (astate_set : S.t) : S.t =
     S.fold
       (fun (proc, vardef, locset, aliasset) acc ->
-        match is_ternary_frontend_ap vardef with
+        match is_ternary_frontend_ap vardef && (not @@ A.exists is_returnv_ap aliasset) with
         | true ->
             acc
         | false ->
-            S.add
-              (proc, vardef, locset, A.filter (fun ap -> not @@ is_ternary_frontend_ap ap) aliasset)
-              acc )
+            S.add (proc, vardef, locset, A.filter (not << is_ternary_frontend_ap) aliasset) acc )
       astate_set S.empty
   in
   Hashtbl.iter (fun proc astate_set -> Hashtbl.replace table proc (one_pass_S astate_set)) table ;
@@ -285,6 +284,13 @@ let move_void_callee_returnv_and_remove_ph (table : (Procname.t, S.t) Hashtbl.t)
     is_callv_ap ap && return_type_is_void (extract_callee_from ap)
   in
   let one_pass_S (astate_set : S.t) : S.t =
+    if
+      String.equal
+        (Procname.to_string @@ first_of @@ List.hd_exn @@ S.elements astate_set)
+        "AppPage AppPage.getNewPageInstance(Browser,Class)"
+    then
+      Out_channel.with_file "getNewPageInstance.bin" ~f:(fun out_chan ->
+          Marshal.to_channel out_chan astate_set [] ) ;
     let ph_tuples_with_void_returnvs =
       S.filter
         (fun astate ->
@@ -315,19 +321,20 @@ let move_void_callee_returnv_and_remove_ph (table : (Procname.t, S.t) Hashtbl.t)
       with NoWitness -> []
     in
     let astates_holding_corresponding_callvs_updated =
-      try
-        List.map
-          ~f:(fun (proc, vardef, loc, aliasset) ->
+      List.fold
+        ~f:(fun acc (proc, vardef, loc, aliasset) ->
+          try
             let void_callv = find_witness_exn ~pred:is_void_method_callv (A.elements aliasset) in
-            let corresponding_returnv =
-              find_witness_exn
-                ~pred:(fun void_returnv ->
+            let corresponding_returnvs =
+              List.filter
+                ~f:(fun void_returnv ->
                   callv_and_returnv_matches ~callv:void_callv ~returnv:void_returnv )
                 void_returnvs
             in
-            (proc, vardef, loc, A.add corresponding_returnv aliasset) )
-          astates_holding_corresponding_callvs
-      with _ -> []
+            (proc, vardef, loc, A.union (A.of_list corresponding_returnvs) aliasset) :: acc
+          with _ -> (* do nothing *)
+                    (proc, vardef, loc, aliasset) :: acc )
+        astates_holding_corresponding_callvs ~init:[]
     in
     astate_set
     |> (fun astate_set -> S.diff astate_set ph_tuples_with_void_returnvs)
@@ -431,36 +438,26 @@ let remove_too_many_callv_returnv_setters (table : (Procname.t, S.t) Hashtbl.t) 
   in
   let more_than_one_callv_per_void_method_in_astate_set (astate_set : S.t) =
     let all_void_callvs = all_callv_in_astate_set astate_set in
-    let all_void_callvs_partitioned = partition_callvs_by_procname all_void_callvs in
-    List.for_all all_void_callvs_partitioned ~f:(fun partition -> List.length partition >= 2)
+    let all_void_callvs_partitioned = partition_aps_by_procname all_void_callvs in
+    List.exists all_void_callvs_partitioned ~f:(fun partition -> List.length partition >= 2)
   in
-  let leave_only_earliest_callv (callvs : MyAccessPath.t list) : MyAccessPath.t =
+  let get_callv_with_least_counter (callvs : MyAccessPath.t list) : MyAccessPath.t =
     Option.value ~default:MyAccessPath.dummy
     @@ List.min_elt callvs ~compare:(fun callv1 callv2 ->
            Int.compare (extract_counter_from_callv callv1) (extract_counter_from_callv callv2) )
   in
   let one_pass_S (astate_set : S.t) : S.t =
     if
-      String.equal
-        (Procname.to_string @@ first_of @@ List.hd_exn @@ S.elements astate_set)
-        "ImportStatus ExcelImporter.importFile(File)"
-    then
-      Out_channel.with_file "excel.bin" ~f:(fun out_chan ->
-          Marshal.to_channel out_chan astate_set [] ) ;
-    L.progress "astate_set : %a@." S.pp astate_set ;
-    Out_channel.flush stdout ;
-    if
       List.length (all_callv_in_astate_set astate_set) > 2
       && more_than_one_callv_per_void_method_in_astate_set astate_set
-    then (
+    then
       let all_callvs_for_void_methods = all_callv_in_astate_set astate_set in
       let all_callvs_partitioned_by_callee =
-        partition_callvs_by_procname all_callvs_for_void_methods
+        partition_aps_by_procname all_callvs_for_void_methods
       in
       let only_earliest_callvs : MyAccessPath.t list =
-        all_callvs_partitioned_by_callee >>| leave_only_earliest_callv
+        all_callvs_partitioned_by_callee >>| get_callv_with_least_counter
       in
-      L.progress "only_earliest_callvs: %a@." pp_ap_list only_earliest_callvs ;
       S.fold
         (fun ((proc, vardef, locset, aliasset) as astate) acc ->
           let aliasset_dieted =
@@ -468,10 +465,8 @@ let remove_too_many_callv_returnv_setters (table : (Procname.t, S.t) Hashtbl.t) 
               (fun ap ->
                 match ap with
                 | callv when is_callv_ap callv ->
-                    (* use only_earliest_callvs *)
                     List.mem only_earliest_callvs callv ~equal:MyAccessPath.equal
                 | returnv when is_returnv_ap returnv ->
-                    (* use only_earliest_callvs *)
                     List.exists all_callvs_for_void_methods ~f:(fun callv ->
                         callv_and_returnv_matches ~callv ~returnv
                         && List.mem only_earliest_callvs callv ~equal:MyAccessPath.equal )
@@ -480,8 +475,64 @@ let remove_too_many_callv_returnv_setters (table : (Procname.t, S.t) Hashtbl.t) 
               aliasset
           in
           S.remove astate acc |> S.add (proc, vardef, locset, aliasset_dieted) )
-        astate_set astate_set )
+        astate_set astate_set
     else astate_set
+  in
+  Hashtbl.iter (fun proc astate_set -> Hashtbl.replace table proc (one_pass_S astate_set)) table ;
+  table
+
+
+(* unrolling all loops =============================  *)
+(* ================================================== *)
+
+let loop_unroll (table : (Procname.t, S.t) Hashtbl.t) : (Procname.t, S.t) Hashtbl.t =
+  let contains_loop (all_callvs : A.t) : bool =
+    A.exists
+      (fun callv ->
+        A.exists
+          (fun callv' ->
+            (not @@ MyAccessPath.equal callv callv')
+            && Int.( = ) (extract_linum_from_callv callv) (extract_linum_from_callv callv') )
+          all_callvs )
+      all_callvs
+  in
+  let one_pass_S (astate_set : S.t) : S.t =
+    let all_callvs =
+      S.fold
+        (fun astate big_acc -> A.union big_acc (A.filter is_callv_ap (fourth_of astate)))
+        astate_set A.empty
+    in
+    if not @@ contains_loop all_callvs then astate_set
+    else
+      let callvs_partitioned_by_procname = partition_aps_by_procname (A.elements all_callvs) in
+      let get_callv_with_least_counter (callvs : MyAccessPath.t list) : MyAccessPath.t =
+        Option.value ~default:MyAccessPath.dummy
+        @@ List.min_elt callvs ~compare:(fun callv1 callv2 ->
+               Int.compare (extract_counter_from_callv callv1) (extract_counter_from_callv callv2) )
+      in
+      let least_counter_callvs =
+        A.of_list (callvs_partitioned_by_procname >>| get_callv_with_least_counter)
+      in
+      (* remove all callvs without their own least counter, and
+         remove all returnvs without matching callvs not in least_counter_callvs. *)
+      S.fold
+        (fun (proc, vardef, locset, aliasset) acc ->
+          let aliasset_dieted =
+            A.filter
+              (fun ap ->
+                match ap with
+                | callv when is_callv_ap callv ->
+                    A.mem callv least_counter_callvs
+                | returnv when is_returnv_ap returnv ->
+                    A.exists
+                      (fun callv -> callv_and_returnv_matches ~callv ~returnv)
+                      least_counter_callvs
+                | _ ->
+                    true )
+              aliasset
+          in
+          S.add (proc, vardef, locset, aliasset_dieted) acc )
+        astate_set S.empty
   in
   Hashtbl.iter (fun proc astate_set -> Hashtbl.replace table proc (one_pass_S astate_set)) table ;
   table
@@ -731,8 +782,7 @@ let summary_table_to_file_and_return (filename : string) (table : (Procname.t, S
 (* Main ============================================= *)
 (* ================================================== *)
 
-let main : (Procname.t, S.t) Hashtbl.t -> unit =
- fun table ->
+let main (table : (Procname.t, S.t) Hashtbl.t) : unit =
   table
   |> summary_table_to_file_and_return "1_raw_astate_set.txt"
   |> remove_clinit
@@ -743,18 +793,14 @@ let main : (Procname.t, S.t) Hashtbl.t -> unit =
   |> summary_table_to_file_and_return "4_consolidate_dup_pvars.txt"
   |> substitute_frontend_new_returnv_with_init_returnv
   |> summary_table_to_file_and_return "5_substitute_frontend_new_returnv_with_init_returnv.txt"
-  (* |> merge_cast_returnv_with_return *)
-  (* |> summary_table_to_file_and_return "6_merge_cast_returnv_with_return.txt" *)
+  |> promote_ph_to_pvar_with_get_array_length_returnv
+  |> summary_table_to_file_and_return "6_promote_ph_to_pvar_with_get_array_length_returnv.txt"
   |> move_void_callee_returnv_and_remove_ph
   |> summary_table_to_file_and_return "7_move_void_callee_returnv_and_remove_ph.txt"
-  (* |> merge_cast_returnv_aliasset_with_callv_ones *)
-  (* |> summary_table_to_file_and_return "8_merge_cast_returnv_aliasset_with_callv_ones.txt" *)
-  |> promote_ph_to_pvar_with_get_array_length_returnv
-  |> summary_table_to_file_and_return "9_promote_ph_to_pvar_with_get_array_length_returnv.txt"
-  |> remove_too_many_callv_returnv_setters
-  |> summary_table_to_file_and_return "10_remove_too_many_callv_returnv_setters.txt"
+  |> loop_unroll
+  |> summary_table_to_file_and_return "8_loop_unroll.txt"
   |> remove_unimportant_elems
-  |> summary_table_to_file_and_return "11_remove_unimportant_elems.txt"
+  |> summary_table_to_file_and_return "9_remove_unimportant_elems.txt"
   |> remove_java_constants
-  |> summary_table_to_file_and_return "12_remove_java_constants.txt"
+  |> summary_table_to_file_and_return "10_remove_java_constants.txt"
   |> return

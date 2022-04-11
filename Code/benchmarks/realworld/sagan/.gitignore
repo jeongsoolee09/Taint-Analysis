@@ -57,6 +57,10 @@ infer-out/
 Callgraph.txt
 Chain.txt
 Methods.txt
+APIs.txt
+APIs_unique_id.txt
+UDFs.txt
+UDFs_unique_id.txt
 
 # misc
 *.properties

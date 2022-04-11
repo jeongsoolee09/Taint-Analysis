@@ -46,3 +46,22 @@ open IStd;;
 
 module L = Logging;;
 module F = Format;;
+
+(* SpecHunter things *)
+open SpecHunter__
+open DefLocAliasSearches
+open DefLocAliasPredicates
+open DefLocAliasDomain
+open DefLocAliasPP
+open Partitioners
+open SpecHunterUtils
+open Yojson.Basic
+open List
+module Hashtbl = Caml.Hashtbl
+module P = DefLocAliasDomain.AbstractPair
+module S = DefLocAliasDomain.AbstractStateSetFinite
+module A = DefLocAliasDomain.SetofAliases
+module T = DefLocAliasDomain.AbstractState
+module L = Logging
+module F = Format
+

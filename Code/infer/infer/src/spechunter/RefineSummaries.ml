@@ -486,37 +486,40 @@ let remove_too_many_callv_returnv_setters (table : (Procname.t, S.t) Hashtbl.t) 
 (* ================================================== *)
 
 let loop_unroll (table : (Procname.t, S.t) Hashtbl.t) : (Procname.t, S.t) Hashtbl.t =
-  let contains_loop (all_callvs : A.t) : bool =
+  let tuple_contains_loop (astate : T.t) : bool =
+    let callvs = A.filter is_callv_ap (fourth_of astate) in
     A.exists
       (fun callv ->
         A.exists
           (fun callv' ->
             (not @@ MyAccessPath.equal callv callv')
-            && Int.( = ) (extract_linum_from_callv callv) (extract_linum_from_callv callv') )
-          all_callvs )
-      all_callvs
+            && Int.equal (extract_linum_from_callv callv) (extract_linum_from_callv callv') )
+          callvs )
+      callvs
+  in
+  let contains_loop (astate_set : S.t) : bool = S.exists tuple_contains_loop astate_set in
+  let get_callv_with_least_counter (callvs : MyAccessPath.t list) : MyAccessPath.t =
+    Option.value ~default:MyAccessPath.dummy
+    @@ List.min_elt callvs ~compare:(fun callv1 callv2 ->
+           Int.compare (extract_counter_from_callv callv1) (extract_counter_from_callv callv2) )
   in
   let one_pass_S (astate_set : S.t) : S.t =
-    let all_callvs =
-      S.fold
-        (fun astate big_acc -> A.union big_acc (A.filter is_callv_ap (fourth_of astate)))
-        astate_set A.empty
-    in
-    if not @@ contains_loop all_callvs then astate_set
+    if not @@ contains_loop astate_set then astate_set
     else
-      let callvs_partitioned_by_procname = partition_aps_by_procname (A.elements all_callvs) in
-      let get_callv_with_least_counter (callvs : MyAccessPath.t list) : MyAccessPath.t =
-        Option.value ~default:MyAccessPath.dummy
-        @@ List.min_elt callvs ~compare:(fun callv1 callv2 ->
-               Int.compare (extract_counter_from_callv callv1) (extract_counter_from_callv callv2) )
-      in
-      let least_counter_callvs =
-        A.of_list (callvs_partitioned_by_procname >>| get_callv_with_least_counter)
-      in
       (* remove all callvs without their own least counter, and
          remove all returnvs without matching callvs not in least_counter_callvs. *)
       S.fold
         (fun (proc, vardef, locset, aliasset) acc ->
+          let callvs_partitioned_by_procname =
+            partition_callvs_by_procname_linum (A.elements aliasset)
+          in
+          let _ =
+            L.progress "callvs_partitioned_by_procname: %a@." DefLocAliasPP.pp_ap_list_list
+              callvs_partitioned_by_procname
+          in
+          let least_counter_callvs =
+            A.of_list (callvs_partitioned_by_procname >>| get_callv_with_least_counter)
+          in
           let aliasset_dieted =
             A.filter
               (fun ap ->

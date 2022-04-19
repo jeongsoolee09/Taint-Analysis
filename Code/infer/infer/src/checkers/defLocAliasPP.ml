@@ -69,7 +69,7 @@ let pp_ap_list fmt aplist =
   F.fprintf fmt "]"
 
 
-let pp_aplist_list fmt aplistlist =
+let pp_ap_list_list fmt aplistlist =
   F.fprintf fmt "[" ;
   List.iter ~f:(fun aplist -> F.fprintf fmt "%a, " pp_ap_list aplist) aplistlist ;
   F.fprintf fmt "]"

@@ -18,7 +18,7 @@ class ArrayListExample2 {
         list.add(3);
 
         ArrayList<Integer> list2 = adder(list);
-        
+
         list2.add(9);
         list2.add(10);
     }

@@ -744,14 +744,23 @@ let is_caller ~(caller : Procname.t) ~(callee : Procname.t) =
   List.mem direct_callers caller ~equal:Procname.equal
 
 
+let is_void_call (callv : MyAccessPath.t) (astate_set : S.t) =
+  (return_type_is_void @@ extract_callee_from callv)
+  ||
+  let astate_holding_matching_returnv =
+    List.find_exn
+      ~f:(fun astate ->
+        A.exists
+          (fun returnv -> is_returnv_ap returnv && callv_and_returnv_matches ~callv ~returnv)
+          (fourth_of astate) )
+      (S.elements astate_set)
+  in
+  Int.equal (A.cardinal @@ fourth_of @@ astate_holding_matching_returnv) 2
+
+
 let reset_counter_recursively (current_procname : Procname.t) : unit =
-  (* L.progress "recursively resetting for %a ...@." Procname.pp current_procname ; *)
   reset_counter current_procname ;
-  G.iter_succ
-    (fun proc ->
-      (* L.progress "%a's counter reset to 0@." Procname.pp proc ; *)
-      reset_counter proc )
-    callgraph current_procname
+  G.iter_succ reset_counter callgraph current_procname
 
 
 (* computing chains ================================= *)
@@ -879,6 +888,7 @@ let rec compute_chain_inner (current_methname : Procname.t) (current_astate_set 
           else
             (* ============ DEAD ============ *)
             let is_leaf = is_empty @@ G.succ callgraph current_methname in
+            L.progress "current_methname : %a, it's a leaf!" Procname.pp current_methname ;
             let completed_chain =
               if is_leaf then (current_methname, Status.Dead) :: current_chain else current_chain
             in
@@ -1006,7 +1016,7 @@ let rec compute_chain_inner (current_methname : Procname.t) (current_astate_set 
               in
               LocationSet.singleton location_term
             in
-            match return_type_is_void callee_methname with
+            match is_void_call callv current_astate_set with
             | true ->
                 (* VOID CALL *)
                 let new_chain_slice =
@@ -1207,6 +1217,7 @@ let rec compute_chain_inner (current_methname : Procname.t) (current_astate_set 
         else
           (* ============ DEAD ============ *)
           (* no more recursion; return *)
+          let _ = L.progress "no more recursion!!" in
           let completed_chain = (current_methname, Status.Dead) :: current_chain in
           reset_counter_recursively current_methname ;
           completed_chain :: current_chain_acc
@@ -1265,7 +1276,7 @@ let rec compute_chain_inner (current_methname : Procname.t) (current_astate_set 
                 in
                 LocationSet.singleton location_term
               in
-              match return_type_is_void callee_methname (*|| is_modeled callee_methname*) with
+              match is_void_call callv current_astate_set with
               | true ->
                   (* VOID CALL *)
                   let new_chain_slice =

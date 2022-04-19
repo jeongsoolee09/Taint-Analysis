@@ -56,8 +56,8 @@ depends: [
   "csv" {= "2.4"}
   "calendar" {= "2.04"}
   "ctypes" {= "0.18.0"}
-  "dune" {= "2.8.5"}
-  "dune-configurator" {= "2.8.5"}
+  "dune" {= "3.0.3"}
+  "dune-configurator" {= "3.0.3"}
   "easy-format" {= "1.3.2"}
   "extlib" {= "1.7.8"}
   "fieldslib" {= "v0.14.0"}

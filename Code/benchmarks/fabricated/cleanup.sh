@@ -7,3 +7,6 @@ rm -rf [0-9]*.txt
 rm -rf Chain.json
 rm -rf *.png
 rm -rf *.svg
+rm -rf *.txt
+rm -rf *.json
+rm -rf *.bin

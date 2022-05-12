@@ -1,8 +1,0 @@
-*.log
-*.aux
-*.fdb_latexmk
-*.fls
-*.out
-.pdf-view-restore
-_region_.tex
-auto/
